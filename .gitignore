@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.next/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# 개인 설정
+CLAUDE.local.md
+.claude/settings.local.json
+
+# 개발 도구로 설치한 외부 스킬 (저장소에 포함하지 않음)
+.claude/skills/ui-ux-pro-max/

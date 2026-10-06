@@ -168,7 +168,8 @@
 | 웹 | **Next.js** (App Router, standalone 출력) | 블로그는 검색 노출을 위해 서버 렌더링, 관리 모드는 클라이언트 화면. 한 앱에서 둘 다 |
 | DB | **Postgres 17+** + **pg_bigm**(한국어 키워드) + **pgvector**(의미 검색) | 원본 저장소. 확장 둘을 넣은 Cairn 전용 DB 이미지를 만든다 |
 | 임베딩 | **서버 내장 소형 다국어 임베딩 모델** (transformers.js·ONNX, CPU). 후보: multilingual-e5-small 계열, 한국어 품질은 M2에서 비교 평가 | 로그인·API 키 없이 의미 검색. 설정에서 Ollama나 API로 바꿀 수 있음 |
-| ORM·마이그레이션 | **Drizzle ORM** | SQL에 가까워 `SKIP LOCKED`, JSONB, 버전 비교 같은 세밀한 쿼리를 쓰기 쉬움 |
+| 마이그레이션 | **SQL 파일 + dbmate** (`db/migrations`) | 부분 인덱스, 모델별 HNSW 인덱스, 트리거, DEFERRABLE 외래키처럼 ORM 생성기가 못 만드는 것을 그대로 씀. Compose에서 DB가 뜨면 자동 적용 |
+| 쿼리 | **Drizzle ORM** (스키마는 DB에서 읽어 생성) | SQL에 가까워 `SKIP LOCKED`, JSONB, 버전 비교 같은 세밀한 쿼리를 쓰기 쉬움 |
 | 작업 큐 | **Graphile Worker** (NestJS 앱 컨텍스트 안에서 실행) | Postgres만으로 동작(`SKIP LOCKED` + `LISTEN/NOTIFY`). Redis 불필요. API와 같은 Nest 모듈(서비스)을 그대로 씀 |
 | 실시간 | **SSE** (Server-Sent Events) | 관리 화면 실시간 갱신. 단방향이라 WebSocket보다 단순 |
 | 인증 | GitHub OAuth (**Arctic**), MCP용 OAuth 2.1 인가 서버 (MCP SDK 도우미) | 비밀번호를 받지 않음 |
@@ -181,7 +182,7 @@
 | 스킬 | SKILL.md 표준 + 의존성 없는 Node 스크립트 | Claude Code·Codex·Gemini 공통 |
 | 테스트 | **Vitest**(단위·DB 통합), **Playwright**(화면), 동시성 부하 테스트 | 데이터 보존과 사람 우선 규칙을 테스트로 고정 |
 
-**저장소 구조**
+**저장소 구조** (v0.1 목표. 폴더는 필요해지는 단계에서 하나씩 만든다)
 ```
 cairn/
 ├── apps/
@@ -191,12 +192,13 @@ cairn/
 ├── packages/
 │   ├── contracts/  API 요청·응답 형식 (zod). 서버와 웹이 함께 씀
 │   ├── core/       도메인 규칙 (판, 칸 합치기, 사람 우선, 민감정보 규칙)
-│   ├── db/         Drizzle 스키마, 마이그레이션 (서버 쪽만)
+│   ├── db/         Drizzle 쿼리용 스키마 (서버 쪽만)
 │   ├── md/         md 형식 읽기·쓰기 (frontmatter, 칸, 확장 문법)
 │   ├── ui/         공통 디자인 토큰과 컴포넌트 (웹만)
 │   └── cli/        npx cairn connect · update
 ├── skills/         cairn-save · cairn-tidy · cairn-recall · cairn-write
-├── docker/         compose, 프록시 설정 예시(Nginx Proxy Manager·Nginx), DB 이미지(Postgres + pg_bigm + pgvector)
+├── db/             DB 이미지(Postgres + pg_bigm + pgvector), SQL 마이그레이션
+├── docker/         프록시 설정 예시(Nginx Proxy Manager·Nginx)
 ├── .claude/rules/  경로별 규칙 (SQL·마이그레이션·React·테스트·MCP 도구·보안)
 ├── AGENTS.md       모든 AI 도구 공통 규칙 (Codex·Gemini도 읽음)
 ├── CLAUDE.md       @AGENTS.md를 가져오고 Claude 전용 메모만 추가

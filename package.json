@@ -1,0 +1,19 @@
+{
+  "name": "cairn",
+  "private": true,
+  "description": "AI 작업 세션을 모아 그래프로 키우고 블로그 글로 쓰는 self-hosted 블로그 엔진",
+  "packageManager": "pnpm@10.34.6",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "docker compose up --build",
+    "dev:down": "docker compose down",
+    "db:up": "docker compose up -d --build db migrate",
+    "db:migrate": "docker compose run --rm migrate",
+    "db:rollback": "docker compose run --rm migrate --wait --no-dump-schema --migrations-dir /db/migrations rollback",
+    "db:new": "docker compose run --rm migrate --migrations-dir /db/migrations new",
+    "db:reset": "docker compose down -v && docker compose up -d --build db migrate",
+    "db:psql": "docker compose exec db psql -U cairn -d cairn"
+  }
+}

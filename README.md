@@ -2,7 +2,7 @@
 
 **AI와 함께 일한 세션을 모아 그래프로 키우고, 그 자료로 블로그 글을 쓰는 self-hosted 오픈소스 블로그 엔진.**
 
-> 상태: **기획 단계 (v0.1 개발 전).** 아래의 설치 방법과 명령은 예정된 사용 방식이며 아직 동작하지 않습니다.
+> 상태: **개발 시작 (M0 진행 중).** 개발 환경과 DB 스키마까지 준비됐습니다. "설치 (예정)"의 명령은 아직 동작하지 않습니다.
 
 ---
 
@@ -91,25 +91,47 @@ Cairn은 이 세션들을 한곳에 모읍니다. 세션 하나가 돌 하나라
 
 ---
 
-## 저장소 구조 (예정)
+## 저장소 구조
+
+지금 단계(M0)에 있는 것만 둡니다. 나머지 폴더는 필요해지는 단계에서 추가합니다 (최종 구조는 [MVP 기획서](docs/MVP-기획서.md) 참고).
 
 ```
 cairn/
 ├── apps/
-│   ├── server/      NestJS (진입점: api, worker)
-│   │   └── src/modules/  account · vault · blog · platform · mcp
-│   └── web/         Next.js (그래프, 블로그, 관리 모드, 설치 마법사)
-├── packages/
-│   ├── contracts/   API 요청·응답 형식 (서버와 웹이 공유)
-│   ├── core/        도메인 규칙 (판, 칸 합치기, 사람 우선)
-│   ├── db/          스키마, 마이그레이션
-│   ├── md/          md 형식 읽기·쓰기
-│   ├── ui/          디자인 토큰, 공통 컴포넌트
-│   └── cli/         npx cairn connect
-├── skills/          cairn-save · cairn-tidy · cairn-recall · cairn-write
-├── docker/          Compose, DB 이미지, 프록시 설정 예시
-└── docs/            기획서, MVP 기획서, 테이블 설계
+│   ├── server/        NestJS. 지금은 /health 하나
+│   │   └── src/modules/platform/   DB 연결, 상태 확인
+│   └── web/           Next.js. 지금은 서버·DB 연결 상태 화면 하나
+├── db/
+│   ├── Dockerfile     Postgres 17 + pgvector + pg_bigm
+│   └── migrations/    SQL 마이그레이션 (dbmate)
+├── docs/              기획서, MVP 기획서, 테이블 설계
+├── Dockerfile         앱 이미지 (server, web 공용)
+└── docker-compose.yml db → migrate → server → web
 ```
+
+---
+
+## 개발 환경
+
+필요한 것: Docker, Node.js 24 이상, pnpm 10 (`corepack enable` 또는 `npx pnpm@10`)
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+`db`(Postgres 17 + pgvector + pg_bigm) → `migrate`(마이그레이션 적용 후 종료) → `server`(NestJS, :4000) → `web`(Next.js, :3000) 순서로 뜹니다. http://localhost:3000 에서 서버와 DB 연결 상태를 볼 수 있습니다.
+
+| 명령 | 하는 일 |
+|---|---|
+| `pnpm db:up` | DB만 띄우고 마이그레이션 적용 |
+| `pnpm db:new <이름>` | 새 마이그레이션 파일 만들기 |
+| `pnpm db:migrate` | 마이그레이션 적용 |
+| `pnpm db:rollback` | 마지막 마이그레이션 되돌리기 |
+| `pnpm db:reset` | DB 데이터를 지우고 처음부터 다시 |
+| `pnpm db:psql` | DB에 psql로 접속 |
+
+마이그레이션은 `db/migrations/`의 SQL 파일입니다 ([테이블 설계](docs/테이블설계.md) 참고).
 
 ---
 
@@ -126,7 +148,7 @@ cp .env.example .env    # 사이트 주소 입력
 docker compose up -d
 ```
 
-서버 로그에 나오는 **설치 코드**를 확인하고, 브라우저로 접속해 설치 마법사를 따라갑니다. GitHub 로그인용 앱 등록, 소유자 로그인, 블로그 이름 설정 순서입니다. HTTPS와 리버스 프록시(Nginx Proxy Manager 등)는 직접 준비합니다. 필요한 프록시 설정은 `docker/` 폴더에 예시로 제공합니다.
+서버 로그에 나오는 **설치 코드**를 확인하고, 브라우저로 접속해 설치 마법사를 따라갑니다. GitHub 로그인용 앱 등록, 소유자 로그인, 블로그 이름 설정 순서입니다. HTTPS와 리버스 프록시(Nginx Proxy Manager 등)는 직접 준비합니다. 필요한 프록시 설정은 예시로 제공할 예정입니다.
 
 **2. 작업하는 컴퓨터 연결하기**
 

@@ -1,0 +1,70 @@
+# Cairn 개발 환경
+#   docker compose up --build   →  db → migrate(마이그레이션 적용 후 종료) → server → web
+#   docker compose build        →  db 이미지와 앱 이미지를 함께 빌드
+name: cairn
+
+x-db-url: &db-url postgres://cairn:${DB_PASSWORD:-cairn}@db:5432/cairn?sslmode=disable
+
+services:
+  db:
+    build: ./db
+    image: cairn-db:dev
+    environment:
+      POSTGRES_USER: cairn
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cairn}
+      POSTGRES_DB: cairn
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cairn -d cairn"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    image: ghcr.io/amacneil/dbmate:2.36.0
+    environment:
+      DATABASE_URL: *db-url
+    command: ["--wait", "--no-dump-schema", "--migrations-dir", "/db/migrations", "up"]
+    volumes:
+      - ./db/migrations:/db/migrations
+    depends_on:
+      db:
+        condition: service_healthy
+
+  server:
+    build:
+      context: .
+      target: dev
+    image: cairn-app:dev
+    command: ["pnpm", "--filter", "@cairn/server", "dev"]
+    environment:
+      DATABASE_URL: *db-url
+      PORT: 4000
+    ports:
+      - "${SERVER_PORT:-4000}:4000"
+    volumes:
+      - ./apps/server/src:/repo/apps/server/src
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    image: cairn-app:dev          # server가 빌드한 같은 이미지를 씀
+    pull_policy: never
+    command: ["pnpm", "--filter", "@cairn/web", "dev"]
+    environment:
+      API_URL: http://server:4000
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - ./apps/web/app:/repo/apps/web/app
+    depends_on:
+      server:
+        condition: service_started
+
+volumes:
+  db-data:
