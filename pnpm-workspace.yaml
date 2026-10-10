@@ -6,4 +6,3 @@ onlyBuiltDependencies:
   - "@nestjs/core"
   - "@swc/core"
   - sharp
-  - unrs-resolver

@@ -5,7 +5,7 @@ import { SealedSecret, type SecretBox } from '../base/secret-box';
 import type { PluginManifest, PluginSettingSpec } from './plugin-manifest';
 
 /** 플랫폼 전체에 걸친 이벤트의 공간 id (특정 블로그 공간이 아닌 일) */
-export const PLATFORM_SPACE = '00000000-0000-0000-0000-000000000000';
+const PLATFORM_SPACE = '00000000-0000-0000-0000-000000000000';
 
 /** 저장된 설정 값 하나. 비밀값은 암호화된 채로만 들고 있다 */
 export class StoredSetting {

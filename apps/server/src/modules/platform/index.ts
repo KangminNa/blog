@@ -1,6 +1,6 @@
 // platform 모듈의 공개 API. 다른 모듈은 이 파일로만 platform을 쓴다.
 
-export { ARCHIVE_FORMAT, ArchiveQuery } from './archive/archive.query';
+export { ArchiveQuery } from './archive/archive.query';
 export { ArchiveFile } from './archive/archive-file';
 export { Actor, DeviceActor, OwnerActor, SystemActor, VisitorActor } from './base/actor';
 export { ActionResult, BaseAction } from './base/base-action';
@@ -26,18 +26,12 @@ export {
   Unauthenticated,
 } from './base/errors';
 export { DomainEvent } from './base/event';
-export { SealedSecret, SecretBox } from './base/secret-box';
+export { SecretBox } from './base/secret-box';
 export { CurrentActor } from './http/current-actor';
 export { PlatformModule } from './platform.module';
 export { BasePlugin } from './plugin/base-plugin';
 export { PluginService } from './plugin/plugin.service';
 export type { PluginContext } from './plugin/plugin-context';
-export {
-  CAIRN_PLUGIN_API,
-  PluginManifest,
-  PluginSettingSpec,
-  WEB_SLOTS,
-} from './plugin/plugin-manifest';
+export { PluginManifest } from './plugin/plugin-manifest';
 export { PluginRegistry } from './plugin/plugin-registry';
-export { PLATFORM_SPACE } from './plugin/plugin-state';
 export { OutboxWorker } from './worker/outbox-worker';
