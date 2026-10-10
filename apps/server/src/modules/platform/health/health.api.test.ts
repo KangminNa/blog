@@ -14,7 +14,7 @@ after(() => api.close());
 
 describe('GET /health', () => {
   test('DB 확장 세 개와 모든 마이그레이션이 적용된 상태를 돌려준다', async () => {
-    const res = await api.get('/health');
+    const res = await api.get('/api/health');
     assert.equal(res.status, 200);
     const body = res.json();
     assert.equal(body.status, 'ok');
@@ -32,7 +32,7 @@ describe('GET /health', () => {
   });
 
   test('모듈 스키마마다 테이블이 있다', async () => {
-    const tables = (await api.get('/health')).json().tables as Record<string, number>;
+    const tables = (await api.get('/api/health')).json().tables as Record<string, number>;
     for (const schema of ['platform', 'account', 'vault', 'blog', 'work', 'mcp']) {
       assert.ok((tables[schema] ?? 0) > 0, `${schema} 스키마에 테이블이 없다`);
     }

@@ -3,6 +3,7 @@
 export { ArchiveQuery } from './archive/archive.query';
 export { ArchiveFile } from './archive/archive-file';
 export { Actor, DeviceActor, OwnerActor, SystemActor, VisitorActor } from './base/actor';
+export { AttemptLimiter } from './base/attempt-limiter';
 export { ActionResult, BaseAction } from './base/base-action';
 export { BaseEntity } from './base/base-entity';
 export { BaseGateway } from './base/base-gateway';
@@ -23,11 +24,16 @@ export {
   InvalidRequest,
   NotFound,
   RuleViolation,
+  TooManyRequests,
   Unauthenticated,
 } from './base/errors';
 export { DomainEvent } from './base/event';
-export { SecretBox } from './base/secret-box';
+export { PasswordHasher } from './base/password-hasher';
+export { SealedSecret, SecretBox } from './base/secret-box';
+export { Cookies } from './http/cookies';
 export { CurrentActor } from './http/current-actor';
+export { HttpSetup } from './http/http-setup';
+export type { HttpRequest, HttpResponse } from './http/http-types';
 export { PlatformModule } from './platform.module';
 export { BasePlugin } from './plugin/base-plugin';
 export { PluginService } from './plugin/plugin.service';

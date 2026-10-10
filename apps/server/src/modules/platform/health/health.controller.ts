@@ -4,7 +4,7 @@ import { CurrentActor } from '../http/current-actor';
 import { HealthQuery } from './health.query';
 import { HealthResponse } from './health.response';
 
-@Controller('health')
+@Controller('api/health')
 export class HealthController {
   constructor(private readonly health: HealthQuery) {}
 

@@ -133,6 +133,8 @@ docker compose up --build
 | `pnpm install` | 로컬 도구(Biome, 타입 검사) 설치. 실행은 Docker에서 하므로 편집기용 |
 | `pnpm check` | 린트 + 타입 검사 + 모듈 경계 검사 (CI와 같음) |
 | `pnpm test` | 서버·플러그인 테스트 (단위 + API). 테스트 전용 DB를 매번 새로 만든다 |
+| `pnpm install-code` | 설치 코드. 브라우저에서 `/install`을 열고 넣는다 |
+| `pnpm owner reset-password` | 주인 비밀번호 다시 정하기 (표준 입력으로. 모든 로그인이 끝남) |
 | `pnpm plugin` | 플러그인 상태·켜기·설정 (예: `pnpm plugin enable sync-github`). 관리 화면이 생기면 화면에서 |
 | `pnpm secret:new` | 서버 키 만들기 (`.env`의 `CAIRN_SECRET_KEY`) |
 | `pnpm format` | 포맷 자동 수정 |
@@ -160,7 +162,7 @@ cp .env.example .env    # 사이트 주소 입력
 docker compose up -d
 ```
 
-서버 로그에 나오는 **설치 코드**를 확인하고, 브라우저로 접속해 설치 마법사를 따라갑니다. GitHub 로그인용 앱 등록, 소유자 로그인, 블로그 이름 설정 순서입니다. HTTPS와 리버스 프록시(Nginx Proxy Manager 등)는 직접 준비합니다. 필요한 프록시 설정은 예시로 제공할 예정입니다.
+서버 로그에 나오는 **설치 코드**를 확인하고, 브라우저로 접속해 설치 마법사를 따라갑니다. 설치 코드 → 주인 계정(아이디·비밀번호) → 블로그 정보 → 플러그인 순서입니다. 비밀번호를 잊으면 서버에서 `pnpm owner reset-password`로 다시 정합니다. HTTPS와 리버스 프록시(Nginx Proxy Manager 등)는 직접 준비합니다. 필요한 프록시 설정은 예시로 제공할 예정입니다.
 
 **2. 작업하는 컴퓨터 연결하기**
 
@@ -168,7 +170,7 @@ docker compose up -d
 npx @<scope>/cairn connect https://내블로그주소
 ```
 
-스킬 네 개를 AI 도구에 복사하고, MCP 서버를 등록하고, GitHub 로그인으로 이 기기를 연결합니다. 스킬 폴더를 직접 복사하는 방법도 제공합니다.
+스킬 네 개를 AI 도구에 복사하고, MCP 서버를 등록하고, 주인 로그인으로 이 기기를 연결합니다. 스킬 폴더를 직접 복사하는 방법도 제공합니다.
 
 **3. 사용하기**
 
@@ -181,7 +183,7 @@ AI 도구에서 작업을 마친 뒤 **"이 세션 저장해"**.
 | 단계 | 내용 |
 |---|---|
 | M0 기반 | 모노레포, DB 이미지, 스키마, Docker Compose, CI |
-| M1 수집 | 설치 마법사, GitHub 로그인, 기기 연결, `cairn-save` |
+| M1 수집 | 설치 마법사, 주인 로그인, 기기 연결, `cairn-save` |
 | M2 그래프·검색 | 그래프 화면과 편집, 공개 설정, 키워드·의미 검색 |
 | M3 정리·읽기 | 일거리 상자, `cairn-tidy`, `cairn-recall`, 승인함, 충돌 합치기 |
 | M4 블로그 | 글 목록·페이지, 편집기, 카테고리, 글감 상자, `cairn-write` |

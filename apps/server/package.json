@@ -2,7 +2,7 @@
   "name": "@cairn/server",
   "version": "0.0.0",
   "private": true,
-  "description": "Cairn 서버 (NestJS). 진입점: api, worker(일꾼), cli(pnpm plugin)",
+  "description": "Cairn 서버 (NestJS). 진입점: api, worker(일꾼), cli(pnpm plugin · install-code)",
   "scripts": {
     "dev": "node --watch -r @swc-node/register src/main.api.ts",
     "build": "tsc",
@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p ../../plugins/tsconfig.json",
     "test": "node --test --test-concurrency=1 -r @swc-node/register \"src/**/*.test.ts\" \"../../plugins/*/server/**/*.test.ts\"",
     "worker": "node --watch -r @swc-node/register src/main.worker.ts",
-    "plugin": "node -r @swc-node/register src/main.cli.ts"
+    "cli": "node -r @swc-node/register src/main.cli.ts"
   },
   "dependencies": {
     "@nestjs/common": "11.2.7",

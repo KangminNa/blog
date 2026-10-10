@@ -40,8 +40,10 @@ export class RequestFields {
     return value;
   }
 
+  /** 없거나 null이거나 빈 문자열이면 null (화면에서 비운 칸) */
   optionalText(name: string, maxLength: number): string | null {
-    return this.source[name] === undefined || this.source[name] === null
+    const value = this.source[name];
+    return value === undefined || value === null || value === ''
       ? null
       : this.text(name, maxLength);
   }
@@ -51,6 +53,28 @@ export class RequestFields {
     if (value && !RequestFields.UUID.test(value))
       return this.fail(name, 'UUID 형식이어야 해요', '');
     return value.toLowerCase();
+  }
+
+  /** 정수. 범위를 벗어나면 틀린 필드로 모인다 */
+  integer(name: string, min: number, max: number): number {
+    const value = this.source[name];
+    if (typeof value !== 'number' || !Number.isInteger(value))
+      return this.fail(name, '정수여야 해요', min);
+    if (value < min || value > max) return this.fail(name, `${min}~${max} 사이여야 해요`, min);
+    return value;
+  }
+
+  /** 문자열 값만 담은 객체 (예: 설정 이름 → 값). 빈 문자열은 허용한다 (지우기) */
+  textMap(name: string, maxLength: number): ReadonlyMap<string, string> {
+    const record = this.optionalRecord(name);
+    const map = new Map<string, string>();
+    for (const [key, value] of Object.entries(record)) {
+      if (typeof value !== 'string') this.fail(`${name}.${key}`, '문자열이어야 해요', '');
+      else if (value.length > maxLength)
+        this.fail(`${name}.${key}`, `${maxLength}자 이하여야 해요`, '');
+      else map.set(key, value);
+    }
+    return map;
   }
 
   optionalDate(name: string): Date | null {
@@ -72,6 +96,11 @@ export class RequestFields {
     if (typeof value !== 'object' || Array.isArray(value))
       return this.fail(name, '객체여야 해요', {});
     return value as Record<string, unknown>;
+  }
+
+  /** 위의 읽기로 잡을 수 없는 모양 문제를 알린다 (예: 서명이 맞지 않는 확인값) */
+  reject(name: string, problem: string): void {
+    this.fail(name, problem, null);
   }
 
   throwIfInvalid(): void {

@@ -1,4 +1,10 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
 
 /** 암호화된 값 하나 */
 export class SealedSecret {
@@ -41,6 +47,32 @@ export class SecretBox {
     return new SealedSecret(body, nonce);
   }
 
+  /** 서버 키에서 용도별 값을 만든다 (예: 설치 코드). 같은 키·같은 이름이면 늘 같은 값 */
+  derive(label: string): Buffer {
+    return createHmac('sha256', this.requireKey()).update(`cairn:${label}`).digest();
+  }
+
+  /**
+   * 짧게 쓰는 값에 서명한다 (설치 통행증, 로그인 확인값). DB에 저장하지 않고 쿠키로 주고받는다.
+   * 모양: <값(base64url)>.<만료 시각(초)>.<서명(base64url)>
+   */
+  sign(value: string, ttlSeconds: number, now: Date = new Date()): string {
+    const body = `${Buffer.from(value, 'utf8').toString('base64url')}.${Math.floor(now.getTime() / 1000) + ttlSeconds}`;
+    return `${body}.${this.mac(body)}`;
+  }
+
+  /** 서명이 맞고 만료 전이면 원래 값, 아니면 null */
+  verify(token: string | null, now: Date = new Date()): string | null {
+    if (!token) return null;
+    const [value, expires, mac] = token.split('.');
+    if (!value || !expires || !mac) return null;
+    const expected = Buffer.from(this.mac(`${value}.${expires}`));
+    const given = Buffer.from(mac);
+    if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
+    if (Number(expires) * 1000 <= now.getTime()) return null;
+    return Buffer.from(value, 'base64url').toString('utf8');
+  }
+
   open(sealed: SealedSecret): string {
     const key = this.requireKey();
     const tag = sealed.ciphertext.subarray(-16);
@@ -52,6 +84,10 @@ export class SecretBox {
     } catch {
       throw new Error('비밀값을 풀 수 없어요. 서버 키(CAIRN_SECRET_KEY)가 바뀌었는지 확인하세요');
     }
+  }
+
+  private mac(body: string): string {
+    return createHmac('sha256', this.derive('sign')).update(body).digest('base64url');
   }
 
   private requireKey(): Buffer {

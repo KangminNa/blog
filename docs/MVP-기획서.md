@@ -63,8 +63,8 @@
 
 | 영역 | 기능 |
 |---|---|
-| **설치** | Docker Compose 한 벌, 첫 실행 설치 마법사 6단계 (설치 코드 → GitHub OAuth 앱 등록 → 주인 로그인 → 블로그 이름 → 플러그인 고르기·설정 → 첫 기기 연결) |
-| **인증** | 관리 모드 GitHub 로그인. MCP는 OAuth(GitHub 로그인)와 기기별 토큰(예비). 기기별 권한: 올리기 / 읽기(공개만·전부) / 정리 / 글쓰기. 새 기기는 올리기 + 공개 읽기로 시작하고 나머지는 관리 화면에서 켠다. 연결은 추가 승인 없이 즉시 알림 |
+| **설치** | Docker Compose 한 벌, 첫 실행 설치 마법사 5단계 (설치 코드 → 주인 계정(아이디·비밀번호) → 블로그 정보 → 플러그인 고르기·설정 → 첫 기기 연결) |
+| **인증** | 관리 모드는 주인 아이디·비밀번호 (GitHub 등 외부 로그인은 로그인 플러그인). MCP는 OAuth(로그인한 주인이 승인)와 기기별 토큰(예비). 기기별 권한: 올리기 / 읽기(공개만·전부) / 정리 / 글쓰기. 새 기기는 올리기 + 공개 읽기로 시작하고 나머지는 관리 화면에서 켠다. 연결은 추가 승인 없이 즉시 알림 |
 | **스킬** | `cairn-save`(넣기), `cairn-tidy`(정리), `cairn-recall`(읽기), `cairn-write`(글쓰기). 배포는 폴더 복사와 `npx cairn connect <주소>`. 첫 지원 도구는 Claude Code. 세션은 스킬을 부를 때만 올리고, 세션 종료 시 자동 올리기는 기기별 선택 |
 | **세션 수집** | 세션 노트(제목 · 한 일 · 결정 · 막힌 점 · 인용 + 기타, 인용 4,000자 넘으면 거절), 판 쌓기, 요청 ID 중복 방지, 1·2차 민감정보 제거, 이미지 첨부(png·jpg·webp·gif, 10MB 이하) |
 | **정리** | 일거리 상자(임대·연장·반납), 새 세션 정리, 점검, 충돌 합친 문장 추천. 결과 제출 시 재검사 |
@@ -97,9 +97,9 @@
 
 ## 6. 사용자 흐름
 
-**처음 설치**: 서버에서 `docker compose up` → 로그의 설치 코드와 주소 확인 → 브라우저로 접속해 설치 코드 입력 → GitHub OAuth 앱 등록(콜백 주소를 마법사가 보여줌) → GitHub 로그인으로 소유자 고정 → 블로그 이름 → 첫 기기 연결 안내.
+**처음 설치**: 서버에서 `docker compose up` → 로그의 설치 코드와 주소 확인 → 브라우저로 접속해 설치 코드 입력 → 주인 계정(아이디·비밀번호) 만들기 → 블로그 정보 → 플러그인 → 첫 기기 연결 안내.
 
-**기기 연결**: 노트북에서 `npx cairn connect https://내블로그` → 스킬 3개 복사, MCP 등록 → 브라우저가 열려 GitHub 로그인 → 기기 이름·권한 선택 → 연결 테스트 통과.
+**기기 연결**: 노트북에서 `npx cairn connect https://내블로그` → 스킬 3개 복사, MCP 등록 → 브라우저가 열려 주인 로그인 → 기기 이름·권한 선택 → 연결 테스트 통과.
 
 **넣기**: 작업 후 "이 세션 저장해" → 스킬이 노트 작성 → 미리보기 → 확인 → 서버 저장(3초 이내 응답) → "이어서 정리할까요?"
 
@@ -123,7 +123,7 @@
 | 관리 · vault | 승인함(제안·충돌), 세션 목록·상세·편집, 그래프 편집 모드, 연결(기기·권한·읽기 기록) |
 | 관리 · 블로그 | 글 목록(임시·발행·휴지통), 글 편집기, 카테고리 관리, 사진 관리, 글감 상자, 문체 가이드 |
 | 관리 · 설정 | 블로그 정보, 공개 기본값, 알림(경로·조용한 시간), 내보내기·백업 |
-| 설치 | 설치 마법사 6단계 |
+| 설치 · 로그인 | 설치 마법사 5단계, 주인 로그인 |
 
 디자인 방향: 그래프는 어두운 "밤길" 화면(숯색 바탕, 이끼·점토·돌·모래색 주제, 호박색 새 세션, 등고선), 블로그는 밝은 velog식 읽기 화면. 기준 시안은 프로토타입(https://claude.ai/artifact/RCcsphABtmDcgeJD6YYXSr).
 
@@ -199,52 +199,50 @@
 
 ## 10. 개발 스택
 
+> 2026-10-10에 실제 결정대로 고쳤다. 라이브러리는 필요해지는 단계에서 [객체 설계](객체설계.md) 10장 순서(겪은 문제 → 자리 → 비용 → 고치는 범위 → 빼는 방법)로 정하고 넣는다.
+
 | 영역 | 선택 | 이유 |
 |---|---|---|
 | 언어 | **TypeScript** (전 구간) | 스킬 설치 도구(npx), MCP 공식 SDK, 웹이 모두 같은 언어. 기여자가 한 언어만 알면 됨 |
-| 런타임 | **Node.js LTS** | MCP TypeScript SDK와 생태계 |
-| 저장소 구조 | **pnpm 워크스페이스 + Turborepo** 모노레포 | 서버·웹·일꾼·CLI·스킬이 타입과 도메인 로직을 공유 |
-| API 서버 | **NestJS** (Express 플랫폼) + **MCP TypeScript SDK** (Streamable HTTP) | 모듈·의존성 주입·가드로 구조가 강제되어 모듈별 규칙과 잘 맞음. 내부가 Express라 MCP SDK의 OAuth 도우미를 그대로 붙일 수 있음. 입력 검증은 zod(`nestjs-zod`) |
+| 런타임 | **Node.js 24** | 내장 테스트(`node:test`), `fetch`, `zlib.crc32` 등 내장 기능으로 의존성을 줄임 |
+| 저장소 구조 | **pnpm 워크스페이스** 모노레포 (Turborepo 없음) | 앱이 둘이라 빌드 도구가 따로 필요 없음 |
+| API 서버 | **NestJS** (Express) | 모듈·의존성 주입·가드로 구조가 강제되어 모듈 규칙과 잘 맞음. 입력 검사는 라이브러리 없이 Request 클래스(`BaseRequest`) |
+| MCP | **MCP TypeScript SDK** (Streamable HTTP, OAuth 도우미) | 규격이 크고 자주 바뀜. `platform/base` 안에서만 감싸 쓰고, 모듈은 `BaseTool`만 앎 (M1) |
 | 웹 | **Next.js** (App Router, standalone 출력) | 블로그는 검색 노출을 위해 서버 렌더링, 관리 모드는 클라이언트 화면. 한 앱에서 둘 다 |
-| DB | **Postgres 17+** + **pg_bigm**(한국어 키워드) + **pgvector**(의미 검색) | 원본 저장소. 확장 둘을 넣은 Cairn 전용 DB 이미지를 만든다 |
-| 임베딩 | **서버 내장 소형 다국어 임베딩 모델** (transformers.js·ONNX, CPU). 후보: multilingual-e5-small 계열, 한국어 품질은 M2에서 비교 평가 | 로그인·API 키 없이 의미 검색. 설정에서 Ollama나 API로 바꿀 수 있음 |
-| 마이그레이션 | **SQL 파일 + dbmate** (`db/migrations`) | 부분 인덱스, 모델별 HNSW 인덱스, 트리거, DEFERRABLE 외래키처럼 ORM 생성기가 못 만드는 것을 그대로 씀. Compose에서 DB가 뜨면 자동 적용 |
-| 쿼리 | **Drizzle ORM** (스키마는 DB에서 읽어 생성) | SQL에 가까워 `SKIP LOCKED`, JSONB, 버전 비교 같은 세밀한 쿼리를 쓰기 쉬움 |
-| 작업 큐 | **Graphile Worker** (NestJS 앱 컨텍스트 안에서 실행) | Postgres만으로 동작(`SKIP LOCKED` + `LISTEN/NOTIFY`). Redis 불필요. API와 같은 Nest 모듈(서비스)을 그대로 씀 |
-| 실시간 | **SSE** (Server-Sent Events) | 관리 화면 실시간 갱신. 단방향이라 WebSocket보다 단순 |
-| 인증 | GitHub OAuth (**Arctic**), MCP용 OAuth 2.1 인가 서버 (MCP SDK 도우미) | 비밀번호를 받지 않음 |
-| md 처리 | **unified / remark / rehype** + remark-directive + gray-matter + rehype-sanitize + **Shiki** | frontmatter, `:::` 확장 문법, 안전한 렌더링, 코드 강조 |
-| 그래프 화면 | **Sigma.js + Graphology** (WebGL) | 수천 개 점도 부드럽게. Graphology의 군집 탐지 등 그래프 알고리즘을 정리 제안에도 활용 |
-| 글 편집기 | **CodeMirror 6** (md) + 미리보기 + 블록 삽입 도구 막대 | md 원문을 그대로 다룸. 블록 편집기는 v0.2 |
-| 알림 | **web-push** (VAPID, 서비스 워커), **Nodemailer** (SMTP) | 외부 서비스 없이 서버가 직접 보냄 |
-| 파일 | 디스크 볼륨, 내용 해시 이름 | S3 호환은 v0.2 |
-| 배포 | **Docker Compose** (api · web · worker · db). HTTPS와 리버스 프록시는 사용자가 준비 (Nginx Proxy Manager, Nginx, Traefik 등) | 이미 쓰는 프록시를 그대로 쓰게 함. 필요한 설정(경로 `/mcp`·`/api`·나머지, SSE 버퍼링 끄기, 업로드 크기, 긴 연결 시간 제한)을 문서로 제공 |
-| 스킬 | SKILL.md 표준 + 의존성 없는 Node 스크립트 | Claude Code·Codex·Gemini 공통 |
-| 테스트 | **Vitest**(단위·DB 통합), **Playwright**(화면), 동시성 부하 테스트 | 데이터 보존과 사람 우선 규칙을 테스트로 고정 |
+| DB | **Postgres 17+** + **pg_bigm**(한국어 키워드) + **pgvector**(의미 검색) | 원본 저장소. 확장 둘을 넣은 Cairn 전용 DB 이미지 |
+| 쿼리 | **postgres.js** (ORM 없음) | SQL을 그대로 씀(`SKIP LOCKED`, JSONB, 버전 비교). `platform/base`의 `Database`만 가져옴 |
+| 마이그레이션 | **SQL 파일 + dbmate** (`db/migrations`) | 부분 인덱스, 모델별 HNSW 인덱스, 트리거, DEFERRABLE 외래키를 그대로 씀 |
+| 후속 작업 | **outbox + 자체 일꾼** (`main.worker.ts`) | Postgres만으로 동작. Redis·작업 큐 라이브러리 없음 |
+| 인증 | 주인: **아이디·비밀번호** (Node 내장 scrypt, 라이브러리 없음). 외부 로그인(GitHub 등)은 플러그인. 기기: **MCP OAuth 2.1** (SDK 도우미) | 외부 서비스 없이 설치가 끝남 |
+| 보관 형식 | **`yaml`**(앞부분 읽기·쓰기, 의존성 없음), zip은 `node:zlib`으로 직접 | 사람이 GitHub에서 고친 파일도 읽어야 함 (M1 보관 형식) |
+| 임베딩 | 서버 내장 소형 다국어 모델(384차원) 후보, M2에서 평가 | 로그인·API 키 없이 의미 검색 |
+| 그래프 화면 · 편집기 · md 렌더링 · 알림 | 그 단계(M2·M4·M5)에서 정함 | 후보: Sigma.js, CodeMirror 6, unified/remark, web-push |
+| 실시간 | **SSE** (M2) | 단방향이라 WebSocket보다 단순 |
+| 파일 | 디스크 볼륨, 내용 해시 이름 | S3 호환은 다음 단계 |
+| 배포 | **Docker Compose** (db · migrate · server · worker · web). HTTPS와 리버스 프록시는 사용자가 준비 | 프록시 설정(경로 `/api`·`/mcp`·`/oauth`·`/.well-known` → 서버, 나머지 → 웹, SSE 버퍼링 끄기, 업로드 크기)을 문서로 제공 |
+| 스킬 | SKILL.md 표준 | Claude Code부터. Codex·Gemini는 다음 |
+| 테스트 | **`node:test`** + API 테스트 도구(`ApiClient`, 테스트 전용 DB) | 의존성 없이 실제 DB로. 화면 테스트 도구는 웹을 만들 때 정함 |
 
-**저장소 구조** (v0.1 목표. 폴더는 필요해지는 단계에서 하나씩 만든다)
+**저장소 구조** (폴더는 필요해지는 단계에서 하나씩 만든다)
 ```
 cairn/
 ├── apps/
-│   ├── server/     NestJS. 진입점 둘: main.api.ts (REST·MCP·인증·SSE), main.worker.ts (outbox·알림·스냅샷·내보내기)
-│   │               src/modules/ account · vault · blog · platform · mcp (Nest 모듈 5개, 안쪽은 하위 폴더로 나눔)
+│   ├── server/     NestJS. 진입점: main.api.ts (REST·MCP·인증), main.worker.ts (일꾼), main.cli.ts (명령줄)
+│   │               src/modules/ platform · account · vault · blog · mcp (지도는 modules.json)
 │   └── web/        Next.js (블로그, 그래프, 관리 모드, 설치 마법사)
 ├── packages/
-│   ├── contracts/  API 요청·응답 형식 (zod). 서버와 웹이 함께 씀
-│   ├── db/         Drizzle 쿼리용 스키마 (서버 쪽만)
-│   ├── md/         md 형식 읽기·쓰기 (frontmatter, 칸, 확장 문법)
-│   ├── ui/         공통 디자인 토큰과 컴포넌트 (웹만)
-│   └── cli/        npx cairn connect · update
-├── skills/         cairn-save · cairn-tidy · cairn-recall · cairn-write
+│   └── cli/        npx cairn connect (M1)
+├── skills/         cairn-save (M1) · cairn-tidy · cairn-recall · cairn-write
+├── plugins/        플러그인 (comments-giscus, sync-github)
 ├── db/             DB 이미지(Postgres + pg_bigm + pgvector), SQL 마이그레이션
-├── docker/         프록시 설정 예시(Nginx Proxy Manager·Nginx)
-├── .claude/rules/  경로별 규칙 (SQL·마이그레이션·React·테스트·MCP 도구·보안)
-├── AGENTS.md       모든 AI 도구 공통 규칙 (Codex·Gemini도 읽음)
+├── scripts/        모듈 경계 검사, 플러그인 화면 맞추기, 테스트 실행
+├── .claude/        훅, 경로별 규칙
+├── AGENTS.md       모든 AI 도구 공통 규칙
 ├── CLAUDE.md       @AGENTS.md를 가져오고 Claude 전용 메모만 추가
 └── docs/
 ```
 
-**경계 규칙**: 웹은 `packages/db`를 가져오지 않고 반드시 API를 거친다 (블로그 서버 렌더링도 내부 API 호출). 린트 규칙으로 막는다. 도메인 규칙은 각 모듈의 Entity·Policy에 두고 Nest에 의존하지 않게 하며, Service는 트랜잭션과 순서만 맡는다 ([객체 설계](객체설계.md)). 저장소는 하나지만 api·worker(같은 서버 앱의 두 진입점)·web은 따로 이미지로 빌드·배포한다.
+**경계 규칙**: 웹은 DB에 접근하지 않고 반드시 서버 API를 거친다 (블로그 서버 렌더링도 내부 API 호출). 도메인 규칙은 각 모듈의 Entity·Policy에 두고, Service는 트랜잭션과 순서만 맡는다 ([객체 설계](객체설계.md)). 저장소는 하나지만 server·worker(같은 서버 앱의 두 진입점)·web은 따로 띄운다.
 
 **AI 작업 규칙 문서 (3단)**
 
@@ -263,7 +261,7 @@ cairn/
 | 단계 | 내용 | 끝났다는 기준 |
 |---|---|---|
 | **M0 기반** | 모노레포, DB 이미지, 스키마, Docker Compose, CI | `docker compose up`으로 빈 서버가 뜸 |
-| **M1 수집** | 설치 마법사, GitHub 로그인, 기기 연결, `save_session`, `cairn-save`, `npx cairn connect` | 노트북에서 저장한 세션이 관리 모드 목록에 보임. 동시 저장 테스트 유실 0 |
+| **M1 수집** | 설치 마법사, 주인 로그인, 기기 연결, `save_session`, `cairn-save`, `npx cairn connect` | 노트북에서 저장한 세션이 관리 모드 목록에 보임. 동시 저장 테스트 유실 0 |
 | **M2 그래프·검색** | 그래프 화면(방문자·관리자), 단계별 표시, 그래프 편집, 공개 설정, 변경 기록·되돌리기, 하이브리드 검색과 ⌘K, 임베딩 모델 평가 | 세션 1만 개 샘플에서 표현을 바꾼 질문으로도 원하는 세션이 상위 5개 안에 나오고, 고른 점으로 그래프가 날아감 |
 | **M3 정리·읽기** | 일거리 상자, `cairn-tidy`, `cairn-recall`, 승인함, 충돌 합치기, 편집 임대, 대정리(정리 계획) | 정리 스킬이 사람 수정을 덮지 않음을 테스트로 확인. 대정리 한 번을 미리 보기 → 일부 승인 → 적용 → 통째로 되돌리기까지 |
 | **M4 블로그** | 글 목록·페이지, 편집기, 사진, 카테고리, 재료 패널, RSS, 글감 상자, `cairn-write`, 블로그 MCP 도구, 문체 가이드 | 글감 상자에 담은 세션·사진·참고 글로 AI 초안을 받아 다듬어 발행 |

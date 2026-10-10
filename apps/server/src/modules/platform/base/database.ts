@@ -23,6 +23,12 @@ export class Database implements OnApplicationShutdown {
     return this.sql.begin((tx) => work(tx as unknown as Sql)) as Promise<T>;
   }
 
+  /** 유일 제약에 걸린 오류인가 (동시에 같은 것을 만들려 할 때). Repository가 Conflict로 바꾼다 */
+  static isUniqueViolation(error: unknown, constraint?: string): boolean {
+    if (!(error instanceof postgres.PostgresError) || error.code !== '23505') return false;
+    return constraint === undefined || error.constraint_name === constraint;
+  }
+
   async onApplicationShutdown(): Promise<void> {
     await this.sql.end({ timeout: 5 });
   }

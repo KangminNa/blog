@@ -27,6 +27,8 @@ docs/          기획 문서 (기획서 · MVP 기획서 · 테이블 설계 · 
 | `pnpm check` | Biome 린트 + 타입 검사 + 모듈 경계 검사. 작업을 끝내기 전에 반드시 통과시킨다 |
 | `pnpm test` | 테스트 전용 DB(`cairn_test`)를 새로 만들어 단위 + API 테스트. 개발 DB는 건드리지 않는다. `-- --test-name-pattern=<이름>`으로 골라서 |
 | `pnpm db:check` | DB의 모듈 경계 (모듈 사이 외래키, 주인 없는 스키마) |
+| `pnpm install-code` | 설치 코드 (아직 주인이 없을 때). 서버 시작 로그에도 나온다 |
+| `pnpm owner reset-password` | 주인 비밀번호 다시 정하기 (표준 입력으로). 모든 로그인이 끝난다 |
 | `pnpm plugin …` | 플러그인 상태·켜기·끄기·설정·동작 (`plugins/CLAUDE.md`). 관리 화면 전까지 쓰는 길 |
 | `pnpm secret:new` | 서버 키(`CAIRN_SECRET_KEY`) 만들기. 비밀값 암호화에 씀 |
 | `pnpm format` | Biome 포맷·자동 수정 |

@@ -40,13 +40,22 @@ export class Forbidden extends DomainError {
   readonly code = 'forbidden';
   readonly status = 403;
 
-  constructor(readonly scope: string) {
-    super(`'${scope}' 권한이 필요해요`);
+  constructor(
+    readonly scope: string,
+    message = `'${scope}' 권한이 필요해요`,
+  ) {
+    super(message);
   }
 
   override toJSON(): object {
     return { ...super.toJSON(), scope: this.scope };
   }
+}
+
+/** ③ 권한: 짧은 시간에 너무 많이 시도함 (설치 코드 찔러보기 등) */
+export class TooManyRequests extends DomainError {
+  readonly code = 'too_many_requests';
+  readonly status = 429;
 }
 
 /** ④ 불러오기: 대상이 없음 */

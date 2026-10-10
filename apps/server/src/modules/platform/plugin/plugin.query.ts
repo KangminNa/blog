@@ -4,6 +4,7 @@ import { BaseQuery } from '../base/base-query';
 import { Database } from '../base/database';
 import { NotFound } from '../base/errors';
 import { PluginRepository } from './plugin.repository';
+import type { PluginAction } from './plugin-context';
 import type { PluginManifest, PluginSettingSpec } from './plugin-manifest';
 import { PluginRegistry } from './plugin-registry';
 import type { PluginState } from './plugin-state';
@@ -26,6 +27,7 @@ export class PluginView {
     readonly missing: readonly string[],
     readonly needsGrant: readonly string[],
     readonly settings: readonly PluginSettingView[],
+    readonly actions: readonly PluginAction[],
   ) {}
 }
 
@@ -87,6 +89,7 @@ export class PluginQuery extends BaseQuery {
       state ? state.missingRequired(m) : m.settings.filter((s) => s.required).map((s) => s.key),
       state?.enabled ? m.needsGrant(new Set(state.grantedUses)) : [],
       settings,
+      this.registry.actions().filter((a) => a.plugin === m.name),
     );
   }
 }

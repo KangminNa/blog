@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import { after, describe, test } from 'node:test';
 import { DeviceActor, OwnerActor, VisitorActor } from './actor';
+import { AttemptLimiter } from './attempt-limiter';
 import { BaseEntity } from './base-entity';
 import { BaseQuery } from './base-query';
 import { BaseRepository } from './base-repository';
 import { BaseRequest } from './base-request';
 import { Database, type Row } from './database';
-import { Conflict, Forbidden, InvalidRequest } from './errors';
+import { Conflict, Forbidden, InvalidRequest, TooManyRequests } from './errors';
 import { DomainEvent } from './event';
 import { Outbox } from './outbox';
+import { PasswordHasher } from './password-hasher';
+import { SecretBox } from './secret-box';
 
 // 기반 클래스가 약속한 동작을 실제 DB로 확인한다.
 
@@ -132,5 +135,118 @@ describe('Outbox', () => {
     const [row] =
       await db.sql`SELECT count(*)::int AS n FROM platform.outbox WHERE space_id = ${spaceId}`;
     assert.equal(row?.n, 0);
+  });
+});
+
+describe('입력 읽기 (M1)', () => {
+  class NumbersRequest extends BaseRequest {
+    private constructor(
+      readonly version: number,
+      readonly values: ReadonlyMap<string, string>,
+    ) {
+      super();
+    }
+    static from(raw: unknown): NumbersRequest {
+      return BaseRequest.read(raw, (f) => {
+        const request = new NumbersRequest(f.integer('version', 1, 10), f.textMap('values', 3));
+        if (request.values.has('forbidden')) f.reject('values', '쓸 수 없는 이름이에요');
+        return request;
+      });
+    }
+  }
+
+  test('정수·문자열 묶음·직접 알린 문제를 한 번에 모은다', () => {
+    assert.throws(
+      () => NumbersRequest.from({ version: 1.5, values: { a: 'toolong', b: 1, forbidden: '' } }),
+      (error: InvalidRequest) => {
+        assert.deepEqual([...error.fields.keys()].sort(), [
+          'values',
+          'values.a',
+          'values.b',
+          'version',
+        ]);
+        return true;
+      },
+    );
+    const ok = NumbersRequest.from({ version: 3, values: { a: 'x', b: '' } });
+    assert.equal(ok.version, 3);
+    assert.deepEqual(
+      [...ok.values],
+      [
+        ['a', 'x'],
+        ['b', ''],
+      ],
+    );
+  });
+
+  test('보고 고친 버전이 다르면 Conflict', () => {
+    const sample = Sample.open();
+    sample.assertVersion(1);
+    assert.throws(() => sample.assertVersion(2), Conflict);
+  });
+});
+
+describe('SecretBox: 값 만들기와 서명 (M1)', () => {
+  const box = SecretBox.fromEnv({ CAIRN_SECRET_KEY: SecretBox.newKey() });
+  const other = SecretBox.fromEnv({ CAIRN_SECRET_KEY: SecretBox.newKey() });
+
+  test('같은 키·같은 이름이면 늘 같은 값, 키가 다르면 다른 값', () => {
+    assert.deepEqual(box.derive('install-code'), box.derive('install-code'));
+    assert.notDeepEqual(box.derive('install-code'), other.derive('install-code'));
+    assert.notDeepEqual(box.derive('install-code'), box.derive('sign'));
+  });
+
+  test('서명한 값은 같은 키로, 만료 전에만 풀린다. 고치면 풀리지 않는다', () => {
+    const now = new Date('2026-10-10T00:00:00Z');
+    const token = box.sign('install:abc|/admin', 600, now);
+    assert.equal(box.verify(token, now), 'install:abc|/admin');
+    assert.equal(box.verify(token, new Date(now.getTime() + 601_000)), null, '만료');
+    assert.equal(other.verify(token, now), null, '다른 키');
+    const [value, expires, mac] = token.split('.');
+    const forged = `${Buffer.from('install:xyz|/admin').toString('base64url')}.${expires}.${mac}`;
+    assert.equal(box.verify(forged, now), null, '값을 바꿈');
+    assert.equal(box.verify(`${value}.${Number(expires) + 9999}.${mac}`, now), null, '만료를 늘림');
+    assert.equal(box.verify(null, now), null);
+  });
+});
+
+describe('AttemptLimiter (M1)', () => {
+  test('창 안에서 max번까지만, 창이 지나면 다시', () => {
+    const limiter = new AttemptLimiter(2, 60_000);
+    limiter.hit('1.2.3.4', 0);
+    limiter.hit('1.2.3.4', 1_000);
+    assert.throws(() => limiter.hit('1.2.3.4', 2_000), TooManyRequests);
+    limiter.hit('5.6.7.8', 2_000);
+    limiter.hit('1.2.3.4', 61_000);
+  });
+
+  test('틀린 시도만 세면, 맞는 시도는 몇 번이든 막지 않는다', () => {
+    const limiter = new AttemptLimiter(2, 60_000);
+    for (let i = 0; i < 10; i++) limiter.check('owner', i);
+    limiter.fail('owner', 10);
+    limiter.fail('owner', 11);
+    assert.throws(() => limiter.check('owner', 12), TooManyRequests);
+  });
+});
+
+describe('PasswordHasher (M1)', () => {
+  const hasher = new PasswordHasher();
+
+  test('바꾼 값으로만 확인되고, 원문은 저장값에 없다', async () => {
+    const stored = await hasher.hash('correct horse battery');
+    assert.match(stored, /^scrypt\$15\$8\$1\$/);
+    assert.equal(stored.includes('correct horse battery'), false);
+    assert.notEqual(stored, await hasher.hash('correct horse battery'), '소금이 달라 매번 다른 값');
+    assert.equal(await hasher.verify('correct horse battery', stored), true);
+    assert.equal(await hasher.verify('correct horse batterY', stored), false);
+    assert.equal(await hasher.verify('anything', null), false, '저장값이 없으면 늘 false');
+    assert.equal(await hasher.verify('anything', 'garbage'), false);
+  });
+
+  test('약한 강도로 저장된 값은 확인되지만 다시 저장하라고 알린다', async () => {
+    const stored = await hasher.hash('correct horse battery');
+    const weaker = stored.replace(/^scrypt\$15\$/, 'scrypt$14$');
+    assert.equal(hasher.needsRehash(stored), false);
+    assert.equal(hasher.needsRehash(weaker), true);
   });
 });

@@ -23,7 +23,9 @@
     "boundaries": "node scripts/check-boundaries.mjs",
     "test": "node scripts/test.mjs",
     "db:check": "node scripts/check-boundaries.mjs --db",
-    "plugin": "docker compose exec -T server pnpm --silent --filter @cairn/server plugin",
+    "plugin": "docker compose exec -T server pnpm --silent --filter @cairn/server cli plugin",
+    "install-code": "docker compose exec -T server pnpm --silent --filter @cairn/server cli install-code",
+    "owner": "docker compose exec -T server pnpm --silent --filter @cairn/server cli owner",
     "secret:new": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\""
   },
   "devDependencies": {

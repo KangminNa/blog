@@ -1,6 +1,9 @@
 import { Actor } from '../base/actor';
+import type { ActionResult } from '../base/base-action';
 import { BaseResponse } from '../base/base-response';
 import type { PluginSettingsView, PluginView } from './plugin.query';
+import { PluginManifest } from './plugin-manifest';
+import type { PluginState } from './plugin-state';
 
 export class PluginListResponse extends BaseResponse {
   private constructor(
@@ -30,6 +33,7 @@ export class PluginListResponse extends BaseResponse {
           enabled: p.enabled,
           active: p.active,
           uses: [...p.manifest.uses],
+          useLabels: [...p.manifest.uses].map((u) => PluginManifest.describeUse(u)),
           needsGrant: p.needsGrant,
           missing: p.missing,
           settings: p.settings.map((s) => ({
@@ -42,6 +46,8 @@ export class PluginListResponse extends BaseResponse {
             value: s.value,
             isSet: s.isSet,
           })),
+          // 관리 동작 (켜져 있고 동작 중일 때만 등록돼 있다)
+          actions: p.actions.map((a) => ({ name: a.name, label: a.action.label })),
         };
       }),
     };
@@ -63,5 +69,35 @@ export class PluginSettingsResponse extends BaseResponse {
       ready: this.view.ready,
       settings: Object.fromEntries(this.view.settings),
     };
+  }
+}
+
+/** 켜기·끄기·설정 저장의 결과. 화면은 이 뒤에 목록을 다시 불러온다 */
+export class PluginStateResponse extends BaseResponse {
+  private constructor(private readonly state: PluginState) {
+    super();
+  }
+
+  static of(state: PluginState): PluginStateResponse {
+    return new PluginStateResponse(state);
+  }
+
+  toJSON(): object {
+    return { name: this.state.name, enabled: this.state.enabled };
+  }
+}
+
+/** 관리 동작의 결과 (예: 연결 확인) */
+export class PluginActionResponse extends BaseResponse {
+  private constructor(private readonly result: ActionResult) {
+    super();
+  }
+
+  static of(result: ActionResult): PluginActionResponse {
+    return new PluginActionResponse(result);
+  }
+
+  toJSON(): object {
+    return this.result.toJSON();
   }
 }

@@ -46,6 +46,7 @@ services:
     environment:
       DATABASE_URL: *db-url
       PORT: 4000
+      CAIRN_WEB_URL: http://localhost:${WEB_PORT:-3000}   # 사람이 여는 웹 주소 (설치 코드 안내에 씀)
     ports:
       - "${SERVER_PORT:-4000}:4000"
     volumes:

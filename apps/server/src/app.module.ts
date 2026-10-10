@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
+import { AccountModule } from './modules/account';
 import { PlatformModule } from './modules/platform';
 
-// 모듈: platform(공통 기반) · account · vault · blog · mcp. 지금은 platform만 있다.
+// 모듈: platform(공통 기반) · account · vault · blog · mcp. 코드가 생긴 모듈만 넣는다.
 @Module({
-  imports: [PlatformModule],
+  imports: [PlatformModule, AccountModule],
 })
 export class AppModule {}
