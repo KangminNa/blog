@@ -1,5 +1,5 @@
 # Cairn 개발 환경
-#   docker compose up --build   →  db → migrate(마이그레이션 적용 후 종료) → server → web
+#   docker compose up --build   →  db → migrate(마이그레이션 적용 후 종료) → server · worker → web
 #   docker compose build        →  db 이미지와 앱 이미지를 함께 빌드
 name: cairn
 
@@ -40,6 +40,9 @@ services:
       target: dev
     image: cairn-app:dev
     command: ["pnpm", "--filter", "@cairn/server", "dev"]
+    env_file:
+      - path: .env          # 서버 키(CAIRN_SECRET_KEY) 등 인프라 설정. 플러그인 설정은 DB에
+        required: false
     environment:
       DATABASE_URL: *db-url
       PORT: 4000
@@ -47,14 +50,36 @@ services:
       - "${SERVER_PORT:-4000}:4000"
     volumes:
       - ./apps/server/src:/repo/apps/server/src
+      - ./plugins:/repo/plugins
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  worker:
+    image: cairn-app:dev          # 일꾼: 이벤트 넘기기와 플러그인 반복 작업. 하나만 띄운다
+    pull_policy: never
+    command: ["pnpm", "--filter", "@cairn/server", "worker"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: *db-url
+    volumes:
+      - ./apps/server/src:/repo/apps/server/src
+      - ./plugins:/repo/plugins
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      server:
+        condition: service_started
 
   web:
     image: cairn-app:dev          # server가 빌드한 같은 이미지를 씀
     pull_policy: never
     command: ["pnpm", "--filter", "@cairn/web", "dev"]
+    env_file:
+      - path: .env
+        required: false
     environment:
       API_URL: http://server:4000
       WATCHPACK_POLLING: "true"
@@ -62,6 +87,7 @@ services:
       - "${WEB_PORT:-3000}:3000"
     volumes:
       - ./apps/web/app:/repo/apps/web/app
+      - ./plugins:/repo/plugins
     depends_on:
       server:
         condition: service_started

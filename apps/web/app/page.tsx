@@ -3,9 +3,9 @@ export const dynamic = 'force-dynamic';
 
 type Health = {
   status: string;
-  extensions: { extname: string; extversion: string }[];
+  extensions: Record<string, string>;
   migrations: string[];
-  tables: { schema: string; count: number }[];
+  tables: Record<string, number>;
 };
 
 async function getHealth(): Promise<Health | { error: string }> {
@@ -25,20 +25,30 @@ export default async function Home() {
 
   return (
     <main style={{ maxWidth: 640, margin: '0 auto', padding: '72px 24px', lineHeight: 1.7 }}>
-      <p style={{ fontFamily: 'ui-monospace, monospace', color: '#8E887D', margin: 0 }}>cairn · 개발 환경</p>
+      <p style={{ fontFamily: 'ui-monospace, monospace', color: '#8E887D', margin: 0 }}>
+        cairn · 개발 환경
+      </p>
       <h1 style={{ fontSize: 32, margin: '8px 0 24px' }}>
         {ok ? '서버와 DB가 연결됐어요' : '서버에 연결하지 못했어요'}
       </h1>
       {ok ? (
-        <dl style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '8px 16px', margin: 0 }}>
+        <dl
+          style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '8px 16px', margin: 0 }}
+        >
           <dt style={{ color: '#8E887D' }}>확장</dt>
           <dd style={{ margin: 0 }}>
-            {health.extensions.map((e) => `${e.extname} ${e.extversion}`).join(' · ')}
+            {Object.entries(health.extensions)
+              .map(([name, version]) => `${name} ${version}`)
+              .join(' · ')}
           </dd>
           <dt style={{ color: '#8E887D' }}>마이그레이션</dt>
           <dd style={{ margin: 0 }}>{health.migrations.length}개 적용</dd>
           <dt style={{ color: '#8E887D' }}>테이블</dt>
-          <dd style={{ margin: 0 }}>{health.tables.map((t) => `${t.schema} ${t.count}`).join(' · ')}</dd>
+          <dd style={{ margin: 0 }}>
+            {Object.entries(health.tables)
+              .map(([schema, count]) => `${schema} ${count}`)
+              .join(' · ')}
+          </dd>
         </dl>
       ) : (
         <p style={{ color: '#E0AE8F' }}>{health.error}</p>

@@ -10,20 +10,14 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "sourceMap": true,
-    "lib": [
-      "ES2023"
-    ],
+    "lib": ["ES2023"],
     "module": "commonjs",
     "moduleResolution": "node",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "outDir": "dist",
     "rootDir": "src",
-    "types": [
-      "node"
-    ]
+    "types": ["node"]
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }

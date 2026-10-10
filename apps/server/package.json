@@ -4,10 +4,13 @@
   "private": true,
   "description": "Cairn 서버 (NestJS). 진입점: api, worker(예정)",
   "scripts": {
-    "dev": "nest start --watch",
-    "build": "nest build",
+    "dev": "node --watch -r @swc-node/register src/main.api.ts",
+    "build": "tsc",
     "start:api": "node dist/main.api.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p ../../plugins/tsconfig.json",
+    "test": "node --test --test-concurrency=1 -r @swc-node/register \"src/**/*.test.ts\" \"../../plugins/*/server/**/*.test.ts\"",
+    "worker": "node --watch -r @swc-node/register src/main.worker.ts",
+    "plugin": "node -r @swc-node/register src/main.cli.ts"
   },
   "dependencies": {
     "@nestjs/common": "11.2.7",
@@ -18,12 +21,9 @@
     "rxjs": "7.8.2"
   },
   "devDependencies": {
-    "@nestjs/cli": "11.0.24",
-    "@swc/cli": "0.8.1",
+    "@swc-node/register": "1.12.1",
     "@swc/core": "1.16.13",
-    "@types/express": "5.0.6",
     "@types/node": "24.19.1",
-    "chokidar": "5.0.0",
     "typescript": "5.9.3"
   }
 }

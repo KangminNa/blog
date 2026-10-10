@@ -1,0 +1,12 @@
+{
+  "$comment": "모듈 지도. 의존해도 되는 모듈과 소유 스키마. scripts/check-boundaries.mjs가 이 파일로 코드와 DB를 검사한다. 바꾸려면 docs/객체설계.md 모듈 규칙부터 고친다.",
+  "modules": {
+    "platform": { "dependsOn": [], "schemas": ["platform"] },
+    "account": { "dependsOn": ["platform"], "schemas": ["account"] },
+    "vault": { "dependsOn": ["platform"], "schemas": ["vault"] },
+    "blog": { "dependsOn": ["platform", "vault"], "schemas": ["blog", "work"] },
+    "mcp": { "dependsOn": ["platform", "account", "vault", "blog"], "schemas": ["mcp"] }
+  },
+  "frameworkPackages": ["@nestjs/common", "@nestjs/core", "node:"],
+  "libraryHome": "platform/base"
+}

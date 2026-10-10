@@ -17,3 +17,7 @@ CLAUDE.local.md
 
 # 개발 도구로 설치한 외부 스킬 (저장소에 포함하지 않음)
 .claude/skills/ui-ux-pro-max/
+
+# 플러그인 화면 복사본과 자리 목록 (scripts/sync-plugins.mjs가 만든다)
+apps/web/app/_plugins/installed/
+apps/web/app/_plugins/slots.generated.ts

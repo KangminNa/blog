@@ -57,7 +57,7 @@ Cairn은 이 세션들을 한곳에 모읍니다. 세션 하나가 돌 하나라
 1. **원본은 내 서버의 DB.** 언제든 md 파일로 내보낼 수 있고, 옵시디언에서 그대로 열립니다.
 2. **들어온 정보는 버리지 않는다.** 세션은 고치지 않고 판(revision)을 쌓습니다. 여러 컴퓨터에서 동시에 올려도 잃지 않습니다.
 3. **사람이 정한 것이 우선.** 내가 고친 내용과 연결은 AI가 덮지 않고, 제안으로만 바꿉니다.
-4. **세션과 블로그는 서로 의존하지 않는다.** 세션을 지우거나 합쳐도 글은 그대로이고, 방문자에게 둘 사이의 연결이 드러나지 않습니다.
+4. **세션과 블로그는 서로 의존하지 않는다.** 세션이나 wiki를 지우거나 합쳐도 글은 그대로입니다. 글이 어느 wiki에서 나왔는지는 그래프에 보이지만, 비공개 내용은 드러나지 않습니다.
 5. **비공개가 기본.** 세션과 첨부는 기본 비공개이고, 민감정보는 올리기 전과 받은 뒤 두 번 지웁니다.
 6. **AI는 내 것을 쓴다.** 관리와 글쓰기는 내가 이미 쓰는 AI 도구가 합니다.
 
@@ -99,14 +99,19 @@ Cairn은 이 세션들을 한곳에 모읍니다. 세션 하나가 돌 하나라
 cairn/
 ├── apps/
 │   ├── server/        NestJS. 지금은 /health 하나
-│   │   └── src/modules/platform/   DB 연결, 상태 확인
+│   │   ├── modules.json            모듈 지도 (의존 방향, 소유 스키마)
+│   │   └── src/modules/            platform(기반 클래스·DB·상태 확인) · account · vault · blog · mcp
+│   │                               모듈마다 CLAUDE.md에 규칙
 │   └── web/           Next.js. 지금은 서버·DB 연결 상태 화면 하나
 ├── db/
 │   ├── Dockerfile     Postgres 17 + pgvector + pg_bigm
 │   └── migrations/    SQL 마이그레이션 (dbmate)
-├── docs/              기획서, MVP 기획서, 테이블 설계
+├── docs/              기획서, MVP 기획서, 테이블 설계, 객체 설계
 ├── Dockerfile         앱 이미지 (server, web 공용)
-└── docker-compose.yml db → migrate → server → web
+├── docker-compose.yml db → migrate → server → web
+├── plugins/           플러그인 (comments-giscus: 글 아래 giscus 댓글 · sync-github: GitHub에 이력·백업)
+├── scripts/           모듈 경계 검사, 플러그인 화면 맞추기
+└── AGENTS.md          AI 도구 작업 규칙 (CLAUDE.md가 가져옴)
 ```
 
 ---
@@ -117,6 +122,7 @@ cairn/
 
 ```bash
 cp .env.example .env
+# .env의 CAIRN_SECRET_KEY= 뒤에 pnpm secret:new 결과를 붙여 넣기
 docker compose up --build
 ```
 
@@ -124,6 +130,12 @@ docker compose up --build
 
 | 명령 | 하는 일 |
 |---|---|
+| `pnpm install` | 로컬 도구(Biome, 타입 검사) 설치. 실행은 Docker에서 하므로 편집기용 |
+| `pnpm check` | 린트 + 타입 검사 + 모듈 경계 검사 (CI와 같음) |
+| `pnpm test` | 서버·플러그인 테스트 (단위 + API). 테스트 전용 DB를 매번 새로 만든다 |
+| `pnpm plugin` | 플러그인 상태·켜기·설정 (예: `pnpm plugin enable sync-github`). 관리 화면이 생기면 화면에서 |
+| `pnpm secret:new` | 서버 키 만들기 (`.env`의 `CAIRN_SECRET_KEY`) |
+| `pnpm format` | 포맷 자동 수정 |
 | `pnpm db:up` | DB만 띄우고 마이그레이션 적용 |
 | `pnpm db:new <이름>` | 새 마이그레이션 파일 만들기 |
 | `pnpm db:migrate` | 마이그레이션 적용 |
@@ -184,6 +196,8 @@ v0.1 이후 후보: 서버에서 도는 AI(선택), 블록 편집기, 옵시디�
 - [기획서](docs/기획서.md): 배경과 전체 결정 기록
 - [MVP 기획서](docs/MVP-기획서.md): v0.1 범위, 화면, MCP 도구, 스택, 일정
 - [테이블 설계](docs/테이블설계.md): DB 스키마와 인덱스
+- [객체 설계](docs/객체설계.md): 서버 코드의 계층과 객체 규칙, 플러그인
+- [보관 형식](docs/보관형식.md): 내보내기·GitHub 동기화·복원이 쓰는 파일 형식
 
 ---
 

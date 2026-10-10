@@ -1,0 +1,21 @@
+{
+  "$comment": "플러그인 서버 코드 타입 검사. 서버와 같은 설정으로, 서버 패키지의 타입을 빌려 쓴다. 웹 화면(.tsx)은 웹 앱이 검사한다",
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "noEmit": true,
+    "typeRoots": ["../apps/server/node_modules/@types"],
+    "types": ["node"]
+  },
+  "include": ["*/server/**/*.ts"]
+}

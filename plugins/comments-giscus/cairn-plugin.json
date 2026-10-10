@@ -1,0 +1,38 @@
+{
+  "name": "comments-giscus",
+  "version": "0.1.0",
+  "cairn": ">=0.1",
+  "description": "글 아래에 giscus 댓글을 붙인다. 댓글은 GitHub Discussions에 저장되고, 독자는 GitHub 계정으로 쓴다",
+  "settings": {
+    "repo": {
+      "label": "GitHub 저장소 (owner/name)",
+      "type": "text",
+      "required": true,
+      "public": true,
+      "help": "공개 저장소여야 하고, Discussions와 giscus 앱 설치가 필요해요"
+    },
+    "repoId": {
+      "label": "저장소 ID",
+      "type": "text",
+      "required": true,
+      "public": true,
+      "help": "https://giscus.app 에서 저장소를 고르면 나와요"
+    },
+    "category": {
+      "label": "Discussions 카테고리 이름",
+      "type": "text",
+      "required": true,
+      "public": true
+    },
+    "categoryId": {
+      "label": "카테고리 ID",
+      "type": "text",
+      "required": true,
+      "public": true,
+      "help": "https://giscus.app 에서 카테고리를 고르면 나와요"
+    }
+  },
+  "web": {
+    "post.after": "web/PostComments.tsx"
+  }
+}

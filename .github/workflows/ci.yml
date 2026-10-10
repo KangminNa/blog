@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: 린트 · 타입 검사
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+
+  migrations:
+    name: DB · 테스트 (마이그레이션 왕복, 모듈 경계, 서버 테스트)
+    runs-on: ubuntu-latest
+    env:
+      MIGRATE: docker compose run --rm migrate --wait --no-dump-schema --migrations-dir /db/migrations
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker compose up -d --build --wait db
+      - run: $MIGRATE up
+      - name: 전부 되돌리기
+        run: for f in db/migrations/*.sql; do $MIGRATE rollback; done
+      - run: $MIGRATE up
+      - name: 모듈 경계 (DB)
+        run: node scripts/check-boundaries.mjs --db
+      - name: 서버 테스트 (테스트 전용 DB에서 단위 + API)
+        run: node scripts/test.mjs

@@ -14,6 +14,18 @@
     "db:rollback": "docker compose run --rm migrate --wait --no-dump-schema --migrations-dir /db/migrations rollback",
     "db:new": "docker compose run --rm migrate --migrations-dir /db/migrations new",
     "db:reset": "docker compose down -v && docker compose up -d --build db migrate",
-    "db:psql": "docker compose exec db psql -U cairn -d cairn"
+    "db:psql": "docker compose exec db psql -U cairn -d cairn",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "pnpm -r typecheck",
+    "check": "pnpm lint && pnpm typecheck && pnpm boundaries",
+    "boundaries": "node scripts/check-boundaries.mjs",
+    "test": "node scripts/test.mjs",
+    "db:check": "node scripts/check-boundaries.mjs --db",
+    "plugin": "docker compose exec -T server pnpm --silent --filter @cairn/server plugin",
+    "secret:new": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\""
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15"
   }
 }

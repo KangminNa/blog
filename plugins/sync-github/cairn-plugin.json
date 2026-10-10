@@ -1,0 +1,33 @@
+{
+  "name": "sync-github",
+  "version": "0.1.0",
+  "cairn": ">=0.1",
+  "description": "Cairn의 내용을 GitHub 저장소에 보관 형식(md·yml·사진)으로 내보내 이력과 백업을 남긴다. vault는 저장소가 private일 때만 보낸다",
+  "server": "server/plugin.ts",
+  "uses": ["archive:read", "job:sync", "action:check", "action:sync-now"],
+  "settings": {
+    "repo": {
+      "label": "저장소 (owner/name)",
+      "type": "text",
+      "required": true,
+      "help": "private 저장소를 권해요. 공개 저장소면 블로그만 보내요"
+    },
+    "token": {
+      "label": "GitHub 토큰",
+      "type": "secret",
+      "required": true,
+      "help": "Fine-grained token, 그 저장소의 Contents 읽기·쓰기 권한"
+    },
+    "branch": {
+      "label": "브랜치",
+      "type": "text",
+      "default": "main"
+    },
+    "apiUrl": {
+      "label": "GitHub API 주소",
+      "type": "text",
+      "default": "https://api.github.com",
+      "help": "GitHub Enterprise를 쓸 때만 바꿔요"
+    }
+  }
+}
