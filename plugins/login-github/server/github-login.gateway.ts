@@ -10,7 +10,7 @@ export class GithubAccount {
   static read(json: unknown): GithubAccount {
     const body = (typeof json === 'object' && json !== null ? json : {}) as Record<string, unknown>;
     if (typeof body.id !== 'number' || typeof body.login !== 'string')
-      throw new ExternalFailure('GitHub 사용자 정보의 모양이 예상과 달라요');
+      throw new ExternalFailure('예상과 다른 모양의 GitHub 사용자 정보예요');
     return new GithubAccount(body.id, body.login);
   }
 }
@@ -58,7 +58,7 @@ export class GithubLoginGateway extends BaseGateway {
     });
     if (typeof body.access_token !== 'string') {
       const reason = typeof body.error_description === 'string' ? body.error_description : '';
-      throw new RuleViolation(`GitHub 로그인이 끝나지 않았어요. 다시 해 주세요 (${reason})`);
+      throw new RuleViolation(`GitHub 로그인을 끝내지 못했어요. 다시 해 주세요 (${reason})`);
     }
     return body.access_token;
   }

@@ -68,7 +68,7 @@ export class ExternalCallbackRequest extends BaseRequest {
       const state = f.text('state', 200);
       const [expected, mode, returnTo, userId] = (box.verify(cookie) ?? '').split('|');
       if (!expected || expected !== state)
-        f.reject('state', '로그인을 시작한 브라우저가 아니거나 10분이 지났어요. 다시 해 주세요');
+        f.reject('state', '로그인을 시작한 브라우저에서 10분 안에 다시 해 주세요');
       const values = new Map<string, string>();
       for (const [key, value] of Object.entries(query))
         if (typeof value === 'string') values.set(key, value);

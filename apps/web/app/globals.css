@@ -360,6 +360,25 @@ a {
   color: var(--muted);
 }
 
+.steps .back {
+  width: 28px;
+  height: 28px;
+  margin-right: 6px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.steps .back:hover {
+  color: var(--fg);
+  border-color: #5e5a52;
+}
+
 .steps i {
   width: 22px;
   height: 4px;
@@ -609,6 +628,26 @@ textarea.input {
 .switch[aria-checked="true"]::after {
   transform: translateX(18px);
   background: var(--lantern);
+}
+
+.chip {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.chip[aria-pressed="true"] {
+  color: #f0c27a;
+  border-color: rgba(232, 169, 59, 0.55);
+  background: var(--lantern-soft);
 }
 
 .uses {

@@ -24,9 +24,9 @@ export class OwnerQuery extends BaseQuery {
   }
 
   async me(actor: Actor): Promise<OwnerView> {
-    if (actor.kind !== 'owner' || !actor.id) throw new Unauthenticated('로그인이 필요해요');
+    if (actor.kind !== 'owner' || !actor.id) throw new Unauthenticated('로그인해 주세요');
     const [row] = await this.sql`SELECT login FROM account.users WHERE id = ${actor.id}`;
-    if (!row) throw new Unauthenticated('로그인이 필요해요');
+    if (!row) throw new Unauthenticated('로그인해 주세요');
     return new OwnerView(String(row.login));
   }
 }

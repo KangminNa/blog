@@ -80,7 +80,7 @@ describe('sync-github', () => {
 
   test('연결 확인은 주인만, 결과에 private 여부와 브랜치 상태가 나온다', async () => {
     const check = new CheckAction(new GithubGateway('me/cairn-archive', 't0ken', api), 'main', []);
-    await assert.rejects(check.run(new VisitorActor()), /권한이 필요해요/);
+    await assert.rejects(check.run(new VisitorActor()), /권한으로만 할 수 있어요/);
     const result = await check.run(new OwnerActor('s', 'u'));
     assert.equal(result.ok, true);
     assert.ok(result.details.some((d) => d.includes('private')));

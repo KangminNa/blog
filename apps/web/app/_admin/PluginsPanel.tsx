@@ -22,7 +22,7 @@ export function PluginsPanel({ onMessage }: { onMessage: (text: string) => void 
 
   if (error) return <p className="error">{error}</p>;
   if (!plugins) return <p className="label-mono">불러오는 중…</p>;
-  if (plugins.length === 0) return <p className="label-mono">들어 있는 플러그인이 없어요</p>;
+  if (plugins.length === 0) return <p className="label-mono">설치된 플러그인 없음</p>;
   return (
     <div>
       {plugins.map((p) => (

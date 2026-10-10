@@ -14,7 +14,7 @@ export default async function Home() {
     return (
       <main className="empty">
         <h1>서버에 연결하지 못했어요</h1>
-        <p>서버(:4000)가 떠 있는지 확인해 주세요.</p>
+        <p>서버(:4000)를 띄웠는지 확인해 주세요.</p>
       </main>
     );
   return <GraphHome space={space} owner={owner} />;

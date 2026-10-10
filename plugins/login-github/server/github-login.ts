@@ -19,7 +19,7 @@ export class GithubLogin extends BaseLogin {
     if (!code) {
       // 사용자가 GitHub 화면에서 "취소"를 누르면 error=access_denied로 돌아온다
       const reason = query.get('error_description') ?? query.get('error') ?? '코드가 없어요';
-      throw new RuleViolation(`GitHub 로그인이 끝나지 않았어요 (${reason})`);
+      throw new RuleViolation(`GitHub 로그인을 끝내지 못했어요 (${reason})`);
     }
     const account = await this.github.account(await this.github.exchange(code, callbackUrl));
     return new LoginIdentity(String(account.id), account.login);

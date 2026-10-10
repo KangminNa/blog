@@ -47,13 +47,13 @@ export class PluginSettingSpec {
 
   /** 넣으려는 값의 문제. 없으면 null */
   problemWith(value: string): string | null {
-    if (value === '') return this.required ? `${this.label}은(는) 꼭 필요해요` : null;
-    if (value.length > 2000) return `${this.label}이(가) 너무 길어요`;
+    if (value === '') return this.required ? `${this.label}: 꼭 넣어 주세요` : null;
+    if (value.length > 2000) return `${this.label}: 너무 길어요`;
     if (this.type === 'boolean' && value !== 'true' && value !== 'false') {
-      return `${this.label}은(는) true 또는 false예요`;
+      return `${this.label}: true 또는 false로 넣어 주세요`;
     }
     if (this.type === 'select' && !this.options.includes(value)) {
-      return `${this.label}은(는) ${this.options.join(', ')} 중 하나예요`;
+      return `${this.label}: ${this.options.join(', ')} 중 하나로 넣어 주세요`;
     }
     return null;
   }

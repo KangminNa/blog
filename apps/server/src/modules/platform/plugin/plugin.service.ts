@@ -35,7 +35,7 @@ export class PluginService extends BaseService {
   async set(actor: Actor, name: string, key: string, value: string): Promise<PluginState> {
     return this.change(actor, name, (state, manifest) => {
       const spec = manifest.setting(key);
-      if (!spec) throw new NotFound(`${name}에 ${key} 설정이 없어요`);
+      if (!spec) throw new NotFound(`${name}에 없는 설정이에요: ${key}`);
       state.set(spec, value.trim(), this.box);
     });
   }
@@ -49,7 +49,7 @@ export class PluginService extends BaseService {
     return this.change(actor, name, (state, manifest) => {
       for (const [key, value] of values) {
         const spec = manifest.setting(key);
-        if (!spec) throw new NotFound(`${name}에 ${key} 설정이 없어요`);
+        if (!spec) throw new NotFound(`${name}에 없는 설정이에요: ${key}`);
         state.set(spec, value.trim(), this.box);
       }
     });
@@ -60,7 +60,9 @@ export class PluginService extends BaseService {
     actor.assertCan(Actor.WRITE);
     const found = this.registry.action(name, action);
     if (!found)
-      throw new NotFound(`${name}에 ${action} 동작이 없어요 (켜져 있고 설정이 끝났는지 확인)`);
+      throw new NotFound(
+        `${name}에 없는 동작이에요: ${action} (켜져 있고 설정이 끝났는지 확인해 주세요)`,
+      );
     return found.action.run(actor);
   }
 
@@ -71,7 +73,7 @@ export class PluginService extends BaseService {
   ): Promise<PluginState> {
     actor.assertCan(Actor.WRITE);
     const manifest = this.registry.manifest(name);
-    if (!manifest) throw new NotFound(`들어 있는 플러그인 중에 ${name}이(가) 없어요`);
+    if (!manifest) throw new NotFound(`설치되지 않은 플러그인이에요: ${name}`);
     const state = await this.transaction(async (tx) => {
       const plugins = new PluginRepository(tx);
       const current = (await plugins.lock(name)) ?? PluginState.open(manifest);

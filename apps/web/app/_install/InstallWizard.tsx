@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { BlogForm } from '../_admin/BlogForm';
+import { DevicesPanel } from '../_admin/DevicesPanel';
 import { PluginsPanel } from '../_admin/PluginsPanel';
 import { api, describe } from '../_lib/client-api';
-import type { InstallStatus, Owner, SpaceInfo } from '../_lib/types';
+import type { Device, InstallStatus, Owner, SpaceInfo } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
 import { useToast } from '../_ui/useToast';
 
@@ -12,6 +13,11 @@ import { useToast } from '../_ui/useToast';
 // 뒤의 셋(블로그 정보 → 플러그인 → 첫 기기)은 주인으로 로그인한 뒤.
 const STEPS = ['설치 코드', '주인 계정', '블로그 정보', '플러그인', '첫 기기'] as const;
 type Step = 0 | 1 | 2 | 3 | 4;
+
+/** 이전 단계로 갈 수 있는 곳. 주인 계정을 만든 뒤에는 그 앞(설치 코드·계정)으로 돌아가지 않는다 */
+function previousStep(step: Step): Step | null {
+  return step === 1 ? 0 : step === 3 ? 2 : step === 4 ? 3 : null;
+}
 
 function startStep(status: InstallStatus, owner: Owner | null): Step | 'not-owner' {
   if (status.installed) return owner ? 2 : 'not-owner';
@@ -32,6 +38,7 @@ export function InstallWizard({
   const [login, setLogin] = useState(owner?.login ?? null);
   const [info, setInfo] = useState(space);
   const [toast, showToast] = useToast();
+  const back = previousStep(step);
 
   return (
     <>
@@ -48,11 +55,14 @@ export function InstallWizard({
             <NotOwner />
           ) : (
             <>
-              <Progress step={step} />
+              <Progress step={step} onBack={back === null ? null : () => setStep(back)} />
               {step === 0 && <CodeStep onDone={() => setStep(1)} />}
               {step === 1 && (
                 <OwnerStep
-                  onDone={(name) => {
+                  onDone={async (name) => {
+                    // 계정을 만든 순간 공간이 생겼으므로, 블로그 정보를 새로 받아 버전을 맞춘다
+                    const fresh = await api<SpaceInfo>('GET', '/api/space');
+                    if (fresh.ok) setInfo(fresh.data);
                     setLogin(name);
                     setStep(2);
                   }}
@@ -61,7 +71,7 @@ export function InstallWizard({
               {step === 2 && (
                 <>
                   <h1>블로그 정보</h1>
-                  {login && <p>{login} 계정으로 로그인했어요. 이 계정이 블로그의 주인이에요.</p>}
+                  {login && <p>{login}(으)로 로그인했어요.</p>}
                   <BlogForm
                     space={{ ...info, installed: true }}
                     submitLabel="다음"
@@ -83,7 +93,7 @@ export function InstallWizard({
                   </button>
                 </>
               )}
-              {step === 4 && <DeviceStep />}
+              {step === 4 && <DeviceStep siteUrl={info.siteUrl} onMessage={showToast} />}
             </>
           )}
         </section>
@@ -97,9 +107,14 @@ export function InstallWizard({
   );
 }
 
-function Progress({ step }: { step: Step }) {
+function Progress({ step, onBack }: { step: Step; onBack: (() => void) | null }) {
   return (
     <div className="steps">
+      {onBack && (
+        <button type="button" className="back" onClick={onBack} aria-label="이전 단계">
+          ←
+        </button>
+      )}
       {STEPS.map((name, i) => (
         <i
           key={name}
@@ -159,7 +174,7 @@ function CodeStep({ onDone }: { onDone: () => void }) {
   );
 }
 
-function OwnerStep({ onDone }: { onDone: (login: string) => void }) {
+function OwnerStep({ onDone }: { onDone: (login: string) => Promise<void> }) {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [again, setAgain] = useState('');
@@ -168,15 +183,15 @@ function OwnerStep({ onDone }: { onDone: (login: string) => void }) {
 
   async function create(event: React.FormEvent) {
     event.preventDefault();
-    if (password !== again) return setError('비밀번호가 서로 달라요');
+    if (password !== again) return setError('비밀번호를 똑같이 두 번 넣어 주세요');
     setBusy(true);
     setError(null);
     const reply = await api('POST', '/api/install/owner', { login, password });
     setBusy(false);
-    if (reply.ok) return onDone(login.trim().toLowerCase());
+    if (reply.ok) return void (await onDone(login.trim().toLowerCase()));
     setError(
       reply.status === 401
-        ? '설치 코드 확인이 만료됐어요. 새로 고친 뒤 코드를 다시 넣어 주세요'
+        ? '새로 고친 뒤 설치 코드를 다시 넣어 주세요 (10분 지남)'
         : describe(reply.error),
     );
   }
@@ -184,7 +199,7 @@ function OwnerStep({ onDone }: { onDone: (login: string) => void }) {
   return (
     <form onSubmit={create} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <h1>주인 계정을 만들어요</h1>
-      <p>이 블로그를 관리할 계정이에요. 주인은 한 명이고, 만들면 바로 로그인돼요.</p>
+      <p>블로그를 관리할 계정이에요. 하나만 만들 수 있고, 만들면 바로 로그인돼요.</p>
       <label className="field">
         <span>아이디</span>
         <input
@@ -237,17 +252,36 @@ function OwnerStep({ onDone }: { onDone: (login: string) => void }) {
   );
 }
 
-function DeviceStep() {
+function DeviceStep({
+  siteUrl,
+  onMessage,
+}: {
+  siteUrl: string | null;
+  onMessage: (t: string) => void;
+}) {
+  const [connected, setConnected] = useState<string | null>(null);
+  const watch = useCallback((devices: Device[]) => {
+    const live = devices.find((d) => !d.revokedAt);
+    if (live) setConnected(live.name);
+  }, []);
   return (
     <>
-      <h1>설치가 끝났어요</h1>
+      <h1>{connected ? '첫 기기를 연결했어요' : '첫 기기를 연결해요'}</h1>
       <p>
-        마지막 단계는 AI 도구(Claude Code)를 연결해 세션을 저장하는 거예요. 기기 연결은 다음
-        업데이트에서 이 자리에 열려요. 지금은 그래프로 가서 둘러보세요.
+        {connected
+          ? `${connected} 연결 완료. 이제 작업한 세션을 저장할 수 있어요.`
+          : 'Claude Code를 쓰는 컴퓨터의 터미널에서 아래 명령을 실행하고 /mcp에서 cairn에 로그인하세요. 브라우저에서 연결을 누르면 끝나요.'}
       </p>
-      <a className="cta" href="/">
-        <span>그래프로</span>
-        <span className="arr">→</span>
+      <DevicesPanel siteUrl={siteUrl} onMessage={onMessage} onChange={watch} />
+      <a className={connected ? 'cta' : 'ghost wide'} href="/">
+        {connected ? (
+          <>
+            <span>그래프로</span>
+            <span className="arr">→</span>
+          </>
+        ) : (
+          '나중에 하기'
+        )}
       </a>
     </>
   );

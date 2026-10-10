@@ -64,7 +64,7 @@ export class PluginQuery extends BaseQuery {
     const states = await new PluginRepository(this.sql).all();
     const state = states.find((s) => s.name === name);
     if (!manifest || !state?.isActiveFor(manifest)) {
-      throw new NotFound(`켜진 플러그인 중에 ${name}이(가) 없어요`);
+      throw new NotFound(`켜지 않은 플러그인이에요: ${name}`);
     }
     return new PluginSettingsView(
       name,

@@ -147,7 +147,7 @@ describe('끄기와 없는 플러그인', () => {
     assert.equal(res.status, 404);
     assert.deepEqual(res.json(), {
       code: 'not_found',
-      message: '켜진 플러그인 중에 comments-giscus이(가) 없어요',
+      message: '켜지 않은 플러그인이에요: comments-giscus',
     });
   });
 

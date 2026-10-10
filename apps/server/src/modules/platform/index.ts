@@ -29,6 +29,7 @@ export {
   Unauthenticated,
 } from './base/errors';
 export { DomainEvent } from './base/event';
+export { McpEndpoint } from './base/mcp-endpoint';
 export { PasswordHasher } from './base/password-hasher';
 export { SealedSecret, SecretBox } from './base/secret-box';
 export { Cookies } from './http/cookies';

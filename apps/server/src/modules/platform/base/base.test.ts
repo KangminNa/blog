@@ -179,6 +179,27 @@ describe('입력 읽기 (M1)', () => {
     );
   });
 
+  test('문자열 목록: 없으면 null, 모양이 틀리면 몇 번째인지 알린다', () => {
+    class ListRequest extends BaseRequest {
+      private constructor(readonly items: readonly string[] | null) {
+        super();
+      }
+      static from(raw: unknown): ListRequest {
+        return BaseRequest.read(raw, (f) => new ListRequest(f.optionalTextList('items', 2, 5)));
+      }
+    }
+    assert.equal(ListRequest.from({}).items, null);
+    assert.deepEqual(ListRequest.from({ items: ['a', 'b'] }).items, ['a', 'b']);
+    assert.throws(
+      () => ListRequest.from({ items: ['ok', 7] }),
+      (error: InvalidRequest) => [...error.fields.keys()].join() === 'items.1',
+    );
+    assert.throws(
+      () => ListRequest.from({ items: ['a', 'b', 'c'] }),
+      (error: InvalidRequest) => [...error.fields.keys()].join() === 'items',
+    );
+  });
+
   test('보고 고친 버전이 다르면 Conflict', () => {
     const sample = Sample.open();
     sample.assertVersion(1);

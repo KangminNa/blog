@@ -89,7 +89,7 @@ async function plugin(
     const found = registry.action(first, name);
     if (!found)
       throw new Error(
-        `${first}에 ${name} 동작이 없어요 (켜져 있고 설정이 끝났는지 pnpm plugin 으로 확인)`,
+        `${first}에 없는 동작이에요: ${name} (켜져 있고 설정이 끝났는지 pnpm plugin 으로 확인해 주세요)`,
       );
     const result = await found.action.run(owner);
     console.log(`${result.ok ? '✔' : '✖'} ${result.message}`);

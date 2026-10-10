@@ -34,7 +34,7 @@ describe('처음 설치', () => {
     assert.equal(wrong.status, 403);
     assert.deepEqual(wrong.json(), {
       code: 'forbidden',
-      message: '설치 코드가 맞지 않아요',
+      message: '맞지 않는 설치 코드예요',
       scope: 'install',
     });
     const noPass = await api.request('POST', '/api/install/owner', TestUser.visitor, {
@@ -106,7 +106,7 @@ describe('설치가 끝난 뒤', () => {
     assert.equal(wrong.status, 401);
     assert.equal(nobody.status, 401);
     assert.deepEqual(wrong.json(), nobody.json());
-    assert.equal(wrong.json().message, '아이디나 비밀번호가 맞지 않아요');
+    assert.equal(wrong.json().message, '맞지 않는 아이디나 비밀번호예요');
   });
 
   test('주인은 아이디·비밀번호로 로그인한다 (아이디는 대문자로 넣어도 된다)', async () => {

@@ -23,7 +23,7 @@ import { PasswordPolicy } from './password.policy';
 // 비밀번호 계산(scrypt)은 느리게 만든 것이라 트랜잭션 밖에서 한다.
 @Injectable()
 export class OwnerService extends BaseService {
-  private static readonly WRONG = '아이디나 비밀번호가 맞지 않아요';
+  private static readonly WRONG = '맞지 않는 아이디나 비밀번호예요';
   /** 틀린 로그인은 한 곳에서 1분에 10번, 한 아이디에 1분에 5번까지 (맞는 로그인은 세지 않음) */
   private readonly byPlace = new AttemptLimiter(10, 60_000);
   private readonly byLogin = new AttemptLimiter(5, 60_000);
@@ -85,7 +85,7 @@ export class OwnerService extends BaseService {
   }
 
   async logout(actor: Actor, token: string | null): Promise<void> {
-    if (actor.kind !== 'owner' || !token) throw new Unauthenticated('로그인이 필요해요');
+    if (actor.kind !== 'owner' || !token) throw new Unauthenticated('로그인해 주세요');
     await this.transaction(async (tx) => {
       const owners = new OwnerRepository(tx);
       const owner = await owners.findBySession(WebSession.hash(token));
@@ -101,21 +101,21 @@ export class OwnerService extends BaseService {
     token: string | null,
     req: ChangePasswordRequest,
   ): Promise<void> {
-    if (actor.kind !== 'owner' || !token) throw new Unauthenticated('로그인이 필요해요');
+    if (actor.kind !== 'owner' || !token) throw new Unauthenticated('로그인해 주세요');
     const tokenHash = WebSession.hash(token);
     const found = await new OwnerRepository(this.db.sql).findBySession(tokenHash);
-    if (!found) throw new Unauthenticated('로그인이 필요해요');
+    if (!found) throw new Unauthenticated('로그인해 주세요');
     this.byLogin.check(found.login);
     if (!(await this.hasher.verify(req.current, found.passwordHash))) {
       this.byLogin.fail(found.login);
-      throw new Unauthenticated('지금 비밀번호가 맞지 않아요');
+      throw new Unauthenticated('지금 비밀번호를 다시 확인해 주세요');
     }
     this.passwords.check(found.login, req.next, 'next');
     const hash = await this.hasher.hash(req.next);
     await this.transaction(async (tx) => {
       const owners = new OwnerRepository(tx);
       const owner = await owners.findBySession(tokenHash);
-      if (!owner) throw new Unauthenticated('로그인이 필요해요');
+      if (!owner) throw new Unauthenticated('로그인해 주세요');
       owner.setPassword(hash, owner.session(tokenHash));
       await owners.save(owner);
     });
@@ -138,12 +138,12 @@ export class OwnerService extends BaseService {
       await this.external.callbackUrl(actor, method.name),
     );
     if (req.isLink && (actor.kind !== 'owner' || actor.id !== req.userId))
-      throw new Unauthenticated('계정을 연결하려면 주인으로 로그인한 상태여야 해요');
+      throw new Unauthenticated('계정을 연결하려면 주인 계정으로 로그인해 주세요');
     return this.transaction(async (tx) => {
       const owners = new OwnerRepository(tx);
       if (req.isLink) {
         const owner = await owners.findById(req.userId ?? '');
-        if (!owner) throw new Unauthenticated('로그인이 필요해요');
+        if (!owner) throw new Unauthenticated('로그인해 주세요');
         owner.link(method.name, identity.subject, identity.label);
         await owners.save(owner);
         return null;
@@ -152,7 +152,7 @@ export class OwnerService extends BaseService {
       if (!owner)
         throw new Forbidden(
           'owner',
-          '이 블로그 주인에게 연결된 계정이 아니에요. 비밀번호로 로그인한 뒤 계정 시트에서 먼저 연결해 주세요',
+          '연결하지 않은 계정이에요. 비밀번호로 로그인한 뒤 계정 시트에서 먼저 연결해 주세요',
         );
       const session = owner.startSession(ip, userAgent, new Date());
       await owners.save(owner);
@@ -166,7 +166,7 @@ export class OwnerService extends BaseService {
     await this.transaction(async (tx) => {
       const owners = new OwnerRepository(tx);
       const owner = await owners.findById(actor.id ?? '');
-      if (!owner) throw new Unauthenticated('로그인이 필요해요');
+      if (!owner) throw new Unauthenticated('로그인해 주세요');
       owner.unlink(method);
       await owners.save(owner);
     });
@@ -177,7 +177,7 @@ export class OwnerService extends BaseService {
     if (!(actor instanceof SystemActor))
       throw new Unauthenticated('비밀번호 다시 정하기는 서버 명령줄에서만 할 수 있어요');
     const found = await new OwnerRepository(this.db.sql).findOnly();
-    if (!found) throw new NotFound('아직 주인 계정이 없어요. 설치 마법사부터 진행하세요');
+    if (!found) throw new NotFound('주인 계정부터 만들어 주세요 (설치 마법사)');
     this.passwords.check(found.login, plain);
     const hash = await this.hasher.hash(plain);
     return this.transaction(async (tx) => {

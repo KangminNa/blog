@@ -55,7 +55,7 @@ describe('PluginManifest', () => {
     const m = PluginManifest.read(makePlugin(root, 'test-ok', sample('test-ok'), ['web/Box.tsx']));
     assert.deepEqual([...m.webSlots.keys()], ['post.after']);
     assert.equal(m.setting('token')?.isSecret, true);
-    assert.equal(m.setting('mode')?.problemWith('c'), '모드은(는) a, b 중 하나예요');
+    assert.equal(m.setting('mode')?.problemWith('c'), '모드: a, b 중 하나로 넣어 주세요');
   });
 
   test('틀린 곳을 모두 모아 알린다', () => {

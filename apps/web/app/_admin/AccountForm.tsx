@@ -13,7 +13,7 @@ export function AccountForm({ onChanged }: { onChanged: () => void }) {
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    if (next !== again) return setError('새 비밀번호가 서로 달라요');
+    if (next !== again) return setError('새 비밀번호를 똑같이 두 번 넣어 주세요');
     setBusy(true);
     setError(null);
     const reply = await api('PUT', '/api/auth/password', { current, next });

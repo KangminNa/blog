@@ -31,7 +31,7 @@ export class SpaceService extends BaseService {
   /** 설치 코드가 맞으면 공간을 만들고(없을 때) 10분짜리 설치 통행증을 돌려준다. from: 요청한 곳(IP) */
   async verifyInstallCode(actor: Actor, req: InstallCodeRequest, from: string): Promise<string> {
     this.attempts.hit(from);
-    if (!this.install.matches(req.code)) throw new Forbidden('install', '설치 코드가 맞지 않아요');
+    if (!this.install.matches(req.code)) throw new Forbidden('install', '맞지 않는 설치 코드예요');
     if ((await this.spaces.installStatus(actor, null)).installed)
       throw new Conflict('이미 설치된 블로그예요. 주인 계정으로 로그인해 주세요');
     const space = await this.transaction(async (tx) => {
@@ -53,7 +53,7 @@ export class SpaceService extends BaseService {
     return this.transaction(async (tx) => {
       const repo = new SpaceRepository(tx);
       const space = await repo.lockCurrent();
-      if (!space) throw new NotFound('블로그 공간이 아직 없어요');
+      if (!space) throw new NotFound('블로그 공간부터 만들어 주세요 (설치 코드)');
       space.assertVersion(req.version);
       space.rename(req.name, req.description, req.siteUrl);
       await repo.save(space);

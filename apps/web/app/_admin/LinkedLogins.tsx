@@ -28,7 +28,7 @@ export function LinkedLogins({ onMessage }: { onMessage: (text: string) => void 
   async function unlink(method: string) {
     const reply = await api('DELETE', `/api/auth/links/${method}`);
     if (!reply.ok) return setError(describe(reply.error));
-    onMessage('연결을 끊었어요. 그 계정으로는 더 로그인되지 않아요');
+    onMessage('연결을 끊었어요. 그 계정으로는 더 로그인할 수 없어요');
     await load();
   }
 

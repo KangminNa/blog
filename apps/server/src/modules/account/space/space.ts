@@ -56,11 +56,11 @@ export class Space extends BaseEntity {
     try {
       url = new URL(value.trim());
     } catch {
-      throw new RuleViolation(`사이트 주소가 주소 모양이 아니에요: ${value}`);
+      throw new RuleViolation(`주소 모양이 아니에요: ${value}`);
     }
     if (url.protocol !== 'https:' && url.protocol !== 'http:')
-      throw new RuleViolation('사이트 주소는 http:// 또는 https://로 시작해야 해요');
-    if (url.search || url.hash) throw new RuleViolation('사이트 주소에는 ?나 #를 넣지 않아요');
+      throw new RuleViolation('http:// 또는 https://로 시작하는 주소로 넣어 주세요');
+    if (url.search || url.hash) throw new RuleViolation('?나 # 없이 넣어 주세요');
     return url.toString().replace(/\/+$/, '');
   }
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AccountForm } from '../_admin/AccountForm';
 import { BlogForm } from '../_admin/BlogForm';
+import { DevicesPanel } from '../_admin/DevicesPanel';
 import { LinkedLogins } from '../_admin/LinkedLogins';
 import { PluginsPanel } from '../_admin/PluginsPanel';
 import { api } from '../_lib/client-api';
@@ -10,7 +11,7 @@ import type { Owner, SpaceInfo } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
 import { useToast } from '../_ui/useToast';
 
-type Sheet = 'blog' | 'plugins' | 'account' | null;
+type Sheet = 'blog' | 'plugins' | 'devices' | 'account' | null;
 
 // 그래프 홈 (기준 시안 "밤길"). 방문자 화면과 관리 모드가 같은 무대를 쓴다.
 // 그래프의 점·선은 세션이 들어오고 그래프 API(M2)가 생기면 이 무대 위에 그린다. 지금은 빈 그래프 안내.
@@ -94,19 +95,18 @@ export function GraphHome({ space, owner }: { space: SpaceInfo; owner: Owner | n
         <CairnMark size={96} stack />
         {info.installed ? (
           <>
-            <h1>아직 쌓인 세션이 없어요</h1>
+            <h1>아직 쌓인 세션 없음</h1>
             <p>
               {owner
-                ? 'AI 도구를 연결하고 작업을 저장하면, 정리 전 세션이 도착 구역에 점으로 생겨요. 정리하면 wiki와 카테고리로 이어져 그래프가 자라요.'
-                : 'AI와 함께 한 작업이 쌓이면 여기에 그래프로 보여요.'}
+                ? 'AI 도구를 연결하고 작업을 저장하면 도착 구역에 점으로 쌓여요. 정리하면 wiki와 카테고리로 이어져요.'
+                : 'AI와 함께 한 작업을 여기에 그래프로 쌓아요.'}
             </p>
           </>
         ) : (
           <>
             <h1>아직 설치 전이에요</h1>
             <p>
-              서버를 가진 사람만 설치할 수 있어요. 서버 로그나 <code>pnpm install-code</code>로 설치
-              코드를 확인하세요.
+              서버 로그나 <code>pnpm install-code</code>로 설치 코드를 확인한 뒤 시작하세요.
             </p>
             <a className="cta" href="/install" style={{ minWidth: 220 }}>
               <span>설치 시작</span>
@@ -144,10 +144,19 @@ export function GraphHome({ space, owner }: { space: SpaceInfo; owner: Owner | n
             {owner ? `${owner.login}(으)로 로그인함` : ''}
           </p>
           <AccountForm
-            onChanged={() => showToast('비밀번호를 바꿨어요. 다른 기기의 로그인은 끝났어요')}
+            onChanged={() => showToast('비밀번호를 바꾸고 다른 기기의 로그인을 끝냈어요')}
           />
           <div style={{ height: 18 }} />
           <LinkedLogins onMessage={showToast} />
+        </section>
+      )}
+      {admin && sheet === 'devices' && (
+        <section className="sheet" aria-label="기기">
+          <div className="sheet-head">
+            <h2>기기</h2>
+            <small>AI 도구를 쓰는 컴퓨터</small>
+          </div>
+          <DevicesPanel siteUrl={info.siteUrl} onMessage={showToast} />
         </section>
       )}
       {admin && sheet === 'plugins' && (
@@ -176,6 +185,13 @@ export function GraphHome({ space, owner }: { space: SpaceInfo; owner: Owner | n
               onClick={() => setSheet(sheet === 'plugins' ? null : 'plugins')}
             >
               플러그인
+            </button>
+            <button
+              type="button"
+              aria-current={sheet === 'devices'}
+              onClick={() => setSheet(sheet === 'devices' ? null : 'devices')}
+            >
+              기기
             </button>
             <button
               type="button"

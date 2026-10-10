@@ -82,16 +82,13 @@ export class ExternalLoginQuery extends BaseQuery {
 
   method(name: string): LoginMethod {
     const found = this.registry.login(name);
-    if (!found) throw new NotFound(`켜진 로그인 방법 중에 ${name}이(가) 없어요`);
+    if (!found) throw new NotFound(`켜지 않은 로그인 방법이에요: ${name}`);
     return found;
   }
 
   async callbackUrl(actor: Actor, method: string): Promise<string> {
     const { siteUrl } = await this.spaces.info(actor);
-    if (!siteUrl)
-      throw new RuleViolation(
-        '사이트 주소가 아직 없어요. 관리 화면의 블로그 정보에서 먼저 정해 주세요',
-      );
+    if (!siteUrl) throw new RuleViolation('사이트 주소부터 정해 주세요 (관리 화면의 블로그 정보)');
     return `${siteUrl}/api/auth/login/${method}/callback`;
   }
 }

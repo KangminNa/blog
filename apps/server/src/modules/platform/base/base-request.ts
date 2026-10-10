@@ -64,6 +64,19 @@ export class RequestFields {
     return value;
   }
 
+  /** 문자열 목록 (예: 돌려보낼 주소들, 권한들). 없으면 null */
+  optionalTextList(name: string, maxItems: number, maxLength: number): readonly string[] | null {
+    const value = this.source[name];
+    if (value === undefined || value === null) return null;
+    if (!Array.isArray(value)) return this.fail(name, '문자열 목록이어야 해요', null);
+    if (value.length > maxItems) return this.fail(name, `${maxItems}개 이하여야 해요`, null);
+    const bad = value.findIndex(
+      (v) => typeof v !== 'string' || v.length === 0 || v.length > maxLength,
+    );
+    if (bad >= 0) return this.fail(`${name}.${bad}`, `1~${maxLength}자 문자열이어야 해요`, null);
+    return value as string[];
+  }
+
   /** 문자열 값만 담은 객체 (예: 설정 이름 → 값). 빈 문자열은 허용한다 (지우기) */
   textMap(name: string, maxLength: number): ReadonlyMap<string, string> {
     const record = this.optionalRecord(name);

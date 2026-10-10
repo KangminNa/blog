@@ -27,7 +27,7 @@ export class InvalidRequest extends DomainError {
   readonly status = 400;
 
   constructor(readonly fields: ReadonlyMap<string, string>) {
-    super(`요청 형식이 맞지 않아요: ${[...fields.keys()].join(', ')}`);
+    super(`요청 형식을 확인해 주세요: ${[...fields.keys()].join(', ')}`);
   }
 
   override toJSON(): object {
@@ -42,7 +42,7 @@ export class Forbidden extends DomainError {
 
   constructor(
     readonly scope: string,
-    message = `'${scope}' 권한이 필요해요`,
+    message = `'${scope}' 권한으로만 할 수 있어요`,
   ) {
     super(message);
   }

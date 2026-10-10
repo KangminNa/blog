@@ -38,6 +38,10 @@ export class ApiResult {
     return this.headers.get('location');
   }
 
+  header(name: string): string | null {
+    return this.headers.get(name);
+  }
+
   /** 서버가 새로 준 쿠키 (지운 쿠키는 빈 문자열) */
   cookies(): Record<string, string> {
     const found: Record<string, string> = {};
@@ -104,6 +108,29 @@ export class ApiClient {
 
   get(path: string, as: TestUser = TestUser.visitor): Promise<ApiResult> {
     return this.request('GET', path, as);
+  }
+
+  /** form으로 보내기 (OAuth 토큰 요청처럼 application/x-www-form-urlencoded) */
+  form(path: string, values: Readonly<Record<string, string>>): Promise<ApiResult> {
+    return fetch(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(values).toString(),
+    }).then(async (res) => new ApiResult(res.status, await res.text(), res.headers));
+  }
+
+  /** MCP 요청 하나 (JSON-RPC). token: 기기의 Bearer 토큰 */
+  mcp(token: string | null, method: string, params: object = {}): Promise<ApiResult> {
+    return fetch(`${this.baseUrl}/mcp`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    }).then(async (res) => new ApiResult(res.status, await res.text(), res.headers));
   }
 
   /** 설치 코드를 넣는다. 돌려준 사람은 설치 통행증을 가진 브라우저 */

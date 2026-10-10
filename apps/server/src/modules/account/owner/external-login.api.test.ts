@@ -75,7 +75,7 @@ describe('로그인 방법', () => {
     const res = await roundTrip('/api/auth/login/github/start', OWNER_GITHUB, TestUser.visitor);
     assert.equal(res.status, 302);
     assert.equal(new URL(res.location ?? '', 'http://x').pathname, '/login');
-    assert.match(errorOf(res) ?? '', /연결된 계정이 아니에요/);
+    assert.match(errorOf(res) ?? '', /연결하지 않은 계정이에요/);
     assert.equal(res.cookies().cairn_session, undefined);
   });
 });
@@ -116,7 +116,7 @@ describe('계정 연결', () => {
 
   test('연결하지 않은 다른 GitHub 계정은 안 된다', async () => {
     const res = await roundTrip('/api/auth/login/github/start', 2002, TestUser.visitor);
-    assert.match(errorOf(res) ?? '', /연결된 계정이 아니에요/);
+    assert.match(errorOf(res) ?? '', /연결하지 않은 계정이에요/);
   });
 
   test('주인이 시작한 연결을 로그인하지 않은 브라우저가 끝낼 수 없다', async () => {
@@ -126,7 +126,7 @@ describe('계정 연결', () => {
       `/api/auth/login/github/callback?code=ok-2002&state=${state}`,
       new TestUser(begin.cookies()),
     );
-    assert.match(errorOf(stolen) ?? '', /주인으로 로그인한 상태/);
+    assert.match(errorOf(stolen) ?? '', /주인 계정으로 로그인해 주세요/);
   });
 
   test('로그인을 시작한 브라우저가 아니면 400 (state)', async () => {
@@ -138,7 +138,7 @@ describe('계정 연결', () => {
     assert.equal((await api.request('DELETE', '/api/auth/links/github', owner)).status, 200);
     assert.deepEqual((await api.get('/api/auth/links', owner)).json(), { links: [] });
     const res = await roundTrip('/api/auth/login/github/start', OWNER_GITHUB, TestUser.visitor);
-    assert.match(errorOf(res) ?? '', /연결된 계정이 아니에요/);
+    assert.match(errorOf(res) ?? '', /연결하지 않은 계정이에요/);
   });
 
   test('플러그인을 끄면 버튼이 사라지고 로그인 주소는 404', async () => {

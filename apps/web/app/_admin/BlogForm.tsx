@@ -22,6 +22,18 @@ export function BlogForm({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // 저장한 적 없는 값(version 0)을 받았으면 서버의 지금 값으로 맞춘다 (낡은 버전으로 저장하지 않게)
+  useEffect(() => {
+    if (space.version > 0) return;
+    void api<SpaceInfo>('GET', '/api/space').then((reply) => {
+      if (!reply.ok || reply.data.version < 1) return;
+      setVersion(reply.data.version);
+      if (reply.data.name) setName(reply.data.name);
+      if (reply.data.description) setDescription(reply.data.description);
+      if (reply.data.siteUrl) setSiteUrl(reply.data.siteUrl);
+    });
+  }, [space.version]);
+
   // 아직 정하지 않았으면 지금 연 주소를 미리 넣는다
   useEffect(() => {
     if (!siteUrl) setSiteUrl(window.location.origin);
@@ -82,7 +94,7 @@ export function BlogForm({
           onChange={(e) => setSiteUrl(e.target.value)}
           placeholder="https://blog.example.com"
         />
-        <small>방문자가 들어오는 바깥 주소. 리버스 프록시 뒤라면 https://로 시작하는 주소</small>
+        <small>바깥에서 들어오는 주소. 리버스 프록시 뒤라면 https://로 시작하는 주소</small>
       </label>
       {error && <p className="error">{error}</p>}
       <button className="cta" type="submit" disabled={busy || !name.trim()}>

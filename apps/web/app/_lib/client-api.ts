@@ -30,8 +30,26 @@ export async function api<T>(method: string, path: string, body?: object): Promi
   }
 }
 
-/** 오류를 사람이 읽는 한 줄로 (필드 오류는 필드별로) */
+/** 칸 이름 → 화면 이름 (오류가 어느 칸인지 알려줄 때) */
+const FIELD_LABELS: Record<string, string> = {
+  code: '설치 코드',
+  login: '아이디',
+  password: '비밀번호',
+  current: '지금 비밀번호',
+  next: '새 비밀번호',
+  name: '이름',
+  description: '소개',
+  siteUrl: '사이트 주소',
+  scopes: '권한',
+};
+
+/** 오류를 사람이 읽는 한 줄로 (필드 오류는 칸 이름과 함께) */
 export function describe(error: ApiError): string {
   if (!error.fields) return error.message;
-  return Object.values(error.fields).join(' · ');
+  return Object.entries(error.fields)
+    .map(([field, problem]) => {
+      const label = FIELD_LABELS[field.split('.')[0] ?? ''];
+      return label ? `${label}: ${problem}` : problem;
+    })
+    .join(' · ');
 }

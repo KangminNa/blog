@@ -41,7 +41,9 @@ export class InstallPolicy {
     if (status.installed)
       throw new Conflict('이미 주인이 있는 블로그예요. 주인 계정으로 로그인해 주세요');
     if (!status.passValid || !status.spaceId)
-      throw new Unauthenticated('설치 통행증이 없거나 만료됐어요. 설치 코드를 다시 넣어 주세요');
+      throw new Unauthenticated(
+        '설치 코드부터 다시 넣어 주세요 (확인한 지 10분이 지났거나 확인 전)',
+      );
     return status.spaceId;
   }
 
