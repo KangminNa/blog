@@ -109,7 +109,7 @@ cairn/
 ├── docs/              기획서, MVP 기획서, 테이블 설계, 객체 설계
 ├── Dockerfile         앱 이미지 (server, web 공용)
 ├── docker-compose.yml db → migrate → server → web
-├── plugins/           플러그인 (comments-giscus: 글 아래 giscus 댓글 · sync-github: GitHub에 이력·백업)
+├── plugins/           플러그인 (comments-giscus: 글 아래 giscus 댓글 · sync-github: GitHub에 이력·백업 · login-github: GitHub로 주인 로그인)
 ├── scripts/           모듈 경계 검사, 플러그인 화면 맞추기
 └── AGENTS.md          AI 도구 작업 규칙 (CLAUDE.md가 가져옴)
 ```

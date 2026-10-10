@@ -6,7 +6,8 @@
 M1 A(설치·주인 로그인)까지 있다. 기기 연결은 M1 B.
 
 - `space/`: 공간 (`Space`), 설치 코드·통행증 규칙(`InstallPolicy`), `api/install`(코드 확인, 주인 계정 만들기)·`api/space`
-- `owner/`: 주인 (`Owner` + `WebSession`), 비밀번호 규칙(`PasswordPolicy`), `api/auth`(로그인·로그아웃·비밀번호 바꾸기)
+- `owner/`: 주인 (`Owner` + `WebSession` + `LoginLink`), 비밀번호 규칙(`PasswordPolicy`), `api/auth`(로그인·로그아웃·비밀번호 바꾸기)
+  외부 로그인(`ExternalLoginQuery`·`ExternalLoginController`): 로그인 플러그인(`login:<이름>`)의 경로·확인값·쿠키, 계정 연결·끊기
 - `guard/`: `ActorGuard` (모든 요청: 로그인 쿠키 → `OwnerActor`)
 
 ## 소유 데이터

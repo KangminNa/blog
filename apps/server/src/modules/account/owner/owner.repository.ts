@@ -22,6 +22,26 @@ export class OwnerRepository extends BaseRepository<Owner> {
     );
   }
 
+  /** 연결한 외부 계정으로 주인을 찾는다 (외부 로그인) */
+  async findByLink(method: string, subject: string): Promise<Owner | null> {
+    return this.maybeOne(
+      await this.sql`
+      SELECT u.*, m.space_id FROM account.login_links l
+      JOIN account.users u ON u.id = l.user_id
+      JOIN account.space_members m ON m.user_id = u.id AND m.role = 'owner'
+      WHERE l.method = ${method} AND l.subject = ${subject}`,
+    );
+  }
+
+  async findById(id: string): Promise<Owner | null> {
+    return this.maybeOne(
+      await this.sql`
+      SELECT u.*, m.space_id FROM account.users u
+      JOIN account.space_members m ON m.user_id = u.id AND m.role = 'owner'
+      WHERE u.id = ${id}`,
+    );
+  }
+
   /** 공간의 주인 (명령줄의 비밀번호 다시 정하기) */
   async findOnly(): Promise<Owner | null> {
     return this.maybeOne(
@@ -92,6 +112,14 @@ export class OwnerRepository extends BaseRepository<Owner> {
         await this.sql`
           UPDATE account.web_sessions SET revoked_at = now() WHERE id = ${s.id} AND revoked_at IS NULL`;
     }
+    for (const method of owner.removedLinks)
+      await this
+        .sql`DELETE FROM account.login_links WHERE user_id = ${owner.id} AND method = ${method}`;
+    for (const link of owner.newLinks)
+      await this.sql`
+        INSERT INTO account.login_links (method, subject, user_id, label)
+        VALUES (${link.method}, ${link.subject}, ${owner.id}, ${link.label})
+        ON CONFLICT (method, subject) DO UPDATE SET user_id = EXCLUDED.user_id, label = EXCLUDED.label`;
     await this.publishEvents(owner);
   }
 }

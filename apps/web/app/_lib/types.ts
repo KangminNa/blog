@@ -15,6 +15,12 @@ export type SpaceInfo = {
 
 export type Owner = { login: string };
 
+/** 로그인 화면의 버튼 (켜진 로그인 플러그인) */
+export type LoginMethod = { method: string; label: string };
+
+/** 주인에게 연결된 외부 계정 */
+export type LoginLink = { method: string; label: string; linkedAt: string };
+
 export type PluginSetting = {
   key: string;
   label: string;

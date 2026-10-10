@@ -8,6 +8,7 @@ import { BasePlugin } from './base-plugin';
 import { PluginRepository } from './plugin.repository';
 import {
   type EventSubscription,
+  LoginMethod,
   type PluginAction,
   PluginContext,
   type ScheduledJob,
@@ -23,6 +24,7 @@ export class PluginRegistry {
   private subscriptions: readonly EventSubscription[] = [];
   private scheduled: readonly ScheduledJob[] = [];
   private pluginActions: readonly PluginAction[] = [];
+  private loginMethods: readonly LoginMethod[] = [];
   private states = new Map<string, PluginState>();
   private failures = new Map<string, string>();
 
@@ -66,6 +68,7 @@ export class PluginRegistry {
     const subscriptions: EventSubscription[] = [];
     const scheduled: ScheduledJob[] = [];
     const actions: PluginAction[] = [];
+    const logins: LoginMethod[] = [];
     const failures = new Map<string, string>();
     for (const state of states) {
       const manifest = this.catalog.get(state.name);
@@ -80,6 +83,15 @@ export class PluginRegistry {
         subscriptions.push(...context.subscriptions);
         scheduled.push(...context.jobs);
         actions.push(...context.actions);
+        for (const login of context.logins) {
+          // 같은 이름의 로그인 방법은 먼저 켠 플러그인 것만 쓴다
+          if (logins.some((l) => l.name === login.name))
+            failures.set(
+              state.name,
+              `로그인 방법 "${login.name}"은(는) 다른 플러그인이 이미 쓰고 있어요`,
+            );
+          else logins.push(login);
+        }
       } catch (error) {
         failures.set(state.name, (error as Error).message);
       }
@@ -88,6 +100,7 @@ export class PluginRegistry {
     this.subscriptions = subscriptions;
     this.scheduled = scheduled;
     this.pluginActions = actions;
+    this.loginMethods = logins;
     this.failures = failures;
   }
 
@@ -137,5 +150,14 @@ export class PluginRegistry {
 
   actions(): readonly PluginAction[] {
     return this.pluginActions;
+  }
+
+  /** 동작 중인 로그인 방법들 (로그인 화면의 버튼) */
+  logins(): readonly LoginMethod[] {
+    return this.loginMethods;
+  }
+
+  login(name: string): LoginMethod | null {
+    return this.loginMethods.find((l) => l.name === name) ?? null;
   }
 }

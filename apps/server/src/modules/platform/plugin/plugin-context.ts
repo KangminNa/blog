@@ -4,6 +4,7 @@ import { SystemActor } from '../base/actor';
 import type { BaseAction } from '../base/base-action';
 import type { BaseHandler } from '../base/base-handler';
 import type { BaseJob } from '../base/base-job';
+import type { BaseLogin } from '../base/base-login';
 import type { PluginManifest } from './plugin-manifest';
 
 /** 등록된 이벤트 받기 하나 */
@@ -33,11 +34,21 @@ export class PluginAction {
   ) {}
 }
 
+/** 등록된 로그인 방법 하나 */
+export class LoginMethod {
+  constructor(
+    readonly plugin: string,
+    readonly name: string,
+    readonly login: BaseLogin,
+  ) {}
+}
+
 // 플러그인이 확장 지점에 등록하는 창구. 목록 파일 `uses`에 적지 않은 것을 쓰면 그 플러그인은 켜지지 않는다.
 export class PluginContext {
   readonly subscriptions: EventSubscription[] = [];
   readonly jobs: ScheduledJob[] = [];
   readonly actions: PluginAction[] = [];
+  readonly logins: LoginMethod[] = [];
 
   constructor(
     private readonly manifest: PluginManifest,
@@ -66,6 +77,12 @@ export class PluginContext {
   addAction(name: string, action: BaseAction): void {
     this.require(`action:${name}`);
     this.actions.push(new PluginAction(this.manifest.name, name, action));
+  }
+
+  /** 로그인 방법. 이름이 로그인 주소가 된다 (/api/auth/login/<이름>/…) */
+  addLogin(name: string, login: BaseLogin): void {
+    this.require(`login:${name}`);
+    this.logins.push(new LoginMethod(this.manifest.name, name, login));
   }
 
   /** 보관 형식 파일을 읽는 함수. 서버 자신의 자격으로 읽으므로 목록 파일에 archive:read가 있어야 한다 */

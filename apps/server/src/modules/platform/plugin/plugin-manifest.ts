@@ -16,12 +16,14 @@ const WEB_SLOTS: readonly string[] = ['post.after'];
  *   job:<이름>    일꾼이 간격마다 돌리는 일
  *   action:<이름> 주인이 누르는 동작
  *   archive:read  보관 형식 파일 읽기 (vault 비공개 내용 포함)
+ *   login:<이름>  로그인 방법 (예: login:github). 주인이 연결해 둔 계정으로만 로그인된다
  */
 const USES = [
   /^event:[a-z*][a-z_.*]*$/,
   /^job:[a-z][a-z0-9-]*$/,
   /^action:[a-z][a-z0-9-]*$/,
   /^archive:read$/,
+  /^login:[a-z][a-z0-9-]*$/,
 ];
 
 const SETTING_TYPES = ['text', 'secret', 'select', 'boolean'];
@@ -80,6 +82,8 @@ export class PluginManifest {
     if (kind === 'event') return `"${arg}" 이벤트가 생기면 받아요`;
     if (kind === 'job') return `일꾼이 정해진 간격마다 "${arg}" 작업을 돌려요`;
     if (kind === 'action') return `관리 동작 "${arg}"을(를) 추가해요`;
+    if (kind === 'login')
+      return `로그인 방법 "${arg}"을(를) 더해요 (주인이 연결해 둔 계정으로만 로그인돼요)`;
     return use;
   }
 

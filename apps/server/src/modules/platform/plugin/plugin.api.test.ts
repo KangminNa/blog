@@ -14,6 +14,7 @@ before(async () => {
   owner = await api.signIn();
   await api.request('POST', '/api/plugins/comments-giscus/disable', owner);
   await api.request('POST', '/api/plugins/sync-github/disable', owner);
+  await api.request('POST', '/api/plugins/login-github/disable', owner);
 });
 after(() => api.close());
 
@@ -28,7 +29,7 @@ describe('GET /api/plugins', () => {
     const list = (await api.get('/api/plugins', owner)).json().plugins as Record<string, unknown>[];
     assert.deepEqual(
       list.map((p) => p.name),
-      ['comments-giscus', 'sync-github'],
+      ['comments-giscus', 'login-github', 'sync-github'],
     );
     const sync = list.find((p) => p.name === 'sync-github') as Record<string, unknown>;
     assert.equal(sync.enabled, false);

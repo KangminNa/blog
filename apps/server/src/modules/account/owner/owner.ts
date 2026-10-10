@@ -49,13 +49,24 @@ export class WebSession {
   }
 }
 
-// 블로그 주인: 계정(users: 아이디·비밀번호) + 주인 자리(space_members) + 로그인들(web_sessions).
+/** 주인에게 연결한 외부 계정 하나 (로그인 플러그인으로 확인한 계정). 방법마다 하나 */
+export class LoginLink {
+  constructor(
+    readonly method: string,
+    readonly subject: string,
+    readonly label: string,
+  ) {}
+}
+
+// 블로그 주인: 계정(users: 아이디·비밀번호) + 주인 자리(space_members) + 로그인들(web_sessions) + 연결한 외부 계정(login_links).
 // 주인은 공간마다 한 명이고, 설치 통행증을 가진 브라우저에서 만든 계정이 된다 (확인은 InstallPolicy).
 // 비밀번호는 바꾼 값(PasswordHasher)만 들고 있다.
 export class Owner extends BaseEntity {
   private readonly sessions: WebSession[] = [];
   private passwordChanged = false;
   private keepOnPasswordChange: string | null = null;
+  private readonly linked: LoginLink[] = [];
+  private readonly unlinked = new Set<string>();
 
   private constructor(
     id: string,
@@ -123,6 +134,26 @@ export class Owner extends BaseEntity {
 
   session(tokenHash: string): WebSession | null {
     return this.sessions.find((s) => s.tokenHash === tokenHash) ?? null;
+  }
+
+  /** 저장할 연결 (새로 연결한 것) */
+  get newLinks(): readonly LoginLink[] {
+    return this.linked;
+  }
+
+  /** 저장할 연결 끊기 (방법 이름) */
+  get removedLinks(): readonly string[] {
+    return [...this.unlinked];
+  }
+
+  /** 외부 계정을 연결한다. 같은 방법으로 이미 연결한 계정이 있으면 바꾼다 */
+  link(method: string, subject: string, label: string): void {
+    this.unlinked.add(method);
+    this.linked.push(new LoginLink(method, subject, label));
+  }
+
+  unlink(method: string): void {
+    this.unlinked.add(method);
   }
 
   /** 지금 로그인을 끝낸다 (로그아웃) */

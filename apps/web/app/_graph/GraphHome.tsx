@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AccountForm } from '../_admin/AccountForm';
 import { BlogForm } from '../_admin/BlogForm';
+import { LinkedLogins } from '../_admin/LinkedLogins';
 import { PluginsPanel } from '../_admin/PluginsPanel';
 import { api } from '../_lib/client-api';
 import type { Owner, SpaceInfo } from '../_lib/types';
@@ -18,6 +19,18 @@ export function GraphHome({ space, owner }: { space: SpaceInfo; owner: Owner | n
   const [sheet, setSheet] = useState<Sheet>(null);
   const [info, setInfo] = useState(space);
   const [toast, showToast] = useToast();
+
+  // 외부 계정 연결에서 돌아오면 ?sheet=account(계정 시트 열기), 실패하면 ?error=이유
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (owner && params.get('sheet') === 'account') {
+      setAdmin(true);
+      setSheet('account');
+    }
+    const error = params.get('error');
+    if (error) showToast(error);
+    if (params.size > 0) window.history.replaceState(null, '', '/');
+  }, [owner, showToast]);
 
   // 마우스를 따라 무대가 등불처럼 밝아진다
   useEffect(() => {
@@ -133,6 +146,8 @@ export function GraphHome({ space, owner }: { space: SpaceInfo; owner: Owner | n
           <AccountForm
             onChanged={() => showToast('비밀번호를 바꿨어요. 다른 기기의 로그인은 끝났어요')}
           />
+          <div style={{ height: 18 }} />
+          <LinkedLogins onMessage={showToast} />
         </section>
       )}
       {admin && sheet === 'plugins' && (

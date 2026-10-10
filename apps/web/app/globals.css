@@ -275,6 +275,8 @@ a {
   width: min(640px, calc(100vw - 32px));
   max-height: calc(100vh - 220px);
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
   border-radius: 24px;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -492,6 +494,13 @@ textarea.input {
   transition:
     color 0.2s,
     border-color 0.2s;
+}
+
+.ghost.wide {
+  height: 46px;
+  justify-content: center;
+  border-radius: 14px;
+  font-size: 14px;
 }
 
 .ghost:hover {

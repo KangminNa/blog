@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
-  type Actor,
+  Actor,
   AttemptLimiter,
   BaseService,
   Database,
+  Forbidden,
   NotFound,
   PasswordHasher,
   SystemActor,
@@ -11,6 +12,8 @@ import {
 } from '../../platform';
 import { InstallPolicy } from '../space/install.policy';
 import { SpaceQuery } from '../space/space.query';
+import { ExternalLoginQuery } from './external-login.query';
+import type { ExternalCallbackRequest } from './external-login.request';
 import { Owner, WebSession } from './owner';
 import { OwnerRepository } from './owner.repository';
 import type { ChangePasswordRequest, CreateOwnerRequest, LoginRequest } from './owner.request';
@@ -31,6 +34,7 @@ export class OwnerService extends BaseService {
     private readonly install: InstallPolicy,
     private readonly passwords: PasswordPolicy,
     private readonly hasher: PasswordHasher,
+    private readonly external: ExternalLoginQuery,
   ) {
     super(db);
   }
@@ -113,6 +117,57 @@ export class OwnerService extends BaseService {
       const owner = await owners.findBySession(tokenHash);
       if (!owner) throw new Unauthenticated('로그인이 필요해요');
       owner.setPassword(hash, owner.session(tokenHash));
+      await owners.save(owner);
+    });
+  }
+
+  /**
+   * 외부 로그인에서 돌아왔을 때. 그 서비스에 누구인지 묻고(트랜잭션 밖),
+   *   로그인: 연결해 둔 계정이면 새 로그인 (아니면 403)
+   *   연결: 시작한 주인이 지금도 로그인해 있으면 그 주인에게 연결 (새 로그인은 없음 → null)
+   */
+  async finishExternal(
+    actor: Actor,
+    req: ExternalCallbackRequest,
+    ip: string,
+    userAgent: string,
+  ): Promise<WebSession | null> {
+    const method = this.external.method(req.method);
+    const identity = await method.login.finish(
+      req.query,
+      await this.external.callbackUrl(actor, method.name),
+    );
+    if (req.isLink && (actor.kind !== 'owner' || actor.id !== req.userId))
+      throw new Unauthenticated('계정을 연결하려면 주인으로 로그인한 상태여야 해요');
+    return this.transaction(async (tx) => {
+      const owners = new OwnerRepository(tx);
+      if (req.isLink) {
+        const owner = await owners.findById(req.userId ?? '');
+        if (!owner) throw new Unauthenticated('로그인이 필요해요');
+        owner.link(method.name, identity.subject, identity.label);
+        await owners.save(owner);
+        return null;
+      }
+      const owner = await owners.findByLink(method.name, identity.subject);
+      if (!owner)
+        throw new Forbidden(
+          'owner',
+          '이 블로그 주인에게 연결된 계정이 아니에요. 비밀번호로 로그인한 뒤 계정 시트에서 먼저 연결해 주세요',
+        );
+      const session = owner.startSession(ip, userAgent, new Date());
+      await owners.save(owner);
+      return session;
+    });
+  }
+
+  /** 연결한 외부 계정을 끊는다. 그 계정으로는 더 로그인되지 않는다 (비밀번호 로그인은 그대로) */
+  async unlink(actor: Actor, method: string): Promise<void> {
+    actor.assertCan(Actor.WRITE);
+    await this.transaction(async (tx) => {
+      const owners = new OwnerRepository(tx);
+      const owner = await owners.findById(actor.id ?? '');
+      if (!owner) throw new Unauthenticated('로그인이 필요해요');
+      owner.unlink(method);
       await owners.save(owner);
     });
   }

@@ -2,13 +2,22 @@
 
 import { useState } from 'react';
 import { api, describe } from '../_lib/client-api';
+import type { LoginMethod } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
 
-// 주인 로그인 카드. 그래프 무대 위 가운데.
-export function LoginForm({ returnTo }: { returnTo: string }) {
+// 주인 로그인 카드. 그래프 무대 위 가운데. 켜진 로그인 플러그인(GitHub 등)의 버튼이 아래에 붙는다.
+export function LoginForm({
+  returnTo,
+  methods,
+  initialError,
+}: {
+  returnTo: string;
+  methods: LoginMethod[];
+  initialError: string | null;
+}) {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
   const [busy, setBusy] = useState(false);
 
   async function submit(event: React.FormEvent) {
@@ -62,6 +71,15 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
             <span>{busy ? '확인하는 중' : '로그인'}</span>
             <span className="arr">→</span>
           </button>
+          {methods.map((m) => (
+            <a
+              key={m.method}
+              className="ghost wide"
+              href={`/api/auth/login/${m.method}/start?return=${encodeURIComponent(returnTo)}`}
+            >
+              {m.label}
+            </a>
+          ))}
           <p className="label-mono">
             비밀번호를 잊었다면 서버에서 <code>pnpm owner reset-password</code>로 다시 정해요.
           </p>

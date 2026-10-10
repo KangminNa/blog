@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { PasswordHasher, SecretBox } from '../platform';
 import { ActorGuard } from './guard/actor.guard';
+import { ExternalLoginController } from './owner/external-login.controller';
+import { ExternalLoginQuery } from './owner/external-login.query';
 import { LoginController } from './owner/login.controller';
 import { OwnerQuery } from './owner/owner.query';
 import { OwnerService } from './owner/owner.service';
@@ -12,7 +14,7 @@ import { SpaceController } from './space/space.controller';
 import { SpaceQuery } from './space/space.query';
 import { SpaceService } from './space/space.service';
 
-// 블로그 공간, 주인(아이디·비밀번호 로그인), (M1 B: 기기). 모든 요청의 요청자는 여기의 Guard가 정한다.
+// 블로그 공간, 주인(아이디·비밀번호 로그인 + 로그인 플러그인으로 연결한 외부 계정), (M1 B: 기기). 모든 요청의 요청자는 여기의 Guard가 정한다.
 @Module({
   providers: [
     {
@@ -25,10 +27,11 @@ import { SpaceService } from './space/space.service';
     SpaceQuery,
     SpaceService,
     OwnerQuery,
+    ExternalLoginQuery,
     OwnerService,
     { provide: APP_GUARD, useClass: ActorGuard },
   ],
-  controllers: [InstallController, SpaceController, LoginController],
+  controllers: [InstallController, SpaceController, LoginController, ExternalLoginController],
   exports: [InstallPolicy, SpaceQuery, OwnerService],
 })
 export class AccountModule {}

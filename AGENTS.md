@@ -14,7 +14,7 @@ apps/server/   NestJS. src/modules/<모듈>/ (platform · account · vault · bl
                모듈마다 CLAUDE.md에 그 모듈의 규칙이 있다
 apps/web/      Next.js (App Router)
 db/            DB 이미지(Postgres 17 + pgvector + pg_bigm)와 SQL 마이그레이션(dbmate)
-plugins/       플러그인 (첫 플러그인: comments-giscus). 규칙은 plugins/CLAUDE.md, 객체설계 12장
+plugins/       플러그인 (comments-giscus · sync-github · login-github). 규칙은 plugins/CLAUDE.md, 객체설계 12장
 scripts/       모듈 경계 검사, 플러그인 화면 맞추기
 docs/          기획 문서 (기획서 · MVP 기획서 · 테이블 설계 · 객체 설계 · 보관 형식)
 ```
