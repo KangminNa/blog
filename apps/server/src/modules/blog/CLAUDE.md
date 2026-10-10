@@ -5,11 +5,11 @@
 아직 코드 없음 (M4에서 만든다).
 
 ## 소유 데이터
-스키마 `blog`: categories, series, posts, post_revisions, assets, post_sources, post_wiki_refs, chunks, chunk_embeddings, stone_log, edit_leases
+스키마 `blog`: categories, series, posts, post_revisions, assets, post_wiki_refs, chunks, chunk_embeddings, stone_log, edit_leases
 스키마 `work`: baskets, basket_items
 
 ## 데이터 묶음
-- 글: posts + post_revisions + post_sources + edit_leases(글)
+- 글: posts + post_revisions + post_wiki_refs + edit_leases(글)
 - 카테고리: categories
 - 사진: assets
 - 글감 상자: baskets + basket_items
@@ -18,7 +18,7 @@
 아직 없음
 
 ## 내보내는 이벤트 / 받는 이벤트
-예정: `blog.post.published` / 없음
+예정: `blog.post.published` · `blog.post.updated` · `blog.post.unpublished` · `blog.post.deleted` (vault가 글 자리 사본을 갱신) / 없음
 
 ## 써도 되는 모듈
 platform, vault(Query만, 읽기 전용)
