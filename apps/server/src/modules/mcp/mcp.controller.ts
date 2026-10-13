@@ -7,6 +7,7 @@ import { McpToolbox } from './mcp-toolbox';
 type McpRequest = IncomingMessage & { body?: unknown };
 
 // AI 도구가 들어오는 입구 (MCP Streamable HTTP). 연결된 기기의 토큰이 있어야 한다.
+// 도구 응답의 링크에 쓸 사이트 주소도 여기서 읽어 넘긴다 (사이트 주소는 account 모듈의 것).
 // 토큰이 없거나 끊긴 기기면 401과 함께 "어디서 인증받으면 되는지"(보호된 자원 안내 주소)를 알려준다 (MCP 인증 규격).
 @Controller('mcp')
 export class McpController {
@@ -35,8 +36,8 @@ export class McpController {
   }
 
   private async handle(actor: Actor, req: McpRequest, res: ServerResponse): Promise<void> {
+    const { siteUrl } = await this.devices.addresses(actor);
     if (actor.kind !== 'device') {
-      const { siteUrl } = await this.devices.addresses(actor);
       res.writeHead(401, {
         'content-type': 'application/json',
         'www-authenticate': `Bearer resource_metadata="${siteUrl}/.well-known/oauth-protected-resource/mcp"`,
@@ -49,6 +50,6 @@ export class McpController {
       );
       return;
     }
-    await this.endpoint.handle(actor, req, res, req.body);
+    await this.endpoint.handle(actor, siteUrl, req, res, req.body);
   }
 }

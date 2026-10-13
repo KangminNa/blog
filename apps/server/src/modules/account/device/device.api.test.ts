@@ -212,7 +212,8 @@ describe('MCP', () => {
     assert.equal(result.serverInfo.name, 'cairn');
     const tools = await api.mcp(access, 'tools/list');
     assert.equal(tools.status, 200, tools.text);
-    assert.deepEqual((tools.json().result as { tools: unknown[] }).tools, []);
+    const names = (tools.json().result as { tools: { name: string }[] }).tools.map((t) => t.name);
+    assert.deepEqual(names, ['save_session'], '기본 권한(올리기 + 공개 읽기)으로 보이는 도구');
   });
 });
 

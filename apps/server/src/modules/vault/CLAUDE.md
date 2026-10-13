@@ -2,7 +2,11 @@
 
 ## 하는 일
 AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 연결선, AI 정리 결과의 변경 묶음과 검토 규칙(승인함), 대정리, 변경 기록과 되돌리기, 그래프 보기.
-아직 코드 없음 (M1 세션 저장부터 만든다).
+지금은 M1 C 세션 저장까지 있다.
+
+- `session/`: 세션(`Session` + 판 `SessionRevision`), 노트(`SessionNote`: 제목·태그·고정 칸 다섯, 해시, 본문 md),
+  2차 민감정보 제거(`SensitivePolicy`), 저장 결과(`SessionReceipt`: saved · unchanged · duplicate).
+  MCP 도구 `save_session`(`SaveSessionTool`), 관리 화면 API `api/sessions`(목록·상세·지난 판, 비공개까지 볼 수 있는 요청자만)
 
 ## 소유 데이터
 스키마 `vault`: node_kinds, edge_kinds, nodes, sessions, session_revisions, attachments, categories, wikis, wiki_revisions, wiki_aliases,
@@ -20,10 +24,10 @@ change_sets, change_ops, review_rules, changes, edit_leases
 - 글 자리 사본: post_marks (blog 이벤트를 받는 Handler만 쓴다)
 
 ## 공개 API (`index.ts`)
-아직 없음. 예정: 세션 Query(blog의 재료 패널·글감 상자가 읽음)
+`VaultModule`, `SaveSessionTool`(mcp 모듈이 모아서 연다). 예정: 세션 Query(blog의 재료 패널·글감 상자가 읽음)
 
 ## 내보내는 이벤트 / 받는 이벤트
-예정: `vault.session.saved` / `blog.post.*` (글 자리 사본 갱신)
+`vault.session.saved`(v1: sessionId, revisionId, seq, deviceId, project, created) / 예정: `blog.post.*` (글 자리 사본 갱신)
 
 ## 써도 되는 모듈
 platform
@@ -32,7 +36,9 @@ platform
 - 판(session_revisions · wiki_revisions)은 추가만 한다. 트리거가 UPDATE·DELETE를 막는다
 - 그래프를 바꾸는 쓰기는 모두 `ChangeService`를 거쳐 변경 묶음으로 남긴다 (관리 화면 편집 포함). 이 Service만 여러 데이터 묶음의 Repository를 쓴다 (객체설계 4장 예외)
 - AI 변경의 바로 합치기·검토·거부는 `ReviewPolicy` 한 곳에서만 판단한다. 규칙을 늘릴 때는 `ReviewRule` 하위 클래스 하나
-- 민감정보는 첫 저장 전에 지운다 (판은 고칠 수 없으므로)
+- 민감정보는 첫 저장 전에 지운다 (판은 고칠 수 없으므로). 새 종류는 `SensitivePolicy.RULES`에 한 줄, 테스트에 한 줄
+- 세션 저장은 변경 묶음이 아니라 판으로만 남는다. 같은 대화의 저장은 대화 자리를 잠가 하나씩 처리한다 (`SessionRepository.lockBySource`)
+- AI는 공개 여부를 정할 수 없다. 새 세션은 비공개 (프로젝트 규칙은 그 관리 화면이 생길 때 읽는다)
 - 사람이 고친 칸·연결(`pinned`)은 AI가 덮지 않고 검토로 남긴다
 - 사람이 지운 연결은 행을 남겨 AI가 다시 만들지 못하게 한다
 - 공개 여부는 Query의 SQL에서 거른 뒤에 개수·순위를 계산한다

@@ -9,6 +9,7 @@ import { BaseRequest } from './base-request';
 import { Database, type Row } from './database';
 import { Conflict, Forbidden, InvalidRequest, TooManyRequests } from './errors';
 import { DomainEvent } from './event';
+import { Idempotency } from './idempotency';
 import { Outbox } from './outbox';
 import { PasswordHasher } from './password-hasher';
 import { SecretBox } from './secret-box';
@@ -135,6 +136,51 @@ describe('Outbox', () => {
     const [row] =
       await db.sql`SELECT count(*)::int AS n FROM platform.outbox WHERE space_id = ${spaceId}`;
     assert.equal(row?.n, 0);
+  });
+});
+
+describe('Idempotency (M1)', () => {
+  const device = '0192d2a0-0000-7000-8000-00000000beef';
+
+  test('처음이면 null, 결과를 남긴 뒤에는 그 결과. 되돌린 트랜잭션은 자리를 남기지 않는다', async () => {
+    const requestId = `req-${Date.now()}`;
+    await assert.rejects(
+      db.transaction(async (tx) => {
+        assert.equal(await new Idempotency(tx, device, requestId, 'sample').previous(), null);
+        throw new Error('되돌리기');
+      }),
+      /되돌리기/,
+    );
+    await db.transaction(async (tx) => {
+      const once = new Idempotency(tx, device, requestId, 'sample');
+      assert.equal(await once.previous(), null);
+      await once.remember({ status: 'saved', n: 1 });
+    });
+    const again = await db.transaction((tx) =>
+      new Idempotency(tx, device, requestId, 'sample').previous(),
+    );
+    assert.deepEqual(again, { status: 'saved', n: 1 });
+    await assert.rejects(
+      db.transaction((tx) => new Idempotency(tx, device, requestId, 'other').previous()),
+      Conflict,
+    );
+  });
+
+  test('같은 요청이 동시에 오면 뒤의 요청은 앞의 결과를 받는다', async () => {
+    const requestId = `req-race-${Date.now()}`;
+    const results = await Promise.all(
+      [1, 2, 3].map((n) =>
+        db.transaction(async (tx) => {
+          const once = new Idempotency(tx, device, requestId, 'sample');
+          const before = await once.previous();
+          if (before) return before;
+          await tx`SELECT pg_sleep(0.05)`;
+          await once.remember({ by: n });
+          return { by: n };
+        }),
+      ),
+    );
+    assert.equal(new Set(results.map((r) => JSON.stringify(r))).size, 1, '셋 모두 같은 결과');
   });
 });
 

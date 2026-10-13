@@ -3,7 +3,8 @@
 ## 하는 일
 AI 도구(Claude Code, Codex 등)가 들어오는 입구. MCP 프로토콜, 도구 등록, 읽기 기록.
 도구 자체(`*.tool.ts`)는 각 모듈에 있고, 여기서는 모아서 연다. 비즈니스 규칙을 두지 않는다.
-`McpController`(`/mcp`, 기기 토큰이 없으면 401 + 인증 안내 주소)와 `McpToolbox`(각 모듈의 도구 모음, 지금은 비어 있음).
+`McpController`(`/mcp`, 기기 토큰이 없으면 401 + 인증 안내 주소)와 `McpToolbox`(각 모듈의 도구 모음: vault의 `save_session`).
+도구 응답의 링크에 쓸 사이트 주소는 `McpController`가 account에서 읽어 도구에 넘긴다 (`BaseTool.handle(actor, raw, site)`).
 통신은 platform/base의 `McpEndpoint`가 한다. 인증(OAuth)과 기기는 account 모듈.
 
 ## 소유 데이터

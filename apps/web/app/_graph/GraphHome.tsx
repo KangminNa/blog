@@ -6,27 +6,48 @@ import { BlogForm } from '../_admin/BlogForm';
 import { DevicesPanel } from '../_admin/DevicesPanel';
 import { LinkedLogins } from '../_admin/LinkedLogins';
 import { PluginsPanel } from '../_admin/PluginsPanel';
+import { SessionsPanel } from '../_admin/SessionsPanel';
 import { api } from '../_lib/client-api';
 import type { Owner, SpaceInfo } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
 import { useToast } from '../_ui/useToast';
 
-type Sheet = 'blog' | 'plugins' | 'devices' | 'account' | null;
+type Sheet = 'sessions' | 'blog' | 'plugins' | 'devices' | 'account' | null;
+const SHEETS: readonly Sheet[] = ['sessions', 'blog', 'plugins', 'devices', 'account'];
 
 // 그래프 홈 (기준 시안 "밤길"). 방문자 화면과 관리 모드가 같은 무대를 쓴다.
 // 그래프의 점·선은 세션이 들어오고 그래프 API(M2)가 생기면 이 무대 위에 그린다. 지금은 빈 그래프 안내.
-export function GraphHome({ space, owner }: { space: SpaceInfo; owner: Owner | null }) {
+export function GraphHome({
+  space,
+  owner,
+  saved,
+}: {
+  space: SpaceInfo;
+  owner: Owner | null;
+  /** 주인에게만: 저장한 세션 수 (첫 쪽 기준, more면 그보다 많음) */
+  saved: { count: number; more: boolean } | null;
+}) {
   const [admin, setAdmin] = useState(false);
   const [sheet, setSheet] = useState<Sheet>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [info, setInfo] = useState(space);
   const [toast, showToast] = useToast();
 
-  // 외부 계정 연결에서 돌아오면 ?sheet=account(계정 시트 열기), 실패하면 ?error=이유
+  // ?sheet=이름으로 그 시트를 연다: 외부 계정 연결에서 돌아올 때(account), AI 도구의 세션 링크(sessions&session=id).
+  // 실패하면 ?error=이유
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (owner && params.get('sheet') === 'account') {
+    const asked = SHEETS.find((s) => s === params.get('sheet'));
+    if (asked && !owner) {
+      // 로그인하지 않은 채 링크를 열었다: 로그인한 뒤 같은 링크로 돌아온다
+      const back = `${window.location.pathname}${window.location.search}`;
+      window.location.href = `/login?return=${encodeURIComponent(back)}`;
+      return;
+    }
+    if (owner && asked) {
       setAdmin(true);
-      setSheet('account');
+      setSheet(asked);
+      setSessionId(params.get('session'));
     }
     const error = params.get('error');
     if (error) showToast(error);
@@ -46,7 +67,7 @@ export function GraphHome({ space, owner }: { space: SpaceInfo; owner: Owner | n
   function toggleAdmin() {
     const next = !admin;
     setAdmin(next);
-    setSheet(next ? 'blog' : null);
+    setSheet(next ? 'sessions' : null);
     showToast(
       next ? '관리자 화면이에요. 방문자에게는 보이지 않아요' : '방문자 화면으로 돌아왔어요',
     );
@@ -71,12 +92,10 @@ export function GraphHome({ space, owner }: { space: SpaceInfo; owner: Owner | n
         </a>
         <div className="top-right">
           {owner ? (
-            <>
-              <button type="button" className="mode" aria-pressed={admin} onClick={toggleAdmin}>
-                <span className="led" />
-                {admin ? '관리 모드' : '관리자 화면 보기'}
-              </button>
-            </>
+            <button type="button" className="mode" aria-pressed={admin} onClick={toggleAdmin}>
+              <span className="led" />
+              {admin ? '관리 모드' : '관리자 화면 보기'}
+            </button>
           ) : info.installed ? (
             <a className="mode" href="/login">
               <span className="led" />
@@ -94,14 +113,23 @@ export function GraphHome({ space, owner }: { space: SpaceInfo; owner: Owner | n
       <main className="empty">
         <CairnMark size={96} stack />
         {info.installed ? (
-          <>
-            <h1>아직 쌓인 세션 없음</h1>
-            <p>
-              {owner
-                ? 'AI 도구를 연결하고 작업을 저장하면 도착 구역에 점으로 쌓여요. 정리하면 wiki와 카테고리로 이어져요.'
-                : 'AI와 함께 한 작업을 여기에 그래프로 쌓아요.'}
-            </p>
-          </>
+          saved && saved.count > 0 ? (
+            <>
+              <h1>
+                쌓인 세션 {saved.count}개{saved.more ? ' 이상' : ''}
+              </h1>
+              <p>그래프로 그리기 전이에요. 관리 모드의 세션에서 볼 수 있어요.</p>
+            </>
+          ) : (
+            <>
+              <h1>아직 쌓인 세션 없음</h1>
+              <p>
+                {owner
+                  ? 'AI 도구를 연결하고 작업을 저장하면 도착 구역에 점으로 쌓여요. 정리하면 wiki와 카테고리로 이어져요.'
+                  : 'AI와 함께 한 작업을 여기에 그래프로 쌓아요.'}
+              </p>
+            </>
+          )
         ) : (
           <>
             <h1>아직 설치 전이에요</h1>
@@ -116,6 +144,15 @@ export function GraphHome({ space, owner }: { space: SpaceInfo; owner: Owner | n
         )}
       </main>
 
+      {admin && sheet === 'sessions' && (
+        <section className="sheet" aria-label="세션">
+          <div className="sheet-head">
+            <h2>세션</h2>
+            <small>AI 도구가 저장한 작업</small>
+          </div>
+          <SessionsPanel initialId={sessionId} />
+        </section>
+      )}
       {admin && sheet === 'blog' && (
         <section className="sheet" aria-label="블로그 정보">
           <div className="sheet-head">
@@ -172,6 +209,13 @@ export function GraphHome({ space, owner }: { space: SpaceInfo; owner: Owner | n
       <nav className="dock" aria-label="메뉴">
         {admin ? (
           <>
+            <button
+              type="button"
+              aria-current={sheet === 'sessions'}
+              onClick={() => setSheet(sheet === 'sessions' ? null : 'sessions')}
+            >
+              세션
+            </button>
             <button
               type="button"
               aria-current={sheet === 'blog'}

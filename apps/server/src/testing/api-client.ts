@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../app.module';
@@ -160,6 +161,43 @@ export class ApiClient {
     if (done.status !== 200 || !session)
       throw new Error(`로그인 실패: ${done.status} ${done.text}`);
     return new TestUser({ cairn_session: session });
+  }
+
+  /**
+   * 기기를 연결하고 access 토큰을 돌려준다. AI 도구가 하는 순서 그대로:
+   * 스스로 등록 → 승인 요청 → 주인이 승인 화면에서 연결 → 코드를 토큰으로 (PKCE).
+   * 사이트 주소(블로그 정보)가 정해져 있어야 한다.
+   */
+  async connectDevice(owner: TestUser, name: string): Promise<string> {
+    const redirect = 'http://localhost:33418/callback';
+    const registered = await this.request('POST', '/oauth/register', TestUser.visitor, {
+      client_name: 'Claude Code',
+      redirect_uris: [redirect],
+    });
+    const clientId = String(registered.json().client_id);
+    const verifier = randomBytes(32).toString('base64url');
+    const query = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: redirect,
+      code_challenge: createHash('sha256').update(verifier).digest('base64url'),
+      code_challenge_method: 'S256',
+      state: 'test',
+    });
+    const begin = await this.get(`/oauth/authorize?${query}`);
+    const request = new URL(begin.location ?? 'http://x').searchParams.get('request') ?? '';
+    const approved = await this.request('POST', '/api/connect/approve', owner, { request, name });
+    if (approved.status !== 200) throw new Error(`기기 승인 실패: ${approved.text}`);
+    const code = new URL(String(approved.json().redirect)).searchParams.get('code') ?? '';
+    const token = await this.form('/oauth/token', {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirect,
+      client_id: clientId,
+      code_verifier: verifier,
+    });
+    if (token.status !== 200) throw new Error(`토큰 받기 실패: ${token.text}`);
+    return String(token.json().access_token);
   }
 
   async close(): Promise<void> {

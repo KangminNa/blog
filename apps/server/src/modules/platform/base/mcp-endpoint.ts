@@ -16,9 +16,10 @@ export class McpEndpoint {
     private readonly tools: readonly BaseTool[],
   ) {}
 
-  /** 인증된 요청자(기기) 하나의 HTTP 요청 하나 (POST·GET·DELETE /mcp) */
+  /** 인증된 요청자(기기) 하나의 HTTP 요청 하나 (POST·GET·DELETE /mcp). site: 블로그의 사이트 주소 */
   async handle(
     actor: Actor,
+    site: string,
     req: IncomingMessage,
     res: ServerResponse,
     body: unknown,
@@ -40,7 +41,7 @@ export class McpEndpoint {
       try {
         if (!tool) throw new Forbidden('tool', `${request.params.name} 도구가 없어요`);
         actor.assertCan(tool.scope);
-        const result = (await tool.handle(actor, request.params.arguments ?? {})).toJSON();
+        const result = (await tool.handle(actor, request.params.arguments ?? {}, site)).toJSON();
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result) }],
           structuredContent: result as Record<string, unknown>,

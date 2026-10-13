@@ -267,7 +267,7 @@ a {
   color: var(--bg);
 }
 
-/* 아래에서 올라오는 시트 (관리 모드의 블로그·플러그인) */
+/* 아래에서 올라오는 시트 (관리 모드의 세션·블로그·플러그인·기기·계정) */
 .sheet {
   position: fixed;
   left: 50%;
@@ -688,6 +688,78 @@ textarea.input {
   color: #bdb6aa;
 }
 
+/* 세션 시트 */
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.list-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: #23211d;
+  text-align: left;
+  transition:
+    border-color 0.2s,
+    transform 0.3s var(--spring);
+}
+
+.list-row:hover {
+  border-color: rgba(232, 169, 59, 0.4);
+  transform: translateX(3px);
+}
+
+.list-row b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.list-row small {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.note-title {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.note-section h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lantern);
+}
+
+.note-section p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #d9d3c8;
+}
+
+.note-section.quote p {
+  padding: 10px 12px;
+  border-left: 2px solid var(--lantern);
+  border-radius: 0 10px 10px 0;
+  background: #1a1916;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
 /* 알림 한 줄 */
 .toast {
   position: fixed;
@@ -727,9 +799,14 @@ textarea.input {
     padding: 16px;
   }
 
+  .dock {
+    max-width: calc(100vw - 32px);
+  }
+
   .dock button {
-    padding: 0 18px;
+    padding: 0 clamp(10px, 3.2vw, 18px);
     height: 46px;
+    font-size: 14px;
   }
 
   .source {
