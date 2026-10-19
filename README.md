@@ -2,7 +2,7 @@
 
 **AI와 함께 일한 세션을 모아 그래프로 키우고, 그 자료로 블로그 글을 쓰는 self-hosted 오픈소스 블로그 엔진.**
 
-> 상태: **개발 시작 (M0 진행 중).** 개발 환경과 DB 스키마까지 준비됐습니다. "설치 (예정)"의 명령은 아직 동작하지 않습니다.
+> 상태: **M1 수집 진행 중.** 설치·로그인, 기기 연결(Claude Code · Codex · Claude 앱 · ChatGPT), 세션 저장까지 동작합니다. 운영용 이미지는 v0.1에서 제공하고, 지금은 아래 "설치"대로 테스트 서버를 띄울 수 있습니다.
 
 ---
 
@@ -151,27 +151,61 @@ docker compose up --build
 
 ---
 
-## 설치 (예정)
+## 설치
 
-> 아직 동작하지 않습니다. v0.1에서 제공할 사용 방식입니다.
+> 운영용 이미지는 v0.1(M5)에서 제공합니다. 지금은 개발용 Docker 구성(코드 감시 모드)으로 테스트 서버를 띄웁니다.
+> 화면을 처음 열 때 느리고 메모리를 많이 써서 RAM 2GB 이상인 서버를 권합니다.
 
 **1. 서버 띄우기**
 
+필요한 것: Docker(Compose 포함), git, 도메인. 서버에 Node.js·pnpm은 없어도 됩니다.
+
 ```bash
-git clone https://github.com/<owner>/cairn.git
-cd cairn/docker
-cp .env.example .env    # 사이트 주소 입력
-docker compose up -d
+git clone https://github.com/KangminNa/blog.git cairn
+cd cairn
+cp .env.example .env
 ```
 
-서버 로그에 나오는 **설치 코드**를 확인하고, 브라우저로 접속해 설치 마법사를 따라갑니다. 설치 코드 → 관리자 계정(아이디·비밀번호) → 블로그 정보 → 플러그인 순서입니다. 비밀번호를 잊으면 서버에서 `pnpm owner reset-password`로 다시 정합니다. HTTPS와 리버스 프록시(Caddy, Nginx Proxy Manager 등)는 직접 준비합니다. 필요한 프록시 설정은 예시로 제공할 예정입니다.
+`.env`에서 세 값을 정합니다. 블로그 이름·사이트 주소·플러그인은 `.env`가 아니라 설치 마법사에서 정합니다.
+
+```ini
+DB_PASSWORD=<긴 임의 값>                     # DB를 처음 만들 때 정해져서 나중에 바꾸지 않습니다
+CAIRN_SECRET_KEY=<openssl rand -base64 32 결과>  # 비밀값 암호화 키. 한 번 정하면 바꾸지 않습니다
+CAIRN_WEB_URL=https://내블로그주소              # 서버 로그의 설치 코드 안내에 쓰는 주소
+```
+
+```bash
+docker compose up -d --build
+docker compose logs server | grep 설치     # 설치 코드
+```
+
+업데이트는 `git pull && docker compose up -d --build`입니다. 새 마이그레이션은 `migrate`가 적용합니다.
+
+**2. https 프록시 (Caddy 예시)**
+
+DB(5432)·서버(4000)·웹(3000) 포트는 이 서버 안(127.0.0.1)에서만 열립니다. 밖에는 80·443만 열고 앞에 https 프록시를 둡니다.
+Caddy를 서버에 직접 설치했다면 `/etc/caddy/Caddyfile`에 아래를 넣고 `sudo systemctl reload caddy`. 인증서 받기, http → https, `X-Forwarded-Proto`·`X-Forwarded-For` 넘기기를 Caddy가 알아서 합니다.
+
+```
+내블로그주소 {
+	@server path /api/* /mcp /oauth/* /.well-known/*
+	reverse_proxy @server 127.0.0.1:4000
+	reverse_proxy 127.0.0.1:3000
+}
+```
+
+**3. 설치 마법사**
+
+`https://내블로그주소/install`을 열고 설치 코드 → 관리자 계정(아이디·비밀번호) → 블로그 정보 → 플러그인 순서로 진행합니다.
+**블로그 정보의 사이트 주소에 `https://내블로그주소`를 꼭 넣습니다.** 기기 연결과 앱 연결이 이 주소를 씁니다.
+비밀번호를 잊으면 서버에서 `docker compose exec server pnpm --silent --filter @cairn/server cli owner reset-password`로 다시 정합니다 (모든 로그인이 끝남).
 
 **배포할 때 지킬 것**
 
 - **사이트 주소는 https만 됩니다.** 비밀번호·로그인 쿠키·기기 토큰이 그대로 오가지 않게 하려고, `http://192.168.x.x` 같은 주소는 받지 않습니다. 같은 컴퓨터 안에서만 쓰는 `http://localhost`는 됩니다.
   - 공개 서버: Caddy처럼 인증서를 알아서 받는 프록시를 앞에 둡니다.
   - 집 안에서만 쓸 때: Tailscale(`tailscale serve`)이나 Caddy의 내부 인증서로 https를 붙입니다.
-- **밖에는 프록시만 엽니다.** 서버(4000)와 웹(3000) 포트는 밖에 열지 않습니다. 서버는 같은 컴퓨터·내부망의 프록시가 알려 주는 접속 IP만 믿기 때문에, 포트를 직접 열면 IP를 속여 시도 횟수 제한을 피할 수 있습니다.
+- **밖에는 프록시만 엽니다.** `docker-compose.yml`의 포트를 `127.0.0.1` 밖으로 바꾸지 않습니다. Docker가 연 포트는 ufw 같은 방화벽을 거치지 않습니다. 서버는 같은 컴퓨터·내부망의 프록시가 알려 주는 접속 IP만 믿기 때문에, 포트를 직접 열면 IP를 속여 시도 횟수 제한을 피할 수 있습니다.
 - **프록시가 할 일**
   - http로 온 요청을 https로 돌려보냅니다.
   - `X-Forwarded-Proto`와 `X-Forwarded-For`를 서버에 넘깁니다. 없으면 로그인 쿠키에 `Secure`가 붙지 않습니다.
@@ -180,18 +214,19 @@ docker compose up -d
   - 프록시 접속 기록에 주소의 파라미터(`?` 뒤)를 남기지 않게 합니다.
   - 서버 디스크를 암호화합니다.
 
-**2. 작업하는 컴퓨터 연결하기**
+**4. 작업하는 컴퓨터 연결하기**
 
 ```bash
-npx @<scope>/cairn connect https://내블로그주소            # Claude Code
-npx @<scope>/cairn connect https://내블로그주소 --tool codex # Codex
+# 노트북에 이 저장소를 받아 pnpm install 한 뒤
+pnpm cairn connect https://내블로그주소               # Claude Code
+pnpm cairn connect https://내블로그주소 --tool codex  # Codex
 ```
 
-스킬(지금은 `cairn-save`)과 검토자를 AI 도구에 넣고, MCP 서버를 등록하고, 브라우저에서 블로그에 로그인해 이 기기를 연결합니다. 그 도구의 명령줄(`claude` 또는 `codex`)이 필요합니다. `--review-with codex`처럼 다른 회사 모델을 교차 검토자로 고를 수 있습니다. npm에 올리기 전에는 저장소에서 `pnpm cairn connect …`로 실행합니다. 스킬 폴더를 직접 복사하는 방법은 관리 화면의 기기 시트에 있습니다.
+스킬(지금은 `cairn-save`)과 검토자를 AI 도구에 넣고, MCP 서버를 등록하고, 브라우저에서 블로그에 로그인해 이 기기를 연결합니다. 그 도구의 명령줄(`claude` 또는 `codex`)이 필요합니다. `--review-with codex`처럼 다른 회사 모델을 교차 검토자로 고를 수 있습니다. npm에 올린 뒤(v0.1)에는 `npx`로 바로 실행합니다. 스킬 폴더를 직접 복사하는 방법은 관리 화면의 기기 시트에 있습니다.
 
 **Claude 앱 · ChatGPT**(웹·데스크톱 채팅)는 명령 없이 관리 화면 → 기기에서 연결합니다. "ChatGPT·Claude 앱 연결 허용"을 켜고, 앱의 커넥터 설정에 `https://내블로그주소/mcp`를 넣은 뒤 블로그에서 승인하고, 같은 화면의 `cairn-save.zip`을 앱의 스킬에 올립니다. 앱은 그 회사 서버에서 블로그로 들어오므로 **인터넷에서 열리는 https 주소**가 필요합니다 (집 안 서버라면 Cloudflare Tunnel이나 `tailscale funnel`처럼 밖으로 여는 터널). 앱에서는 대화 원문 대조와 다른 맥락의 검토를 할 수 없어 미리보기에 "독립 검토 아님"이 붙습니다.
 
-**3. 사용하기**
+**5. 사용하기**
 
 AI 도구에서 작업을 마친 뒤 **"이 세션 저장해"**.
 

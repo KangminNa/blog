@@ -46,7 +46,7 @@ services:
     environment:
       DATABASE_URL: *db-url
       PORT: 4000
-      CAIRN_WEB_URL: http://localhost:${WEB_PORT:-3000}   # 사람이 여는 웹 주소 (설치 코드 안내에 씀)
+      CAIRN_WEB_URL: ${CAIRN_WEB_URL:-http://localhost:${WEB_PORT:-3000}}   # 사람이 여는 웹 주소 (설치 코드 안내에 씀)
     ports:
       - "127.0.0.1:${SERVER_PORT:-4000}:4000"   # 이 컴퓨터에서만. 웹은 컨테이너끼리 server:4000으로 부른다
     volumes:
@@ -86,7 +86,7 @@ services:
       API_URL: http://server:4000
       WATCHPACK_POLLING: "true"
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"   # 이 컴퓨터에서만. 서버에 올리면 앞의 https 프록시(Caddy 등)만 밖에 연다
     volumes:
       - ./apps/web/app:/repo/apps/web/app
       - ./plugins:/repo/plugins

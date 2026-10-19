@@ -33,7 +33,7 @@ docs/          기획 문서 (기획서 · MVP 기획서 · 테이블 설계 · 
 | `pnpm install-code` | 설치 코드 (아직 주인이 없을 때). 서버 시작 로그에도 나온다 |
 | `pnpm owner reset-password` | 주인 비밀번호 다시 정하기 (표준 입력으로). 모든 로그인이 끝난다 |
 | `pnpm plugin …` | 플러그인 상태·켜기·끄기·설정·동작 (`plugins/CLAUDE.md`). 관리 화면 전까지 쓰는 길 |
-| `pnpm cairn connect <블로그 주소>` | 이 컴퓨터의 Claude Code를 블로그에 연결 (스킬 넣기 · MCP 등록 · 브라우저 로그인 · 연결 확인). `pnpm cairn status`로 상태 |
+| `pnpm cairn connect <블로그 주소>` | 이 컴퓨터의 Claude Code(`--tool codex`면 Codex)를 블로그에 연결 (스킬·검토자 넣기 · MCP 등록 · 브라우저 로그인 · 연결 확인). `pnpm cairn status`로 상태 |
 | `pnpm secret:new` | 서버 키(`CAIRN_SECRET_KEY`) 만들기. 비밀값 암호화에 씀 |
 | `pnpm format` | Biome 포맷·자동 수정 |
 | `pnpm db:new <이름>` | 새 마이그레이션 파일 |
