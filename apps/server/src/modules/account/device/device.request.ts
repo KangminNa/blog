@@ -131,7 +131,7 @@ export class RevokeTokenRequest extends BaseRequest {
 
 /**
  * 승인 화면에 걸린 요청. 승인을 기다리는 동안의 값(어느 도구, 어디로 돌려보낼지, PKCE)을 DB에 두지 않고
- * 서버 키로 서명해 승인 화면 주소에 싣는다 (10분). 주인이 연결·거절을 누르면 이 값을 그대로 돌려받는다.
+ * 서버 키로 암호화해 승인 화면 주소에 싣는다 (10분). 주인이 연결·거절을 누르면 이 값을 그대로 돌려받는다.
  */
 export class ConsentRequest extends BaseRequest {
   static readonly SECONDS = 600;
@@ -155,7 +155,7 @@ export class ConsentRequest extends BaseRequest {
     codeChallenge: string,
     state: string | null,
   ): string {
-    return box.sign(
+    return box.pack(
       JSON.stringify({ clientId, clientName, redirectUri, codeChallenge, state }),
       ConsentRequest.SECONDS,
     );
@@ -164,7 +164,7 @@ export class ConsentRequest extends BaseRequest {
   /** raw: { request, name? } — request는 승인 화면 주소의 ?request= 값 */
   static from(raw: unknown, box: SecretBox): ConsentRequest {
     return BaseRequest.read(raw, (f) => {
-      const opened = box.verify(f.text('request', 4000));
+      const opened = box.unpack(f.text('request', 4000));
       if (!opened) f.reject('request', '승인 요청이 만료됐어요. AI 도구에서 다시 연결해 주세요');
       const v = (opened ? JSON.parse(opened) : {}) as Record<string, string | null>;
       return new ConsentRequest(

@@ -3,6 +3,7 @@
 
 /** 들어온 HTTP 요청 */
 export type HttpRequest = {
+  method: string;
   headers: Record<string, unknown>;
   query: Record<string, unknown>;
   ip?: string;

@@ -99,7 +99,7 @@ export function GraphHome({
           ) : info.installed ? (
             <a className="mode" href="/login">
               <span className="led" />
-              주인 로그인
+              로그인
             </a>
           ) : (
             <a className="mode" href="/install">

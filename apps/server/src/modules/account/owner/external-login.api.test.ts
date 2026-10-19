@@ -126,7 +126,7 @@ describe('계정 연결', () => {
       `/api/auth/login/github/callback?code=ok-2002&state=${state}`,
       new TestUser(begin.cookies()),
     );
-    assert.match(errorOf(stolen) ?? '', /주인 계정으로 로그인해 주세요/);
+    assert.match(errorOf(stolen) ?? '', /계정을 연결하려면 로그인해 주세요/);
   });
 
   test('로그인을 시작한 브라우저가 아니면 400 (state)', async () => {

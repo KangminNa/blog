@@ -1,5 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseService, Database, NotFound, RuleViolation } from '../../platform';
+import {
+  Actor,
+  AttemptLimiter,
+  BaseService,
+  Database,
+  NotFound,
+  RuleViolation,
+  TooManyRequests,
+} from '../../platform';
 import { SpaceQuery } from '../space/space.query';
 import { AuthorizationCode } from './authorization-code';
 import { Device, DeviceCredential } from './device';
@@ -19,6 +27,11 @@ import { OAuthError } from './oauth-error';
 // 그리고 관리 화면의 기기 이름·권한 바꾸기, 끊기, 예비 기기 토큰.
 @Injectable()
 export class DeviceService extends BaseService {
+  /** 스스로 등록은 한 곳(IP)에서 1시간에 20번까지 */
+  private readonly registrations = new AttemptLimiter(20, 3_600_000);
+  /** 하루가 지나도록 토큰을 한 번도 받지 않은 등록은 새 등록이 들어올 때 지운다 */
+  private static readonly UNUSED_MS = 86_400_000;
+
   constructor(
     db: Database,
     private readonly spaces: SpaceQuery,
@@ -26,20 +39,32 @@ export class DeviceService extends BaseService {
     super(db);
   }
 
-  /** AI 도구가 스스로 등록한다 (누구나). 설치가 끝난 블로그만 */
-  async registerClient(actor: Actor, req: RegisterClientRequest): Promise<OAuthClient> {
+  /** AI 도구가 스스로 등록한다 (누구나). 설치가 끝난 블로그만, 한 곳에서 1시간에 20번까지 */
+  async registerClient(actor: Actor, req: RegisterClientRequest, ip: string): Promise<OAuthClient> {
+    try {
+      this.registrations.hit(ip);
+    } catch (error) {
+      if (error instanceof TooManyRequests)
+        throw new OAuthError('temporarily_unavailable', '잠시 뒤 다시 등록해 주세요', 429);
+      throw error;
+    }
     const status = await this.spaces.installStatus(actor, null);
     if (!status.installed || !status.spaceId)
       throw new OAuthError('invalid_client_metadata', '아직 설치가 끝나지 않은 블로그예요');
     const client = OAuthClient.register(status.spaceId, req.clientName, req.redirectUris);
-    await this.transaction((tx) => new OAuthClientRepository(tx).save(client));
+    const before = new Date(Date.now() - DeviceService.UNUSED_MS);
+    await this.transaction(async (tx) => {
+      const clients = new OAuthClientRepository(tx);
+      await clients.deleteUnused(before);
+      await clients.save(client);
+    });
     return client;
   }
 
   /** 주인이 승인 화면에서 "연결"을 누름 → 5분짜리 일회용 코드 (기기는 코드를 토큰으로 바꿀 때 생긴다) */
   async approve(actor: Actor, req: ConsentRequest): Promise<AuthorizationCode> {
     actor.assertCan(Actor.WRITE);
-    if (!actor.spaceId || !actor.id) throw new RuleViolation('주인 계정으로 로그인해 주세요');
+    if (!actor.spaceId || !actor.id) throw new RuleViolation('로그인해 주세요');
     if (await new DeviceRepository(this.db.sql).nameTaken(actor.spaceId, req.name))
       throw new RuleViolation(
         `이미 쓰는 기기 이름이에요: ${req.name.trim()}. 다른 이름을 써 주세요`,

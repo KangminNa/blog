@@ -2,7 +2,7 @@
   "name": "login-github",
   "version": "0.1.0",
   "cairn": ">=0.1",
-  "description": "GitHub 계정으로 주인 로그인을 할 수 있게 한다. 주인이 계정 시트에서 먼저 연결한 GitHub 계정만 로그인된다",
+  "description": "GitHub 계정으로 로그인할 수 있게 한다. 계정 시트에서 먼저 연결한 GitHub 계정만 로그인된다",
   "server": "server/plugin.ts",
   "uses": ["login:github"],
   "settings": {

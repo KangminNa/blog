@@ -11,7 +11,7 @@ import { useToast } from '../_ui/useToast';
 
 // 설치 마법사 5단계. 앞의 둘(설치 코드 → 주인 계정)은 아직 주인이 없을 때,
 // 뒤의 셋(블로그 정보 → 플러그인 → 첫 기기)은 주인으로 로그인한 뒤.
-const STEPS = ['설치 코드', '주인 계정', '블로그 정보', '플러그인', '첫 기기'] as const;
+const STEPS = ['설치 코드', '관리자 계정', '블로그 정보', '플러그인', '첫 기기'] as const;
 type Step = 0 | 1 | 2 | 3 | 4;
 
 /** 이전 단계로 갈 수 있는 곳. 주인 계정을 만든 뒤에는 그 앞(설치 코드·계정)으로 돌아가지 않는다 */
@@ -198,7 +198,7 @@ function OwnerStep({ onDone }: { onDone: (login: string) => Promise<void> }) {
 
   return (
     <form onSubmit={create} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <h1>주인 계정을 만들어요</h1>
+      <h1>관리자 계정을 만들어요</h1>
       <p>블로그를 관리할 계정이에요. 하나만 만들 수 있고, 만들면 바로 로그인돼요.</p>
       <label className="field">
         <span>아이디</span>
@@ -245,7 +245,7 @@ function OwnerStep({ onDone }: { onDone: (login: string) => Promise<void> }) {
         type="submit"
         disabled={busy || login.length < 3 || password.length < 10}
       >
-        <span>{busy ? '만드는 중' : '주인 계정 만들기'}</span>
+        <span>{busy ? '만드는 중' : '관리자 계정 만들기'}</span>
         <span className="arr">→</span>
       </button>
     </form>
@@ -292,9 +292,9 @@ function NotOwner() {
     <>
       <CairnMark size={64} stack />
       <h1>이미 설치된 블로그예요</h1>
-      <p>주인 계정으로 로그인하면 남은 설정(블로그 정보, 플러그인)을 이어서 할 수 있어요.</p>
+      <p>로그인하면 남은 설정(블로그 정보, 플러그인)을 이어서 할 수 있어요.</p>
       <a className="cta" href="/login?return=/install">
-        <span>주인 로그인</span>
+        <span>로그인</span>
         <span className="arr">→</span>
       </a>
     </>

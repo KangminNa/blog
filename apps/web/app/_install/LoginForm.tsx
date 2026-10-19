@@ -5,7 +5,7 @@ import { api, describe } from '../_lib/client-api';
 import type { LoginMethod } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
 
-// 주인 로그인 카드. 그래프 무대 위 가운데. 켜진 로그인 플러그인(GitHub 등)의 버튼이 아래에 붙는다.
+// 로그인 카드. 그래프 무대 위 가운데. 켜진 로그인 플러그인(GitHub 등)의 버튼이 아래에 붙는다.
 export function LoginForm({
   returnTo,
   methods,
@@ -40,9 +40,9 @@ export function LoginForm({
         </a>
       </header>
       <main className="center">
-        <form className="panel-card" onSubmit={submit} aria-label="주인 로그인">
+        <form className="panel-card" onSubmit={submit} aria-label="로그인">
           <CairnMark size={56} stack />
-          <h1>주인 로그인</h1>
+          <h1>로그인</h1>
           <label className="field">
             <span>아이디</span>
             <input

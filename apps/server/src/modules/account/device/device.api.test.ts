@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { ApiClient, TestUser } from '../../../testing/api-client';
+import { Database } from '../../platform';
 
 // 기기 연결 (M1 B, MCP OAuth 2.1). AI 도구가 하는 순서 그대로 끝까지 돌린다:
 //   /mcp 401 → 안내 문서 → 스스로 등록 → 승인 요청 → 주인이 승인 화면에서 연결 → 코드를 토큰으로(PKCE) → /mcp
@@ -101,6 +102,58 @@ describe('AI 도구가 찾아오기', () => {
     assert.equal(bad.status, 400);
     assert.equal(bad.json().error, 'invalid_redirect_uri');
     assert.match(await registerClient(), /^cairn_[0-9a-f]{32}$/);
+  });
+
+  test('스스로 등록은 한 곳(IP)에서 1시간에 20번까지. 21번째는 429 (OAuth 오류 모양)', async () => {
+    // 이 파일의 다른 등록과 세지 않게 새 서버(같은 DB)로 센다
+    const fresh = await ApiClient.start();
+    try {
+      const body = { client_name: 'Claude Code', redirect_uris: [REDIRECT] };
+      for (let i = 0; i < 20; i++)
+        assert.equal(
+          (await fresh.request('POST', '/oauth/register', TestUser.visitor, body)).status,
+          201,
+        );
+      const over = await fresh.request('POST', '/oauth/register', TestUser.visitor, body);
+      assert.equal(over.status, 429);
+      assert.deepEqual(over.json(), {
+        error: 'temporarily_unavailable',
+        error_description: '잠시 뒤 다시 등록해 주세요',
+      });
+    } finally {
+      await fresh.close();
+    }
+  });
+
+  test('하루가 지나도록 토큰을 받지 않은 등록은 새 등록이 들어올 때 지운다. 토큰을 받은 등록은 남는다', async () => {
+    const sql = api.service(Database).sql;
+    const unused = await registerClient('unused');
+    const used = await registerClient('used');
+    const { verifier, challenge } = pkce();
+    const begin = await api.get(authorizePath(used, challenge));
+    const request = new URL(begin.location ?? '').searchParams.get('request') ?? '';
+    const approved = await api.request('POST', '/api/connect/approve', owner, {
+      request,
+      name: 'old-pc',
+    });
+    const code = new URL(String(approved.json().redirect)).searchParams.get('code') ?? '';
+    const token = await api.form('/oauth/token', {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT,
+      client_id: used,
+      code_verifier: verifier,
+    });
+    assert.equal(token.status, 200, token.text);
+    await sql`UPDATE account.oauth_clients SET created_at = now() - interval '2 days'
+              WHERE client_id IN (${unused}, ${used})`;
+    await registerClient('new');
+    const left =
+      await sql`SELECT client_id FROM account.oauth_clients WHERE client_id IN (${unused}, ${used})`;
+    assert.deepEqual(
+      left.map((r) => r.client_id),
+      [used],
+    );
   });
 });
 
@@ -214,6 +267,22 @@ describe('MCP', () => {
     assert.equal(tools.status, 200, tools.text);
     const names = (tools.json().result as { tools: { name: string }[] }).tools.map((t) => t.name);
     assert.deepEqual(names, ['save_session'], '기본 권한(올리기 + 공개 읽기)으로 보이는 도구');
+  });
+
+  test('Bearer 토큰으로 오는 요청은 Origin을 보지 않는다 (AI 도구는 브라우저가 아니다)', async () => {
+    const { access } = await connect('origin-pc');
+    const res = await fetch(`${api.baseUrl}/mcp`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        authorization: `Bearer ${access}`,
+        origin: 'https://evil.example',
+        'sec-fetch-site': 'cross-site',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    });
+    assert.equal(res.status, 200, await res.text());
   });
 });
 

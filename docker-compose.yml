@@ -14,7 +14,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-cairn}
       POSTGRES_DB: cairn
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"   # 이 컴퓨터에서만 (같은 와이파이의 다른 기기는 못 붙음)
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -48,7 +48,7 @@ services:
       PORT: 4000
       CAIRN_WEB_URL: http://localhost:${WEB_PORT:-3000}   # 사람이 여는 웹 주소 (설치 코드 안내에 씀)
     ports:
-      - "${SERVER_PORT:-4000}:4000"
+      - "127.0.0.1:${SERVER_PORT:-4000}:4000"   # 이 컴퓨터에서만. 웹은 컨테이너끼리 server:4000으로 부른다
     volumes:
       - ./apps/server/src:/repo/apps/server/src
       - ./plugins:/repo/plugins

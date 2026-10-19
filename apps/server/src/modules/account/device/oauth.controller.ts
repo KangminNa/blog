@@ -39,10 +39,11 @@ export class OAuthController {
   @Post('oauth/register')
   async register(
     @CurrentActor() actor: Actor,
+    @Req() req: HttpRequest,
     @Body() body: unknown,
   ): Promise<ClientRegisteredResponse> {
     return ClientRegisteredResponse.of(
-      await this.service.registerClient(actor, RegisterClientRequest.from(body)),
+      await this.service.registerClient(actor, RegisterClientRequest.from(body), req.ip ?? ''),
     );
   }
 

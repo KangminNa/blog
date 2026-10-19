@@ -40,7 +40,7 @@ export class AuthorizationPolicy {
   deniedRedirect(consent: ConsentRequest): string {
     return AuthorizationPolicy.back(consent.redirectUri, consent.state, {
       error: 'access_denied',
-      error_description: '블로그 주인이 연결을 거절했어요',
+      error_description: '연결을 거절했어요',
     });
   }
 

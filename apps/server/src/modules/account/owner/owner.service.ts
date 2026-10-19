@@ -138,7 +138,7 @@ export class OwnerService extends BaseService {
       await this.external.callbackUrl(actor, method.name),
     );
     if (req.isLink && (actor.kind !== 'owner' || actor.id !== req.userId))
-      throw new Unauthenticated('계정을 연결하려면 주인 계정으로 로그인해 주세요');
+      throw new Unauthenticated('계정을 연결하려면 로그인해 주세요');
     return this.transaction(async (tx) => {
       const owners = new OwnerRepository(tx);
       if (req.isLink) {
@@ -177,7 +177,7 @@ export class OwnerService extends BaseService {
     if (!(actor instanceof SystemActor))
       throw new Unauthenticated('비밀번호 다시 정하기는 서버 명령줄에서만 할 수 있어요');
     const found = await new OwnerRepository(this.db.sql).findOnly();
-    if (!found) throw new NotFound('주인 계정부터 만들어 주세요 (설치 마법사)');
+    if (!found) throw new NotFound('관리자 계정부터 만들어 주세요 (설치 마법사)');
     this.passwords.check(found.login, plain);
     const hash = await this.hasher.hash(plain);
     return this.transaction(async (tx) => {

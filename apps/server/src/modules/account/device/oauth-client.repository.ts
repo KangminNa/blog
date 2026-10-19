@@ -27,6 +27,14 @@ export class OAuthClientRepository extends BaseRepository<OAuthClient> {
       VALUES (${client.clientId}, ${client.spaceId}, ${client.clientName}, ${client.redirectUris as string[]})`;
   }
 
+  /** before보다 먼저 등록했는데 토큰을 한 번도 받지 않은 클라이언트를 지운다 (승인 코드도 함께) */
+  async deleteUnused(before: Date): Promise<void> {
+    await this.sql`
+      DELETE FROM account.oauth_clients c
+      WHERE c.created_at < ${before}
+        AND NOT EXISTS (SELECT 1 FROM account.oauth_tokens t WHERE t.client_id = c.client_id)`;
+  }
+
   /** 승인 코드를 잠그고 읽는다 (한 번만 쓰이게) */
   async lockCode(codeHash: string): Promise<AuthorizationCode | null> {
     const [row] = await this.sql`

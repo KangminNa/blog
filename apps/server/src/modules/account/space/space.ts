@@ -50,7 +50,11 @@ export class Space extends BaseEntity {
     if (siteUrl !== null) this.site = Space.address(siteUrl);
   }
 
-  /** http(s)로 시작하는 주소만. 끝의 / 는 뗀다 */
+  /**
+   * https 주소만. 비밀번호·로그인 쿠키·기기 토큰이 그대로 오가지 않게 한다.
+   * 이 컴퓨터 안에서만 쓰는 개발 주소(localhost · 127.0.0.1 · [::1] · *.localhost)는 http도 된다.
+   * 끝의 / 는 뗀다.
+   */
   private static address(value: string): string {
     let url: URL;
     try {
@@ -59,8 +63,19 @@ export class Space extends BaseEntity {
       throw new RuleViolation(`주소 모양이 아니에요: ${value}`);
     }
     if (url.protocol !== 'https:' && url.protocol !== 'http:')
-      throw new RuleViolation('http:// 또는 https://로 시작하는 주소로 넣어 주세요');
+      throw new RuleViolation('https://로 시작하는 주소로 넣어 주세요');
+    if (url.protocol === 'http:' && !Space.isLocal(url.hostname))
+      throw new RuleViolation('https 주소만 쓸 수 있어요 (localhost는 http도 가능)');
     if (url.search || url.hash) throw new RuleViolation('?나 # 없이 넣어 주세요');
     return url.toString().replace(/\/+$/, '');
+  }
+
+  private static isLocal(hostname: string): boolean {
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '[::1]' ||
+      hostname.endsWith('.localhost')
+    );
   }
 }

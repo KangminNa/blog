@@ -111,7 +111,7 @@ export class RequestFields {
     return value as Record<string, unknown>;
   }
 
-  /** 위의 읽기로 잡을 수 없는 모양 문제를 알린다 (예: 서명이 맞지 않는 확인값) */
+  /** 위의 읽기로 잡을 수 없는 모양 문제를 알린다 (예: 풀리지 않는 확인값) */
   reject(name: string, problem: string): void {
     this.fail(name, problem, null);
   }

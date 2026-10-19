@@ -94,7 +94,7 @@ export function BlogForm({
           onChange={(e) => setSiteUrl(e.target.value)}
           placeholder="https://blog.example.com"
         />
-        <small>바깥에서 들어오는 주소. 리버스 프록시 뒤라면 https://로 시작하는 주소</small>
+        <small>바깥에서 들어오는 https 주소. 이 컴퓨터에서만 쓰면 http://localhost도 가능</small>
       </label>
       {error && <p className="error">{error}</p>}
       <button className="cta" type="submit" disabled={busy || !name.trim()}>

@@ -110,6 +110,21 @@ describe('save_session (AI 도구)', () => {
     });
   });
 
+  test('칸마다 한도까지 한글로 채워도(요청 약 250KB) 저장된다', async () => {
+    const full = '가'.repeat(20_000);
+    const args = note('conv-big', full, {
+      project: 'big',
+      decisions: full,
+      blocked: full,
+      extra: full,
+      quotes: '나'.repeat(4_000),
+    });
+    assert.ok(Buffer.byteLength(JSON.stringify(args)) > 240_000);
+    const res = await save(laptop, args);
+    assert.equal(res.ok, true, JSON.stringify(res.body));
+    assert.equal(res.body.status, 'saved');
+  });
+
   test('다른 기기가 같은 대화 id를 보내면 다른 세션', async () => {
     const desktop = await api.connectDevice(owner, 'session-desktop');
     const a = await save(laptop, note('conv-shared', '노트북'));

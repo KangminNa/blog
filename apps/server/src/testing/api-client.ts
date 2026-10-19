@@ -90,11 +90,13 @@ export class ApiClient {
     return this.service(InstallPolicy).code();
   }
 
+  /** headers: 브라우저가 붙이는 머리글을 흉내 낼 때 (Origin, Sec-Fetch-Site 등) */
   request(
     method: string,
     path: string,
     as: TestUser = TestUser.visitor,
     body?: object,
+    headers: Readonly<Record<string, string>> = {},
   ): Promise<ApiResult> {
     return fetch(`${this.baseUrl}${path}`, {
       method,
@@ -102,6 +104,7 @@ export class ApiClient {
       headers: {
         ...(as.header ? { cookie: as.header } : {}),
         ...(body ? { 'content-type': 'application/json' } : {}),
+        ...headers,
       },
       body: body ? JSON.stringify(body) : undefined,
     }).then(async (res) => new ApiResult(res.status, await res.text(), res.headers));

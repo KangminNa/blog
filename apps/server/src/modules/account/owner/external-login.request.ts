@@ -28,7 +28,7 @@ export class ExternalStartRequest extends BaseRequest {
 }
 
 /**
- * 외부 서비스가 돌려보낸 요청. 쿼리의 state가 로그인을 시작한 브라우저의 쿠키(서명한 값)와 맞아야 한다.
+ * 외부 서비스가 돌려보낸 요청. 쿼리의 state가 로그인을 시작한 브라우저의 쿠키(암호화한 값)와 맞아야 한다.
  * 쿠키에는 "확인값|방식|돌아갈 곳|연결하는 주인"이 들어 있다. 다른 사람이 만든 링크로는 로그인·연결되지 않는다.
  */
 export class ExternalCallbackRequest extends BaseRequest {
@@ -52,7 +52,7 @@ export class ExternalCallbackRequest extends BaseRequest {
     start: ExternalStartRequest,
     userId: string | null,
   ): string {
-    return box.sign(
+    return box.pack(
       [state, start.mode, start.returnTo, userId ?? ''].join('|'),
       ExternalCallbackRequest.SECONDS,
     );
@@ -66,7 +66,7 @@ export class ExternalCallbackRequest extends BaseRequest {
   ): ExternalCallbackRequest {
     return BaseRequest.read(query, (f) => {
       const state = f.text('state', 200);
-      const [expected, mode, returnTo, userId] = (box.verify(cookie) ?? '').split('|');
+      const [expected, mode, returnTo, userId] = (box.unpack(cookie) ?? '').split('|');
       if (!expected || expected !== state)
         f.reject('state', '로그인을 시작한 브라우저에서 10분 안에 다시 해 주세요');
       const values = new Map<string, string>();

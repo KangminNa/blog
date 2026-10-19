@@ -96,7 +96,7 @@ export class OwnerRepository extends BaseRepository<Owner> {
     } catch (error) {
       // 두 브라우저가 동시에 주인이 되려 하면 DB의 "주인은 한 명" 규칙이 하나만 들인다
       if (Database.isUniqueViolation(error))
-        throw new Conflict('주인 계정은 하나만 만들 수 있어요');
+        throw new Conflict('관리자 계정은 하나만 만들 수 있어요');
       throw error;
     }
     if (owner.endsOtherSessions)

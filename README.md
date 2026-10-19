@@ -109,7 +109,7 @@ cairn/
 ├── docs/              기획서, MVP 기획서, 테이블 설계, 객체 설계
 ├── Dockerfile         앱 이미지 (server, web 공용)
 ├── docker-compose.yml db → migrate → server → web
-├── plugins/           플러그인 (comments-giscus: 글 아래 giscus 댓글 · sync-github: GitHub에 이력·백업 · login-github: GitHub로 주인 로그인)
+├── plugins/           플러그인 (comments-giscus: 글 아래 giscus 댓글 · sync-github: GitHub에 이력·백업 · login-github: GitHub로 로그인)
 ├── scripts/           모듈 경계 검사, 플러그인 화면 맞추기
 └── AGENTS.md          AI 도구 작업 규칙 (CLAUDE.md가 가져옴)
 ```
@@ -134,7 +134,7 @@ docker compose up --build
 | `pnpm check` | 린트 + 타입 검사 + 모듈 경계 검사 (CI와 같음) |
 | `pnpm test` | 서버·플러그인 테스트 (단위 + API). 테스트 전용 DB를 매번 새로 만든다 |
 | `pnpm install-code` | 설치 코드. 브라우저에서 `/install`을 열고 넣는다 |
-| `pnpm owner reset-password` | 주인 비밀번호 다시 정하기 (표준 입력으로. 모든 로그인이 끝남) |
+| `pnpm owner reset-password` | 관리자 비밀번호 다시 정하기 (표준 입력으로. 모든 로그인이 끝남) |
 | `pnpm plugin` | 플러그인 상태·켜기·설정 (예: `pnpm plugin enable sync-github`). 관리 화면이 생기면 화면에서 |
 | `pnpm secret:new` | 서버 키 만들기 (`.env`의 `CAIRN_SECRET_KEY`) |
 | `pnpm format` | 포맷 자동 수정 |
@@ -162,7 +162,21 @@ cp .env.example .env    # 사이트 주소 입력
 docker compose up -d
 ```
 
-서버 로그에 나오는 **설치 코드**를 확인하고, 브라우저로 접속해 설치 마법사를 따라갑니다. 설치 코드 → 주인 계정(아이디·비밀번호) → 블로그 정보 → 플러그인 순서입니다. 비밀번호를 잊으면 서버에서 `pnpm owner reset-password`로 다시 정합니다. HTTPS와 리버스 프록시(Nginx Proxy Manager 등)는 직접 준비합니다. 필요한 프록시 설정은 예시로 제공할 예정입니다.
+서버 로그에 나오는 **설치 코드**를 확인하고, 브라우저로 접속해 설치 마법사를 따라갑니다. 설치 코드 → 관리자 계정(아이디·비밀번호) → 블로그 정보 → 플러그인 순서입니다. 비밀번호를 잊으면 서버에서 `pnpm owner reset-password`로 다시 정합니다. HTTPS와 리버스 프록시(Caddy, Nginx Proxy Manager 등)는 직접 준비합니다. 필요한 프록시 설정은 예시로 제공할 예정입니다.
+
+**배포할 때 지킬 것**
+
+- **사이트 주소는 https만 됩니다.** 비밀번호·로그인 쿠키·기기 토큰이 그대로 오가지 않게 하려고, `http://192.168.x.x` 같은 주소는 받지 않습니다. 같은 컴퓨터 안에서만 쓰는 `http://localhost`는 됩니다.
+  - 공개 서버: Caddy처럼 인증서를 알아서 받는 프록시를 앞에 둡니다.
+  - 집 안에서만 쓸 때: Tailscale(`tailscale serve`)이나 Caddy의 내부 인증서로 https를 붙입니다.
+- **밖에는 프록시만 엽니다.** 서버(4000)와 웹(3000) 포트는 밖에 열지 않습니다. 서버는 같은 컴퓨터·내부망의 프록시가 알려 주는 접속 IP만 믿기 때문에, 포트를 직접 열면 IP를 속여 시도 횟수 제한을 피할 수 있습니다.
+- **프록시가 할 일**
+  - http로 온 요청을 https로 돌려보냅니다.
+  - `X-Forwarded-Proto`와 `X-Forwarded-For`를 서버에 넘깁니다. 없으면 로그인 쿠키에 `Secure`가 붙지 않습니다.
+  - `/api` · `/mcp` · `/oauth` · `/.well-known`은 서버(4000)로, 나머지는 웹(3000)으로 보냅니다.
+- **선택**
+  - 프록시 접속 기록에 주소의 파라미터(`?` 뒤)를 남기지 않게 합니다.
+  - 서버 디스크를 암호화합니다.
 
 **2. 작업하는 컴퓨터 연결하기**
 
@@ -170,7 +184,7 @@ docker compose up -d
 npx @<scope>/cairn connect https://내블로그주소
 ```
 
-스킬 네 개를 AI 도구에 복사하고, MCP 서버를 등록하고, 주인 로그인으로 이 기기를 연결합니다. 스킬 폴더를 직접 복사하는 방법도 제공합니다.
+스킬 네 개를 AI 도구에 복사하고, MCP 서버를 등록하고, 로그인해서 이 기기를 연결합니다. 스킬 폴더를 직접 복사하는 방법도 제공합니다.
 
 **3. 사용하기**
 
@@ -183,7 +197,7 @@ AI 도구에서 작업을 마친 뒤 **"이 세션 저장해"**.
 | 단계 | 내용 |
 |---|---|
 | M0 기반 | 모노레포, DB 이미지, 스키마, Docker Compose, CI |
-| M1 수집 | 설치 마법사, 주인 로그인, 기기 연결, `cairn-save` |
+| M1 수집 | 설치 마법사, 로그인, 기기 연결, `cairn-save` |
 | M2 그래프·검색 | 그래프 화면과 편집, 공개 설정, 키워드·의미 검색 |
 | M3 정리·읽기 | 일거리 상자, `cairn-tidy`, `cairn-recall`, 승인함, 충돌 합치기 |
 | M4 블로그 | 글 목록·페이지, 편집기, 카테고리, 글감 상자, `cairn-write` |

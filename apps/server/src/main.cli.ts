@@ -41,7 +41,7 @@ async function main() {
 async function installCode(spaces: SpaceQuery, install: InstallPolicy): Promise<void> {
   const status = await spaces.installStatus(new SystemActor(), null);
   if (status.installed) {
-    console.log('이미 설치된 블로그예요. 주인 계정으로 로그인하세요');
+    console.log('이미 설치된 블로그예요. 로그인하세요');
     return;
   }
   console.log(`설치 코드: ${install.code()}`);

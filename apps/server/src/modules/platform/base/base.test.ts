@@ -253,27 +253,38 @@ describe('입력 읽기 (M1)', () => {
   });
 });
 
-describe('SecretBox: 값 만들기와 서명 (M1)', () => {
+describe('SecretBox: 값 만들기와 짧은 값 싸기 (M1)', () => {
   const box = SecretBox.fromEnv({ CAIRN_SECRET_KEY: SecretBox.newKey() });
   const other = SecretBox.fromEnv({ CAIRN_SECRET_KEY: SecretBox.newKey() });
 
   test('같은 키·같은 이름이면 늘 같은 값, 키가 다르면 다른 값', () => {
     assert.deepEqual(box.derive('install-code'), box.derive('install-code'));
     assert.notDeepEqual(box.derive('install-code'), other.derive('install-code'));
-    assert.notDeepEqual(box.derive('install-code'), box.derive('sign'));
+    assert.notDeepEqual(box.derive('install-code'), box.derive('pack'));
   });
 
-  test('서명한 값은 같은 키로, 만료 전에만 풀린다. 고치면 풀리지 않는다', () => {
+  test('싼 값은 같은 키로, 만료 전에만 풀린다', () => {
     const now = new Date('2026-10-10T00:00:00Z');
-    const token = box.sign('install:abc|/admin', 600, now);
-    assert.equal(box.verify(token, now), 'install:abc|/admin');
-    assert.equal(box.verify(token, new Date(now.getTime() + 601_000)), null, '만료');
-    assert.equal(other.verify(token, now), null, '다른 키');
-    const [value, expires, mac] = token.split('.');
-    const forged = `${Buffer.from('install:xyz|/admin').toString('base64url')}.${expires}.${mac}`;
-    assert.equal(box.verify(forged, now), null, '값을 바꿈');
-    assert.equal(box.verify(`${value}.${Number(expires) + 9999}.${mac}`, now), null, '만료를 늘림');
-    assert.equal(box.verify(null, now), null);
+    const token = box.pack('install:abc|/admin', 600, now);
+    assert.equal(box.unpack(token, now), 'install:abc|/admin');
+    assert.equal(box.unpack(token, new Date(now.getTime() + 601_000)), null, '만료');
+    assert.equal(other.unpack(token, now), null, '다른 키');
+    assert.equal(box.unpack(null, now), null);
+    assert.equal(box.unpack('not-a-token', now), null);
+  });
+
+  test('싼 값에는 원문이 보이지 않고, 한 글자만 고쳐도 풀리지 않는다. 같은 값도 쌀 때마다 다르다', () => {
+    const now = new Date('2026-10-10T00:00:00Z');
+    const token = box.pack('install:abc|/admin', 600, now);
+    const raw = Buffer.from(token, 'base64url');
+    assert.equal(raw.includes('install'), false, '원문');
+    assert.equal(raw.includes(String(Math.floor(now.getTime() / 1000) + 600)), false, '만료 시각');
+    for (const at of [0, 14, raw.length - 1]) {
+      const forged = Buffer.from(raw);
+      forged[at] = (forged[at] ?? 0) ^ 1;
+      assert.equal(box.unpack(forged.toString('base64url'), now), null, `${at}번째 바이트를 바꿈`);
+    }
+    assert.notEqual(box.pack('same', 600, now), box.pack('same', 600, now));
   });
 });
 

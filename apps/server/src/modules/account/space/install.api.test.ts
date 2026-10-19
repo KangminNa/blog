@@ -114,6 +114,20 @@ describe('설치가 끝난 뒤', () => {
     assert.equal(res.status, 200);
     assert.ok(res.cookies().cairn_session);
   });
+
+  test('사이트 주소를 정하기 전에는 요청이 온 주소(앞의 프록시가 넘긴 주소 포함)로 연 화면만 쓸 수 있다', async () => {
+    // 막히지 않으면 version이 맞지 않아 409가 난다
+    const stale = { name: '옛 화면', version: 9999 };
+    const self = { origin: api.baseUrl, 'sec-fetch-site': 'same-origin' };
+    assert.equal((await api.request('PUT', '/api/space', owner, stale, self)).status, 409);
+    const proxied = { origin: 'http://localhost:3000', 'x-forwarded-host': 'localhost:3000' };
+    assert.equal((await api.request('PUT', '/api/space', owner, stale, proxied)).status, 409);
+    const evil = await api.request('PUT', '/api/space', owner, stale, {
+      origin: 'https://evil.example',
+    });
+    assert.equal(evil.status, 403);
+    assert.equal(evil.json().message, '이 블로그에서 연 화면에서만 바꿀 수 있어요');
+  });
 });
 
 describe('블로그 정보', () => {
@@ -163,6 +177,76 @@ describe('블로그 정보', () => {
     assert.equal(bad.status, 422);
     const stale = await api.request('PUT', '/api/space', owner, { name: '옛 화면', version: 1 });
     assert.equal(stale.status, 409);
+  });
+
+  test('사이트 주소는 https만. 이 컴퓨터 안의 주소(localhost 등)만 http도 된다', async () => {
+    const put = async (siteUrl: string) => {
+      const { version } = (await api.get('/api/space')).json() as { version: number };
+      return api.request('PUT', '/api/space', owner, { name: '돌무더기', siteUrl, version });
+    };
+    for (const lan of ['http://192.168.0.10:3000', 'http://blog.example.com']) {
+      const res = await put(lan);
+      assert.equal(res.status, 422, lan);
+      assert.equal(res.json().message, 'https 주소만 쓸 수 있어요 (localhost는 http도 가능)');
+    }
+    for (const local of [
+      'http://localhost:3000',
+      'http://127.0.0.1:4000',
+      'http://[::1]:3000',
+      'http://cairn.localhost',
+    ])
+      assert.equal((await put(local)).status, 200, local);
+    assert.equal((await put('https://blog.example.com')).status, 200);
+  });
+});
+
+describe('보안 머리글과 쓰기 요청 출처', () => {
+  test('서버 응답은 캐시에 남지 않고, 서버 종류를 알리지 않는다', async () => {
+    const res = await api.get('/api/space');
+    assert.equal(res.header('cache-control'), 'no-store');
+    assert.equal(res.header('x-content-type-options'), 'nosniff');
+    assert.equal(res.header('x-powered-by'), null);
+  });
+
+  test('다른 사이트가 주인의 로그인 쿠키로 보낸 쓰기 요청은 403 (origin)', async () => {
+    // 막히지 않으면 옛 version이라 409가 난다
+    const stale = { name: '옛 화면', version: 1 };
+    const cases: [string, Record<string, string>][] = [
+      ['다른 Origin', { origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' }],
+      ['Origin 없이 cross-site', { 'sec-fetch-site': 'cross-site' }],
+      [
+        '같은 사이트의 다른 주소',
+        { origin: 'https://other.example.com', 'sec-fetch-site': 'same-site' },
+      ],
+      ['https가 아닌 같은 주소', { origin: 'http://blog.example.com' }],
+    ];
+    for (const [name, headers] of cases) {
+      const res = await api.request('PUT', '/api/space', owner, stale, headers);
+      assert.equal(res.status, 403, name);
+      assert.deepEqual(res.json(), {
+        code: 'forbidden',
+        scope: 'origin',
+        message: '사이트 주소(https://blog.example.com)로 연 화면에서만 바꿀 수 있어요',
+      });
+    }
+  });
+
+  test('사이트 주소로 연 화면, 브라우저가 아닌 요청, 읽기, 쿠키 없는 요청은 그대로', async () => {
+    const stale = { name: '옛 화면', version: 1 };
+    const same = { origin: 'https://blog.example.com', 'sec-fetch-site': 'same-origin' };
+    assert.equal((await api.request('PUT', '/api/space', owner, stale, same)).status, 409);
+    assert.equal((await api.request('PUT', '/api/space', owner, stale)).status, 409, 'Origin 없음');
+    const evil = { origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' };
+    assert.equal((await api.request('GET', '/api/space', owner, undefined, evil)).status, 200);
+    // 쿠키가 없으면 방문자일 뿐이라 막을 것이 없다 (권한은 Service가 본다)
+    assert.equal(
+      (await api.request('PUT', '/api/space', TestUser.visitor, stale, evil)).status,
+      403,
+    );
+    assert.equal(
+      (await api.request('PUT', '/api/space', TestUser.visitor, stale, evil)).json().scope,
+      'write',
+    );
   });
 });
 

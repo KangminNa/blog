@@ -33,7 +33,7 @@ export class SpaceService extends BaseService {
     this.attempts.hit(from);
     if (!this.install.matches(req.code)) throw new Forbidden('install', '맞지 않는 설치 코드예요');
     if ((await this.spaces.installStatus(actor, null)).installed)
-      throw new Conflict('이미 설치된 블로그예요. 주인 계정으로 로그인해 주세요');
+      throw new Conflict('이미 설치된 블로그예요. 로그인해 주세요');
     const space = await this.transaction(async (tx) => {
       const repo = new SpaceRepository(tx);
       const found = (await repo.lockCurrent()) ?? Space.open();

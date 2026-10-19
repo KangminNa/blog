@@ -83,7 +83,7 @@ export class PluginManifest {
     if (kind === 'job') return `일꾼이 정해진 간격마다 "${arg}" 작업을 돌려요`;
     if (kind === 'action') return `관리 동작 "${arg}"을(를) 추가해요`;
     if (kind === 'login')
-      return `로그인 방법 "${arg}"을(를) 더해요 (주인이 연결해 둔 계정으로만 로그인돼요)`;
+      return `로그인 방법 "${arg}"을(를) 더해요 (계정 시트에서 연결해 둔 계정으로만 로그인돼요)`;
     return use;
   }
 
