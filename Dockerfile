@@ -6,13 +6,14 @@ ENV PNPM_HOME=/pnpm \
 RUN corepack enable
 WORKDIR /repo
 
-# 의존성: 매니페스트만 먼저 복사해 캐시를 살린다
+# 의존성: 매니페스트만 먼저 복사해 캐시를 살린다 (lock 파일이 바뀔 때만 다시 받는다).
+# BuildKit 전용 문법(RUN --mount 등)은 쓰지 않는다: 예전 빌더만 있는 서버에서도 빌드되게
 FROM base AS deps
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY packages/cli/package.json packages/cli/
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # 개발: 소스 전체 + 감시 모드 실행 (compose에서 src를 마운트해 바로 반영)
 FROM deps AS dev
