@@ -26,6 +26,7 @@
     "plugin": "docker compose exec -T server pnpm --silent --filter @cairn/server cli plugin",
     "install-code": "docker compose exec -T server pnpm --silent --filter @cairn/server cli install-code",
     "owner": "docker compose exec -T server pnpm --silent --filter @cairn/server cli owner",
+    "cairn": "pnpm --silent --filter @cairn/cli cairn",
     "secret:new": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\""
   },
   "devDependencies": {

@@ -143,6 +143,8 @@ export class ConsentRequest extends BaseRequest {
     readonly codeChallenge: string,
     readonly state: string | null,
     readonly name: string,
+    /** 인가 서버 주소. 돌려보낼 때 iss로 붙인다 (RFC 9207, 다른 서버의 응답과 섞이지 않게) */
+    readonly issuer: string,
   ) {
     super();
   }
@@ -154,9 +156,10 @@ export class ConsentRequest extends BaseRequest {
     redirectUri: string,
     codeChallenge: string,
     state: string | null,
+    issuer: string,
   ): string {
     return box.pack(
-      JSON.stringify({ clientId, clientName, redirectUri, codeChallenge, state }),
+      JSON.stringify({ clientId, clientName, redirectUri, codeChallenge, state, issuer }),
       ConsentRequest.SECONDS,
     );
   }
@@ -174,6 +177,7 @@ export class ConsentRequest extends BaseRequest {
         String(v.codeChallenge ?? ''),
         v.state ?? null,
         f.optionalText('name', 60) ?? String(v.clientName ?? ''),
+        String(v.issuer ?? ''),
       );
     });
   }

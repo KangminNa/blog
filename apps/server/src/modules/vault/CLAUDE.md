@@ -6,7 +6,8 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
 
 - `session/`: 세션(`Session` + 판 `SessionRevision`), 노트(`SessionNote`: 제목·태그·고정 칸 다섯, 해시, 본문 md),
   2차 민감정보 제거(`SensitivePolicy`), 저장 결과(`SessionReceipt`: saved · unchanged · duplicate).
-  MCP 도구 `save_session`(`SaveSessionTool`), 관리 화면 API `api/sessions`(목록·상세·지난 판, 비공개까지 볼 수 있는 요청자만)
+  MCP 도구 `check_session`(`CheckSessionTool`: 올리기 전 검사, 저장하지 않음. request_id·대화 id·같은 대화의 판 수·지울 민감정보)과 `save_session`(`SaveSessionTool`),
+  관리 화면 API `api/sessions`(목록·상세·지난 판, 비공개까지 볼 수 있는 요청자만)
 
 ## 소유 데이터
 스키마 `vault`: node_kinds, edge_kinds, nodes, sessions, session_revisions, attachments, categories, wikis, wiki_revisions, wiki_aliases,
@@ -24,7 +25,7 @@ change_sets, change_ops, review_rules, changes, edit_leases
 - 글 자리 사본: post_marks (blog 이벤트를 받는 Handler만 쓴다)
 
 ## 공개 API (`index.ts`)
-`VaultModule`, `SaveSessionTool`(mcp 모듈이 모아서 연다). 예정: 세션 Query(blog의 재료 패널·글감 상자가 읽음)
+`VaultModule`, `CheckSessionTool` · `SaveSessionTool`(mcp 모듈이 모아서 연다). 예정: 세션 Query(blog의 재료 패널·글감 상자가 읽음)
 
 ## 내보내는 이벤트 / 받는 이벤트
 `vault.session.saved`(v1: sessionId, revisionId, seq, deviceId, project, created) / 예정: `blog.post.*` (글 자리 사본 갱신)

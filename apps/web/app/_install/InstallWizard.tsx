@@ -270,7 +270,7 @@ function DeviceStep({
       <p>
         {connected
           ? `${connected} 연결 완료. 이제 작업한 세션을 저장할 수 있어요.`
-          : 'Claude Code를 쓰는 컴퓨터의 터미널에서 아래 명령을 실행하고 /mcp에서 cairn에 로그인하세요. 브라우저에서 연결을 누르면 끝나요.'}
+          : '쓰는 AI 도구를 골라 안내대로 연결해요. 블로그 승인 화면에서 연결을 누르면 끝나요.'}
       </p>
       <DevicesPanel siteUrl={siteUrl} onMessage={onMessage} onChange={watch} />
       <a className={connected ? 'cta' : 'ghost wide'} href="/">

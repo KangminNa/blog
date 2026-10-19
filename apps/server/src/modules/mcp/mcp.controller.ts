@@ -17,7 +17,7 @@ export class McpController {
     private readonly devices: DeviceQuery,
     toolbox: McpToolbox,
   ) {
-    this.endpoint = new McpEndpoint('cairn', '0.1.0', toolbox.tools);
+    this.endpoint = new McpEndpoint('cairn', '0.1.0', toolbox.tools, McpToolbox.INSTRUCTIONS);
   }
 
   @Post()

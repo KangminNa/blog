@@ -10,6 +10,7 @@ export class SpaceResponse extends BaseResponse {
     private readonly siteUrl: string | null,
     private readonly installed: boolean,
     private readonly version: number,
+    private readonly hostedApps: boolean,
   ) {
     super();
   }
@@ -21,11 +22,19 @@ export class SpaceResponse extends BaseResponse {
       view.siteUrl,
       view.installed,
       view.version,
+      view.hostedApps,
     );
   }
 
   static saved(space: Space): SpaceResponse {
-    return new SpaceResponse(space.name, space.description, space.siteUrl, true, space.version);
+    return new SpaceResponse(
+      space.name,
+      space.description,
+      space.siteUrl,
+      true,
+      space.version,
+      space.hostedApps,
+    );
   }
 
   toJSON(): object {
@@ -35,6 +44,7 @@ export class SpaceResponse extends BaseResponse {
       siteUrl: this.siteUrl,
       installed: this.installed,
       version: this.version,
+      hostedApps: this.hostedApps,
     };
   }
 }

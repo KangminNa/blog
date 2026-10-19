@@ -27,8 +27,17 @@ export class AuthorizationServerResponse extends BaseResponse {
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
       code_challenge_methods_supported: ['S256'],
+      authorization_response_iss_parameter_supported: true,
       token_endpoint_auth_methods_supported: ['none'],
-      scopes_supported: [Actor.UPLOAD, Actor.READ_PUBLIC, Actor.READ_ALL, Actor.TIDY, Actor.WRITE],
+      // offline_access: 갱신 토큰을 쓴다는 표시 (Claude Code는 이것이 있어야 다시 로그인하지 않고 갱신한다)
+      scopes_supported: [
+        Actor.UPLOAD,
+        Actor.READ_PUBLIC,
+        Actor.READ_ALL,
+        Actor.TIDY,
+        Actor.WRITE,
+        'offline_access',
+      ],
     };
   }
 }
@@ -120,6 +129,7 @@ export class ConsentResponse extends BaseResponse {
       redirectHost: this.view.redirectHost,
       name: this.view.name,
       scopes: this.view.scopes,
+      app: this.view.app,
     };
   }
 }

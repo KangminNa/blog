@@ -50,6 +50,66 @@ before(async () => {
 });
 after(() => api.close());
 
+/** check_session 한 번 (저장 전 검사) */
+async function check(token: string, args: Record<string, unknown>) {
+  const res = await api.mcp(token, 'tools/call', { name: 'check_session', arguments: args });
+  assert.equal(res.status, 200, res.text);
+  const result = res.json().result as {
+    isError?: boolean;
+    content: { text: string }[];
+    structuredContent?: Record<string, unknown>;
+  };
+  return result.isError
+    ? { ok: false, body: JSON.parse(result.content[0]?.text ?? '{}') as Record<string, unknown> }
+    : { ok: true, body: result.structuredContent ?? {} };
+}
+
+describe('check_session (저장 전 검사)', () => {
+  test('대화 id가 없으면 만들어 주고, 저장에 쓸 request_id와 올릴 곳을 준다. 아무것도 저장하지 않는다', async () => {
+    const before = (await api.get('/api/sessions', owner)).json().sessions as unknown[];
+    const res = await check(laptop, { title: '앱에서 쓴 노트', did: '검사만 했다' });
+    assert.equal(res.ok, true, JSON.stringify(res.body));
+    assert.match(String(res.body.request_id), /^[0-9a-f-]{36}$/);
+    assert.match(String(res.body.source_session_id), /^conv-[0-9a-f-]{36}$/);
+    assert.equal(res.body.site, site);
+    assert.equal(res.body.existing, null);
+    assert.deepEqual(res.body.limits, { section_max: 20_000, quotes_max: 4_000 });
+    const after = (await api.get('/api/sessions', owner)).json().sessions as unknown[];
+    assert.equal(after.length, before.length, '검사는 저장하지 않는다');
+  });
+
+  test('저장하면 지울 비밀값을 미리 알려 주고, 같은 대화로 저장한 세션이 있으면 판 수를 알려 준다', async () => {
+    const first = await check(laptop, {
+      title: '검사',
+      did: 'token=ghp_abcdefghijklmnopqrstuvwxyz0123456789 를 썼다',
+    });
+    assert.deepEqual(first.body.warnings, [
+      { kind: 'secret', section: 'did', label: 'GitHub 토큰' },
+    ]);
+    const saved = await save(laptop, note('conv-checked', '저장한다'));
+    assert.equal(saved.body.status, 'saved');
+    const again = await check(laptop, {
+      source_session_id: 'conv-checked',
+      tool: 'claude-code',
+      title: '다시',
+      did: '더 했다',
+    });
+    assert.deepEqual(again.body.existing, { session_id: saved.body.session_id, revisions: 1 });
+    assert.equal(again.body.source_session_id, 'conv-checked', '받은 대화 id는 그대로');
+  });
+
+  test('모양이 틀리면 save_session과 같은 모양으로 고칠 칸을 알려 준다', async () => {
+    const res = await check(laptop, { did: '제목 없음', quotes: 'ㄱ'.repeat(4001) });
+    assert.equal(res.ok, false);
+    assert.deepEqual(res.body.fields, {
+      title: '필수 문자열이에요',
+      quotes: '4000자 이하여야 해요',
+    });
+    const empty = await check(laptop, { title: '칸이 없다' });
+    assert.equal(empty.body.code, 'rule_violation');
+  });
+});
+
 describe('save_session (AI 도구)', () => {
   test('도구 목록에 입력 모양과 함께 보인다', async () => {
     const res = await api.mcp(laptop, 'tools/list');

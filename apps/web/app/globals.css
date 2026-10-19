@@ -644,10 +644,65 @@ textarea.input {
     background 0.2s;
 }
 
-.chip[aria-pressed="true"] {
+.chip[aria-pressed="true"],
+.chip[aria-selected="true"] {
   color: #f0c27a;
   border-color: rgba(232, 169, 59, 0.55);
   background: var(--lantern-soft);
+}
+
+/* 기기 시트의 연결하는 법 */
+.howto {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #1a1916;
+  font-size: 13px;
+  color: #bdb6aa;
+}
+
+.howto ol {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.howto li .copy {
+  margin-top: 6px;
+}
+
+.howto code {
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.howto a {
+  color: var(--lantern);
+}
+
+.howto summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.howto details[open] summary {
+  margin-bottom: 8px;
+}
+
+.warn {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(208, 139, 99, 0.45);
+  background: rgba(208, 139, 99, 0.08);
+  color: var(--danger);
+  font-size: 13px;
 }
 
 .uses {

@@ -8,8 +8,10 @@
   "files": {
     "includes": [
       "apps/**",
+      "packages/**",
       "plugins/**",
       "scripts/**",
+      "skills/**",
       "*.json",
       ".claude/**/*.mjs",
       "!**/next-env.d.ts",

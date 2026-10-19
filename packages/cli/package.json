@@ -1,0 +1,18 @@
+{
+  "name": "@cairn/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "작업하는 컴퓨터를 Cairn 블로그에 연결한다 (cairn connect). npm 배포는 M5에서",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "cairn": "node -r @swc-node/register src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test -r @swc-node/register \"src/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@swc-node/register": "1.12.1",
+    "@swc/core": "1.16.13",
+    "@types/node": "24.19.1",
+    "typescript": "5.9.3"
+  }
+}

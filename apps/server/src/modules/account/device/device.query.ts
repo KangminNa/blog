@@ -4,6 +4,7 @@ import { SpaceQuery } from '../space/space.query';
 import { AuthorizationPolicy } from './authorization.policy';
 import { Device, DeviceCredential } from './device';
 import type { AuthorizeRequest, ConsentRequest } from './device.request';
+import { OAuthClient } from './oauth-client';
 import { OAuthClientRepository } from './oauth-client.repository';
 
 /** 기기 하나 (관리 화면의 기기 시트) */
@@ -27,6 +28,8 @@ export class ConsentView {
     readonly redirectHost: string,
     readonly name: string,
     readonly scopes: readonly string[],
+    /** ChatGPT·Claude 앱의 연결이면 그 앱 이름 (승인 화면이 직접 시작한 연결인지 묻는다) */
+    readonly app: string | null,
   ) {}
 }
 
@@ -104,8 +107,9 @@ export class DeviceQuery extends BaseQuery {
   /** 승인 요청을 승인 화면으로 보낼 주소, 또는 오류를 붙여 돌려보낼 주소 */
   async authorizeRedirect(actor: Actor, req: AuthorizeRequest): Promise<string> {
     const { siteUrl } = await this.addresses(actor);
+    const { hostedApps } = await this.spaces.info(actor);
     const client = await new OAuthClientRepository(this.sql).find(req.clientId);
-    return this.policy.redirectFor(siteUrl, client, req);
+    return this.policy.redirectFor(siteUrl, client, req, hostedApps);
   }
 
   /** 승인 화면 (로그인한 주인만) */
@@ -116,6 +120,7 @@ export class DeviceQuery extends BaseQuery {
       new URL(req.redirectUri).host,
       req.name,
       Device.DEFAULT_SCOPES,
+      OAuthClient.appOf(req.redirectUri),
     );
   }
 

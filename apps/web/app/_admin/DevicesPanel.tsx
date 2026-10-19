@@ -2,20 +2,23 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, describe } from '../_lib/client-api';
-import { type Device, SCOPE_LABELS } from '../_lib/types';
+import { type Device, SCOPE_LABELS, type SpaceInfo } from '../_lib/types';
+import { ConnectGuide } from './ConnectGuide';
 
 const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write'];
 
-// 기기 시트: 연결하는 법, 연결된 기기의 권한 바꾸기·끊기, 예비 기기 토큰.
+// 기기 시트: 연결하는 법(도구별), 연결된 기기의 권한 바꾸기·끊기, 예비 기기 토큰.
 // 설치 마법사의 마지막 단계도 이 목록을 보며 첫 기기가 붙기를 기다린다.
 export function DevicesPanel({
   siteUrl,
   onMessage,
   onChange,
+  onSpaceChange,
 }: {
   siteUrl: string | null;
   onMessage: (text: string) => void;
   onChange?: (devices: Device[]) => void;
+  onSpaceChange?: (space: SpaceInfo) => void;
 }) {
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,30 +68,11 @@ export function DevicesPanel({
     if (result?.token) setSpare({ name: device.name, token: result.token });
   }
 
-  const command = `claude mcp add --transport http cairn ${siteUrl ?? '<사이트 주소>'}/mcp`;
   const live = devices?.filter((d) => !d.revokedAt) ?? [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="field">
-        <span>AI 도구에서 연결하기 (Claude Code)</span>
-        <div className="copy">
-          <code>{command}</code>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => {
-              void navigator.clipboard.writeText(command);
-              onMessage('명령을 복사했어요');
-            }}
-          >
-            복사
-          </button>
-        </div>
-        <small>
-          터미널에서 실행한 뒤 Claude Code의 /mcp에서 cairn에 로그인하면 브라우저에서 승인을 받아요
-        </small>
-      </div>
+      <ConnectGuide siteUrl={siteUrl} onMessage={onMessage} onSpaceChange={onSpaceChange} />
       {error && <p className="error">{error}</p>}
       {spare && (
         <div className="result" role="status">

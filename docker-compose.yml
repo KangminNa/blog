@@ -52,6 +52,7 @@ services:
     volumes:
       - ./apps/server/src:/repo/apps/server/src
       - ./plugins:/repo/plugins
+      - ./skills:/repo/skills   # 앱에 올릴 스킬 묶음(관리 화면 → 기기 → 스킬 받기)을 여기서 만든다
     depends_on:
       migrate:
         condition: service_completed_successfully

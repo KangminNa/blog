@@ -11,6 +11,8 @@ export type SpaceInfo = {
   siteUrl: string | null;
   installed: boolean;
   version: number;
+  /** ChatGPT·Claude 앱(회사 서버에서 들어오는 연결)을 받는가 */
+  hostedApps: boolean;
 };
 
 export type Owner = { login: string };
@@ -64,7 +66,14 @@ export type Device = {
 };
 
 /** 승인 화면에 보일 것 */
-export type Consent = { clientName: string; redirectHost: string; name: string; scopes: string[] };
+export type Consent = {
+  clientName: string;
+  redirectHost: string;
+  name: string;
+  scopes: string[];
+  /** 돌아갈 곳이 ChatGPT·Claude 앱이면 그 이름 (이 컴퓨터의 도구면 null) */
+  app: string | null;
+};
 
 /** 기기 권한의 화면 이름 */
 export const SCOPE_LABELS: Record<string, string> = {

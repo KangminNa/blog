@@ -1,7 +1,22 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseQuery, NotFound, type Row } from '../../platform';
+import { Actor, BaseQuery, Database, NotFound, type Row } from '../../platform';
 import { ListSessionsRequest, type ReadSessionRequest } from './read-session.request';
-import { SessionNote } from './session-note';
+import type { CheckSessionRequest } from './save-session.request';
+import { SensitivePolicy } from './sensitive.policy';
+import { Session } from './session';
+import { type Redaction, SessionNote } from './session-note';
+
+/** 저장 전 검사 결과: 저장할 때 쓸 값, 이 대화로 이미 저장한 세션, 저장하면 서버가 지울 것 */
+export class SessionCheckView {
+  constructor(
+    readonly requestId: string,
+    readonly sourceSessionId: string,
+    readonly sessionId: string | null,
+    readonly revisions: number,
+    readonly redactions: readonly Redaction[],
+  ) {}
+}
 
 /** 세션 목록의 한 줄. 기기는 id만 (기기 이름은 account 모듈의 것이라 화면이 기기 목록과 맞춘다) */
 export class SessionSummaryView {
@@ -64,6 +79,40 @@ export class SessionDetailView {
 @Injectable()
 export class SessionQuery extends BaseQuery {
   private static readonly PAGE = 30;
+
+  constructor(
+    db: Database,
+    private readonly sensitive: SensitivePolicy,
+  ) {
+    super(db);
+  }
+
+  /**
+   * 저장 전 검사 (AI 도구의 check_session). 아무것도 쓰지 않는다.
+   * 노트 모양(제목, 칸 하나 이상)을 보고, 서버가 지울 비밀값을 알려 주고, 이번 저장에 쓸 request_id와 대화 id를 준다.
+   * 대화 id를 모르면 새로 만든다 ("conv-" + UUID). 같은 대화로 이미 저장한 세션이 있으면 그 판 수도 알려 준다.
+   */
+  async check(actor: Actor, req: CheckSessionRequest): Promise<SessionCheckView> {
+    actor.assertCan(Actor.UPLOAD);
+    const [spaceId, deviceId] = Session.uploader(actor);
+    const note = this.sensitive.clean(SessionNote.write(req.title, req.tags, req.sections));
+    const [found] =
+      req.sourceSessionId && req.tool
+        ? await this.sql`
+            SELECT s.node_id,
+                   (SELECT count(*) FROM vault.session_revisions r WHERE r.session_id = s.node_id)::int AS revisions
+            FROM vault.sessions s
+            WHERE s.space_id = ${spaceId} AND s.device_id = ${deviceId}
+              AND s.tool = ${req.tool} AND s.source_session_id = ${req.sourceSessionId}`
+        : [];
+    return new SessionCheckView(
+      randomUUID(),
+      req.sourceSessionId ?? `conv-${randomUUID()}`,
+      found ? String(found.node_id) : null,
+      found ? Number(found.revisions) : 0,
+      note.redactions,
+    );
+  }
 
   async list(actor: Actor, req: ListSessionsRequest): Promise<SessionPageView> {
     actor.assertCan(Actor.READ_ALL);

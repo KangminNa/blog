@@ -92,15 +92,40 @@ describe('AI 도구가 찾아오기', () => {
     assert.equal(meta.authorization_endpoint, `${site}/oauth/authorize`);
     assert.equal(meta.token_endpoint, `${site}/oauth/token`);
     assert.deepEqual(meta.code_challenge_methods_supported, ['S256']);
+    assert.ok(
+      (meta.scopes_supported as string[]).includes('offline_access'),
+      '갱신 토큰을 쓴다는 표시',
+    );
   });
 
-  test('스스로 등록: https나 localhost가 아닌 돌려보낼 주소는 거절', async () => {
-    const bad = await api.request('POST', '/oauth/register', TestUser.visitor, {
-      client_name: 'evil',
-      redirect_uris: ['http://evil.example/cb'],
-    });
-    assert.equal(bad.status, 400);
-    assert.equal(bad.json().error, 'invalid_redirect_uri');
+  test('스스로 등록: 돌려보낼 주소는 이 컴퓨터(localhost)와 ChatGPT·Claude 앱만. 다른 https는 거절', async () => {
+    for (const uri of [
+      'http://evil.example/cb',
+      'https://evil.example/cb',
+      'https://claude.ai/other',
+    ]) {
+      const bad = await api.request('POST', '/oauth/register', TestUser.visitor, {
+        client_name: 'evil',
+        redirect_uris: [uri],
+      });
+      assert.equal(bad.status, 400, uri);
+      assert.equal(bad.json().error, 'invalid_redirect_uri');
+      assert.match(
+        String(bad.json().error_description),
+        /이 컴퓨터\(http:\/\/localhost\)나 ChatGPT·Claude 앱만/,
+      );
+    }
+    for (const uri of ['http://127.0.0.1:5555/callback', 'http://[::1]:5555/callback'])
+      assert.equal(
+        (
+          await api.request('POST', '/oauth/register', TestUser.visitor, {
+            client_name: 'cli',
+            redirect_uris: [uri],
+          })
+        ).status,
+        201,
+        uri,
+      );
     assert.match(await registerClient(), /^cairn_[0-9a-f]{32}$/);
   });
 
@@ -194,6 +219,7 @@ describe('승인 요청', () => {
       redirectHost: 'localhost:33418',
       name: 'Claude Code',
       scopes: ['upload', 'read_public'],
+      app: null,
     });
   });
 
@@ -205,6 +231,91 @@ describe('승인 요청', () => {
     const back = new URL(String(denied.json().redirect));
     assert.equal(back.searchParams.get('error'), 'access_denied');
     assert.equal(back.searchParams.get('state'), 'deny-state');
+    assert.equal(
+      back.searchParams.get('iss'),
+      site,
+      '돌려보낼 때 인가 서버 주소를 붙인다 (RFC 9207)',
+    );
+  });
+});
+
+describe('ChatGPT·Claude 앱 연결 (앱 연결 허용 스위치)', () => {
+  const CLAUDE = 'https://claude.ai/api/mcp/auth_callback';
+  const CHATGPT = 'https://chatgpt.com/connector_platform_oauth_redirect';
+  const CHATGPT_OLD = 'https://chatgpt.com/connector/oauth/abc123';
+  const toggle = async (on: boolean) => {
+    const { version } = (await api.get('/api/space')).json() as { version: number };
+    const res = await api.request('PUT', '/api/space/hosted-apps', owner, { on, version });
+    assert.equal(res.status, 200, res.text);
+    assert.equal(res.json().hostedApps, on);
+  };
+  // 등록 횟수 제한(IP당 1시간 20번)을 이 파일의 다른 등록과 나눠 쓰지 않게, 등록은 새 서버(같은 DB)로 한다
+  let apps: ApiClient;
+  before(async () => {
+    apps = await ApiClient.start();
+  });
+  after(() => apps.close());
+  const register = (uri: string) =>
+    apps.request('POST', '/oauth/register', TestUser.visitor, {
+      client_name: 'App',
+      redirect_uris: [uri],
+    });
+
+  test('꺼져 있으면(기본) 앱 주소로 등록할 수 없다. 켜면 정해 둔 앱 주소만 된다', async () => {
+    assert.equal((await api.get('/api/space')).json().hostedApps, false, '기본은 꺼짐');
+    const off = await register(CLAUDE);
+    assert.equal(off.status, 400);
+    assert.match(String(off.json().error_description), /ChatGPT·Claude 앱 연결이 꺼진 블로그예요/);
+    await toggle(true);
+    for (const uri of [CLAUDE, CHATGPT, CHATGPT_OLD])
+      assert.equal((await register(uri)).status, 201, uri);
+    assert.equal((await register('https://chatgpt.com/other')).status, 400);
+    await toggle(false);
+  });
+
+  test('승인 화면은 앱 연결임을 알리고, 돌려보낼 때 iss를 붙인다. 등록 뒤에 끄면 승인 요청부터 막는다', async () => {
+    await toggle(true);
+    const clientId = String((await register(CLAUDE)).json().client_id);
+    const q = (state: string) =>
+      `/oauth/authorize?${new URLSearchParams({ response_type: 'code', client_id: clientId, redirect_uri: CLAUDE, code_challenge: pkce().challenge, code_challenge_method: 'S256', state })}`;
+    const request =
+      new URL((await api.get(q('app-1'))).location ?? '').searchParams.get('request') ?? '';
+    const consent = (
+      await api.get(`/api/connect?request=${encodeURIComponent(request)}`, owner)
+    ).json();
+    assert.equal(consent.app, 'Claude');
+    assert.equal(consent.redirectHost, 'claude.ai');
+    const approved = await api.request('POST', '/api/connect/approve', owner, {
+      request,
+      name: 'claude-web',
+    });
+    const back = new URL(String(approved.json().redirect));
+    assert.equal(`${back.origin}${back.pathname}`, CLAUDE);
+    assert.equal(back.searchParams.get('iss'), site);
+    assert.ok(back.searchParams.get('code'));
+    await toggle(false);
+    const blocked = await api.get(q('app-2'));
+    assert.equal(blocked.status, 400, '꺼진 뒤에는 앱 주소로 돌려보내지 않는다');
+    assert.match(
+      String(blocked.json().error_description),
+      /ChatGPT·Claude 앱 연결이 꺼진 블로그예요/,
+    );
+  });
+
+  test('스위치는 주인만, 맞는 version으로만 바꾼다', async () => {
+    const { version } = (await api.get('/api/space')).json() as { version: number };
+    assert.equal(
+      (await api.request('PUT', '/api/space/hosted-apps', TestUser.visitor, { on: true, version }))
+        .status,
+      403,
+    );
+    assert.equal(
+      (await api.request('PUT', '/api/space/hosted-apps', owner, { on: true, version: 1 })).status,
+      409,
+    );
+    const bad = await api.request('PUT', '/api/space/hosted-apps', owner, { on: 'yes', version });
+    assert.equal(bad.status, 400);
+    assert.deepEqual(bad.json().fields, { on: 'true나 false여야 해요' });
   });
 });
 
@@ -266,7 +377,23 @@ describe('MCP', () => {
     const tools = await api.mcp(access, 'tools/list');
     assert.equal(tools.status, 200, tools.text);
     const names = (tools.json().result as { tools: { name: string }[] }).tools.map((t) => t.name);
-    assert.deepEqual(names, ['save_session'], '기본 권한(올리기 + 공개 읽기)으로 보이는 도구');
+    assert.deepEqual(
+      names,
+      ['check_session', 'save_session'],
+      '기본 권한(올리기 + 공개 읽기)으로 보이는 도구',
+    );
+    const annotated = (
+      tools.json().result as { tools: { name: string; annotations: Record<string, boolean> }[] }
+    ).tools.map((t) => [t.name, t.annotations.readOnlyHint, t.annotations.destructiveHint]);
+    assert.deepEqual(annotated, [
+      ['check_session', true, false],
+      ['save_session', false, false],
+    ]);
+    const instructions = String(
+      (init.json().result as { instructions?: string }).instructions ?? '',
+    );
+    assert.match(instructions, /check_session/);
+    assert.ok(instructions.length > 0);
   });
 
   test('Bearer 토큰으로 오는 요청은 Origin을 보지 않는다 (AI 도구는 브라우저가 아니다)', async () => {

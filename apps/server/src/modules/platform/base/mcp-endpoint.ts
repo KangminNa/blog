@@ -14,6 +14,8 @@ export class McpEndpoint {
     private readonly name: string,
     private readonly version: string,
     private readonly tools: readonly BaseTool[],
+    /** AI 도구가 서버에 붙을 때 받는 안내 (스킬이 없는 도구도 이것만 보고 쓸 수 있게) */
+    private readonly instructions: string,
   ) {}
 
   /** 인증된 요청자(기기) 하나의 HTTP 요청 하나 (POST·GET·DELETE /mcp). site: 블로그의 사이트 주소 */
@@ -26,7 +28,7 @@ export class McpEndpoint {
   ): Promise<void> {
     const server = new Server(
       { name: this.name, version: this.version },
-      { capabilities: { tools: {} } },
+      { capabilities: { tools: {} }, instructions: this.instructions },
     );
     const visible = this.tools.filter((t) => actor.can(t.scope));
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -34,6 +36,12 @@ export class McpEndpoint {
         name: t.name,
         description: t.description,
         inputSchema: { type: 'object' as const, ...t.inputSchema },
+        annotations: {
+          readOnlyHint: t.readOnly,
+          destructiveHint: t.destructive,
+          idempotentHint: t.idempotent,
+          openWorldHint: false,
+        },
       })),
     }));
     server.setRequestHandler(CallToolRequestSchema, async (request) => {

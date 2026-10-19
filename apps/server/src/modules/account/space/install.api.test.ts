@@ -151,6 +151,7 @@ describe('블로그 정보', () => {
       siteUrl: 'https://blog.example.com',
       installed: true,
       version: version + 1,
+      hostedApps: false,
     });
   });
 

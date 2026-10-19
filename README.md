@@ -109,8 +109,10 @@ cairn/
 ├── docs/              기획서, MVP 기획서, 테이블 설계, 객체 설계
 ├── Dockerfile         앱 이미지 (server, web 공용)
 ├── docker-compose.yml db → migrate → server → web
+├── packages/cli/      연결 명령 (cairn connect · status)
 ├── plugins/           플러그인 (comments-giscus: 글 아래 giscus 댓글 · sync-github: GitHub에 이력·백업 · login-github: GitHub로 로그인)
 ├── scripts/           모듈 경계 검사, 플러그인 화면 맞추기
+├── skills/            AI 도구에 넣는 스킬 (cairn-save)
 └── AGENTS.md          AI 도구 작업 규칙 (CLAUDE.md가 가져옴)
 ```
 
@@ -181,10 +183,13 @@ docker compose up -d
 **2. 작업하는 컴퓨터 연결하기**
 
 ```bash
-npx @<scope>/cairn connect https://내블로그주소
+npx @<scope>/cairn connect https://내블로그주소            # Claude Code
+npx @<scope>/cairn connect https://내블로그주소 --tool codex # Codex
 ```
 
-스킬 네 개를 AI 도구에 복사하고, MCP 서버를 등록하고, 로그인해서 이 기기를 연결합니다. 스킬 폴더를 직접 복사하는 방법도 제공합니다.
+스킬(지금은 `cairn-save`)과 검토자를 AI 도구에 넣고, MCP 서버를 등록하고, 브라우저에서 블로그에 로그인해 이 기기를 연결합니다. 그 도구의 명령줄(`claude` 또는 `codex`)이 필요합니다. `--review-with codex`처럼 다른 회사 모델을 교차 검토자로 고를 수 있습니다. npm에 올리기 전에는 저장소에서 `pnpm cairn connect …`로 실행합니다. 스킬 폴더를 직접 복사하는 방법은 관리 화면의 기기 시트에 있습니다.
+
+**Claude 앱 · ChatGPT**(웹·데스크톱 채팅)는 명령 없이 관리 화면 → 기기에서 연결합니다. "ChatGPT·Claude 앱 연결 허용"을 켜고, 앱의 커넥터 설정에 `https://내블로그주소/mcp`를 넣은 뒤 블로그에서 승인하고, 같은 화면의 `cairn-save.zip`을 앱의 스킬에 올립니다. 앱은 그 회사 서버에서 블로그로 들어오므로 **인터넷에서 열리는 https 주소**가 필요합니다 (집 안 서버라면 Cloudflare Tunnel이나 `tailscale funnel`처럼 밖으로 여는 터널). 앱에서는 대화 원문 대조와 다른 맥락의 검토를 할 수 없어 미리보기에 "독립 검토 아님"이 붙습니다.
 
 **3. 사용하기**
 

@@ -11,6 +11,8 @@ export class SpaceView {
     readonly siteUrl: string | null,
     readonly installed: boolean,
     readonly version: number,
+    /** ChatGPT·Claude 앱 연결 허용 */
+    readonly hostedApps: boolean,
   ) {}
 }
 
@@ -41,6 +43,7 @@ export class SpaceQuery extends BaseQuery {
       space?.siteUrl ?? null,
       await this.hasOwner(),
       space?.version ?? 0,
+      space?.hostedApps ?? false,
     );
   }
 

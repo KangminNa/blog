@@ -193,7 +193,7 @@ export function GraphHome({
             <h2>기기</h2>
             <small>AI 도구를 쓰는 컴퓨터</small>
           </div>
-          <DevicesPanel siteUrl={info.siteUrl} onMessage={showToast} />
+          <DevicesPanel siteUrl={info.siteUrl} onMessage={showToast} onSpaceChange={setInfo} />
         </section>
       )}
       {admin && sheet === 'plugins' && (

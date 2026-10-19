@@ -12,9 +12,9 @@ import { InstallPolicy } from './install.policy';
 import { Space } from './space';
 import { SpaceQuery } from './space.query';
 import { SpaceRepository } from './space.repository';
-import type { InstallCodeRequest, RenameSpaceRequest } from './space.request';
+import type { HostedAppsRequest, InstallCodeRequest, RenameSpaceRequest } from './space.request';
 
-// 공간 쓰기: 설치 코드 확인(공간 만들기), 블로그 이름·소개·사이트 주소 바꾸기.
+// 공간 쓰기: 설치 코드 확인(공간 만들기), 블로그 이름·소개·사이트 주소 바꾸기, 앱 연결 허용.
 @Injectable()
 export class SpaceService extends BaseService {
   /** 설치 코드는 한 곳에서 1분에 5번까지 */
@@ -56,6 +56,19 @@ export class SpaceService extends BaseService {
       if (!space) throw new NotFound('블로그 공간부터 만들어 주세요 (설치 코드)');
       space.assertVersion(req.version);
       space.rename(req.name, req.description, req.siteUrl);
+      await repo.save(space);
+      return space;
+    });
+  }
+
+  async setHostedApps(actor: Actor, req: HostedAppsRequest): Promise<Space> {
+    actor.assertCan(Actor.WRITE);
+    return this.transaction(async (tx) => {
+      const repo = new SpaceRepository(tx);
+      const space = await repo.lockCurrent();
+      if (!space) throw new NotFound('블로그 공간부터 만들어 주세요 (설치 코드)');
+      space.assertVersion(req.version);
+      space.allowHostedApps(req.on);
       await repo.save(space);
       return space;
     });

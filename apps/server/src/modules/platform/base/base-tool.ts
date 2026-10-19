@@ -15,6 +15,15 @@ export abstract class BaseTool {
   abstract readonly scope: string;
   /** 입력 모양 (JSON Schema). AI가 보고 인자를 만든다. 검사는 Request가 한다 */
   abstract readonly inputSchema: Readonly<Record<string, unknown>>;
+  /**
+   * 읽기만 하는가. AI 앱이 부르기 전에 사용자에게 확인을 물을지 이것을 보고 정한다
+   * (MCP annotations의 readOnlyHint. Claude 앱 커넥터는 모든 도구에 이 표시를 요구한다)
+   */
+  abstract readonly readOnly: boolean;
+  /** 이미 있는 것을 지우거나 덮어쓰는가 (destructiveHint). Cairn의 도구는 추가만 해서 기본은 false */
+  readonly destructive: boolean = false;
+  /** 같은 입력을 다시 보내도 결과가 같은가 (idempotentHint) */
+  readonly idempotent: boolean = false;
 
   abstract handle(actor: Actor, raw: unknown, site: string): Promise<BaseResponse>;
 }

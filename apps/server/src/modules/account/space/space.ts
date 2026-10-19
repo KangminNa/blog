@@ -1,6 +1,6 @@
 import { BaseEntity, RuleViolation } from '../../platform';
 
-// 블로그 공간 하나: 이름·소개와 사이트 주소(방문자가 들어오는 바깥 주소). 지금은 공간이 하나뿐이다.
+// 블로그 공간 하나: 이름·소개와 사이트 주소(방문자가 들어오는 바깥 주소), 앱 연결 허용. 지금은 공간이 하나뿐이다.
 export class Space extends BaseEntity {
   static readonly SLUG = 'default';
 
@@ -11,13 +11,14 @@ export class Space extends BaseEntity {
     private nameValue: string,
     private descriptionValue: string,
     private site: string | null,
+    private hostedAppsOn: boolean,
     readonly isNew: boolean,
   ) {
     super(id, version);
   }
 
   static open(): Space {
-    return new Space(BaseEntity.newId(), 1, Space.SLUG, '', '', null, true);
+    return new Space(BaseEntity.newId(), 1, Space.SLUG, '', '', null, false, true);
   }
 
   static restore(
@@ -27,8 +28,9 @@ export class Space extends BaseEntity {
     name: string,
     description: string,
     site: string | null,
+    hostedApps: boolean,
   ): Space {
-    return new Space(id, version, slug, name, description, site, false);
+    return new Space(id, version, slug, name, description, site, hostedApps, false);
   }
 
   get name(): string {
@@ -41,6 +43,19 @@ export class Space extends BaseEntity {
 
   get siteUrl(): string | null {
     return this.site;
+  }
+
+  /**
+   * ChatGPT·Claude 앱(웹·데스크톱 채팅)의 연결을 받는가. 기본은 꺼짐.
+   * 이 앱들은 로그인 열쇠를 chatgpt.com·claude.ai로 돌려받아서, 남이 시작한 연결을 승인하면 그 사람 계정이 붙는다.
+   * 그래서 쓰는 사람만 켜고, 켜도 승인 화면이 앱 연결임을 알린다.
+   */
+  get hostedApps(): boolean {
+    return this.hostedAppsOn;
+  }
+
+  allowHostedApps(on: boolean): void {
+    this.hostedAppsOn = on;
   }
 
   /** siteUrl이 null이면 그대로 둔다 */

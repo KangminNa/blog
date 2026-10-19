@@ -33,6 +33,7 @@ export { Idempotency } from './base/idempotency';
 export { McpEndpoint } from './base/mcp-endpoint';
 export { PasswordHasher } from './base/password-hasher';
 export { SealedSecret, SecretBox } from './base/secret-box';
+export { ZipFile } from './base/zip-file';
 export { Cookies } from './http/cookies';
 export { CurrentActor } from './http/current-actor';
 export { HttpSetup } from './http/http-setup';

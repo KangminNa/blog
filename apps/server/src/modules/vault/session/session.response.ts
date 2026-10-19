@@ -1,6 +1,7 @@
 import { BaseResponse } from '../../platform';
 import type { SessionReceipt } from './session';
 import type {
+  SessionCheckView,
   SessionDetailView,
   SessionPageView,
   SessionRevisionView,
@@ -28,6 +29,33 @@ export class SaveSessionResponse extends BaseResponse {
       revision: this.receipt.seq,
       warnings: this.receipt.warnings,
       url: `${this.site}/?sheet=sessions&session=${this.receipt.sessionId}`,
+    };
+  }
+}
+
+/** check_session 결과 (AI에게). 저장할 때 그대로 쓸 값, 올릴 곳, 저장하면 서버가 지울 것 */
+export class SessionCheckResponse extends BaseResponse {
+  private constructor(
+    private readonly view: SessionCheckView,
+    private readonly site: string,
+  ) {
+    super();
+  }
+
+  static of(view: SessionCheckView, site: string): SessionCheckResponse {
+    return new SessionCheckResponse(view, site);
+  }
+
+  toJSON(): object {
+    const v = this.view;
+    return {
+      ok: true,
+      request_id: v.requestId,
+      source_session_id: v.sourceSessionId,
+      existing: v.sessionId ? { session_id: v.sessionId, revisions: v.revisions } : null,
+      warnings: v.redactions,
+      site: this.site,
+      limits: { section_max: SessionNote.SECTION_MAX, quotes_max: SessionNote.QUOTES_MAX },
     };
   }
 }

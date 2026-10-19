@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { after, describe, test } from 'node:test';
+import { inflateRawSync } from 'node:zlib';
 import { DeviceActor, OwnerActor, VisitorActor } from './actor';
 import { AttemptLimiter } from './attempt-limiter';
 import { BaseEntity } from './base-entity';
 import { BaseQuery } from './base-query';
 import { BaseRepository } from './base-repository';
-import { BaseRequest } from './base-request';
+import { BaseRequest, RequestFields } from './base-request';
 import { Database, type Row } from './database';
 import { Conflict, Forbidden, InvalidRequest, TooManyRequests } from './errors';
 import { DomainEvent } from './event';
@@ -13,6 +14,7 @@ import { Idempotency } from './idempotency';
 import { Outbox } from './outbox';
 import { PasswordHasher } from './password-hasher';
 import { SecretBox } from './secret-box';
+import { ZipFile } from './zip-file';
 
 // 기반 클래스가 약속한 동작을 실제 DB로 확인한다.
 
@@ -72,6 +74,23 @@ describe('BaseRequest', () => {
         return true;
       },
     );
+  });
+
+  test('참·거짓 칸: true·false만 받는다', () => {
+    const read = (raw: unknown) => {
+      const fields = new RequestFields(raw);
+      const on = fields.boolean('on');
+      fields.throwIfInvalid();
+      return on;
+    };
+    assert.equal(read({ on: true }), true);
+    assert.equal(read({ on: false }), false);
+    assert.throws(
+      () => read({ on: 'yes' }),
+      (error: unknown) =>
+        error instanceof InvalidRequest && error.fields.get('on') === 'true나 false여야 해요',
+    );
+    assert.throws(() => read({}), InvalidRequest);
   });
 
   test('올바른 입력은 객체가 된다', () => {
@@ -326,5 +345,24 @@ describe('PasswordHasher (M1)', () => {
     const weaker = stored.replace(/^scrypt\$15\$/, 'scrypt$14$');
     assert.equal(hasher.needsRehash(stored), false);
     assert.equal(hasher.needsRehash(weaker), true);
+  });
+});
+
+describe('ZipFile', () => {
+  test('파일마다 지역 머리글 + 줄인 내용, 끝에 목록과 끝 기록. 이름은 UTF-8', () => {
+    const zip = new ZipFile().add('a/첫째.md', '안녕 '.repeat(50)).add('a/b.txt', 'b').toBuffer();
+    const end = zip.length - 22;
+    assert.equal(zip.readUInt32LE(end), 0x06054b50);
+    assert.equal(zip.readUInt16LE(end + 10), 2);
+    const directory = zip.readUInt32LE(end + 16);
+    assert.equal(zip.readUInt32LE(directory), 0x02014b50);
+    assert.equal(zip.readUInt16LE(directory + 8), 0x0800);
+
+    assert.equal(zip.readUInt32LE(0), 0x04034b50);
+    const nameLength = zip.readUInt16LE(26);
+    assert.equal(zip.subarray(30, 30 + nameLength).toString('utf8'), 'a/첫째.md');
+    const packed = zip.subarray(30 + nameLength, 30 + nameLength + zip.readUInt32LE(18));
+    assert.equal(inflateRawSync(packed).toString('utf8'), '안녕 '.repeat(50));
+    assert.ok(packed.length < zip.readUInt32LE(22));
   });
 });

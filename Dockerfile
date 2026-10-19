@@ -11,6 +11,7 @@ FROM base AS deps
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
+COPY packages/cli/package.json packages/cli/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 # 개발: 소스 전체 + 감시 모드 실행 (compose에서 src를 마운트해 바로 반영)

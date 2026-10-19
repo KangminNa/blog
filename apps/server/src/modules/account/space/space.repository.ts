@@ -15,6 +15,7 @@ export class SpaceRepository extends BaseRepository<Space> {
       String(row.name),
       text('blog.description') ?? '',
       text('site.url'),
+      settings['connect.hosted_apps'] === true,
     );
   }
 
@@ -38,9 +39,10 @@ export class SpaceRepository extends BaseRepository<Space> {
         WHERE id = ${space.id} AND version = ${space.version}`;
       this.expectUpdated(result.count, space);
     }
-    const settings: Record<string, string | null> = {
+    const settings: Record<string, string | boolean | null> = {
       'blog.description': space.description || null,
       'site.url': space.siteUrl,
+      'connect.hosted_apps': space.hostedApps || null,
     };
     for (const [key, value] of Object.entries(settings)) {
       if (value === null) {

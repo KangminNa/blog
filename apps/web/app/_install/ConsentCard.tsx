@@ -6,6 +6,7 @@ import { type Consent, SCOPE_LABELS } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
 
 // 기기 연결 승인 카드. 연결하면 AI 도구가 기다리는 주소로 돌아가고, 도구가 토큰을 받아 붙는다.
+// ChatGPT·Claude 앱의 연결이면 남이 만든 링크로 그 사람의 앱에 블로그를 내주지 않게 한 번 더 알린다.
 export function ConsentCard({
   request,
   consent,
@@ -51,6 +52,12 @@ export function ConsentCard({
                 연결하면 아래 권한 안에서 세션을 올리고 읽을 수 있어요. 돌아갈 곳:{' '}
                 <code>{consent.redirectHost}</code>
               </p>
+              {consent.app && (
+                <p className="warn" role="alert">
+                  {consent.app} 앱의 연결이에요. 방금 {consent.app}에서 직접 연결을 눌렀을 때만
+                  승인하고, 다른 사람이 보낸 링크라면 거절해요
+                </p>
+              )}
               <ul className="uses" aria-label="받는 권한">
                 {consent.scopes.map((s) => (
                   <li key={s}>{SCOPE_LABELS[s] ?? s}</li>

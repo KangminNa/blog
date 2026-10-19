@@ -51,7 +51,13 @@ export class DeviceService extends BaseService {
     const status = await this.spaces.installStatus(actor, null);
     if (!status.installed || !status.spaceId)
       throw new OAuthError('invalid_client_metadata', '아직 설치가 끝나지 않은 블로그예요');
-    const client = OAuthClient.register(status.spaceId, req.clientName, req.redirectUris);
+    const { hostedApps } = await this.spaces.info(actor);
+    const client = OAuthClient.register(
+      status.spaceId,
+      req.clientName,
+      req.redirectUris,
+      hostedApps,
+    );
     const before = new Date(Date.now() - DeviceService.UNUSED_MS);
     await this.transaction(async (tx) => {
       const clients = new OAuthClientRepository(tx);

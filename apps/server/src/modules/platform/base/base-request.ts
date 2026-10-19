@@ -55,6 +55,13 @@ export class RequestFields {
     return value.toLowerCase();
   }
 
+  /** 참·거짓 (화면의 켜기·끄기) */
+  boolean(name: string): boolean {
+    const value = this.source[name];
+    if (typeof value !== 'boolean') return this.fail(name, 'true나 false여야 해요', false);
+    return value;
+  }
+
   /** 정수. 범위를 벗어나면 틀린 필드로 모인다 */
   integer(name: string, min: number, max: number): number {
     const value = this.source[name];
