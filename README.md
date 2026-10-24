@@ -194,6 +194,28 @@ Caddy를 서버에 직접 설치했다면 `/etc/caddy/Caddyfile`에 아래를 �
 }
 ```
 
+프록시가 Docker 컨테이너라면 포트 대신 그 프록시의 네트워크에 붙입니다. 서버에만 `docker-compose.override.yml`을 만들면(git에 올라가지 않음) `docker compose`가 알아서 합쳐 읽습니다. 아래의 `proxy-net`은 프록시가 쓰는 네트워크 이름으로 바꿉니다.
+
+```yaml
+# docker-compose.override.yml
+services:
+  server:
+    networks:
+      proxy-net:
+        aliases: [cairn-server]
+  web:
+    networks:
+      proxy-net:
+        aliases: [cairn-web]
+
+networks:
+  proxy-net:
+    external: true
+```
+
+프록시에서는 `/api` · `/mcp` · `/oauth` · `/.well-known`을 `cairn-server:4000`으로, 나머지를 `cairn-web:3000`으로 보냅니다.
+Cairn의 컨테이너끼리는 `cairn-` 이 붙은 이름으로 부르기 때문에, 같은 네트워크에 다른 프로젝트의 `db` · `server`가 있어도 섞이지 않습니다.
+
 **3. 설치 마법사**
 
 `https://내블로그주소/install`을 열고 설치 코드 → 관리자 계정(아이디·비밀번호) → 블로그 정보 → 플러그인 순서로 진행합니다.

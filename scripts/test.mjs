@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const password = process.env.DB_PASSWORD ?? fromEnvFile('DB_PASSWORD') ?? 'cairn';
-const testDb = `postgres://cairn:${password}@db:5432/cairn_test?sslmode=disable`;
+const testDb = `postgres://cairn:${password}@cairn-db:5432/cairn_test?sslmode=disable`;
 const extra = process.argv.slice(2).filter((a) => a !== '--');
 
 const docker = (args) =>

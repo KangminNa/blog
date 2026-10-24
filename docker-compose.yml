@@ -1,14 +1,21 @@
 # Cairn 개발 환경
 #   docker compose up --build   →  db → migrate(마이그레이션 적용 후 종료) → server · worker → web
 #   docker compose build        →  db 이미지와 앱 이미지를 함께 빌드
+#
+# 서로 부르는 이름은 cairn-db · cairn-server · cairn-web (cairn- 이 붙은 별명).
+# 다른 프로젝트와 같이 쓰는 네트워크(프록시용)에 붙여도 db · server 같은 흔한 이름과 섞이지 않게.
+# 프록시 네트워크에 붙이는 설정은 서버에만 두는 docker-compose.override.yml로 한다 (README "설치")
 name: cairn
 
-x-db-url: &db-url postgres://cairn:${DB_PASSWORD:-cairn}@db:5432/cairn?sslmode=disable
+x-db-url: &db-url postgres://cairn:${DB_PASSWORD:-cairn}@cairn-db:5432/cairn?sslmode=disable
 
 services:
   db:
     build: ./db
     image: cairn-db:dev
+    networks:
+      default:
+        aliases: [cairn-db]
     environment:
       POSTGRES_USER: cairn
       POSTGRES_PASSWORD: ${DB_PASSWORD:-cairn}
@@ -39,6 +46,9 @@ services:
       context: .
       target: dev
     image: cairn-app:dev
+    networks:
+      default:
+        aliases: [cairn-server]
     command: ["pnpm", "--filter", "@cairn/server", "dev"]
     env_file:
       - path: .env          # 서버 키(CAIRN_SECRET_KEY) 등 인프라 설정. 플러그인 설정은 DB에
@@ -77,13 +87,16 @@ services:
 
   web:
     image: cairn-app:dev          # server가 빌드한 같은 이미지를 씀
+    networks:
+      default:
+        aliases: [cairn-web]
     pull_policy: never
     command: ["pnpm", "--filter", "@cairn/web", "dev"]
     env_file:
       - path: .env
         required: false
     environment:
-      API_URL: http://server:4000
+      API_URL: http://cairn-server:4000
       WATCHPACK_POLLING: "true"
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"   # 이 컴퓨터에서만. 서버에 올리면 앞의 https 프록시(Caddy 등)만 밖에 연다
