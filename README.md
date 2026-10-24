@@ -171,7 +171,7 @@ cp .env.example .env
 ```ini
 DB_PASSWORD=<긴 임의 값>                     # DB를 처음 만들 때 정해져서 나중에 바꾸지 않습니다
 CAIRN_SECRET_KEY=<openssl rand -base64 32 결과>  # 비밀값 암호화 키. 한 번 정하면 바꾸지 않습니다
-CAIRN_WEB_URL=https://내블로그주소              # 서버 로그의 설치 코드 안내에 쓰는 주소
+CAIRN_WEB_URL=https://내블로그주소              # 꼭 넣기: 없으면 화면의 버튼이 동작하지 않습니다 (개발 모드 웹)
 ```
 
 ```bash

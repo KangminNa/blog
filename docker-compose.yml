@@ -97,6 +97,7 @@ services:
         required: false
     environment:
       API_URL: http://cairn-server:4000
+      CAIRN_WEB_URL: ${CAIRN_WEB_URL:-http://localhost:${WEB_PORT:-3000}}   # 이 주소에서 연 화면만 개발 서버가 받아 준다
       WATCHPACK_POLLING: "true"
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"   # 이 컴퓨터에서만. 서버에 올리면 앞의 https 프록시(Caddy 등)만 밖에 연다

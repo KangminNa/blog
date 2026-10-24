@@ -4,6 +4,17 @@ import type { NextConfig } from 'next';
 // 운영에서는 리버스 프록시가 나누고, 웹 하나만 열어 둔 개발 환경에서는 여기서 서버로 넘긴다.
 const server = process.env.API_URL ?? 'http://localhost:4000';
 
+// 개발 서버(next dev)는 localhost가 아닌 주소에서 온 개발용 요청(/_next/hmr 등)을 막고, 막히면 화면의 JS가 돌지 않는다.
+// 테스트 서버처럼 도메인으로 여는 개발 서버를 위해 사람이 여는 웹 주소(CAIRN_WEB_URL)의 호스트를 허락한다.
+// 운영 빌드(next start)에는 상관없는 설정이다.
+function devOrigins(): string[] {
+  try {
+    return process.env.CAIRN_WEB_URL ? [new URL(process.env.CAIRN_WEB_URL).hostname] : [];
+  } catch {
+    return [];
+  }
+}
+
 // 모든 화면에 붙이는 보안 머리글.
 //   frame-ancestors · X-Frame-Options: 다른 사이트가 우리 화면을 겹쳐 놓고 누르게 하지 못하게
 //   form-action: 폼은 이 사이트로만 (화면의 폼은 모두 fetch로 보낸다)
@@ -26,6 +37,7 @@ const config: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
   poweredByHeader: false,
+  allowedDevOrigins: devOrigins(),
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
