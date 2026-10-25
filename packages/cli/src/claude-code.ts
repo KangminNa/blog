@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { AiTool, McpServerState } from './ai-tool';
 
@@ -32,7 +33,7 @@ export class ClaudeCode extends AiTool {
   }
 
   async server(): Promise<McpServerState | null> {
-    const res = await this.shell.run(this.command, ['mcp', 'get', AiTool.SERVER]);
+    const res = await this.run(['mcp', 'get', AiTool.SERVER]);
     if (!res.ok || /no mcp server found/i.test(res.output)) return null;
     const line = (name: string) =>
       res.output
@@ -58,7 +59,44 @@ export class ClaudeCode extends AiTool {
     );
   }
 
-  async login(): Promise<boolean> {
-    return (await this.shell.interact(this.command, ['mcp', 'login', AiTool.SERVER])) === 0;
+  /**
+   * PATH에 claude가 없을 때: 설치 프로그램이 넣는 자리, 그다음 Claude 데스크톱 앱(macOS)에 든 것을 새 버전부터.
+   * 데스크톱 앱만 깔린 컴퓨터는 claude가 PATH에 없다. 앱의 폴더 모양은 공개된 약속이 아니라 못 찾으면 설치를 안내한다
+   */
+  protected override fallbacks(): string[] {
+    return [
+      join(this.home, '.local', 'bin', 'claude'),
+      join(this.home, '.claude', 'local', 'claude'),
+      ...ClaudeCode.desktopApp(
+        join(this.home, 'Library', 'Application Support', 'Claude', 'claude-code'),
+      ),
+    ];
+  }
+
+  /** <폴더>/<버전>/<해시>/claude.app/Contents/MacOS/claude, 새 버전부터 */
+  private static desktopApp(root: string): string[] {
+    const dirs = (dir: string) => {
+      try {
+        return readdirSync(dir, { withFileTypes: true })
+          .filter((e) => e.isDirectory())
+          .map((e) => e.name);
+      } catch {
+        return [];
+      }
+    };
+    const newer = (a: string, b: string) => {
+      const [x, y] = [a.split('.').map(Number), b.split('.').map(Number)];
+      for (let i = 0; i < Math.max(x.length, y.length); i++)
+        if ((x[i] ?? 0) !== (y[i] ?? 0)) return (y[i] ?? 0) - (x[i] ?? 0);
+      return 0;
+    };
+    return dirs(root)
+      .filter((v) => /^\d+(\.\d+)*$/.test(v))
+      .sort(newer)
+      .flatMap((v) =>
+        dirs(join(root, v)).map((h) =>
+          join(root, v, h, 'claude.app', 'Contents', 'MacOS', 'claude'),
+        ),
+      );
   }
 }

@@ -11,6 +11,11 @@ export class Terminal {
     process.stdout.write(`${line}\n`);
   }
 
+  /** 사람이 직접 입력할 수 있는 터미널인가 (브라우저 로그인처럼 주고받는 단계에 필요) */
+  get interactive(): boolean {
+    return Boolean(process.stdin.isTTY);
+  }
+
   /** 끝난 단계 한 줄 */
   done(text: string): void {
     this.say(`✓ ${text}`);

@@ -22,7 +22,7 @@ export class Codex extends AiTool {
 
   /** `codex mcp list`에서 cairn 줄을 찾는다: 이름으로 시작하고 주소가 있는 줄 */
   async server(): Promise<McpServerState | null> {
-    const res = await this.shell.run(this.command, ['mcp', 'list']);
+    const res = await this.run(['mcp', 'list']);
     if (!res.ok) return null;
     const line = res.output
       .split('\n')
@@ -38,9 +38,5 @@ export class Codex extends AiTool {
 
   async removeServer(): Promise<void> {
     await this.must(['mcp', 'remove', AiTool.SERVER], '등록된 MCP 서버를 지우지 못했어요');
-  }
-
-  async login(): Promise<boolean> {
-    return (await this.shell.interact(this.command, ['mcp', 'login', AiTool.SERVER])) === 0;
   }
 }

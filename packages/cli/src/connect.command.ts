@@ -32,6 +32,9 @@ export class ConnectCommand {
         `${this.tool.label} 명령(${this.tool.command})을 찾을 수 없어요. 설치: ${this.tool.install}`,
       );
     t.done(`${this.tool.label} ${version}`);
+    const bin = await this.tool.executable();
+    if (bin !== this.tool.command)
+      t.say(`  PATH에 ${this.tool.command}가 없어 이것을 써요: ${bin}`);
 
     if (this.skills.length === 0) throw new CliError('함께 든 스킬이 없어요 (설치가 망가졌어요)');
     for (const skill of this.skills) await this.install(skill, at);
@@ -51,12 +54,22 @@ export class ConnectCommand {
     }
 
     if (!(before?.url === at.mcp && before.connected)) {
+      if (!t.interactive) {
+        // 로그인은 브라우저 승인 뒤 도구가 입력을 기다리기도 해서, 입력할 수 없는 곳(다른 프로그램 안 등)에서는 하지 않는다
+        t.say();
+        t.say('남은 일 하나: 로그인. 직접 입력할 수 있는 터미널에서 실행해 주세요');
+        t.say(`  ${await this.tool.loginCommand()}`);
+        t.say(
+          `또는 ${this.tool.label}에서 /mcp → ${AiTool.SERVER} → 로그인. 끝나면 cairn status로 확인해요`,
+        );
+        return;
+      }
       t.say(
         '브라우저가 열리면 블로그에 로그인하고, 기기 이름·권한을 확인한 뒤 "연결"을 눌러 주세요.',
       );
       if (!(await this.tool.login()))
         throw new CliError(
-          `로그인을 마치지 못했어요. ${this.tool.label}에서 /mcp → cairn으로 다시 할 수 있어요`,
+          `로그인을 마치지 못했어요. 터미널에서 ${await this.tool.loginCommand()}, 또는 ${this.tool.label}에서 /mcp → cairn으로 다시 할 수 있어요`,
         );
     }
 

@@ -21,13 +21,16 @@ import { CliError, Terminal } from './terminal';
 class FakeClaude extends Shell {
   readonly calls: string[] = [];
   installed = true;
+  /** false면 PATH의 claude만 없다 (경로로 부르면 된다: 데스크톱 앱에 든 것) */
+  onPath = true;
   registered: { url: string; status: string } | null = null;
   loginWorks = true;
 
   override async run(command: string, args: readonly string[]): Promise<ShellResult> {
-    const line = [command, ...args].join(' ');
-    this.calls.push(line);
-    if (!this.installed) return new ShellResult(127, '', 'spawn claude ENOENT');
+    this.calls.push([command, ...args].join(' '));
+    if (!this.installed || (command === 'claude' && !this.onPath))
+      return new ShellResult(127, '', 'spawn claude ENOENT');
+    const line = [command.endsWith('/claude') ? 'claude' : command, ...args].join(' ');
     if (line === 'claude --version') return new ShellResult(0, '2.1.300 (Claude Code)\n', '');
     if (line === 'claude mcp get cairn')
       return this.registered
@@ -67,6 +70,12 @@ class FakeClaude extends Shell {
 class FakeTerminal extends Terminal {
   readonly lines: string[] = [];
   readonly questions: string[] = [];
+  /** false면 사람이 입력할 수 없는 곳 (다른 프로그램 안에서 돌릴 때) */
+  tty = true;
+
+  override get interactive(): boolean {
+    return this.tty;
+  }
 
   constructor(private readonly answer = false) {
     super(false);
@@ -262,9 +271,61 @@ describe('cairn connect', () => {
     );
     shell = new FakeClaude();
     shell.loginWorks = false;
-    await assert.rejects(connect(), /로그인을 마치지 못했어요\. Claude Code에서 \/mcp/);
+    await assert.rejects(
+      connect(),
+      /로그인을 마치지 못했어요\. 터미널에서 claude mcp login cairn, 또는 Claude Code에서 \/mcp/,
+    );
     const err = await connect().catch((e: unknown) => e);
     assert.ok(err instanceof CliError);
+  });
+});
+
+describe('cairn connect · 명령 찾기와 터미널이 아닐 때', () => {
+  /** 데스크톱 앱에 든 claude 자리 (버전 폴더 / 해시 폴더) */
+  const desktopClaude = (version: string) => {
+    const dir = join(
+      home,
+      'Library',
+      'Application Support',
+      'Claude',
+      'claude-code',
+      version,
+      'abc',
+      'claude.app',
+      'Contents',
+      'MacOS',
+    );
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'claude'), '');
+    return join(dir, 'claude');
+  };
+
+  test('PATH에 claude가 없으면 데스크톱 앱에 든 것을 새 버전부터 찾아 쓰고, 그렇다고 알린다', async () => {
+    desktopClaude('2.1.9');
+    const newest = desktopClaude('2.1.295');
+    shell.onPath = false;
+    const terminal = new FakeTerminal();
+    await connect(terminal);
+    assert.ok(terminal.lines.includes(`  PATH에 claude가 없어 이것을 써요: ${newest}`));
+    assert.ok(
+      shell.calls.includes(
+        `${newest} mcp add --transport http --scope user cairn https://blog.example.com/mcp`,
+      ),
+    );
+    assert.ok(shell.calls.includes(`${newest} mcp login cairn`));
+    assert.equal(shell.registered?.status, '✓ Connected');
+  });
+
+  test('입력할 수 없는 곳에서는 로그인을 하지 않고, 터미널에서 실행할 명령을 알려 준다 (실패로 끝내지 않음)', async () => {
+    const app = desktopClaude('2.1.295');
+    shell.onPath = false;
+    const terminal = new FakeTerminal();
+    terminal.tty = false;
+    await connect(terminal);
+    assert.ok(!shell.calls.some((c) => c.includes('mcp login')));
+    assert.equal(shell.registered?.status, '! Needs authentication');
+    assert.ok(terminal.lines.includes(`  "${app}" mcp login cairn`));
+    assert.ok(terminal.lines.some((l) => l.startsWith('남은 일 하나: 로그인')));
   });
 });
 

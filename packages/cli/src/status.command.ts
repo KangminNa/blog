@@ -32,11 +32,14 @@ export class StatusCommand {
       t.say(`  명령(${this.tool.command})을 찾을 수 없음 · 설치: ${this.tool.install}`);
       return;
     }
+    const bin = await this.tool.executable();
+    if (bin !== this.tool.command) t.say(`  명령: ${bin} (PATH에 ${this.tool.command} 없음)`);
     const server = await this.tool.server();
     t.say(
       server
         ? `  MCP 서버 ${AiTool.SERVER}: ${server.url ?? '주소 모름'} · ${server.status}`
         : `  MCP 서버 ${AiTool.SERVER}: 등록 안 됨`,
     );
+    if (server && !server.connected) t.say(`  로그인: ${await this.tool.loginCommand()}`);
   }
 }
