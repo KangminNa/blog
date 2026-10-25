@@ -1,0 +1,389 @@
+/* 블로그 화면(밝은 읽기 화면)과 글 본문. 글 목록·글 페이지·편집기의 미리 보기가 불러 쓴다 */
+
+/* 블로그: 방문자가 읽는 밝은 화면 (velog식). 그래프의 밤길과 달리 종이 위의 글.
+   강조색은 같은 호박색을 밝은 바탕에 맞게 어둡게 (글자 대비 4.5:1 이상) */
+.blog {
+  --paper: #faf8f3;
+  --ink: #1d1c19;
+  --ink-2: #45423b;
+  --ink-muted: #77726a;
+  --rule: #e6e1d6;
+  --accent: #915a0c;
+  --code-bg: #f0ece3;
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+body:has(> .blog) {
+  background: #faf8f3;
+}
+
+.blog :focus-visible {
+  outline-color: var(--accent);
+}
+
+.blog-top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 760px;
+  height: 64px;
+  margin: 0 auto;
+  padding: 0 20px;
+  background: rgba(250, 248, 243, 0.92);
+  backdrop-filter: blur(12px);
+}
+
+.blog-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.blog-top nav {
+  display: flex;
+  gap: 4px;
+}
+
+.blog-main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 120px;
+}
+
+.blog-intro {
+  padding: 24px 0 32px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.blog-intro h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.blog-intro p {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+}
+
+.blog-empty {
+  padding: 48px 0;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.blog-more {
+  display: block;
+  margin-top: 28px;
+  padding: 14px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  color: var(--ink-2);
+  text-align: center;
+  text-decoration: none;
+}
+
+.blog-more:hover {
+  border-color: var(--ink-muted);
+}
+
+.post-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.post-list li {
+  border-bottom: 1px solid var(--rule);
+}
+
+.post-list a {
+  display: block;
+  padding: 28px 0;
+  text-decoration: none;
+}
+
+.post-list h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+  transition: color 0.2s;
+}
+
+.post-list p {
+  display: -webkit-box;
+  margin: 8px 0 0;
+  overflow: hidden;
+  color: var(--ink-2);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 12px;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.tag {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--code-bg);
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+.post-note {
+  margin: 0 0 20px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #f5e9d3;
+  color: #6b4a12;
+  font-size: 14px;
+}
+
+.post-head {
+  margin-bottom: 36px;
+}
+
+.post-head h1 {
+  margin: 0;
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.post-foot {
+  margin-top: 64px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rule);
+}
+
+.post-foot a {
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+
+/* 글 본문 (md → HTML) */
+.prose {
+  font-size: 17px;
+  line-height: 1.85;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose p {
+  margin: 0 0 1.4em;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  margin: 2.2em 0 0.7em;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+.prose h1 {
+  font-size: 1.75em;
+}
+
+.prose h2 {
+  font-size: 1.45em;
+}
+
+.prose h3 {
+  font-size: 1.2em;
+}
+
+.prose a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+
+.prose strong {
+  font-weight: 700;
+}
+
+.prose ul,
+.prose ol {
+  margin: 0 0 1.4em;
+  padding-left: 1.4em;
+}
+
+.prose li + li {
+  margin-top: 0.3em;
+}
+
+.prose blockquote {
+  margin: 0 0 1.4em;
+  padding: 0.2em 0 0.2em 1.1em;
+  border-left: 3px solid var(--rule);
+  color: var(--ink-2);
+}
+
+.prose blockquote.md-quote {
+  margin: 2.6em 0;
+  padding: 0;
+  border: 0;
+  color: var(--ink);
+  font-size: 1.3em;
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.prose blockquote.md-quote::before {
+  content: "\201C";
+  display: block;
+  height: 0.7em;
+  color: var(--accent);
+  font-size: 2.4em;
+  line-height: 1;
+}
+
+.prose hr {
+  width: 72px;
+  height: 1px;
+  margin: 3em auto;
+  border: 0;
+  background: var(--ink-muted);
+}
+
+.prose code {
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  background: var(--code-bg);
+  font-family: var(--mono);
+  font-size: 0.86em;
+}
+
+.prose pre {
+  margin: 0 0 1.4em;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: #1d1c19;
+  color: #ece7dd;
+  overflow-x: auto;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.prose pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+.prose table {
+  width: 100%;
+  margin: 0 0 1.4em;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.prose th,
+.prose td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+}
+
+.prose th {
+  font-weight: 700;
+}
+
+/* 가운데 정렬: 블록(::: center)이나 글 전체(편집기의 가운데 정렬) */
+.prose .md-center,
+.prose.center p,
+.prose.center h1,
+.prose.center h2,
+.prose.center h3,
+.prose.center h4,
+.prose.center blockquote {
+  text-align: center;
+}
+
+.prose.center blockquote:not(.md-quote) {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.prose.center ul,
+.prose.center ol {
+  list-style-position: inside;
+  padding-left: 0;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .post-head h1 {
+    font-size: 28px;
+  }
+
+  .prose {
+    font-size: 16px;
+  }
+}
+
+.post-foot a:hover {
+  color: var(--ink);
+}
+
+/* 더 구체적인 것(머리 메뉴·올려놓았을 때·큰 인용 안쪽)은 뒤에 둔다 */
+.blog-top nav a {
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: var(--ink-muted);
+  font-size: 14px;
+  text-decoration: none;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+
+.blog-top nav a:hover {
+  color: var(--ink);
+  background: var(--code-bg);
+}
+
+.post-list a:hover h2 {
+  color: var(--accent);
+}
+
+.prose blockquote.md-quote p {
+  margin: 0.4em 0 0;
+}
+
+/* 편집기의 미리 보기 */
+.editor-preview .post-head h1 {
+  font-size: 28px;
+}

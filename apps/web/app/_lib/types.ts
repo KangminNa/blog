@@ -128,3 +128,66 @@ export type SessionDetail = SessionSummary & {
     redactions: number;
   }[];
 };
+
+/** 글의 공개 범위: 임시(나만) · 공개(목록에 보임) · 링크만(주소로만) */
+export type PostStatus = 'draft' | 'published' | 'unlisted';
+
+export const POST_STATUS_LABELS: Record<PostStatus, string> = {
+  draft: '임시',
+  published: '공개',
+  unlisted: '링크만',
+};
+
+/** 글 목록의 한 줄 (방문자가 보는 것) */
+export type PostSummary = {
+  slug: string;
+  title: string;
+  excerpt: string;
+  tags: string[];
+  publishedAt: string | null;
+};
+
+/** 관리 화면 글 목록의 한 줄 */
+export type AdminPostSummary = PostSummary & {
+  id: string;
+  status: PostStatus;
+  revisionCount: number;
+  updatedAt: string;
+  deletedAt: string | null;
+  version: number;
+};
+
+export type PostCounts = { draft: number; published: number; unlisted: number; trash: number };
+
+/** 목록 한 쪽. counts는 주인에게만 */
+export type PostList<T extends PostSummary = PostSummary> = {
+  posts: T[];
+  next: string | null;
+  counts?: PostCounts;
+};
+
+/** 글 페이지 (주인이 보면 status·version까지) */
+export type PostPage = PostSummary & {
+  body: string;
+  align: 'left' | 'center';
+  /** 목록에 보이는 글인가 (링크만·임시 글이면 false) */
+  listed: boolean;
+  status?: PostStatus;
+};
+
+/** 편집기가 다루는 글 (쓰기 결과도 같은 모양. revised: 이번 저장으로 새 판이 생겼나) */
+export type EditablePost = {
+  id: string;
+  slug: string;
+  title: string;
+  body: string;
+  tags: string[];
+  align: 'left' | 'center';
+  status: PostStatus;
+  version: number;
+  revisionCount: number;
+  publishedAt: string | null;
+  updatedAt: string;
+  deletedAt: string | null;
+  revised?: boolean;
+};

@@ -244,7 +244,8 @@ a {
   z-index: 40;
 }
 
-.dock button {
+.dock button,
+.dock a {
   height: 48px;
   padding: 0 24px;
   border: 0;
@@ -258,7 +259,14 @@ a {
     background 0.3s;
 }
 
-.dock button:hover {
+.dock a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.dock button:hover,
+.dock a:hover {
   color: var(--fg);
 }
 
@@ -881,5 +889,264 @@ textarea.input {
 
   .mark .st {
     opacity: 1;
+  }
+}
+
+/* 글 시트의 한 줄 (휴지통 글은 옆에 되살리기) */
+.post-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.post-row .list-row {
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+}
+
+/* 여러 개 중 하나 고르기 (공개 범위, 쓰기·미리 보기) */
+.segment {
+  display: inline-flex;
+  gap: 2px;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  min-width: 0;
+}
+
+.segment button {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+
+.segment button:hover {
+  color: var(--fg);
+}
+
+.segment button[aria-pressed="true"],
+.segment button[aria-selected="true"] {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+.segment:disabled {
+  opacity: 0.5;
+}
+
+.cta.small {
+  height: 36px;
+  padding: 0 18px;
+  border-radius: 999px;
+}
+
+.ghost.danger:hover {
+  color: var(--danger);
+  border-color: rgba(224, 174, 143, 0.5);
+}
+
+/* 글 편집기 (관리 모드, 어두운 화면) */
+.editor {
+  max-width: 1440px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 0 20px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.editor-top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0 10px;
+  background: var(--bg);
+}
+
+.editor-state {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.editor-tabs {
+  display: none;
+  align-self: flex-start;
+}
+
+.editor-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.editor-title {
+  padding: 8px 2px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.editor-title:focus {
+  border-color: rgba(232, 169, 59, 0.6);
+}
+
+.editor-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.editor-meta label,
+.editor-align {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #bdb6aa;
+}
+
+.editor-meta .input {
+  height: 38px;
+  border-radius: 10px;
+}
+
+.editor-align {
+  padding-bottom: 6px;
+}
+
+.editor-hint {
+  color: #e0c08f;
+  font-size: 12px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-2);
+}
+
+.toolbar button {
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #bdb6aa;
+  font-size: 13px;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.toolbar button:hover {
+  background: #2a2824;
+  color: var(--fg);
+}
+
+.editor-body {
+  min-height: 60vh;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #161512;
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.75;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.editor-body:focus {
+  border-color: rgba(232, 169, 59, 0.5);
+}
+
+.editor-preview.blog {
+  position: sticky;
+  top: 72px;
+  min-height: 60vh;
+  max-height: calc(100dvh - 96px);
+  overflow: auto;
+  padding: 32px 36px;
+  border-radius: 18px;
+}
+
+.editor-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+@media (max-width: 960px) {
+  .editor-tabs {
+    display: inline-flex;
+  }
+
+  .editor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-grid[data-view="write"] .editor-preview,
+  .editor-grid[data-view="preview"] .editor-form {
+    display: none;
+  }
+
+  .editor-preview.blog {
+    position: static;
+    max-height: none;
+    padding: 24px 20px;
+  }
+
+  .editor-meta {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

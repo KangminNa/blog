@@ -6,14 +6,15 @@ import { BlogForm } from '../_admin/BlogForm';
 import { DevicesPanel } from '../_admin/DevicesPanel';
 import { LinkedLogins } from '../_admin/LinkedLogins';
 import { PluginsPanel } from '../_admin/PluginsPanel';
+import { PostsPanel } from '../_admin/PostsPanel';
 import { SessionsPanel } from '../_admin/SessionsPanel';
 import { api } from '../_lib/client-api';
 import type { Owner, SpaceInfo } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
 import { useToast } from '../_ui/useToast';
 
-type Sheet = 'sessions' | 'blog' | 'plugins' | 'devices' | 'account' | null;
-const SHEETS: readonly Sheet[] = ['sessions', 'blog', 'plugins', 'devices', 'account'];
+type Sheet = 'sessions' | 'posts' | 'blog' | 'plugins' | 'devices' | 'account' | null;
+const SHEETS: readonly Sheet[] = ['sessions', 'posts', 'blog', 'plugins', 'devices', 'account'];
 
 // 그래프 홈 (기준 시안 "밤길"). 방문자 화면과 관리 모드가 같은 무대를 쓴다.
 // 그래프의 점·선은 세션이 들어오고 그래프 API(M2)가 생기면 이 무대 위에 그린다. 지금은 빈 그래프 안내.
@@ -153,6 +154,15 @@ export function GraphHome({
           <SessionsPanel initialId={sessionId} />
         </section>
       )}
+      {admin && sheet === 'posts' && (
+        <section className="sheet" aria-label="글">
+          <div className="sheet-head">
+            <h2>글</h2>
+            <small>임시 · 공개 · 링크만 · 휴지통</small>
+          </div>
+          <PostsPanel onMessage={showToast} />
+        </section>
+      )}
       {admin && sheet === 'blog' && (
         <section className="sheet" aria-label="블로그 정보">
           <div className="sheet-head">
@@ -218,6 +228,13 @@ export function GraphHome({
             </button>
             <button
               type="button"
+              aria-current={sheet === 'posts'}
+              onClick={() => setSheet(sheet === 'posts' ? null : 'posts')}
+            >
+              글
+            </button>
+            <button
+              type="button"
               aria-current={sheet === 'blog'}
               onClick={() => setSheet(sheet === 'blog' ? null : 'blog')}
             >
@@ -246,9 +263,12 @@ export function GraphHome({
             </button>
           </>
         ) : (
-          <button type="button" aria-current="true">
-            그래프
-          </button>
+          <>
+            <button type="button" aria-current="true">
+              그래프
+            </button>
+            <a href="/posts">글</a>
+          </>
         )}
       </nav>
 

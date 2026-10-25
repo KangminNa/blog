@@ -7,12 +7,15 @@ const BASE = process.env.API_URL ?? 'http://localhost:4000';
 /** 응답 하나: 상태 코드와 본문 (연결 실패면 status 0) */
 export type ServerReply<T> = { status: number; data: T | null };
 
-export async function serverFetch<T>(path: string): Promise<ServerReply<T>> {
+/** asVisitor: 쿠키를 넘기지 않고 방문자로 묻는다 (방문자 화면은 주인이 열어도 방문자가 보는 그대로) */
+export async function serverFetch<T>(path: string, asVisitor = false): Promise<ServerReply<T>> {
   const jar = await cookies();
-  const cookie = jar
-    .getAll()
-    .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
-    .join('; ');
+  const cookie = asVisitor
+    ? ''
+    : jar
+        .getAll()
+        .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
+        .join('; ');
   try {
     const res = await fetch(`${BASE}${path}`, {
       cache: 'no-store',
@@ -25,7 +28,7 @@ export async function serverFetch<T>(path: string): Promise<ServerReply<T>> {
 }
 
 /** 성공하면 본문, 실패(401·404 등)나 연결 실패면 null */
-export async function serverGet<T>(path: string): Promise<T | null> {
-  const reply = await serverFetch<T>(path);
+export async function serverGet<T>(path: string, asVisitor = false): Promise<T | null> {
+  const reply = await serverFetch<T>(path, asVisitor);
   return reply.status >= 200 && reply.status < 300 ? reply.data : null;
 }
