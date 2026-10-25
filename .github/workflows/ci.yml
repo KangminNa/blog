@@ -22,6 +22,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      # 알려진 취약점(높음 이상)이 있는 패키지를 쓰면 실패. 고치는 법: 그 패키지를 올리거나 pnpm-workspace.yaml의 overrides
+      - run: pnpm audit --audit-level high
 
   migrations:
     name: DB · 테스트 (마이그레이션 왕복, 모듈 경계, 서버 테스트)

@@ -7,3 +7,12 @@ onlyBuiltDependencies:
   - "@nestjs/core"
   - "@swc/core"
   - sharp
+
+# 보안 패치가 나왔는데 쓰는 패키지가 아직 옛 버전을 묶어 둔 간접 의존 패키지 (pnpm audit, 2026-10-25).
+# 위의 패키지(@nestjs/platform-express · @modelcontextprotocol/sdk)가 새 버전을 따라오면 지운다.
+# zod는 MCP SDK의 짝(peer) 패키지라 여기가 아니라 apps/server에 직접 고정한다 (4.6.6 이상)
+overrides:
+  body-parser: ^2.4.0
+  fast-uri: ^3.1.9
+  ip-address: ^10.7.4
+  multer: ^2.5.0
