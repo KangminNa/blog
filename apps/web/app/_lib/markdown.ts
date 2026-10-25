@@ -1,5 +1,6 @@
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeStringify from 'rehype-stringify';
+import remarkCjkFriendly from 'remark-cjk-friendly';
 import remarkDirective from 'remark-directive';
 import remarkGfm from 'remark-gfm';
 import remarkParse from 'remark-parse';
@@ -10,7 +11,7 @@ import { unified } from 'unified';
 // 글 문법 (기획서 2026-10-03, 네이버 블로그식 본문):
 //   ::: center … :::   가운데 정렬 블록
 //   > [!quote]         큰 인용 (옵시디언 callout과 같은 모양)
-//   그 밖은 일반 md + GFM(표·취소선·체크 목록). 문단 안의 줄바꿈(엔터 한 번)도 줄을 바꾼다 (블로그 글쓰기 습관)
+//   그 밖은 일반 md + GFM(표·취소선·체크 목록). 한글 옆 굵게·기울임("**중요.**이다")도 먹게 cjk-friendly. 문단 안의 줄바꿈(엔터 한 번)도 줄을 바꾼다 (블로그 글쓰기 습관)
 // 사진·갤러리(::: gallery)·영상(::youtube{…})·링크 카드(::link{…})는 사진 올리기 단계에서 더한다.
 // 본문에 쓴 HTML은 그리지 않고(remark-rehype 기본), 결과도 한 번 더 거른다(rehype-sanitize).
 
@@ -90,6 +91,7 @@ const schema: typeof defaultSchema = {
 const processor = unified()
   .use(remarkParse)
   .use(remarkGfm)
+  .use(remarkCjkFriendly)
   .use(remarkDirective)
   .use(cairnBlocks)
   .use(remarkRehype)

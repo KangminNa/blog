@@ -954,12 +954,12 @@ textarea.input {
   border-color: rgba(224, 174, 143, 0.5);
 }
 
-/* 글 편집기 (관리 모드, 어두운 화면) */
+/* 글 편집기 (관리 모드). 어두운 바탕 위에 방문자가 볼 밝은 종이를 놓고 그 위에 바로 쓴다 */
 .editor {
-  max-width: 1440px;
+  max-width: 920px;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: 0 20px 40px;
+  padding: 0 20px 48px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -968,7 +968,7 @@ textarea.input {
 .editor-top {
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 6;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -990,7 +990,7 @@ textarea.input {
   gap: 8px;
 }
 
-.editor-error {
+.editor-note {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -998,75 +998,13 @@ textarea.input {
   gap: 10px;
 }
 
-.editor-tabs {
-  display: none;
-  align-self: flex-start;
-}
-
-.editor-grid {
-  flex: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-}
-
-.editor-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
-}
-
-.editor-title {
-  padding: 8px 2px 10px;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  background: transparent;
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.editor-title:focus {
-  border-color: rgba(232, 169, 59, 0.6);
-}
-
-.editor-meta {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: end;
-}
-
-.editor-meta label,
-.editor-align {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12px;
-  color: #bdb6aa;
-}
-
-.editor-meta .input {
-  height: 38px;
-  border-radius: 10px;
-}
-
-.editor-align {
-  padding-bottom: 6px;
-}
-
-.editor-hint {
-  color: #e0c08f;
-  font-size: 12px;
-}
-
-.toolbar {
+.editor-toolbar {
+  position: sticky;
+  top: 62px;
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 2px;
   padding: 5px;
   border: 1px solid var(--line);
@@ -1074,7 +1012,7 @@ textarea.input {
   background: var(--bg-2);
 }
 
-.toolbar button {
+.editor-toolbar button {
   height: 32px;
   padding: 0 10px;
   border: 0;
@@ -1087,37 +1025,26 @@ textarea.input {
     background 0.15s;
 }
 
-.toolbar button:hover {
+.editor-toolbar button:hover:not(:disabled) {
   background: #2a2824;
   color: var(--fg);
 }
 
-.editor-body {
-  min-height: 60vh;
-  padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #161512;
-  font-family: var(--mono);
-  font-size: 14px;
-  line-height: 1.75;
-  resize: vertical;
-  outline: none;
-  transition: border-color 0.2s;
+.editor-toolbar button[aria-pressed="true"] {
+  background: var(--lantern-soft);
+  color: #f0c27a;
 }
 
-.editor-body:focus {
-  border-color: rgba(232, 169, 59, 0.5);
+.editor-toolbar button:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
-.editor-preview.blog {
-  position: sticky;
-  top: 72px;
-  min-height: 60vh;
-  max-height: calc(100dvh - 96px);
-  overflow: auto;
-  padding: 32px 36px;
-  border-radius: 18px;
+.tool-gap {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--line);
 }
 
 .editor-foot {
@@ -1126,27 +1053,72 @@ textarea.input {
   gap: 10px;
 }
 
-@media (max-width: 960px) {
-  .editor-tabs {
-    display: inline-flex;
+/* 발행 창: 공개 범위 · 태그 · 주소 · 전체 가운데 정렬 */
+.publish {
+  position: fixed;
+  top: 64px;
+  right: max(16px, calc((100vw - 920px) / 2 + 20px));
+  z-index: 30;
+  width: min(380px, calc(100vw - 32px));
+  max-height: calc(100dvh - 88px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel-solid);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  animation: rise 0.3s var(--ease-out);
+}
+
+.publish-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.publish-status legend {
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #bdb6aa;
+}
+
+.publish-status button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.publish-status button small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.publish-status button[aria-pressed="true"] {
+  border-color: rgba(232, 169, 59, 0.6);
+  background: var(--lantern-soft);
+}
+
+@media (max-width: 640px) {
+  .editor {
+    padding: 0 12px 40px;
   }
 
-  .editor-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .editor-grid[data-view="write"] .editor-preview,
-  .editor-grid[data-view="preview"] .editor-form {
-    display: none;
-  }
-
-  .editor-preview.blog {
-    position: static;
-    max-height: none;
-    padding: 24px 20px;
-  }
-
-  .editor-meta {
-    grid-template-columns: minmax(0, 1fr);
+  .publish {
+    right: 16px;
   }
 }
