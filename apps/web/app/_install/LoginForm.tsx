@@ -80,7 +80,7 @@ export function LoginForm({
             </a>
           ))}
           <p className="label-mono">
-            비밀번호를 잊었다면 서버에서 <code>pnpm owner reset-password</code>로 다시 정해요.
+            비밀번호를 잊었다면 서버에서 <code>pnpm run owner reset-password</code>로 다시 정해요.
           </p>
         </form>
       </main>

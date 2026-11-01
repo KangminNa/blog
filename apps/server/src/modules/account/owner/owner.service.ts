@@ -172,7 +172,7 @@ export class OwnerService extends BaseService {
     });
   }
 
-  /** 명령줄(pnpm owner reset-password): 서버에 접속할 수 있는 사람 = 주인. 모든 로그인이 끝난다 */
+  /** 명령줄(pnpm run owner reset-password): 서버에 접속할 수 있는 사람 = 주인. 모든 로그인이 끝난다 */
   async resetPassword(actor: Actor, plain: string): Promise<Owner> {
     if (!(actor instanceof SystemActor))
       throw new Unauthenticated('비밀번호 다시 정하기는 서버 명령줄에서만 할 수 있어요');

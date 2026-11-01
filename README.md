@@ -139,7 +139,7 @@ docker compose up --build
 | `pnpm check` | 린트 + 타입 검사 + 모듈 경계 검사 (CI와 같음) |
 | `pnpm test` | 서버·플러그인 테스트 (단위 + API). 테스트 전용 DB를 매번 새로 만든다 |
 | `pnpm install-code` | 설치 코드. 브라우저에서 `/install`을 열고 넣는다 |
-| `pnpm owner reset-password` | 관리자 비밀번호 다시 정하기 (표준 입력으로. 모든 로그인이 끝남) |
+| `pnpm run owner reset-password` | 관리자 비밀번호 다시 정하기 (표준 입력으로. 모든 로그인이 끝남) |
 | `pnpm plugin` | 플러그인 상태·켜기·설정 (예: `pnpm plugin enable sync-github`). 관리 화면이 생기면 화면에서 |
 | `pnpm secret:new` | 서버 키 만들기 (`.env`의 `CAIRN_SECRET_KEY`) |
 | `pnpm secret:rotate` | 서버 키를 바꾼 뒤 비밀값을 새 키로 다시 암호화 (순서는 `.env.example`) |

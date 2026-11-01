@@ -15,7 +15,7 @@ import {
 // 명령줄. 서버에 접속할 수 있는 사람 = 주인으로 본다. 관리 화면·설치 마법사도 같은 Service를 부른다.
 //
 //   pnpm install-code                            설치 코드 (아직 주인이 없을 때)
-//   pnpm owner reset-password                    주인 비밀번호 다시 정하기 (표준 입력으로, 모든 로그인이 끝남)
+//   pnpm run owner reset-password                    주인 비밀번호 다시 정하기 (표준 입력으로, 모든 로그인이 끝남)
 //   pnpm plugin                                  들어 있는 플러그인과 상태
 //   pnpm plugin enable <플러그인>                 켜기 (쓰는 권한을 보여주고 허락)
 //   pnpm plugin disable <플러그인>                끄기
@@ -58,7 +58,7 @@ async function installCode(spaces: SpaceQuery, install: InstallPolicy): Promise<
 
 async function resetPassword(owners: OwnerService): Promise<void> {
   const plain = await readStdin(
-    '새 비밀번호를 표준 입력으로 주세요. 예: read -rs P && printf %s "$P" | pnpm owner reset-password',
+    '새 비밀번호를 표준 입력으로 주세요. 예: read -rs P && printf %s "$P" | pnpm run owner reset-password',
   );
   const owner = await owners.resetPassword(new SystemActor(), plain);
   console.log(`✔ ${owner.login}의 비밀번호를 다시 정했어요. 모든 로그인이 끝났어요`);
