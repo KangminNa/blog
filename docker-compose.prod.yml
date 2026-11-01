@@ -1,0 +1,118 @@
+# Cairn 운영 환경. 컴파일한 이미지만 돌린다 (감시 모드 없음, 소스 마운트 없음, root가 아닌 사용자)
+#   서버의 .env에 COMPOSE_FILE=docker-compose.prod.yml 을 적으면 docker compose 명령이 모두 이 파일을 쓴다
+#   docker compose up -d --build   →  db → migrate(마이그레이션 적용 후 종료) → server · worker → web
+#
+# 프록시 네트워크에 붙이는 docker-compose.override.yml은 파일을 직접 고르면 저절로 합쳐지지 않으므로 함께 적는다:
+#   COMPOSE_FILE=docker-compose.prod.yml:docker-compose.override.yml
+#
+# 프로젝트 이름과 볼륨이 docker-compose.yml과 같아서, 개발 compose로 돌리던 서버의 DB를 그대로 이어 쓴다.
+# 서로 부르는 이름(cairn-db · cairn-server · cairn-web)도 같다. 웹의 서버 주소는 Dockerfile에서 이 이름으로 빌드한다.
+# 슬롯(CAIRN_IMAGE_TAG · 포트 · COMPOSE_PROJECT_NAME)도 개발과 같은 방식으로 나뉜다 (scripts/slot.mjs)
+name: cairn
+
+x-db-url: &db-url postgres://cairn:${DB_PASSWORD:?.env에 DB_PASSWORD를 넣어 주세요}@cairn-db:5432/cairn?sslmode=disable
+
+x-secret-keys: &secret-keys
+  CAIRN_SECRET_KEY: ${CAIRN_SECRET_KEY:?.env에 CAIRN_SECRET_KEY를 넣어 주세요 (pnpm secret:new 또는 openssl rand -base64 32)}
+  CAIRN_SECRET_KEY_OLD: ${CAIRN_SECRET_KEY_OLD:-}   # 서버 키를 바꾸는 동안에만 (순서는 .env.example)
+
+services:
+  db:
+    build: ./db
+    image: cairn-db:${CAIRN_IMAGE_TAG:-dev}
+    restart: unless-stopped
+    networks:
+      default:
+        aliases: [cairn-db]
+    environment:
+      POSTGRES_USER: cairn
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?.env에 DB_PASSWORD를 넣어 주세요}
+      POSTGRES_DB: cairn
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cairn -d cairn"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    build:
+      context: ./db
+      dockerfile: Dockerfile.migrate
+    image: cairn-migrate:${CAIRN_IMAGE_TAG:-dev}
+    environment:
+      DATABASE_URL: *db-url
+    command: ["--wait", "--no-dump-schema", "--migrations-dir", "/db/migrations", "up"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  server:
+    build:
+      context: .
+      target: server
+    image: cairn-server:${CAIRN_IMAGE_TAG:-dev}
+    restart: unless-stopped
+    networks:
+      default:
+        aliases: [cairn-server]
+    environment:
+      <<: *secret-keys
+      DATABASE_URL: *db-url
+      PORT: 4000
+      CAIRN_WEB_URL: ${CAIRN_WEB_URL:-http://localhost:${WEB_PORT:-3000}}   # 사람이 여는 웹 주소 (설치 코드 안내에 씀)
+    ports:
+      - "127.0.0.1:${SERVER_PORT:-4000}:4000"   # 이 컴퓨터에서만. 밖에는 앞의 https 프록시만 연다
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    image: cairn-server:${CAIRN_IMAGE_TAG:-dev}   # 일꾼: 이벤트 넘기기와 플러그인 반복 작업. 하나만 띄운다. HTTP가 없어 상태 확인은 두지 않는다
+    pull_policy: never
+    restart: unless-stopped
+    command: ["node", "src/main.worker.js"]
+    environment:
+      <<: *secret-keys
+      DATABASE_URL: *db-url
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      server:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      target: web
+    image: cairn-web:${CAIRN_IMAGE_TAG:-dev}
+    restart: unless-stopped
+    networks:
+      default:
+        aliases: [cairn-web]
+    environment:   # 서버 키를 주지 않는다. 웹은 서버 API만 부른다
+      API_URL: http://cairn-server:4000
+      CAIRN_WEB_URL: ${CAIRN_WEB_URL:-http://localhost:${WEB_PORT:-3000}}
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"   # 이 컴퓨터에서만. 밖에는 앞의 https 프록시만 연다
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/',{redirect:'manual'}).then((r)=>process.exit(r.status<500?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    depends_on:
+      server:
+        condition: service_healthy
+
+volumes:
+  db-data:

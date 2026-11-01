@@ -9,19 +9,36 @@ export class SealedSecret {
 }
 
 // 비밀값(토큰 등)을 서버 키로 암호화한다. AES-256-GCM, 값마다 새 nonce.
-// 서버 키는 설치 때 한 번 만들어 환경 변수 CAIRN_SECRET_KEY(32바이트, base64)에 둔다. DB에는 키를 두지 않는다.
+// 서버 키는 설치 때 만들어 환경 변수 CAIRN_SECRET_KEY(32바이트, base64)에 둔다. DB에는 키를 두지 않는다.
+// 키를 바꾸는 동안에는 옛 키를 CAIRN_SECRET_KEY_OLD에 함께 둔다. 옛 키로는 저장된 비밀값을 읽기만 하고,
+// 암호화와 derive·pack은 늘 지금 키로 한다. 그래서 키를 바꾸면 설치 코드가 바뀌고 이미 싼 값은 풀리지 않는다 (짧게 쓰는 값이라 괜찮다).
 export class SecretBox {
-  private constructor(private readonly key: Buffer | null) {}
+  private static readonly CANNOT_OPEN =
+    '비밀값을 풀 수 없어요. 서버 키(CAIRN_SECRET_KEY)가 바뀌었다면 옛 키를 CAIRN_SECRET_KEY_OLD에 넣어 주세요';
+
+  private constructor(
+    private readonly key: Buffer | null,
+    private readonly oldKey: Buffer | null,
+  ) {}
 
   static fromEnv(env: Readonly<Record<string, string | undefined>>): SecretBox {
-    const raw = env.CAIRN_SECRET_KEY?.trim();
-    if (!raw) return new SecretBox(null);
+    const key = SecretBox.readKey(env, 'CAIRN_SECRET_KEY');
+    const oldKey = SecretBox.readKey(env, 'CAIRN_SECRET_KEY_OLD');
+    if (oldKey && !key)
+      throw new Error('CAIRN_SECRET_KEY_OLD만 있어요. 새 키를 CAIRN_SECRET_KEY에 넣어 주세요');
+    return new SecretBox(key, oldKey);
+  }
+
+  private static readKey(
+    env: Readonly<Record<string, string | undefined>>,
+    name: string,
+  ): Buffer | null {
+    const raw = env[name]?.trim();
+    if (!raw) return null;
     const key = Buffer.from(raw, 'base64');
     if (key.length !== 32)
-      throw new Error(
-        'CAIRN_SECRET_KEY는 32바이트를 base64로 적은 값이어야 해요 (pnpm secret:new)',
-      );
-    return new SecretBox(key);
+      throw new Error(`${name}는 32바이트를 base64로 적은 값이어야 해요 (pnpm secret:new)`);
+    return key;
   }
 
   /** 새 서버 키 (설치 때 한 번) */
@@ -79,8 +96,27 @@ export class SecretBox {
     return plain.slice(dot + 1);
   }
 
+  /** 지금 키로 풀고, 안 되면 옛 키로 푼다 */
   open(sealed: SealedSecret): string {
     const key = this.requireKey();
+    const plain = SecretBox.tryOpen(sealed, key) ?? this.openWithOldKey(sealed);
+    if (plain === null) throw new Error(SecretBox.CANNOT_OPEN);
+    return plain;
+  }
+
+  /**
+   * 옛 키로 잠긴 값을 지금 키로 다시 잠근다. 이미 지금 키로 잠겼으면 null (다시 돌려도 안전하다).
+   * 어느 키로도 풀리지 않으면 오류: 값을 버리지 않도록 호출한 쪽의 트랜잭션을 되돌린다.
+   */
+  reseal(sealed: SealedSecret): SealedSecret | null {
+    if (SecretBox.tryOpen(sealed, this.requireKey()) !== null) return null;
+    const plain = this.openWithOldKey(sealed);
+    if (plain === null) throw new Error(SecretBox.CANNOT_OPEN);
+    return this.seal(plain);
+  }
+
+  /** 이 키로 잠긴 값이면 원래 값, 아니면 null. 인증 태그가 맞아야 풀리므로 틀린 키가 틀린 값을 내놓지 않는다 */
+  private static tryOpen(sealed: SealedSecret, key: Buffer): string | null {
     const tag = sealed.ciphertext.subarray(-16);
     const body = sealed.ciphertext.subarray(0, -16);
     const decipher = createDecipheriv('aes-256-gcm', key, sealed.nonce);
@@ -88,8 +124,12 @@ export class SecretBox {
     try {
       return Buffer.concat([decipher.update(body), decipher.final()]).toString('utf8');
     } catch {
-      throw new Error('비밀값을 풀 수 없어요. 서버 키(CAIRN_SECRET_KEY)가 바뀌었는지 확인하세요');
+      return null;
     }
+  }
+
+  private openWithOldKey(sealed: SealedSecret): string | null {
+    return this.oldKey ? SecretBox.tryOpen(sealed, this.oldKey) : null;
   }
 
   private requireKey(): Buffer {

@@ -272,16 +272,18 @@ export class Task extends TrackedEntity {
     this.track('payload', this.payloadValue);
   }
 
-  /** 러너가 끝을 알린다. 살아 있는 임대로만. error가 있으면 실패로 */
+  /** 러너가 끝을 알린다. 살아 있는 임대로만 */
   submit(
     runnerId: string,
+    status: string,
     result: Readonly<Record<string, unknown>>,
     error: string | null,
     now: Date,
   ): void {
     this.assertHeldBy(runnerId, now);
-    if (error === null) this.finish(result, now);
-    else this.fail(error, now);
+    if (status === Task.DONE) this.finish(result, now);
+    else if (status === Task.FAILED) this.fail(error ?? '러너가 실패로 끝냈어요', now);
+    else throw new RuleViolation(`결과는 ${Task.DONE} · ${Task.FAILED} 중 하나예요`);
   }
 
   /**
@@ -318,12 +320,13 @@ export class Task extends TrackedEntity {
   }
 
   /** 러너가 처리하지 못하고 돌려준다: running → queued. 실패가 아니라 시도로 세지 않는다 */
-  release(runnerId: string, now: Date): void {
+  release(runnerId: string, reason: string, now: Date): void {
     this.assertHeldBy(runnerId, now);
     this.move([Task.RUNNING], Task.QUEUED);
     this.holdLease(null, null);
     this.tries = Math.max(0, this.tries - 1);
     this.track('attempts', this.tries);
+    this.log(TaskLogEntry.ERROR, `돌려줌: ${reason}`, 0, now);
   }
 
   /** 임대가 끝남 (러너가 죽음): 다시 대기열로, MAX_ATTEMPTS번째면 실패로 */

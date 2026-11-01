@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, describe, test } from 'node:test';
 import { inflateRawSync } from 'node:zlib';
-import { DeviceActor, OwnerActor, VisitorActor } from './actor';
+import { DeviceActor, OwnerActor, SystemActor, VisitorActor } from './actor';
 import { AttemptLimiter } from './attempt-limiter';
 import { BaseEntity } from './base-entity';
 import { BaseQuery } from './base-query';
@@ -14,6 +14,7 @@ import { Idempotency } from './idempotency';
 import { Outbox } from './outbox';
 import { PasswordHasher } from './password-hasher';
 import { SecretBox } from './secret-box';
+import { SecretRotation } from './secret-rotation';
 import { ZipFile } from './zip-file';
 
 // 기반 클래스가 약속한 동작을 실제 DB로 확인한다.
@@ -265,6 +266,46 @@ describe('입력 읽기 (M1)', () => {
     );
   });
 
+  test('안 적어도 되는 정수: 없으면 null, 있으면 범위를 본다', () => {
+    class LimitRequest extends BaseRequest {
+      private constructor(readonly limit: number | null) {
+        super();
+      }
+      static from(raw: unknown): LimitRequest {
+        return BaseRequest.read(raw, (f) => new LimitRequest(f.optionalInteger('limit', 1, 10)));
+      }
+    }
+    assert.equal(LimitRequest.from({}).limit, null);
+    assert.equal(LimitRequest.from({ limit: null }).limit, null);
+    assert.equal(LimitRequest.from({ limit: 3 }).limit, 3);
+    assert.throws(() => LimitRequest.from({ limit: 11 }), InvalidRequest);
+  });
+
+  test('객체 목록: 비어도 되고, 틀린 칸은 몇 번째인지 알린다', () => {
+    class RowsRequest extends BaseRequest {
+      private constructor(readonly rows: readonly string[]) {
+        super();
+      }
+      static from(raw: unknown): RowsRequest {
+        return BaseRequest.read(
+          raw,
+          (f) => new RowsRequest(f.nestedList('rows', 2).map((row) => row.text('name', 5))),
+        );
+      }
+    }
+    assert.deepEqual(RowsRequest.from({ rows: [] }).rows, []);
+    assert.deepEqual(RowsRequest.from({ rows: [{ name: 'a' }, { name: 'b' }] }).rows, ['a', 'b']);
+    assert.throws(
+      () => RowsRequest.from({ rows: [{ name: 'a' }, {}] }),
+      (error: InvalidRequest) => [...error.fields.keys()].join() === 'rows.1.name',
+    );
+    assert.throws(
+      () => RowsRequest.from({ rows: [{}, {}, {}] }),
+      (error: InvalidRequest) => [...error.fields.keys()].join() === 'rows',
+    );
+    assert.throws(() => RowsRequest.from({}), InvalidRequest);
+  });
+
   test('보고 고친 버전이 다르면 Conflict', () => {
     const sample = Sample.open();
     sample.assertVersion(1);
@@ -304,6 +345,66 @@ describe('SecretBox: 값 만들기와 짧은 값 싸기 (M1)', () => {
       assert.equal(box.unpack(forged.toString('base64url'), now), null, `${at}번째 바이트를 바꿈`);
     }
     assert.notEqual(box.pack('same', 600, now), box.pack('same', 600, now));
+  });
+});
+
+describe('서버 키 교체', () => {
+  const oldKey = SecretBox.newKey();
+  const newKey = SecretBox.newKey();
+  const before = SecretBox.fromEnv({ CAIRN_SECRET_KEY: oldKey });
+  const rotating = SecretBox.fromEnv({ CAIRN_SECRET_KEY: newKey, CAIRN_SECRET_KEY_OLD: oldKey });
+  const finished = SecretBox.fromEnv({ CAIRN_SECRET_KEY: newKey });
+
+  test('옛 키로 잠근 값도 읽고, 새로 잠글 때는 지금 키만 쓴다', () => {
+    assert.equal(rotating.open(before.seal('ghp_old')), 'ghp_old');
+    const sealed = rotating.seal('ghp_new');
+    assert.equal(finished.open(sealed), 'ghp_new');
+    assert.throws(() => before.open(sealed), /풀 수 없어요/);
+  });
+
+  test('다시 잠그기: 옛 키 값은 지금 키로, 지금 키 값은 그대로, 어느 키로도 안 풀리면 오류', () => {
+    const resealed = rotating.reseal(before.seal('ghp_old'));
+    assert.ok(resealed);
+    assert.equal(finished.open(resealed), 'ghp_old');
+    assert.equal(rotating.reseal(resealed), null, '두 번째는 건너뛴다');
+
+    const stranger = SecretBox.fromEnv({ CAIRN_SECRET_KEY: SecretBox.newKey() }).seal('ghp_lost');
+    assert.throws(() => rotating.reseal(stranger), /CAIRN_SECRET_KEY_OLD/);
+    assert.throws(() => finished.reseal(before.seal('x')), /풀 수 없어요/, '옛 키를 넣지 않음');
+  });
+
+  test('값 만들기와 짧은 값 싸기는 지금 키만 쓴다 (설치 코드가 바뀌고, 이미 싼 값은 풀리지 않는다)', () => {
+    assert.notDeepEqual(rotating.derive('install-code'), before.derive('install-code'));
+    assert.deepEqual(rotating.derive('install-code'), finished.derive('install-code'));
+    assert.equal(rotating.unpack(before.pack('install:abc', 600)), null);
+    assert.equal(rotating.unpack(rotating.pack('install:abc', 600)), 'install:abc');
+  });
+
+  test('키 설정이 틀리면 시작하지 않고, 빈 옛 키는 없는 것으로 본다', () => {
+    assert.throws(
+      () => SecretBox.fromEnv({ CAIRN_SECRET_KEY: newKey, CAIRN_SECRET_KEY_OLD: 'short' }),
+      /CAIRN_SECRET_KEY_OLD는 32바이트/,
+    );
+    assert.throws(() => SecretBox.fromEnv({ CAIRN_SECRET_KEY_OLD: oldKey }), /새 키를/);
+    const blank = SecretBox.fromEnv({ CAIRN_SECRET_KEY: newKey, CAIRN_SECRET_KEY_OLD: ' ' });
+    assert.throws(() => blank.open(before.seal('x')), /풀 수 없어요/);
+  });
+
+  test('SecretRotation: 등록된 곳을 차례로 돌고, 실패해도 다시 돌리면 이어서 된다', async () => {
+    const rotation = new SecretRotation();
+    let broken = true;
+    rotation.register('앞', async () => 2);
+    rotation.register('뒤', async () => {
+      if (broken) throw new Error('고장');
+      return 1;
+    });
+    assert.throws(() => rotation.register('앞', async () => 0), /이미 등록/);
+    await assert.rejects(rotation.run(new VisitorActor()), Forbidden);
+    await assert.rejects(rotation.run(new SystemActor()), /고장/);
+
+    broken = false;
+    const counts = await rotation.run(new SystemActor());
+    assert.deepEqual(Object.fromEntries(counts), { 앞: 2, 뒤: 1 });
   });
 });
 

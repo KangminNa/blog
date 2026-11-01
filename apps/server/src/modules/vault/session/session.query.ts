@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseQuery, Database, NotFound, type Row } from '../../platform';
-import { ListSessionsRequest, type ReadSessionRequest } from './read-session.request';
+import {
+  type GetSessionRequest,
+  ListSessionsRequest,
+  type ReadSessionRequest,
+  SearchSessionsRequest,
+} from './read-session.request';
 import type { CheckSessionRequest } from './save-session.request';
 import { SensitivePolicy } from './sensitive.policy';
 import { Session } from './session';
@@ -41,6 +46,26 @@ export class SessionPageView {
   ) {}
 }
 
+/** 찾은 세션 한 줄. 본문 조각은 찾은 말 둘레 (본문에 없고 제목에만 있으면 본문 앞부분) */
+export class SessionHitView {
+  constructor(
+    readonly id: string,
+    readonly title: string,
+    readonly project: string | null,
+    readonly tool: string,
+    readonly lastRevisionAt: Date | null,
+    readonly excerpt: string,
+  ) {}
+}
+
+/** 찾은 결과 한 쪽. next가 있으면 그 값으로 다음 쪽을 부른다 */
+export class SessionHitPageView {
+  constructor(
+    readonly hits: readonly SessionHitView[],
+    readonly next: string | null,
+  ) {}
+}
+
 /** 판 하나의 내용 */
 export class SessionRevisionView {
   constructor(
@@ -74,11 +99,23 @@ export class SessionDetailView {
   ) {}
 }
 
-// 세션 읽기: 관리 화면의 세션 목록·상세·판. 지금은 비공개까지 볼 수 있는 요청자(주인, read_all 기기)만.
+/** AI 도구가 읽는 세션 하나: 목록 정보 + 지금 판 */
+export class SessionNoteView {
+  constructor(
+    readonly summary: SessionSummaryView,
+    readonly head: SessionRevisionView,
+  ) {}
+}
+
+// 세션 읽기. 관리 화면의 목록·상세·판은 비공개까지 볼 수 있는 요청자(주인, read_all 기기)만,
+// AI 도구의 찾기·읽기(search · note)는 read_public이나 read_all 중 하나로, read_public은 공개 세션만 본다.
 // 방문자용 공개 세션 보기는 그래프(M2)에서 따로 만든다.
 @Injectable()
 export class SessionQuery extends BaseQuery {
   private static readonly PAGE = 30;
+  /** 찾은 결과의 본문 조각: 전체 길이, 그중 찾은 말 앞에 남길 길이 */
+  private static readonly EXCERPT = 160;
+  private static readonly EXCERPT_LEAD = 40;
 
   constructor(
     db: Database,
@@ -139,13 +176,10 @@ export class SessionQuery extends BaseQuery {
     const history = await this.sql`
       SELECT seq, kind, actor_type, created_at, coalesce(jsonb_array_length(redactions), 0) AS redactions
       FROM vault.session_revisions WHERE session_id = ${req.id} ORDER BY seq DESC`;
-    const [head] = await this.sql`
-      SELECT * FROM vault.session_revisions WHERE id = ${session.head_revision_id}`;
-    if (!head) throw new NotFound('세션의 지금 판을 찾을 수 없어요');
     return new SessionDetailView(
       this.summary(session),
       String(session.source_session_id),
-      this.revision(head),
+      await this.headOf(session),
       history.map(
         (r) =>
           new RevisionStampView(
@@ -167,6 +201,69 @@ export class SessionQuery extends BaseQuery {
       SELECT * FROM vault.session_revisions WHERE session_id = ${req.id} AND seq = ${req.seq ?? 0}`;
     if (!row) throw new NotFound(`${req.seq}번 판이 없어요`);
     return this.revision(row);
+  }
+
+  /**
+   * 키워드로 찾기 (AI 도구의 search_sessions). 제목과 지금 판의 본문에서 찾는다 (pg_bigm: 대소문자 구분).
+   * 공개 범위를 SQL에서 먼저 거른 뒤 쪽을 나눠서, 비공개 세션은 결과·본문 조각·next 어디에도 영향을 주지 않는다.
+   * 순서는 세션 id(UUIDv7) 내림차순: 저장해도 바뀌지 않는 값이라 쪽을 넘기는 사이에 새 판이 쌓여도
+   * 세션이 빠지거나 두 번 나오지 않는다.
+   */
+  async search(actor: Actor, req: SearchSessionsRequest): Promise<SessionHitPageView> {
+    this.assertCanRead(actor);
+    const [lead = ''] = req.words;
+    const rows = await this.sql`
+      SELECT s.node_id, s.head_title, s.project, s.tool, s.last_revision_at,
+             substr(s.head_text,
+                    greatest(position(${lead} in s.head_text) - ${SessionQuery.EXCERPT_LEAD}, 1),
+                    ${SessionQuery.EXCERPT}) AS excerpt
+      FROM vault.sessions s JOIN vault.nodes n ON n.id = s.node_id
+      WHERE s.space_id = ${actor.spaceId} AND n.deleted_at IS NULL ${this.visibleTo(actor, 's.visibility')}
+        ${req.words.map((word) => this.sql`AND (s.head_title LIKE likequery(${word}) OR s.head_text LIKE likequery(${word}))`)}
+        ${req.project === null ? this.sql`` : this.sql`AND s.project = ${req.project}`}
+        ${req.tool === null ? this.sql`` : this.sql`AND s.tool = ${req.tool}`}
+        ${req.from === null ? this.sql`` : this.sql`AND s.last_revision_at >= ${req.from}`}
+        ${req.to === null ? this.sql`` : this.sql`AND s.last_revision_at <= ${req.to}`}
+        ${req.before === null ? this.sql`` : this.sql`AND s.node_id < ${req.before}`}
+      ORDER BY s.node_id DESC
+      LIMIT ${req.limit + 1}`;
+    const hits = rows
+      .slice(0, req.limit)
+      .map(
+        (r) =>
+          new SessionHitView(
+            String(r.node_id),
+            String(r.head_title ?? ''),
+            r.project === null ? null : String(r.project),
+            String(r.tool),
+            r.last_revision_at === null ? null : new Date(r.last_revision_at),
+            String(r.excerpt ?? ''),
+          ),
+      );
+    const last = hits.at(-1);
+    return new SessionHitPageView(
+      hits,
+      rows.length > req.limit && last ? SearchSessionsRequest.cursorAfter(last.id) : null,
+    );
+  }
+
+  /** 세션 하나의 지금 판 (AI 도구의 get_session). 볼 수 없는 세션은 없는 세션과 똑같이 NotFound */
+  async note(actor: Actor, req: GetSessionRequest): Promise<SessionNoteView> {
+    this.assertCanRead(actor);
+    const session = await this.find(actor, req.id);
+    return new SessionNoteView(this.summary(session), await this.headOf(session));
+  }
+
+  /** AI 도구의 읽기는 read_public이나 read_all 중 하나만 있어도 된다 */
+  private assertCanRead(actor: Actor): void {
+    if (!actor.canSeePrivate()) actor.assertCan(Actor.READ_PUBLIC);
+  }
+
+  private async headOf(session: Row): Promise<SessionRevisionView> {
+    const [head] = await this.sql`
+      SELECT * FROM vault.session_revisions WHERE id = ${session.head_revision_id}`;
+    if (!head) throw new NotFound('세션의 지금 판을 찾을 수 없어요');
+    return this.revision(head);
   }
 
   /** 볼 수 있는 세션 행 하나 (휴지통·다른 공간·비공개 제외) */

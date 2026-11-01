@@ -1,0 +1,16 @@
+{
+  "$comment": "운영 빌드. 서버와 플러그인 서버 코드를 저장소와 같은 모양으로 dist에 컴파일한다. 플러그인의 ../../../apps/server/src/plugin-api가 그대로 맞아서 서버와 같은 BasePlugin을 쓴다",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "sourceMap": false,
+    "noEmitOnError": true
+  },
+  "include": ["src", "../../plugins/*/server/**/*.ts"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/testing",
+    "../../plugins/*/server/*.test.ts",
+    "../../plugins/*/server/fake-*.ts"
+  ]
+}

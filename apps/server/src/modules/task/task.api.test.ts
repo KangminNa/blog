@@ -248,9 +248,7 @@ describe('가짜 러너', () => {
 
     const progress = await tool(runner, 'report_progress', {
       task_id: task.id,
-      kind: 'write',
-      body: '초안을 썼어요',
-      tokens: 40,
+      events: [{ kind: 'write', body: '초안을 썼어요', tokens: 40 }],
     });
     assert.deepEqual(
       { ...progress.body, lease_until: undefined },
@@ -370,13 +368,38 @@ describe('가짜 러너', () => {
     assert.equal(asked.body.code, 'forbidden');
   });
 
+  test('진행 보고는 기록을 모아 받고 토큰을 더한다. 비어 있으면 임대만 늘린다', async () => {
+    const agent = await newAgent({ monthlyLimit: 100 });
+    const task = await newTask(agent);
+    await take();
+    const report = await tool(runner, 'report_progress', {
+      task_id: task.id,
+      events: [
+        { kind: 'read', body: '세션 읽기', tokens: 60 },
+        { kind: 'write', body: '초안 쓰기', tokens: 41 },
+      ],
+    });
+    assert.equal(report.body.paused, true);
+    const events = (await getTask(task.id)).events as Json[];
+    assert.deepEqual(
+      events.map((e) => e.body),
+      ['세션 읽기', '초안 쓰기'],
+    );
+
+    const empty = await tool(runner, 'report_progress', { task_id: task.id, events: [] });
+    assert.equal(empty.ok, true);
+    assert.equal(((await getTask(task.id)).events as Json[]).length, 2);
+  });
+
   test('처리하지 못한 일은 돌려줄 수 있다', async () => {
     const task = await newTask(await newAgent());
     await take();
-    const released = await tool(runner, 'release_job', { task_id: task.id });
+    const released = await tool(runner, 'release_job', { task_id: task.id, reason: '모델 한도' });
     assert.equal(released.body.status, 'queued');
     assert.equal((await take()).task.id, task.id);
-    assert.equal((await getTask(task.id)).attempts, 1);
+    const detail = await getTask(task.id);
+    assert.equal(detail.attempts, 1);
+    assert.equal((detail.events as Json[]).at(-1)?.body, '돌려줌: 모델 한도');
   });
 
   test('러너가 끝내면 done, 이유가 있으면 failed', async () => {
@@ -385,6 +408,7 @@ describe('가짜 러너', () => {
     const submitted = await tool(runner, 'submit_result', {
       task_id: done.id,
       request_id: randomUUID(),
+      status: 'done',
       result: { summary: '끝' },
     });
     assert.deepEqual(submitted.body, { task_id: done.id, status: 'done' });
@@ -395,9 +419,23 @@ describe('가짜 러너', () => {
     const reported = await tool(runner, 'submit_result', {
       task_id: failed.id,
       request_id: randomUUID(),
+      status: 'failed',
       error: '모델이 응답하지 않아요',
     });
     assert.equal(reported.body.status, 'failed');
+  });
+
+  test('결과는 done이나 failed만 받는다', async () => {
+    const task = await newTask(await newAgent());
+    await take();
+    const wrong = await tool(runner, 'submit_result', {
+      task_id: task.id,
+      request_id: randomUUID(),
+      status: 'skipped',
+    });
+    assert.equal(wrong.ok, false);
+    assert.equal(wrong.body.code, 'rule_violation');
+    assert.equal((await getTask(task.id)).status, 'running');
   });
 
   test('결재를 기다리는 작업은 러너가 끝낼 수 없다', async () => {
@@ -407,13 +445,13 @@ describe('가짜 러너', () => {
     const submitted = await tool(runner, 'submit_result', {
       task_id: task.id,
       request_id: randomUUID(),
+      status: 'done',
     });
     assert.equal(submitted.ok, false);
     assert.equal(submitted.body.code, 'rule_violation');
     const report = await tool(runner, 'report_progress', {
       task_id: task.id,
-      kind: 'read',
-      body: '마지막 기록',
+      events: [{ kind: 'read', body: '마지막 기록' }],
     });
     assert.equal(report.body.status, 'waiting');
   });
@@ -466,7 +504,10 @@ describe('취소와 임대', () => {
     const seen = await getTask(running.id);
 
     // 진행 보고는 version을 올리지 않는다: 보고가 잦아도 주인의 취소가 막히지 않는다
-    await tool(runner, 'report_progress', { task_id: running.id, kind: 'read', body: '읽는 중' });
+    await tool(runner, 'report_progress', {
+      task_id: running.id,
+      events: [{ kind: 'read', body: '읽는 중' }],
+    });
     ok(
       await api.request('POST', `/api/tasks/${running.id}/cancel`, owner, {
         version: seen.version,
@@ -475,8 +516,7 @@ describe('취소와 임대', () => {
 
     const report = await tool(runner, 'report_progress', {
       task_id: running.id,
-      kind: 'read',
-      body: '아직 도는 중',
+      events: [{ kind: 'read', body: '아직 도는 중' }],
     });
     assert.equal(report.ok, true);
     assert.equal(report.body.cancelled, true);
@@ -486,6 +526,7 @@ describe('취소와 임대', () => {
     const late = await tool(runner, 'submit_result', {
       task_id: running.id,
       request_id: randomUUID(),
+      status: 'done',
     });
     assert.equal(late.ok, false);
 
@@ -505,13 +546,14 @@ describe('취소와 임대', () => {
     const late = await tool(runner, 'submit_result', {
       task_id: task.id,
       request_id: randomUUID(),
+      status: 'done',
       result: { summary: '늦었어요' },
     });
     assert.equal(late.ok, false);
     assert.equal(late.body.code, 'rule_violation');
     const report = await tool(runner, 'report_progress', {
       task_id: task.id,
-      kind: 'read',
+      events: [],
     });
     assert.equal(report.ok, false);
     assert.equal((await api.mcp(job.run_token, 'tools/list')).status, 401);
@@ -540,14 +582,17 @@ describe('취소와 임대', () => {
     await take();
     await db.sql`UPDATE task.tasks SET lease_until = now() + interval '1 minute' WHERE id = ${String(task.id)}`;
     const before = Date.parse(String((await getTask(task.id)).leaseUntil));
-    const { body } = await tool(runner, 'report_progress', { task_id: task.id, kind: 'read' });
+    const { body } = await tool(runner, 'report_progress', { task_id: task.id, events: [] });
     assert.equal(Date.parse(String(body.lease_until)) > before + 10 * 60_000, true);
   });
 
   test('실행 기록은 고치거나 지울 수 없다', async () => {
     const task = await newTask(await newAgent());
     await take();
-    await tool(runner, 'report_progress', { task_id: task.id, kind: 'read', body: '읽는 중' });
+    await tool(runner, 'report_progress', {
+      task_id: task.id,
+      events: [{ kind: 'read', body: '읽는 중' }],
+    });
     const id = String(task.id);
     await assert.rejects(
       db.sql`UPDATE task.task_events SET body = '고침' WHERE task_id = ${id}`.then(),
@@ -563,7 +608,7 @@ describe('취소와 임대', () => {
     const task = await newTask(await newAgent());
     await take();
     await db.sql`UPDATE task.tasks SET leased_by = ${randomUUID()} WHERE id = ${String(task.id)}`;
-    const report = await tool(runner, 'report_progress', { task_id: task.id, kind: 'read' });
+    const report = await tool(runner, 'report_progress', { task_id: task.id, events: [] });
     assert.equal(report.ok, false);
   });
 });
@@ -593,6 +638,32 @@ describe('중복과 버전', () => {
     assert.equal(first.id, second.id);
   });
 
+  test('콘솔은 지시만 보내도 된다. 제목은 첫 줄, 종류는 general', async () => {
+    const task = ok(
+      await api.request('POST', '/api/tasks', owner, {
+        requestId: randomUUID(),
+        instruction: '\n이번 주 세션을 글로 정리해 줘\n자세히',
+      }),
+      201,
+    );
+    assert.equal(task.title, '이번 주 세션을 글로 정리해 줘');
+    assert.equal(task.kind, 'general');
+    const empty = await api.request('POST', '/api/tasks', owner, { requestId: randomUUID() });
+    assert.equal(empty.status, 400);
+  });
+
+  test('다른 작업에서 같은 request_id를 써도 결재는 따로 생긴다', async () => {
+    const request_id = 'approval-1';
+    await newTask(await newAgent());
+    const first = await take();
+    const asked = await askApproval(first.run_token, { request_id });
+    await newTask(await newAgent());
+    const second = await take();
+    const again = await askApproval(second.run_token, { request_id });
+    assert.equal(again.ok, true, JSON.stringify(again.body));
+    assert.notEqual(again.body.approval_id, asked.body.approval_id);
+  });
+
   test('같은 request_id의 결재는 하나고 처음 결과를 돌려준다', async () => {
     const task = await newTask(await newAgent());
     const job = await take();
@@ -611,7 +682,7 @@ describe('중복과 버전', () => {
   test('같은 request_id의 제출은 처음 결과를 돌려준다', async () => {
     const task = await newTask(await newAgent());
     await take();
-    const args = { task_id: task.id, request_id: randomUUID(), result: { n: 1 } };
+    const args = { task_id: task.id, request_id: randomUUID(), status: 'done', result: { n: 1 } };
     const first = await tool(runner, 'submit_result', args);
     const second = await tool(runner, 'submit_result', { ...args, result: { n: 2 } });
     assert.deepEqual(first.body, second.body);
@@ -622,7 +693,11 @@ describe('중복과 버전', () => {
     const agent = await newAgent();
     const task = await newTask(agent);
     await take();
-    const args = { task_id: task.id, request_id: randomUUID(), kind: 'read', tokens: 7 };
+    const args = {
+      task_id: task.id,
+      request_id: randomUUID(),
+      events: [{ kind: 'read', tokens: 7 }],
+    };
     await tool(runner, 'report_progress', args);
     await tool(runner, 'report_progress', args);
     assert.equal(((await getTask(task.id)).events as Json[]).length, 1);
@@ -670,7 +745,11 @@ describe('작업 토큰', () => {
     const task = await newTask(await newAgent());
     const job = await take();
     assert.equal((await api.mcp(job.run_token, 'tools/list')).status, 200);
-    await tool(runner, 'submit_result', { task_id: task.id, request_id: randomUUID() });
+    await tool(runner, 'submit_result', {
+      task_id: task.id,
+      request_id: randomUUID(),
+      status: 'done',
+    });
     const res = await api.mcp(job.run_token, 'tools/list');
     assert.equal(res.status, 401);
     assert.equal(res.json().code, 'unauthenticated');
@@ -687,7 +766,7 @@ describe('작업 토큰', () => {
     await newTask(await newAgent({ scopes: ['read_public'] }));
     const reader = await take();
     const names = await toolNames(reader.run_token);
-    assert.deepEqual(names, ['request_approval']);
+    assert.deepEqual(names, ['search_sessions', 'get_session', 'request_approval']);
     assert.equal((await tool(reader.run_token, 'save_session')).body.scope, 'upload');
     assert.equal((await tool(reader.run_token, 'next_jobs')).body.scope, 'run');
 
@@ -717,7 +796,7 @@ describe('한 달 한도', () => {
     const task = await newTask(agent);
     await take();
     const report = (tokens: number) =>
-      tool(runner, 'report_progress', { task_id: task.id, kind: 'read', tokens });
+      tool(runner, 'report_progress', { task_id: task.id, events: [{ kind: 'read', tokens }] });
 
     assert.equal((await report(60)).body.paused, false);
     assert.equal((await report(40)).body.paused, false);
@@ -759,8 +838,7 @@ describe('한 달 한도', () => {
     await take();
     const { body } = await tool(runner, 'report_progress', {
       task_id: task.id,
-      kind: 'read',
-      tokens: 1_000_000,
+      events: [{ kind: 'read', tokens: 1_000_000 }],
     });
     assert.equal(body.paused, false);
   });
@@ -839,7 +917,7 @@ describe('목록', () => {
     assert.equal(first.tasks.length, 30);
     assert.equal(first.tasks[0]?.id, ids.at(-1));
     assert.equal(typeof first.next, 'string');
-    const second = ok(await api.get(`/api/tasks?status=queued&after=${first.next}`, owner)) as {
+    const second = ok(await api.get(`/api/tasks?status=queued&cursor=${first.next}`, owner)) as {
       tasks: Json[];
       next: string | null;
     };
@@ -916,7 +994,10 @@ describe('실시간', () => {
 
     // 진행 기록도 신호를 보낸다
     await take();
-    await tool(runner, 'report_progress', { task_id: task.id, kind: 'read', body: '읽는 중' });
+    await tool(runner, 'report_progress', {
+      task_id: task.id,
+      events: [{ kind: 'read', body: '읽는 중' }],
+    });
     const logged = JSON.stringify({ topic: 'task.event.added', id: task.id });
     await until(() => text.includes(logged));
     assert.equal(text.includes(logged), true);

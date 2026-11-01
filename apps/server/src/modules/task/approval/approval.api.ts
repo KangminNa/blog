@@ -64,7 +64,7 @@ export class ApprovalController {
     private readonly service: ApprovalService,
   ) {}
 
-  /** ?status=pending · ?after=<이전 쪽의 마지막 id> */
+  /** ?status=pending · ?cursor=<앞 응답의 next> */
   @Get()
   async list(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<ApprovalPageResponse> {
     return ApprovalPageResponse.of(

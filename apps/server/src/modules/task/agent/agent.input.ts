@@ -1,5 +1,4 @@
 import { BaseRequest } from '../../platform';
-import { integerOr } from '../input-fields';
 
 // 에이전트 입력의 모양. 뜻(도구 이름, 권한 목록)은 Agent가 검사한다.
 
@@ -31,7 +30,7 @@ export class CreateAgentInput extends BaseRequest {
           f.text('tool', 40),
           f.optionalTextList('scopes', 20, 40) ?? [],
           f.optionalTextList('approvalActions', 20, 100) ?? [],
-          integerOr(f, raw, 'monthlyLimit', 1, LIMIT_MAX, null),
+          f.optionalInteger('monthlyLimit', 1, LIMIT_MAX),
         ),
     );
   }
@@ -65,9 +64,7 @@ export class UpdateAgentInput extends BaseRequest {
           f.optionalText('tool', 40),
           f.optionalTextList('scopes', 20, 40),
           f.optionalTextList('approvalActions', 20, 100),
-          'monthlyLimit' in body
-            ? integerOr(f, body, 'monthlyLimit', 1, LIMIT_MAX, null)
-            : undefined,
+          'monthlyLimit' in body ? f.optionalInteger('monthlyLimit', 1, LIMIT_MAX) : undefined,
         ),
     );
   }

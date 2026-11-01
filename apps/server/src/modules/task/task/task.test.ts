@@ -94,13 +94,13 @@ describe('작업 상태', () => {
   });
 
   test('임대를 쥔 러너가 살아 있는 임대로만 끝낼 수 있다', () => {
-    assert.throws(() => running().submit('다른 러너', {}, null, NOW), RuleViolation);
-    assert.throws(() => running().submit(RUNNER, {}, null, LATER), RuleViolation);
+    assert.throws(() => running().submit('다른 러너', Task.DONE, {}, null, NOW), RuleViolation);
+    assert.throws(() => running().submit(RUNNER, Task.DONE, {}, null, LATER), RuleViolation);
     const task = running();
-    task.submit(RUNNER, { ok: true }, null, NOW);
+    task.submit(RUNNER, Task.DONE, { ok: true }, null, NOW);
     assert.equal(task.status, Task.DONE);
     const failed = running();
-    failed.submit(RUNNER, {}, '실패 이유', NOW);
+    failed.submit(RUNNER, Task.FAILED, {}, '실패 이유', NOW);
     assert.equal(failed.status, Task.FAILED);
     assert.deepEqual(failed.result, { error: '실패 이유' });
   });
@@ -141,7 +141,7 @@ describe('작업 상태', () => {
 
   test('돌려준 일은 시도로 세지 않는다', () => {
     const task = running();
-    task.release(RUNNER, NOW);
+    task.release(RUNNER, '모델 한도', NOW);
     assert.equal(task.status, Task.QUEUED);
     assert.equal(task.attempts, 0);
     assert.equal(task.leasedBy, null);

@@ -16,6 +16,8 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 - 기반 클래스: `BaseService` · `BaseQuery` · `BaseRepository` · `BaseEntity` · `BaseRequest`(+`RequestFields`) · `BaseResponse` · `BaseGateway` · `BaseTool`
 - `Database`, `Sql`·`Row`(라이브러리 타입 별칭), `Actor`와 `OwnerActor`·`DeviceActor`·`VisitorActor`
 - 같은 트랜잭션에 들어가는 것: `Outbox`(이벤트), `Idempotency`(같은 request_id는 한 번만)
+- `SecretRotation`: 서버 키 교체. 비밀값을 가진 모듈이 `register`로 다시 잠그는 방법을 등록
+- `CoreWorkers`: 코어 모듈의 이벤트 받기·반복 작업 등록 (`on`, `every`, `expect`)
 - `ZipFile`: 라이브러리 없이 zip 만들기 (node:zlib). 앱에 올릴 스킬 묶음, 나중에 보관 형식 내보내기
 - 오류: `DomainError`와 단계별 하위 클래스, `DomainEvent`, `CurrentActor`(Controller 인자 데코레이터)
 

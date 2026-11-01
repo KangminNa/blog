@@ -202,6 +202,28 @@ describe('코어 일꾼', () => {
     assert.equal(rows[1]?.last_error, '코어 실패');
   });
 
+  test('주제 형식이 틀린 이벤트는 그것만 실패로 남고 뒤의 이벤트는 처리된다', async () => {
+    const core = new CoreWorkers();
+    const seen: string[] = [];
+    core.on(
+      'probe.core.after_bad',
+      new (class extends BaseHandler {
+        async handle(event: DomainEvent): Promise<void> {
+          seen.push(event.name);
+        }
+      })(),
+    );
+    const rows = await db.sql`
+      INSERT INTO platform.outbox (space_id, topic, payload) VALUES
+        (${SPACE}, 'bad topic', '{"v":1}'), (${SPACE}, 'probe.core.after_bad', '{"v":1}')
+      RETURNING id`;
+    await new OutboxWorker(db, await emptyRegistry(), core).tick();
+    assert.deepEqual(seen, ['probe.core.after_bad']);
+    const [bad] = await db.sql`SELECT last_error FROM platform.outbox WHERE id = ${rows[0]?.id}`;
+    assert.match(String(bad?.last_error), /이벤트 이름 형식/);
+    await db.sql`DELETE FROM platform.outbox WHERE id = ${rows[0]?.id}`;
+  });
+
   test('필수 주제에 받는 쪽이 없으면 일꾼이 시작하지 않는다', async () => {
     const core = new CoreWorkers();
     core.expect('task.approval.granted');

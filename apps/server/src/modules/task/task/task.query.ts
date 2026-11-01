@@ -17,7 +17,7 @@ export class TaskQuery extends BaseQuery {
       SELECT * FROM task.tasks
       WHERE space_id = ${actor.spaceId}
         ${req.status === null ? this.sql`` : this.sql`AND status = ${req.status}`}
-        ${req.after === null ? this.sql`` : this.sql`AND id < ${req.after}`}
+        ${req.cursor === null ? this.sql`` : this.sql`AND id < ${req.cursor}`}
       ORDER BY id DESC
       LIMIT ${TaskQuery.PAGE + 1}`;
     const page = rows.slice(0, TaskQuery.PAGE).map((r) => TaskQuery.view(r));

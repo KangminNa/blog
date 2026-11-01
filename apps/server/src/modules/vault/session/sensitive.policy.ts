@@ -20,7 +20,7 @@ export class SensitivePolicy {
     ['Anthropic API 키', /\bsk-ant-[A-Za-z0-9_-]{20,}/g],
     ['OpenAI API 키', /\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}/g],
     ['Google API 키', /\bAIza[0-9A-Za-z_-]{35}\b/g],
-    ['Cairn 토큰', /\bcairn_(?:at|rt|dt)_[A-Za-z0-9_-]{20,}/g],
+    ['Cairn 토큰', /\bcairn_(?:at|rt|dt|run)_[A-Za-z0-9_-]{20,}/g],
     ['JWT', /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g],
     // `password=hunter22`처럼 값이 붙은 것만. 코드 속 `password: string`, `token: process.env.X`는 두고,
     // 숫자가 섞였거나 16자 이상인 값만 지운다

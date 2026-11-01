@@ -14,7 +14,7 @@ export class ApprovalQuery extends BaseQuery {
       SELECT * FROM task.approvals
       WHERE space_id = ${actor.spaceId}
         ${req.status === null ? this.sql`` : this.sql`AND status = ${req.status}`}
-        ${req.after === null ? this.sql`` : this.sql`AND id < ${req.after}`}
+        ${req.cursor === null ? this.sql`` : this.sql`AND id < ${req.cursor}`}
       ORDER BY id DESC
       LIMIT ${ApprovalQuery.PAGE + 1}`;
     const page = rows.slice(0, ApprovalQuery.PAGE).map((r) => ApprovalQuery.view(r));

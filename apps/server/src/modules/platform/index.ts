@@ -42,6 +42,7 @@ export { McpEndpoint } from './base/mcp-endpoint';
 export { ChangeSignal, Outbox } from './base/outbox';
 export { PasswordHasher } from './base/password-hasher';
 export { SealedSecret, SecretBox } from './base/secret-box';
+export { SecretRotation } from './base/secret-rotation';
 export { ZipFile } from './base/zip-file';
 export { Cookies } from './http/cookies';
 export { CurrentActor } from './http/current-actor';

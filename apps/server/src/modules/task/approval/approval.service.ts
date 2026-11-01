@@ -33,7 +33,8 @@ export class ApprovalService extends BaseService {
     const now = new Date();
     return this.transaction(async (tx) => {
       const approvals = new ApprovalRepository(tx);
-      const once = new Idempotency(tx, agentId, req.requestId, ApprovalService.REQUEST);
+      // request_id는 AI가 만든다. 다른 작업에서 같은 값을 써도 앞 결재가 돌아오지 않게 작업마다 센다
+      const once = new Idempotency(tx, taskId, req.requestId, ApprovalService.REQUEST);
       const before = await once.previous();
       if (before) return approvals.load(spaceId, String(before.approvalId));
       const tasks = new TaskRepository(tx);

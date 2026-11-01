@@ -106,8 +106,10 @@ export class PluginRegistry {
 
   /** 서버 파일을 불러 BasePlugin 하위 클래스인지 확인하고 만든다 */
   private static instantiate(manifest: PluginManifest): BasePlugin {
-    // 플러그인 서버 파일은 실행 중에 정해지므로 require로 불러온다 (개발 중에는 @swc-node/register가 TS를 읽는다)
-    const loaded = require(join(manifest.dir, manifest.server ?? '')) as { default?: unknown };
+    // 플러그인 서버 파일은 실행 중에 정해지므로 require로 불러온다. 확장자를 빼서 Node가 찾게 한다:
+    // 운영 이미지에는 빌드 때 컴파일한 .js가 .ts 옆에 있고, 개발 중에는 @swc-node/register가 .ts를 읽는다
+    const entry = join(manifest.dir, manifest.server ?? '').replace(/\.ts$/, '');
+    const loaded = require(entry) as { default?: unknown };
     const PluginClass = loaded.default;
     if (typeof PluginClass !== 'function' || !(PluginClass.prototype instanceof BasePlugin)) {
       throw new Error(

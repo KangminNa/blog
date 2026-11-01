@@ -1,9 +1,10 @@
 import { resolve } from 'node:path';
-import { Global, Module } from '@nestjs/common';
+import { Global, Module, type OnModuleInit } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { ArchiveQuery } from './archive/archive.query';
 import { Database } from './base/database';
 import { SecretBox } from './base/secret-box';
+import { SecretRotation } from './base/secret-rotation';
 import { HealthController } from './health/health.controller';
 import { HealthQuery } from './health/health.query';
 import { DomainErrorFilter } from './http/domain-error.filter';
@@ -25,6 +26,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     PluginQuery,
     PluginService,
     { provide: SecretBox, useFactory: () => SecretBox.fromEnv(process.env) },
+    SecretRotation,
     ArchiveQuery,
     ChangeStream,
     CoreWorkers,
@@ -47,6 +49,7 @@ import { OutboxWorker } from './worker/outbox-worker';
   exports: [
     Database,
     SecretBox,
+    SecretRotation,
     PluginRegistry,
     PluginService,
     ArchiveQuery,
@@ -55,4 +58,13 @@ import { OutboxWorker } from './worker/outbox-worker';
     OutboxWorker,
   ],
 })
-export class PlatformModule {}
+export class PlatformModule implements OnModuleInit {
+  constructor(
+    private readonly rotation: SecretRotation,
+    private readonly plugins: PluginService,
+  ) {}
+
+  onModuleInit(): void {
+    this.rotation.register('플러그인 설정', (actor) => this.plugins.resealSecrets(actor));
+  }
+}

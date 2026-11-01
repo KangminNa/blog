@@ -101,7 +101,7 @@ export class ReportProgressTool extends BaseTool {
   readonly readOnly = false;
   override readonly idempotent = true;
   readonly description = [
-    '실행 기록을 남기고 임대를 늘린다. 임대가 끝나기 전에 부른다.',
+    '실행 기록을 모아 남기고 임대를 늘린다. 임대가 끝나기 전에 부르고, 남길 기록이 없으면 events를 비워 부른다.',
     '답의 cancelled가 true면 작업을 멈춘다. paused가 true면 에이전트가 멈춘 것이니 release_job으로 돌려줄 수 있다.',
     'status가 waiting이면 결재를 기다리는 중이니 이 실행을 끝낸다. submit_result는 부르지 않는다.',
   ].join(' ');
@@ -113,15 +113,26 @@ export class ReportProgressTool extends BaseTool {
         maxLength: 200,
         description: '이 보고의 id. 다시 보낼 때 같은 값을 쓰면 토큰을 두 번 세지 않는다',
       },
-      kind: {
-        type: 'string',
-        enum: ['read', 'write', 'result', 'error'],
-        description: '기록 종류',
+      events: {
+        type: 'array',
+        maxItems: ReportProgressInput.EVENTS_MAX,
+        description: '실행 기록. 비어 있어도 된다',
+        items: {
+          type: 'object',
+          properties: {
+            kind: {
+              type: 'string',
+              enum: ['read', 'write', 'result', 'error'],
+              description: '기록 종류',
+            },
+            body: { type: 'string', maxLength: 20_000, description: '기록 내용' },
+            tokens: { type: 'integer', minimum: 0, description: '이번에 쓴 토큰 수' },
+          },
+          required: ['kind'],
+        },
       },
-      body: { type: 'string', maxLength: 20_000, description: '기록 내용' },
-      tokens: { type: 'integer', minimum: 0, description: '이번에 쓴 토큰 수' },
     },
-    required: ['task_id', 'kind'],
+    required: ['task_id', 'events'],
   };
 
   constructor(private readonly tasks: TaskService) {
@@ -140,7 +151,7 @@ export class SubmitResultTool extends BaseTool {
   readonly readOnly = false;
   override readonly idempotent = true;
   readonly description = [
-    '작업을 끝낸다. 실패했으면 error에 이유를 적는다. 임대가 살아 있어야 한다.',
+    '작업을 끝낸다. status는 done이나 failed이고, 실패면 error에 이유를 적는다. 임대가 살아 있어야 한다.',
     '임대가 끝났거나 결재를 기다리는 작업은 끝낼 수 없다.',
   ].join(' ');
   readonly inputSchema = {
@@ -151,10 +162,11 @@ export class SubmitResultTool extends BaseTool {
         maxLength: 200,
         description: '이 요청의 id. 응답을 받지 못해 다시 보낼 때는 같은 값을 쓴다',
       },
+      status: { type: 'string', enum: ['done', 'failed'], description: '어떻게 끝났는가' },
       result: { type: 'object', description: '결과' },
       error: { type: 'string', maxLength: 4000, description: '실패했을 때의 이유' },
     },
-    required: ['task_id', 'request_id'],
+    required: ['task_id', 'request_id', 'status'],
   };
 
   constructor(private readonly tasks: TaskService) {
@@ -173,8 +185,11 @@ export class ReleaseJobTool extends BaseTool {
   readonly readOnly = false;
   readonly description = '처리하지 못한 일을 돌려준다. 다른 러너가 다시 빌려 갈 수 있다.';
   readonly inputSchema = {
-    properties: { task_id: { type: 'string', format: 'uuid', description: '작업 id' } },
-    required: ['task_id'],
+    properties: {
+      task_id: { type: 'string', format: 'uuid', description: '작업 id' },
+      reason: { type: 'string', maxLength: 1000, description: '돌려주는 이유' },
+    },
+    required: ['task_id', 'reason'],
   };
 
   constructor(private readonly tasks: TaskService) {

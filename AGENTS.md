@@ -36,6 +36,7 @@ docs/          기획 문서 (기획서 · MVP 기획서 · 테이블 설계 · 
 | `pnpm plugin …` | 플러그인 상태·켜기·끄기·설정·동작 (`plugins/CLAUDE.md`). 관리 화면 전까지 쓰는 길 |
 | `pnpm cairn connect <블로그 주소>` | 이 컴퓨터의 Claude Code(`--tool codex`면 Codex)를 블로그에 연결 (스킬·검토자 넣기 · MCP 등록 · 브라우저 로그인 · 연결 확인). `pnpm cairn status`로 상태 |
 | `pnpm secret:new` | 서버 키(`CAIRN_SECRET_KEY`) 만들기. 비밀값 암호화에 씀 |
+| `pnpm secret:rotate` | 서버 키를 바꾼 뒤 저장된 비밀값을 새 키로 다시 암호화 (순서는 `.env.example`) |
 | `pnpm format` | Biome 포맷·자동 수정 |
 | `pnpm db:new <이름>` | 새 마이그레이션 파일 |
 | `pnpm db:migrate` / `db:rollback` / `db:reset` / `db:psql` | 마이그레이션 적용 / 하나 되돌리기 / 데이터 지우고 처음부터 / psql 접속 |

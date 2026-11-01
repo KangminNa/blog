@@ -37,8 +37,8 @@ export class RequestApprovalInput extends BaseRequest {
 export class ListApprovalsInput extends BaseRequest {
   private constructor(
     readonly status: string | null,
-    /** 이전 쪽의 마지막 id */
-    readonly after: string | null,
+    /** 앞 응답의 next */
+    readonly cursor: string | null,
   ) {
     super();
   }
@@ -49,7 +49,7 @@ export class ListApprovalsInput extends BaseRequest {
       (f) =>
         new ListApprovalsInput(
           f.optionalText('status', 20),
-          (raw as Record<string, unknown>).after ? f.uuid('after') : null,
+          (raw as Record<string, unknown>).cursor ? f.uuid('cursor') : null,
         ),
     );
   }

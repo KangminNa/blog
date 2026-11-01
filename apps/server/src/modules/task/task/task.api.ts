@@ -75,7 +75,7 @@ export class TaskController {
     private readonly service: TaskService,
   ) {}
 
-  /** ?status=running · ?after=<이전 쪽의 마지막 id> */
+  /** ?status=running · ?cursor=<앞 응답의 next> */
   @Get()
   async list(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<TaskPageResponse> {
     return TaskPageResponse.of(await this.tasks.list(actor, ListTasksInput.from(query)));

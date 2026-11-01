@@ -89,7 +89,7 @@ export class TaskService extends BaseService {
       const task = await tasks.lock(spaceId, req.taskId);
       if (repeated === null) {
         task.acceptReport(runnerId, now);
-        task.log(req.kind, req.body, req.tokens, now);
+        for (const e of req.events) task.log(e.kind, e.body, e.tokens, now);
         await tasks.saveLease(task);
         await this.charge(tx, task, req.tokens, now);
         await once?.remember({ reported: true });
@@ -115,7 +115,7 @@ export class TaskService extends BaseService {
       const before = await once.previous();
       if (before) return tasks.load(spaceId, String(before.taskId));
       const task = await tasks.lock(spaceId, req.taskId);
-      task.submit(runnerId, req.result, req.error, now);
+      task.submit(runnerId, req.status, req.result, req.error, now);
       await tasks.save(task);
       await once.remember({ taskId: task.id });
       return task;
@@ -130,7 +130,7 @@ export class TaskService extends BaseService {
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
       const task = await tasks.lock(spaceId, req.taskId);
-      task.release(runnerId, new Date());
+      task.release(runnerId, req.reason, new Date());
       await tasks.save(task);
       return task;
     });
