@@ -7,6 +7,7 @@ import { countOf, usePendingApprovals } from '../_task/live';
 import { CairnMark } from '../_ui/CairnMark';
 import { ThemeToggle } from '../_ui/ThemeToggle';
 import { useToast } from '../_ui/useToast';
+import { useWaitingChanges } from '../_vault/live';
 import { APPROVALS_HREF, HOME_HREF, MENU, MenuIcon } from './menu';
 
 /** 지금 메뉴인가. 홈(/admin)은 모든 메뉴의 앞부분이라 정확히 같을 때만 */
@@ -36,8 +37,10 @@ export function AdminShell({
   const [open, setOpen] = useState(false);
   const [toast, showToast] = useToast();
   const pending = usePendingApprovals();
-  const pendingCount = pending.data?.approvals.length
-    ? countOf(pending.data.approvals, pending.data.next)
+  const proposals = useWaitingChanges();
+  const toDecide = [...(pending.data?.approvals ?? []), ...(proposals.data?.changes ?? [])];
+  const pendingCount = toDecide.length
+    ? countOf(toDecide, pending.data?.next ?? proposals.data?.next)
     : null;
 
   useEffect(() => {

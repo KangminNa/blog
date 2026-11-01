@@ -49,6 +49,17 @@ const ICONS: Record<string, ReactNode> = {
     </>
   ),
   basket: <path d="M2.2 6h11.6l-1 7.2H3.2zM5.2 6 7 2.4M10.8 6 9 2.4" />,
+  graph: (
+    <>
+      <circle cx="4" cy="4.5" r="1.8" />
+      <circle cx="12" cy="3.5" r="1.8" />
+      <circle cx="8" cy="12" r="1.8" />
+      <path d="M5.6 5.4 7 10.4M9.3 10.8l2-5.6M5.8 4.3l4.4-.6" />
+    </>
+  ),
+  book: (
+    <path d="M8 4.2C6.6 3 4.6 2.6 2.5 2.8v9.6c2.1-.2 4.1.2 5.5 1.4 1.4-1.2 3.4-1.6 5.5-1.4V2.8C11.4 2.6 9.4 3 8 4.2zM8 4.2v9.6" />
+  ),
 };
 
 export const HOME_HREF = '/admin';
@@ -64,7 +75,14 @@ export const MENU = [
       { href: '/admin/agents', name: '에이전트', icon: 'people' },
     ],
   },
-  { label: '지식', items: [{ href: '/admin/sessions', name: '세션', icon: 'session' }] },
+  {
+    label: '지식',
+    items: [
+      { href: '/admin/sessions', name: '세션', icon: 'session' },
+      { href: '/admin/graph', name: '그래프', icon: 'graph' },
+      { href: '/admin/wiki', name: '위키', icon: 'book' },
+    ],
+  },
   {
     label: '블로그',
     items: [

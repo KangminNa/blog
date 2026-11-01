@@ -1,0 +1,399 @@
+/* 지식 화면: 그래프와 위키. 색은 globals.css의 토큰만 쓰고, 점의 종류는 모양과 크기로 구분한다 */
+
+.console-page:has(> .g-host) {
+  position: relative;
+  overflow: hidden;
+}
+
+.g-host {
+  --g-gutter: 16px;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.blog-graph {
+  position: relative;
+  height: calc(100dvh - 64px);
+}
+
+.g-host canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+}
+
+.g-host canvas.over {
+  cursor: pointer;
+}
+
+.g-host canvas.drag {
+  cursor: grabbing;
+}
+
+.g-tools {
+  position: absolute;
+  top: 12px;
+  left: var(--g-gutter);
+  right: var(--g-gutter);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  pointer-events: none;
+}
+
+.g-tools > * {
+  pointer-events: auto;
+}
+
+.g-tools .spacer {
+  pointer-events: none;
+}
+
+.g-search {
+  width: min(200px, 100%);
+  height: 30px;
+  padding: 0 10px;
+  outline: none;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--fg);
+}
+
+.g-search::placeholder {
+  color: var(--faint);
+}
+
+.g-search:focus {
+  border-color: var(--fg);
+}
+
+.g-tools .ghost {
+  min-height: 30px;
+  padding: 2px 10px;
+  background: var(--bg);
+}
+
+.g-tools .ghost[aria-pressed="true"],
+.g-tools .ghost[aria-expanded="true"] {
+  background: var(--raised);
+}
+
+.g-legend {
+  position: absolute;
+  left: var(--g-gutter);
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--faint);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.g-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.g-mark {
+  display: inline-block;
+  flex: none;
+}
+
+.g-mark.category {
+  width: 8px;
+  height: 8px;
+  background: var(--fg);
+  transform: rotate(45deg);
+}
+
+.g-mark.post {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--fg);
+}
+
+.g-mark.wiki {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.g-mark.session {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.g-mark.place {
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--faint);
+  border-radius: 50%;
+}
+
+.g-panel {
+  position: absolute;
+  top: 52px;
+  left: var(--g-gutter);
+  width: min(216px, calc(100% - 2 * var(--g-gutter)));
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.g-panel label {
+  display: grid;
+  gap: 2px;
+}
+
+.g-panel input[type="range"] {
+  width: 100%;
+  accent-color: var(--fg);
+}
+
+.g-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inspector {
+  position: absolute;
+  top: 52px;
+  right: var(--g-gutter);
+  width: min(264px, calc(100% - 2 * var(--g-gutter)));
+  max-height: calc(100% - 68px);
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+}
+
+.inspector h2 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.inspector .cta {
+  text-align: center;
+  text-decoration: none;
+}
+
+.kind {
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.g-close {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.g-close:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.linked {
+  display: grid;
+  gap: 1px;
+}
+
+.linked button,
+.linked a {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.linked button:hover,
+.linked a:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.g-list {
+  position: absolute;
+  top: 52px;
+  left: var(--g-gutter);
+  bottom: 44px;
+  width: min(320px, calc(100% - 2 * var(--g-gutter)));
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+}
+
+.g-list h2 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.g-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 1px;
+}
+
+.g-list button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+}
+
+.g-list button:hover {
+  background: var(--hover);
+}
+
+.g-list small {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.g-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+@media (pointer: coarse) {
+  .g-tools .ghost,
+  .g-search {
+    min-height: 40px;
+    height: 40px;
+  }
+
+  .g-close {
+    width: 40px;
+    height: 40px;
+  }
+
+  .g-panel,
+  .g-list,
+  .inspector {
+    top: 104px;
+  }
+}
+
+@media (max-width: 640px) {
+  .inspector {
+    top: auto;
+    bottom: 12px;
+    left: var(--g-gutter);
+    width: auto;
+    max-height: 45%;
+  }
+
+  .g-legend {
+    display: none;
+  }
+
+  .g-list {
+    bottom: 12px;
+    right: var(--g-gutter);
+    width: auto;
+  }
+}
+
+/* 위키 */
+.wiki-search {
+  display: flex;
+  gap: 6px;
+}
+
+.wiki-search .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.wiki-edit textarea.input {
+  height: auto;
+  min-height: 360px;
+  padding: 10px 11px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+/* 승인함의 위키 제안 */
+.proposal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.proposal + .proposal {
+  margin-top: 10px;
+}
+
+.proposal-body {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--raised);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

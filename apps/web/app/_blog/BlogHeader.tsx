@@ -6,6 +6,7 @@ export function BlogHeader({ name, owner }: { name: string; owner: boolean }) {
         {name || 'Cairn'}
       </a>
       <nav aria-label="블로그 메뉴">
+        <a href="/graph">그래프</a>
         <a href={owner ? '/admin' : '/login'}>{owner ? '콘솔' : '로그인'}</a>
       </nav>
     </header>
