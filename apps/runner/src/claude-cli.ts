@@ -10,7 +10,8 @@ import type { JobWorkspace } from './job-workspace';
 // 권한: 셸을 주지 않는다. 내장 도구는 파일 도구만, 쓰기는 acceptEdits라 work 폴더 안에서만, MCP는 cairn만 묻지 않고 허락한다.
 // -p는 물을 사람이 없어서 그 밖의 것은 거절된다. 작업 폴더 밖 읽기도 그렇다: Claude가 허락을 묻고, 답할 사람이 없어 거절된다.
 // 그래도 주인의 홈은 settings.json의 deny로 막는다 (ClaudeCli.settings): 거절이 더 확실하고 권한 모드가 바뀌어도 남는다.
-// 주인의 컴퓨터에서 돌아가므로 AI가 지시문에 속아도 이 안에 머문다.
+// 주인의 컴퓨터나 서버의 러너 컨테이너에서 돌아가므로 AI가 지시문에 속아도 이 안에 머문다.
+// 로그인 토큰은 일마다 정해지고 (AiLogins), 파일에 쓰지 않고 환경 변수로만 넘긴다.
 export class ClaudeCli {
   static readonly TOOL = 'claude';
   private static readonly FILE_TOOLS = ['Read', 'Write', 'Edit'];
@@ -63,16 +64,21 @@ export class ClaudeCli {
   }
 
   args(workspace: JobWorkspace): readonly string[] {
-    const tools = workspace.skillReady
-      ? [...ClaudeCli.FILE_TOOLS, ClaudeCli.SKILL_TOOL]
-      : ClaudeCli.FILE_TOOLS;
-    return [
+    const print = [
       '-p',
       '--output-format',
       'stream-json',
       '--verbose',
       '--no-session-persistence',
       '--strict-mcp-config',
+    ];
+    // 연결 확인: MCP도 도구도 없이 답만 받는다. --tools는 값을 여럿 받으므로 맨 뒤에 둔다
+    if (!workspace.mcpReady) return [...print, '--tools', ''];
+    const tools = workspace.skillReady
+      ? [...ClaudeCli.FILE_TOOLS, ClaudeCli.SKILL_TOOL]
+      : ClaudeCli.FILE_TOOLS;
+    return [
+      ...print,
       '--mcp-config',
       workspace.mcpConfigPath,
       '--tools',

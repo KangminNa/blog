@@ -76,6 +76,7 @@ export const MENU = [
     label: '연결',
     items: [
       { href: '/admin/devices', name: '기기', icon: 'device' },
+      { href: '/admin/ai', name: 'AI', icon: 'session' },
       { href: '/admin/plugins', name: '플러그인', icon: 'plug' },
     ],
   },
