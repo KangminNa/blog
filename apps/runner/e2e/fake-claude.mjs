@@ -8,6 +8,7 @@
 //   [fake:error-result] 코드 0으로 끝나지만 결과가 실패다
 //   [fake:approval]     작업 토큰으로 결재를 올린다 (MCP 설정 파일을 읽어서)
 //   [fake:stray]        허락하지 않은 MCP 서버가 붙은 것처럼 보인다
+// 연결 확인(MCP 설정 없음)은 ok라고 답한다. 토큰에 wrong이 들어 있으면 로그인 실패처럼 끝난다
 import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 
@@ -36,6 +37,27 @@ const toolResult = (tool_use_id, content, is_error = false) =>
     message: { role: 'user', content: [{ type: 'tool_result', tool_use_id, content, is_error }] },
   });
 const forever = () => new Promise(() => setInterval(() => {}, 1000));
+
+// 연결 확인은 MCP 설정 없이 뜬다. 지시문이 서버의 고정된 글이라 표시를 넣을 수 없어서 토큰으로 정한다
+if (!process.argv.includes('--mcp-config')) {
+  const token = process.env.CLAUDE_CODE_OAUTH_TOKEN ?? '';
+  say({
+    type: 'system',
+    subtype: 'init',
+    cwd: process.cwd(),
+    model: 'fake',
+    apiKeySource: 'none',
+    tools: [],
+    mcp_servers: [],
+  });
+  if (token.includes('wrong')) {
+    say({ type: 'result', subtype: 'success', is_error: true, result: `틀린 토큰 ${token}` });
+    process.exit(1);
+  }
+  assistant('msg_1', { input_tokens: 5, output_tokens: 1 }, { type: 'text', text: 'ok' });
+  say({ type: 'result', subtype: 'success', is_error: false, result: 'ok' });
+  process.exit(0);
+}
 
 const mcpConfigPath = process.argv[process.argv.indexOf('--mcp-config') + 1];
 const cairn = JSON.parse(readFileSync(mcpConfigPath, 'utf8')).mcpServers.cairn;

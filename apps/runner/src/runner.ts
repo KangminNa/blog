@@ -1,3 +1,4 @@
+import { AiLogins } from './ai-login';
 import { Backoff } from './backoff';
 import { CairnServer } from './cairn-server';
 import type { Job } from './job';
@@ -16,19 +17,26 @@ export class Runner {
   private static readonly WAIT_SECONDS = 25;
   private static readonly BACKOFF_FIRST_MS = 1_000;
   private static readonly BACKOFF_MAX_MS = 60_000;
+  /** AI 토큰이 없을 때. 돌려준 일이 바로 다시 빌려지므로 쉬지 않으면 빌리고 돌려주기를 되풀이한다 */
+  private static readonly LOGIN_WAIT_FIRST_MS = 5_000;
+  private static readonly LOGIN_WAIT_MAX_MS = 120_000;
 
   private readonly stopper = new AbortController();
   private readonly pollCutter = new AbortController();
   private polling = false;
   private readonly backoff = new Backoff(Runner.BACKOFF_FIRST_MS, Runner.BACKOFF_MAX_MS);
+  /** next_jobs가 되는 동안에도 늘어나야 해서 backoff와 따로 센다 */
+  private readonly loginWait = new Backoff(Runner.LOGIN_WAIT_FIRST_MS, Runner.LOGIN_WAIT_MAX_MS);
   private readonly redactor: Redactor;
   private readonly log: RunLog;
   private readonly server: CairnServer;
+  private readonly logins: AiLogins;
 
   constructor(private readonly config: RunnerConfig) {
     this.redactor = new Redactor([config.deviceToken, config.claudeToken]);
     this.log = new RunLog(this.redactor);
     this.server = new CairnServer(new McpClient(config.mcpUrl, config.deviceToken));
+    this.logins = new AiLogins(this.server, config.claudeToken);
   }
 
   /**
@@ -49,6 +57,8 @@ export class Runner {
   async run(): Promise<void> {
     const stop = this.stopper.signal;
     this.log.info(`러너를 시작했어요: ${this.config.serverUrl}`);
+    if (this.config.claudeToken === null)
+      this.log.info('AI 토큰은 콘솔의 AI 메뉴에 넣은 값을 써요');
     while (!stop.aborted) {
       try {
         this.polling = true;
@@ -67,16 +77,21 @@ export class Runner {
     this.log.info('러너를 멈췄어요');
   }
 
-  private perform(job: Job): Promise<void> {
-    this.log.info(`${job.taskId}: 일을 맡았어요 (${job.agentName}) ${job.title}`);
-    return new JobRun(
+  private async perform(job: Job): Promise<void> {
+    const who = job.agentName ? `(${job.agentName}) ` : '';
+    this.log.info(`${job.taskId}: 일을 맡았어요 ${who}${job.title}`);
+    const login = await this.logins.forJob(job);
+    await new JobRun(
       job,
+      login,
       this.server,
       this.config,
       this.log,
       this.redactor,
       this.stopper.signal,
     ).perform();
+    if (login.token === null) await this.loginWait.wait(this.stopper.signal);
+    else this.loginWait.reset();
   }
 
   private static fatal(error: unknown): boolean {

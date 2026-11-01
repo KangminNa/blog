@@ -8,8 +8,8 @@ import type { Agent } from '../../_task/types';
 
 /** 에이전트에게 줄 수 있는 권한. run은 러너의 것이라 없다 (서버의 Agent.SCOPES와 맞춘다) */
 const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write'];
-/** 고를 수 있는 결재 동작. 한도 변경은 서버만 올린다 */
-const ACTIONS = [PUBLISH_POST, 'sns.post.send'];
+/** 고를 수 있는 결재 동작: 승인 뒤 실행하는 모듈이 있는 것만. 없으면 작업이 끝나지 않는다. 한도 변경은 서버만 올린다 */
+const ACTIONS = [PUBLISH_POST];
 
 function toggled(list: readonly string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -152,6 +152,7 @@ export function AgentForm({
       </div>
       <fieldset className="checks">
         <legend>권한</legend>
+        <small>세션 정리는 정리와 전체 읽기 권한이 함께 필요</small>
         {SCOPES.map((s) => (
           <label key={s} className="check">
             <input

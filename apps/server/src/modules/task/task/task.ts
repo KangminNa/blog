@@ -51,13 +51,19 @@ export class Task extends TrackedEntity {
    * 실제 만료는 임대다: mcp 모듈이 호출마다 임대가 살아 있는지 묻는다.
    */
   static readonly RUN_TOKEN_SECONDS = 24 * 60 * 60;
+  /** AI 로그인 연결 확인. 에이전트도 작업 토큰도 없이 러너가 돌린다 */
+  static readonly AI_TEST = 'ai_test';
+  /** 연결 확인은 쌓인 일보다 먼저 돈다 */
+  private static readonly AI_TEST_PRIORITY = 1000;
+  private static readonly AI_TEST_PROMPT = 'ok라고만 답하세요.';
   private static readonly SKILLS: Readonly<Record<string, string>> = {
     draft_post: 'cairn-write',
     tidy_session: 'cairn-tidy',
   };
   /** 이 종류의 일을 맡으려면 에이전트에게 있어야 하는 권한. 없는 종류는 누구나 맡는다 */
-  static readonly SCOPES: Readonly<Record<string, string>> = {
-    tidy_session: Actor.TIDY,
+  static readonly SCOPES: Readonly<Record<string, readonly string[]>> = {
+    // 세션은 기본이 비공개라 정리하려면 비공개까지 읽어야 한다
+    tidy_session: [Actor.TIDY, Actor.READ_ALL],
   };
 
   private readonly logged: TaskLogEntry[] = [];
@@ -72,9 +78,9 @@ export class Task extends TrackedEntity {
     readonly instruction: string,
     private payloadValue: Readonly<Record<string, unknown>>,
     private resultValue: Readonly<Record<string, unknown>> | null,
-    readonly targetKind: string | null,
-    readonly targetId: string | null,
-    readonly baseVersion: number | null,
+    private targetKindValue: string | null,
+    private targetIdValue: string | null,
+    private baseVersionValue: number | null,
     private statusValue: string,
     readonly priority: number,
     private leaseEnd: Date | null,
@@ -129,6 +135,24 @@ export class Task extends TrackedEntity {
     return task;
   }
 
+  /** AI 로그인의 연결 확인. 어느 판의 로그인을 보는지 함께 적어 둔다 */
+  static aiTest(spaceId: string, tool: string, loginVersion: number, now: Date): Task {
+    return Task.open(
+      spaceId,
+      null,
+      Task.AI_TEST,
+      'AI 연결 확인',
+      Task.AI_TEST_PROMPT,
+      { tool, loginVersion },
+      null,
+      null,
+      null,
+      Task.AI_TEST_PRIORITY,
+      BaseEntity.newId(),
+      now,
+    );
+  }
+
   static restore(
     id: string,
     version: number,
@@ -180,6 +204,18 @@ export class Task extends TrackedEntity {
     return this.agent;
   }
 
+  get targetKind(): string | null {
+    return this.targetKindValue;
+  }
+
+  get targetId(): string | null {
+    return this.targetIdValue;
+  }
+
+  get baseVersion(): number | null {
+    return this.baseVersionValue;
+  }
+
   get payload(): Readonly<Record<string, unknown>> {
     return this.payloadValue;
   }
@@ -212,6 +248,21 @@ export class Task extends TrackedEntity {
     return this.statusValue === Task.CANCELLED;
   }
 
+  get isAiTest(): boolean {
+    return this.kind === Task.AI_TEST;
+  }
+
+  /** 결과를 내고 끝났는가. 취소는 결과가 없어서 뺀다 */
+  get ended(): boolean {
+    return this.statusValue === Task.DONE || this.statusValue === Task.FAILED;
+  }
+
+  /** 실패한 이유 */
+  get failure(): string | null {
+    const error = this.resultValue?.error;
+    return typeof error === 'string' ? error : null;
+  }
+
   /** 러너가 쓸 스킬. 없으면 지시만으로 일한다 */
   get skill(): string | null {
     return Task.SKILLS[this.kind] ?? null;
@@ -220,7 +271,7 @@ export class Task extends TrackedEntity {
   /** 이 권한을 가진 에이전트가 맡을 수 있는 일인가 */
   doableWith(scopes: readonly string[]): boolean {
     const needed = Task.SCOPES[this.kind];
-    return needed === undefined || scopes.includes(needed);
+    return needed === undefined || needed.every((scope) => scopes.includes(scope));
   }
 
   /** 주인이 결재에서 고쳐 달라고 남긴 말 */
@@ -234,10 +285,10 @@ export class Task extends TrackedEntity {
     return this.logged;
   }
 
-  /** 러너가 빌려 간다: queued → running. 담당이 없던 일은 agentId가 맡는다 */
-  lease(runnerId: string, agentId: string, now: Date): void {
+  /** 러너가 빌려 간다: queued → running. 담당이 없던 일은 agentId가 맡는다. 연결 확인은 담당 없이 돈다 */
+  lease(runnerId: string, agentId: string | null, now: Date): void {
     this.move([Task.QUEUED], Task.RUNNING);
-    if (this.agent === null) {
+    if (this.agent === null && agentId !== null) {
       this.agent = agentId;
       this.track('agent_id', agentId);
     }
@@ -278,14 +329,28 @@ export class Task extends TrackedEntity {
     this.holdLease(null, null);
   }
 
-  /** 결재에서 고쳐 달라고 함: waiting → queued. 에이전트가 말을 받아 다시 하므로 시도 횟수는 새로 센다 */
-  returnForRevision(note: string | null): void {
+  /**
+   * 결재에서 고쳐 달라고 함: waiting → queued. 에이전트가 말을 받아 다시 하므로 시도 횟수는 새로 센다.
+   * 다음 실행은 앞 실행을 기억하지 못하므로 결재의 대상을 작업의 대상으로 넘긴다.
+   */
+  returnForRevision(
+    note: string | null,
+    targetKind: string,
+    targetId: string,
+    targetVersion: number,
+  ): void {
     this.move([Task.WAITING], Task.QUEUED);
     this.holdLease(null, null);
     this.tries = 0;
     this.track('attempts', 0);
     this.payloadValue = { ...this.payloadValue, revisionNote: note };
     this.track('payload', this.payloadValue);
+    this.targetKindValue = targetKind;
+    this.track('target_kind', targetKind);
+    this.targetIdValue = targetId;
+    this.track('target_id', targetId);
+    this.baseVersionValue = targetVersion;
+    this.track('base_version', targetVersion);
   }
 
   /** 러너가 끝을 알린다. 살아 있는 임대로만 */

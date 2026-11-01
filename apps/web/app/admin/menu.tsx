@@ -60,6 +60,12 @@ const ICONS: Record<string, ReactNode> = {
   book: (
     <path d="M8 4.2C6.6 3 4.6 2.6 2.5 2.8v9.6c2.1-.2 4.1.2 5.5 1.4 1.4-1.2 3.4-1.6 5.5-1.4V2.8C11.4 2.6 9.4 3 8 4.2zM8 4.2v9.6" />
   ),
+  office: (
+    <>
+      <path d="M2 13.5h12M3.5 13.5V5L8 2.5 12.5 5v8.5" />
+      <path d="M6.2 7h.8M9 7h.8M6.2 10h.8M9 10h.8" />
+    </>
+  ),
 };
 
 export const HOME_HREF = '/admin';
@@ -73,6 +79,7 @@ export const MENU = [
       { href: '/admin/tasks', name: '작업', icon: 'task' },
       { href: APPROVALS_HREF, name: '결재', icon: 'stamp' },
       { href: '/admin/agents', name: '에이전트', icon: 'people' },
+      { href: '/admin/office', name: '오피스', icon: 'office' },
     ],
   },
   {
@@ -94,6 +101,7 @@ export const MENU = [
     label: '연결',
     items: [
       { href: '/admin/devices', name: '기기', icon: 'device' },
+      { href: '/admin/ai', name: 'AI', icon: 'session' },
       { href: '/admin/plugins', name: '플러그인', icon: 'plug' },
     ],
   },

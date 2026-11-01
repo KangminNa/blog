@@ -1,5 +1,6 @@
 ---
 name: cairn-tidy
+cairn-where: runner
 description: Cairn의 세션 하나를 읽고 wiki로 정리한다. 러너가 tidy_session 작업을 맡기면 쓴다. 세션에 적힌 사실만으로 wiki를 쓰거나 고치고, 대표 wiki와 연결을 정해 submit_changes 한 번으로 낸다.
 ---
 

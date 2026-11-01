@@ -10,19 +10,21 @@
 - `approval/`: 결재 (`Approval`). `pending → approved · rejected · revision_requested · cancelled`.
   `api/approvals`, MCP `request_approval`
 - `usage/`: 구독 사용률 (`PlanUsage`)과 사용량 읽기 (`UsageQuery`). `api/usage`. 쓰기는 `report_progress`의 `plan_usage`로만 들어온다
+- `ai/`: AI 도구의 로그인 (`AiLogin`). 콘솔에 넣은 토큰을 서버 키로 잠가 두고 서버 러너에게 건넨다. `api/ai`, MCP `ai_login`
 
 파일 구조는 새 규칙의 시범이다 (객체설계 6장): `<이름>.ts` · `.view.ts` · `.input.ts` · `.service.ts` · `.query.ts` · `.api.ts` · `.tool.ts` · `.repository.ts`.
 엔티티는 `TrackedEntity`(platform)로 바뀐 열을 기억하고 Repository는 그 열만 저장한다.
 도구 모양은 docs/API설계.md 4장이 원본이다. `report_progress`는 기록을 모아 받고, 러너가 쓰므로 바꾸면 `apps/runner`도 함께 고친다.
 
 ## 소유 데이터
-스키마 `task`: agents, tasks, task_events(추가만), approvals, plan_usage
+스키마 `task`: agents, tasks, task_events(추가만), approvals, plan_usage, ai_logins
 
 ## 데이터 묶음
 - 에이전트: agents
 - 작업: tasks + task_events
 - 결재: approvals
 - 구독 사용률: plan_usage (창마다 마지막 값 하나. `window`는 Postgres 예약어라 열은 `period`, API는 `window`)
+- AI 로그인: ai_logins (공간과 도구마다 한 줄)
 
 ## 공개 API (`index.ts`)
 `TaskModule`, `TaskTools`(mcp 모듈이 모아서 연다), `TaskQuery`(`isLive`: mcp 입구가 호출마다 작업 토큰이 살아 있는지 묻는다)
@@ -34,7 +36,7 @@
 | `task.agent.changed` | `agentId, status` |
 | `task.approval.requested` · `granted` · `rejected` · `revision_requested` · `cancelled` | `approvalId, taskId, agentId, action, targetKind, targetId, targetVersion, decidedBy, note` |
 
-`task.approval.granted`를 받은 모듈이 동작을 실행한다. 받는 쪽이 생기는 단계에서 `CoreWorkers.expect`를 적는다 (없는 채로 적으면 일꾼이 뜨지 않는다).
+`task.approval.granted`를 받은 모듈이 동작을 실행한다. 받는 모듈이 `CoreWorkers.expect`도 적는다 (지금은 blog의 `blog.post.publish`). 실행하는 모듈이 없는 동작은 승인해도 작업이 끝나지 않는다.
 변경 신호(SSE)만 있고 이벤트가 아닌 것: `task.event.added` (실행 기록이 쌓임, id는 작업), `task.usage.changed` (구독 사용률이 옴, id는 도구).
 
 ## 받는 이벤트
@@ -59,6 +61,9 @@ platform
 - 쉬는지는 작업을 잠그기 전에 따지고 `lockNext`에서 건너뛴다. 빌렸다가 돌려주지 않는다. 일을 빌릴 때와 `UsageQuery`는 같은 `AgentRepository.usage`를 읽는다
 - 초기화 시각이 지난 `plan_usage`는 없는 것과 같다 (`PlanUsage.validAt`). 쉬는 데 쓰지 않고 화면에는 확인 전으로 보인다
 - `plan_usage`의 도구는 러너의 입력이 아니라 작업의 에이전트로 정한다. 저장은 에이전트 잠금 뒤에, 늘 같은 창 순서로 (서로 막지 않게). 진행 보고처럼 `task.tasks.version`을 올리지 않는다
+
+- AI 토큰은 REST로 돌려주지 않고 로그에 남기지 않는다. 나가는 길은 `ai_login` 하나고, `run` 권한과 함께 기기인지도 본다 (`AiLoginQuery.token`)
+- 연결 확인(`ai_test`)은 에이전트도 작업 토큰도 없다. 일을 받을 에이전트가 없어도 빌려 주고, 기다리는 확인은 도구마다 하나다. 결과는 작업이 끝날 때 같은 트랜잭션에서 로그인에 적는다 (잠그는 순서는 작업 → 로그인). 작업에 적힌 로그인의 판이 다르면 옛 토큰의 결과라 버린다
 
 ## 하지 말 것
 - blog·vault·account import. 결재 뒤 실행은 이벤트로 잇는다

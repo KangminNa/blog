@@ -16,6 +16,7 @@
       ".claude/**/*.mjs",
       "!**/next-env.d.ts",
       "!apps/web/app/_plugins/installed",
+      "!plugins/office/web/pixel",
       "!**/slots.generated.ts"
     ]
   },

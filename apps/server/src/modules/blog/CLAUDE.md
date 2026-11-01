@@ -7,7 +7,8 @@
 - `post/`: 글(`Post` + 판 `PostRevision`), 내용(`PostContent`: 제목·본문 md, 앞부분·찾기용 글자), 주소 규칙(`SlugPolicy`).
   `api/posts`: 목록(방문자는 공개 글만, 주인은 공개 범위별 + 탭별 글 수), 주소로 열기(`by-slug/:slug`, 방문자는 공개·링크만),
   편집기용 읽기, 새 글(`requestId`로 한 번만), 고쳐 쓰기(새 판, `version`), 공개 범위(`/status`), 휴지통(`DELETE`)·되살리기(`/restore`).
-  MCP 도구 `blog_get_post`(휴지통 글은 없는 글과 같다)와 `blog_save_draft`(`PostService.saveDraft`, 주소·정렬은 건드리지 않고, 고칠 때는 `base_version`이 꼭 있어야 한다)
+  MCP 도구 `blog_get_post`(휴지통 글은 없는 글과 같다)와 `blog_save_draft`(`PostService.saveDraft`, 주소·정렬은 건드리지 않고, 고칠 때는 `base_version`이 꼭 있어야 한다).
+  결재한 공개는 `PublishApprovedHandler` → `PostService.publishApproved` → `Post.publishApproved`
 - `asset/`: 사진(`Asset`, 글 ↔ 파일 한 행), 형식 판단(`ImagePolicy`: 파일의 앞부분으로, PNG · JPEG · WebP · GIF만).
   `POST api/posts/:id/assets`(주인만, 본문이 파일 그대로), `GET api/files/:hash`. 파일은 platform의 `BlobStore`에 있다
 - `basket/`: 소재(`BasketItem`, 공간마다 기본 상자 하나를 처음 담을 때 만든다). `api/basket/items`(주인만), MCP 도구 `basket_get`(write 권한).
@@ -27,7 +28,10 @@
 `BlogModule`, `BlogTools`(블로그 도구 목록, mcp 모듈이 모아서 연다)
 
 ## 내보내는 이벤트 / 받는 이벤트
-`blog.post.published` · `blog.post.updated` · `blog.post.unpublished` · `blog.post.deleted` (v1: postId, slug, title, status, postVersion. 받는 곳은 아직 없음, vault가 글 자리 사본을 갱신할 예정) / 없음
+`blog.post.published` · `blog.post.updated` · `blog.post.unpublished` · `blog.post.deleted` (v1: postId, slug, title, status, postVersion. vault가 글 자리 사본을 갱신할 예정).
+결재한 공개의 결과: 성공이면 `blog.post.published`에 `approvalId`·`outcome: 'done'`이 붙고(사람의 공개에는 없다), 실패면 `blog.post.publish_failed` (postId, approvalId, outcome: 'failed', error. 글 상태는 싣지 않아 사본을 고치는 데 쓰지 않는다). task가 받아 작업을 끝낸다.
+
+받는 이벤트: `task.approval.granted` 중 `action`이 `blog.post.publish`인 것만 (`CoreWorkers.expect`도 여기서 적는다)
 
 ## 써도 되는 모듈
 platform, vault(Query만, 읽기 전용)
@@ -39,6 +43,8 @@ platform, vault(Query만, 읽기 전용)
 - 판(post_revisions)은 추가만 한다. 제목·본문이 바뀔 때만 새 판, 주소·태그·정렬·공개 범위는 글에 둔다
 - 공개 범위: 임시(draft) · 공개(published) · 링크만(unlisted). 방문자 목록에는 공개 글만, 주소로는 공개·링크만. 임시·휴지통 글은 방문자에게 404
 - 공개 범위 바꾸기·휴지통·공개된 글 고치기는 주인만 (`Post`가 막는다). AI 도구의 글쓰기 권한은 임시 글까지
+- 주인이 아닌데 공개하는 길은 `Post.publishApproved` 하나다: `action`이 `blog.post.publish`인 `ApprovedActor`만 받고 공개만 한다
+- 결재한 공개는 올린 버전과 지금 버전이 같을 때만 한다. 같은 결재가 다시 오면 `platform.idempotency`에 남긴 첫 결과를 그대로 다시 낸다 (공개 뒤에는 버전이 달라 다시 판단하면 실패가 된다). 대상이 없어도 실패를 내야 작업이 끝난다: 예외로 던지면 일꾼이 되풀이하다 멈추고 작업은 끝나지 않는다
 - 기기와 에이전트가 쓴 판의 `actor_type`은 `ai`. `request_id`는 AI가 만들어서 에이전트는 작업마다 따로 센다
 - 사진의 공개 여부는 파일이 아니라 그 파일이 붙은 글로 정한다: 공개·링크 공개 글 하나에라도 붙어 있으면 누구나, 나머지는 주인만. 임시·휴지통 글의 사진은 방문자에게 없는 파일과 똑같이 404
 - 파일은 트랜잭션 밖에서 쓴다. 파일이 먼저고 행이 나중이다. 행 없이 남은 파일은 다시 올리면 그대로 쓰인다

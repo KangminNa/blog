@@ -7,7 +7,7 @@ import { basename, join } from 'node:path';
 //   work/      AI CLI가 도는 빈 폴더
 //   config/    별도 설정 폴더 (CLAUDE_CONFIG_DIR). 권한 설정과, 스킬이 있으면 스킬을 넣는다
 //   home/      빈 홈
-//   mcp.json   작업 토큰이 든 MCP 설정 (600). work 밖에 두어 AI가 파일로 읽지 못하게 한다
+//   mcp.json   작업 토큰이 든 MCP 설정 (600). work 밖에 두어 AI가 파일로 읽지 못하게 한다. 연결 확인에는 없다
 export class JobWorkspace {
   private static readonly SKILL_NAME = /^[a-z0-9][a-z0-9-]*$/;
   /** 스킬의 하위 에이전트는 러너가 도구를 주지 않아 쓰지 못한다 */
@@ -15,13 +15,15 @@ export class JobWorkspace {
 
   private constructor(
     private readonly root: string,
+    /** mcp.json을 두었는가 */
+    readonly mcpReady: boolean,
     /** job.skill을 config/skills에 넣었는가 */
     readonly skillReady: boolean,
   ) {}
 
-  /** mcpConfig: mcp.json에 쓸 글. settings: config/settings.json에 쓸 글. skill이 없거나 폴더에 없으면 스킬 없이 만든다 */
+  /** mcpConfig: mcp.json에 쓸 글, 없으면 MCP 없이. settings: config/settings.json에 쓸 글. skill이 없거나 폴더에 없으면 스킬 없이 만든다 */
   static async open(
-    mcpConfig: string,
+    mcpConfig: string | null,
     settings: string,
     skill: string | null,
     skillsDir: string,
@@ -29,11 +31,13 @@ export class JobWorkspace {
     const root = await mkdtemp(join(await realpath(tmpdir()), 'cairn-run-'));
     await chmod(root, 0o700);
     for (const dir of ['work', 'config', 'home']) await mkdir(join(root, dir));
-    await writeFile(join(root, 'mcp.json'), mcpConfig, { mode: 0o600, flag: 'wx' });
-    await chmod(join(root, 'mcp.json'), 0o600);
+    if (mcpConfig !== null) {
+      await writeFile(join(root, 'mcp.json'), mcpConfig, { mode: 0o600, flag: 'wx' });
+      await chmod(join(root, 'mcp.json'), 0o600);
+    }
     await writeFile(join(root, 'config', 'settings.json'), settings, { flag: 'wx' });
     const skillReady = skill !== null && JobWorkspace.install(skill, skillsDir, root);
-    return new JobWorkspace(root, skillReady);
+    return new JobWorkspace(root, mcpConfig !== null, skillReady);
   }
 
   get workDir(): string {

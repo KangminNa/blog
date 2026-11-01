@@ -20,7 +20,7 @@ plugins/<이름>/
 - `settings`: 설정 항목. `label`, `type`(`text`·`secret`·`select`·`boolean`), `required`, `help`, `default`, `options`(select), `public`.
   설치 마법사·관리 화면의 칸이 이것으로 만들어진다. 값은 DB(`platform.plugin_settings`)에 저장되고, `secret`은 서버 키로 암호화된다.
   `public: true`인 값만 웹으로 내려간다 (비밀값은 공개할 수 없다)
-- `web`: 화면 자리 → 파일. 지금 자리는 `post.after`(글 아래) 하나
+- `web`: 화면 자리 → 파일. 지금 자리는 `post.after`(글 아래)와 `task.office`(콘솔의 오피스)
 - `server`, `uses`: 서버 코드와 쓰는 확장 지점 (`event:<무늬>`, `job:<이름>`, `action:<이름>`, `archive:read`, `login:<이름>`). 객체설계 12장
 
 ## 켜기·설정

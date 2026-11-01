@@ -13,11 +13,13 @@ import { PostContent } from './post-content';
 import { SlugPolicy } from './slug.policy';
 
 // 글 쓰기: 새 글, 고쳐 쓰기(새 판), 공개 범위, 휴지통·되살리기. 관리 화면의 편집기가 부른다.
+// 결재한 공개는 일꾼이 publishApproved로 부른다.
 // AI 도구의 초안은 saveDraft 하나로 온다. 무엇을 할 수 있는지는 Post가 정한다: 공개된 글은 주인만 고친다.
 @Injectable()
 export class PostService extends BaseService {
   private static readonly CREATE = 'create_post';
   private static readonly DRAFT = 'blog_save_draft';
+  private static readonly PUBLISH = 'publish_approved';
 
   /** 같은 requestId가 다시 오면 처음 만든 글을 그대로 돌려준다 (두 번 눌러도 글은 하나) */
   async create(actor: Actor, req: CreatePostRequest): Promise<Post> {
@@ -98,6 +100,28 @@ export class PostService extends BaseService {
       post.changeStatus(req.status, actor, new Date());
       await posts.save(post);
       return post;
+    });
+  }
+
+  /**
+   * 주인이 결재한 공개. 글을 먼저 잠근다: 같은 결재가 겹쳐 와도 뒤쪽은 앞의 결과를 보고 그대로 다시 낸다.
+   * 공개할 수 있는지는 Post가 정하고, 바뀐 내용과 결과 이벤트는 함께 커밋된다.
+   */
+  async publishApproved(actor: Actor, postId: string, targetVersion: number): Promise<void> {
+    const approvalId = Post.approvalOf(actor);
+    const spaceId = Post.spaceOf(actor);
+    await this.transaction(async (tx) => {
+      const posts = new PostRepository(tx);
+      const post = await posts.lockIfAny(spaceId, postId);
+      const once = new Idempotency(tx, spaceId, approvalId, PostService.PUBLISH);
+      const before = await once.previous();
+      if (before) return posts.announce(Post.sameResult(spaceId, before));
+      const result = post
+        ? post.publishApproved(actor, targetVersion, new Date())
+        : Post.publishFailed(spaceId, postId, approvalId, Post.NO_POST);
+      if (post) await posts.save(post);
+      await posts.announce(result);
+      await once.remember(result.toJSON());
     });
   }
 

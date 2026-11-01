@@ -190,6 +190,7 @@ docker compose logs server | grep 설치     # 설치 코드
 
 `COMPOSE_FILE=docker-compose.prod.yml`이 있으면 `docker compose` 명령이 모두 운영 구성을 씁니다. 컴파일한 이미지를 root가 아닌 사용자로 돌리고, 소스 마운트와 감시 모드가 없습니다.
 프로젝트 이름과 볼륨이 개발 구성과 같아서, 개발 구성으로 돌리던 서버에 이 줄을 넣고 다시 올려도 DB를 그대로 이어 씁니다.
+서버 안의 러너는 `.env`에 `COMPOSE_PROFILES=runner`와 `CAIRN_RUNNER_TOKEN`을 넣으면 함께 뜹니다. 순서는 `.env.example`에 있습니다.
 올린 사진은 `blob-data` 볼륨에 있습니다. DB(`db-data`)와 함께 백업합니다. 앞의 프록시는 10MB 본문을 받을 수 있어야 합니다.
 아래의 `docker-compose.override.yml`을 쓰면 `COMPOSE_FILE=docker-compose.prod.yml:docker-compose.override.yml`처럼 함께 적습니다. 파일을 직접 고르면 저절로 합쳐지지 않습니다.
 

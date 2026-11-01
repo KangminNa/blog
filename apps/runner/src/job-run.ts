@@ -1,3 +1,4 @@
+import type { AiLogin } from './ai-login';
 import type { AiProcess, ChildExit } from './ai-process';
 import { Backoff, pause } from './backoff';
 import type { CairnServer } from './cairn-server';
@@ -56,19 +57,18 @@ export class JobRun {
 
   private readonly redactor: Redactor;
   private readonly reporter: ProgressReporter;
-  private readonly cli: ClaudeCli;
 
   constructor(
     private readonly job: Job,
+    private readonly login: AiLogin,
     private readonly server: CairnServer,
     private readonly config: RunnerConfig,
     private readonly log: RunLog,
     redactor: Redactor,
     private readonly stop: AbortSignal,
   ) {
-    this.redactor = redactor.with(job.runToken);
+    this.redactor = redactor.with(job.runToken).with(login.token);
     this.reporter = new ProgressReporter(server, job.taskId, this.redactor, job.leaseUntil);
-    this.cli = new ClaudeCli(config.cliPath, config.claudeToken);
   }
 
   async perform(): Promise<void> {
@@ -76,15 +76,19 @@ export class JobRun {
     try {
       const unfit = this.refusal();
       if (unfit) return await this.conclude(unfit);
+      const { token, problem } = this.login;
+      // 토큰이 없는 것은 일의 실패가 아니다. 돌려주고, 주인이 토큰을 넣으면 다시 맡는다
+      if (token === null) return await this.conclude(RunEnding.release(problem));
+      const { runToken } = this.job;
       workspace = await JobWorkspace.open(
-        ClaudeCli.mcpConfig(this.config.mcpUrl, this.job.runToken),
+        runToken === null ? null : ClaudeCli.mcpConfig(this.config.mcpUrl, runToken),
         ClaudeCli.settings(process.env.HOME),
         this.job.skill,
         this.config.skillsDir,
       );
       if (this.job.skill && !workspace.skillReady)
         this.log.info(`스킬 ${this.job.skill}이 없어 지시만으로 해요`);
-      await this.supervise(workspace);
+      await this.supervise(workspace, new ClaudeCli(this.config.cliPath, token));
     } catch (error) {
       if (!(error instanceof CliUnavailable))
         await this.conclude(RunEnding.release(`러너 오류: ${(error as Error).message}`));
@@ -97,15 +101,15 @@ export class JobRun {
   /** 시작도 하지 않고 끝낼 일 */
   private refusal(): RunEnding | null {
     if (this.stop.aborted) return RunEnding.release(JobRun.STOPPING);
-    if (this.job.agentTool === ClaudeCli.TOOL) return null;
-    const error = `${this.job.agentTool}는 아직 러너가 지원하지 않아요`;
+    if (this.job.tool === ClaudeCli.TOOL) return null;
+    const error = `${this.job.tool}는 아직 러너가 지원하지 않아요`;
     return RunEnding.submit(error, RunResult.failed(error, this.redactor));
   }
 
-  private async supervise(workspace: JobWorkspace): Promise<void> {
+  private async supervise(workspace: JobWorkspace, cli: ClaudeCli): Promise<void> {
     const stream = new ClaudeStream();
     const wake = new AbortController();
-    const child = this.cli.start(this.job, workspace, (line) => {
+    const child = cli.start(this.job, workspace, (line) => {
       this.reporter.add(stream.read(line));
       this.reporter.notePlan(stream.takePlanUsage());
       if (stream.stray.length > 0) wake.abort();

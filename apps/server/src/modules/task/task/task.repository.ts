@@ -64,6 +64,7 @@ export class TaskRepository extends BaseRepository<Task> {
   /**
    * 빌려 줄 작업을 잠근다. 다른 러너가 잡은 행은 건너뛰고, 담당이 없거나 일을 받을 수 있는 에이전트(ready)의 일만,
    * 우선순위 → 오래된 순. 멈췄거나 쉬는 에이전트의 일과 맡을 권한이 없는 일은 대기열에 남아 뒤의 일을 막지 않는다.
+   * 연결 확인은 에이전트가 필요 없어 일을 받을 에이전트가 없어도 빌려 준다.
    */
   async lockNext(
     spaceId: string,
@@ -74,7 +75,9 @@ export class TaskRepository extends BaseRepository<Task> {
     const rows = await this.sql`
       SELECT * FROM task.tasks
       WHERE space_id = ${spaceId} AND status = ${Task.QUEUED}
-        AND (agent_id IS NULL OR agent_id = ANY(${agentIds}::uuid[]))
+        AND (kind = ${Task.AI_TEST}
+          OR agent_id = ANY(${agentIds}::uuid[])
+          OR (agent_id IS NULL AND ${agentIds.length > 0}))
         ${this.scoped(ready)}
       ORDER BY priority DESC, id
       LIMIT ${limit}
@@ -84,11 +87,24 @@ export class TaskRepository extends BaseRepository<Task> {
 
   /** 권한이 필요한 종류는 그 권한을 가진 에이전트의 일이거나, 담당이 없어도 맡을 에이전트가 있을 때만 */
   private scoped(ready: readonly Agent[]) {
-    return Object.entries(Task.SCOPES).reduce((found, [kind, scope]) => {
-      const able = ready.filter((a) => a.scopes.includes(scope)).map((a) => a.id);
+    return Object.entries(Task.SCOPES).reduce((found, [kind, needed]) => {
+      const able = ready
+        .filter((a) => needed.every((scope) => a.scopes.includes(scope)))
+        .map((a) => a.id);
       return this.sql`${found} AND (kind <> ${kind} OR agent_id = ANY(${able}::uuid[])
         OR (agent_id IS NULL AND ${able.length > 0}::boolean))`;
     }, this.sql``);
+  }
+
+  /** 도구의 끝나지 않은 연결 확인 */
+  async findPendingAiTest(spaceId: string, tool: string): Promise<Task | null> {
+    return this.maybeOne(
+      await this.sql`
+        SELECT * FROM task.tasks
+        WHERE space_id = ${spaceId} AND kind = ${Task.AI_TEST} AND payload->>'tool' = ${tool}
+          AND status IN (${Task.QUEUED}, ${Task.RUNNING})
+        LIMIT 1`,
+    );
   }
 
   /** 임대가 끝난 작업을 잠근다 */

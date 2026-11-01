@@ -107,6 +107,18 @@ describe('AI CLI 부르기', () => {
     await workspace.remove();
   });
 
+  test('연결 확인은 MCP 설정도 도구도 없이 띄운다', async () => {
+    const workspace = await JobWorkspace.open(null, '{"permissions":{}}', null, '/nowhere');
+    const args = [...cli.args(workspace)];
+    assert.equal(workspace.mcpReady, false);
+    assert.equal(existsSync(workspace.mcpConfigPath), false);
+    assert.equal(args.includes('--mcp-config'), false);
+    assert.ok(args.includes('--strict-mcp-config'), '사용자의 MCP 서버를 물려받지 않는다');
+    assert.equal(args[args.indexOf('--tools') + 1], '');
+    assert.equal(args.at(-2), '--tools', '값을 여럿 받는 옵션이라 맨 뒤에 둔다');
+    await workspace.remove();
+  });
+
   test('스킬이 있을 때만 Skill 도구를 준다', async () => {
     const workspace = await open('cairn-write');
     const args = [...cli.args(workspace)];

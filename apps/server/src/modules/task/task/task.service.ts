@@ -11,6 +11,7 @@ import {
 } from '../../platform';
 import type { Agent } from '../agent/agent';
 import { AgentRepository } from '../agent/agent.repository';
+import { AiLoginRepository } from '../ai/ai-login.repository';
 import { Approval } from '../approval/approval';
 import { ApprovalRepository } from '../approval/approval.repository';
 import { PlanUsage } from '../usage/plan-usage';
@@ -120,6 +121,7 @@ export class TaskService extends BaseService {
       const task = await tasks.lock(spaceId, req.taskId);
       task.submit(runnerId, req.status, req.result, req.error, now);
       await tasks.save(task);
+      await this.noteAiTest(tx, task, now);
       await once.remember({ taskId: task.id });
       return task;
     });
@@ -162,7 +164,7 @@ export class TaskService extends BaseService {
   /** 임대가 끝난 작업을 되돌린다 (일꾼이 주기적으로). 되돌린 수를 돌려준다 */
   async reclaim(actor: Actor): Promise<number> {
     actor.assertCan(Actor.RUN);
-    return this.transaction((tx) => this.expire(new TaskRepository(tx), new Date()));
+    return this.transaction((tx) => this.expire(tx, new Date()));
   }
 
   private open(spaceId: string, req: CreateTaskInput): Promise<Task> {
@@ -192,19 +194,19 @@ export class TaskService extends BaseService {
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
       const agents = new AgentRepository(tx);
-      await this.expire(tasks, now);
+      await this.expire(tx, now);
       // 쉬는지는 작업을 잠그기 전에 따진다: 쉬는 에이전트의 일은 빌렸다가 돌려주지 않고 처음부터 건너뛴다
       const usage = await agents.usage(spaceId, now);
       const ready = usage.filter((u) => u.ready).map((u) => u.agent);
-      if (ready.length === 0) return [];
       const jobs: JobView[] = [];
       for (const task of await tasks.lockNext(spaceId, ready, limit)) {
         // 담당을 정하지 않은 일은 그 일의 권한이 있는 에이전트 중 가장 먼저 만든, 일을 받을 수 있는 에이전트가 맡는다
-        const agent = task.agentId
+        const worker = task.agentId
           ? ready.find((a) => a.id === task.agentId)
           : ready.find((a) => task.doableWith(a.scopes));
-        if (!agent) continue;
-        task.lease(runnerId, agent.id, now);
+        const agent = task.isAiTest ? null : worker;
+        if (agent === undefined) continue;
+        task.lease(runnerId, agent?.id ?? null, now);
         await tasks.save(task);
         jobs.push(this.jobOf(task, agent));
       }
@@ -212,7 +214,7 @@ export class TaskService extends BaseService {
     });
   }
 
-  private jobOf(task: Task, agent: Agent): JobView {
+  private jobOf(task: Task, agent: Agent | null): JobView {
     return new JobView(
       task.id,
       task.kind,
@@ -224,22 +226,37 @@ export class TaskService extends BaseService {
       task.baseVersion,
       task.skill,
       task.revisionNote,
-      agent.id,
-      agent.name,
-      agent.role,
-      agent.tool,
+      agent?.id ?? null,
+      agent?.name ?? null,
+      agent?.role ?? null,
+      agent?.tool ?? null,
       task.leaseUntil,
-      task.actorFor(agent.id, agent.scopes).seal(this.box, Task.RUN_TOKEN_SECONDS),
+      agent && task.actorFor(agent.id, agent.scopes).seal(this.box, Task.RUN_TOKEN_SECONDS),
     );
   }
 
-  private async expire(tasks: TaskRepository, now: Date): Promise<number> {
+  private async expire(tx: Sql, now: Date): Promise<number> {
+    const tasks = new TaskRepository(tx);
     const expired = await tasks.lockExpired(now, TaskService.RECLAIM_BATCH);
     for (const task of expired) {
       task.expire(now);
       await tasks.save(task);
+      await this.noteAiTest(tx, task, now);
     }
     return expired.length;
+  }
+
+  /**
+   * 연결 확인이 끝나면 결과를 로그인에 남긴다. 러너가 사라져 끝난 확인도 실패로 남긴다.
+   * 작업에 적힌 판이 아니면 그사이 토큰을 바꾼 것이다: 옛 토큰의 결과를 새 토큰에 적지 않는다.
+   */
+  private async noteAiTest(tx: Sql, task: Task, now: Date): Promise<void> {
+    if (!task.isAiTest || !task.ended) return;
+    const logins = new AiLoginRepository(tx);
+    const login = await logins.lock(task.spaceId, String(task.payload.tool));
+    if (login === null || login.version !== task.payload.loginVersion) return;
+    login.noteTest(task.failure, now);
+    await logins.save(login);
   }
 
   /** 쓴 토큰을 한 달 한도에 더한다. 넘기면 에이전트를 멈추고 한도 올리기 결재를 올린다 */
