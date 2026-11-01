@@ -8,7 +8,8 @@
   `api/posts`: 목록(방문자는 공개 글만, 주인은 공개 범위별 + 탭별 글 수), 주소로 열기(`by-slug/:slug`, 방문자는 공개·링크만),
   편집기용 읽기, 새 글(`requestId`로 한 번만), 고쳐 쓰기(새 판, `version`), 공개 범위(`/status`), 휴지통(`DELETE`)·되살리기(`/restore`).
   MCP 도구 `blog_get_post`(휴지통 글은 없는 글과 같다)와 `blog_save_draft`(`PostService.saveDraft`, 주소·정렬은 건드리지 않고, 고칠 때는 `base_version`이 꼭 있어야 한다).
-  결재한 공개는 `PublishApprovedHandler` → `PostService.publishApproved` → `Post.publishApproved`
+  결재한 공개는 `PublishApprovedHandler` → `PostService.publishApproved` → `Post.publishApproved`.
+  보관 파일은 `PostArchiveQuery`: 글과, 남은 글이 쓰는 사진 `assets/<해시>.<확장자>`(휴지통 글에만 붙은 사진은 뺀다. 디스크에 없는 파일은 로그만 남기고 뺀다)
 - `asset/`: 사진(`Asset`, 글 ↔ 파일 한 행), 형식 판단(`ImagePolicy`: 파일의 앞부분으로, PNG · JPEG · WebP · GIF만).
   `POST api/posts/:id/assets`(주인만, 본문이 파일 그대로), `GET api/files/:hash`. 파일은 platform의 `BlobStore`에 있다
 - `basket/`: 소재(`BasketItem`, 공간마다 기본 상자 하나를 처음 담을 때 만든다). `api/basket/items`(주인만), MCP 도구 `basket_get`(write 권한).
