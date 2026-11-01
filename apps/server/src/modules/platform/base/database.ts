@@ -23,6 +23,18 @@ export class Database implements OnApplicationShutdown {
     return this.sql.begin((tx) => work(tx as unknown as Sql)) as Promise<T>;
   }
 
+  /**
+   * 채널을 듣는다 (Postgres LISTEN). 라이브러리가 듣기 전용 연결을 하나 따로 쓰고, 끊기면 다시 듣는다.
+   * 끊긴 동안의 신호는 사라진다: 신호는 깨우기용이고 내용은 늘 테이블에 있다. 돌려준 함수로 그만 듣는다.
+   */
+  async listen(
+    channel: string,
+    onMessage: (payload: string) => void,
+  ): Promise<() => Promise<void>> {
+    const { unlisten } = await this.sql.listen(channel, onMessage);
+    return unlisten;
+  }
+
   /** 유일 제약에 걸린 오류인가 (동시에 같은 것을 만들려 할 때). Repository가 Conflict로 바꾼다 */
   static isUniqueViolation(error: unknown, constraint?: string): boolean {
     if (!(error instanceof postgres.PostgresError) || error.code !== '23505') return false;

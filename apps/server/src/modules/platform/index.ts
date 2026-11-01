@@ -2,7 +2,15 @@
 
 export { ArchiveQuery } from './archive/archive.query';
 export { ArchiveFile } from './archive/archive-file';
-export { Actor, DeviceActor, OwnerActor, SystemActor, VisitorActor } from './base/actor';
+export {
+  Actor,
+  AgentActor,
+  ApprovedActor,
+  DeviceActor,
+  OwnerActor,
+  SystemActor,
+  VisitorActor,
+} from './base/actor';
 export { AttemptLimiter } from './base/attempt-limiter';
 export { ActionResult, BaseAction } from './base/base-action';
 export { BaseEntity } from './base/base-entity';
@@ -31,6 +39,7 @@ export {
 export { DomainEvent } from './base/event';
 export { Idempotency } from './base/idempotency';
 export { McpEndpoint } from './base/mcp-endpoint';
+export { ChangeSignal, Outbox } from './base/outbox';
 export { PasswordHasher } from './base/password-hasher';
 export { SealedSecret, SecretBox } from './base/secret-box';
 export { ZipFile } from './base/zip-file';
@@ -45,5 +54,6 @@ export type { PluginContext } from './plugin/plugin-context';
 export { LoginMethod } from './plugin/plugin-context';
 export { PluginManifest } from './plugin/plugin-manifest';
 export { PluginRegistry } from './plugin/plugin-registry';
+export { ChangeStream } from './stream/change-stream';
 export { CoreWorkers } from './worker/core-workers';
 export { OutboxWorker } from './worker/outbox-worker';
