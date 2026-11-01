@@ -59,6 +59,7 @@ services:
       PORT: 4000
       CAIRN_WEB_URL: ${CAIRN_WEB_URL:-http://localhost:${WEB_PORT:-3000}}   # 사람이 여는 웹 주소 (설치 코드 안내에 씀)
       CAIRN_BLOBS_DIR: /data/blobs   # 올린 사진. 파일 이름은 내용의 sha256
+      CAIRN_SECRET_KEY: ${CAIRN_SECRET_KEY:-}   # .env 값. 슬롯은 scripts/slot.mjs가 넘긴다
     ports:
       - "127.0.0.1:${SERVER_PORT:-4000}:4000"   # 이 컴퓨터에서만. 웹은 컨테이너끼리 server:4000으로 부른다
     volumes:
@@ -79,6 +80,7 @@ services:
         required: false
     environment:
       DATABASE_URL: *db-url
+      CAIRN_SECRET_KEY: ${CAIRN_SECRET_KEY:-}
     volumes:
       - ./apps/server/src:/repo/apps/server/src
       - ./plugins:/repo/plugins

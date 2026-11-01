@@ -12,7 +12,7 @@ DB는 [docs/테이블설계.md](docs/테이블설계.md), 서버 코드 구조�
 ```
 apps/server/   NestJS. src/modules/<모듈>/ (platform · account · vault · blog · task · mcp), 지도는 modules.json
                모듈마다 CLAUDE.md에 그 모듈의 규칙이 있다
-apps/web/      Next.js (App Router). app/(blog)/ 공개 화면, app/admin/<메뉴>/ 콘솔
+apps/web/      Next.js (App Router). app/(blog)/ 공개 화면, app/admin/<메뉴>/ 콘솔, app/_task/ 작업·결재·에이전트 공용
 db/            DB 이미지(Postgres 17 + pgvector + pg_bigm)와 SQL 마이그레이션(dbmate)
 packages/cli/  연결 명령 cairn connect · status (스킬 넣기 + MCP 등록 + 로그인). 배포 전에는 pnpm cairn
 plugins/       플러그인 (comments-giscus · sync-github · login-github). 규칙은 plugins/CLAUDE.md, 객체설계 12장

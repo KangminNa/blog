@@ -10,15 +10,21 @@ export class TaskQuery extends BaseQuery {
   private static readonly PAGE = 30;
   /** 상세 화면에 보내는 실행 기록. 최근 것부터 이만큼 */
   private static readonly EVENTS = 500;
+  /** 목록 카드에 보이는 마지막 기록의 길이 */
+  private static readonly LAST_EVENT = 200;
 
   async list(actor: Actor, req: ListTasksInput): Promise<TaskPageView> {
     actor.assertOwner();
     const rows = await this.sql`
-      SELECT * FROM task.tasks
-      WHERE space_id = ${actor.spaceId}
-        ${req.status === null ? this.sql`` : this.sql`AND status = ${req.status}`}
-        ${req.cursor === null ? this.sql`` : this.sql`AND id < ${req.cursor}`}
-      ORDER BY id DESC
+      SELECT t.*, e.body AS last_event FROM task.tasks t
+      LEFT JOIN LATERAL (
+        SELECT left(body, ${TaskQuery.LAST_EVENT}) AS body FROM task.task_events
+        WHERE task_id = t.id AND body <> '' ORDER BY id DESC LIMIT 1
+      ) e ON true
+      WHERE t.space_id = ${actor.spaceId}
+        ${req.status === null ? this.sql`` : this.sql`AND t.status = ${req.status}`}
+        ${req.cursor === null ? this.sql`` : this.sql`AND t.id < ${req.cursor}`}
+      ORDER BY t.id DESC
       LIMIT ${TaskQuery.PAGE + 1}`;
     const page = rows.slice(0, TaskQuery.PAGE).map((r) => TaskQuery.view(r));
     return new TaskPageView(page, rows.length > TaskQuery.PAGE ? (page.at(-1)?.id ?? null) : null);
@@ -80,6 +86,7 @@ export class TaskQuery extends BaseQuery {
       Number(r.version),
       new Date(r.created_at),
       r.finished_at === null ? null : new Date(r.finished_at),
+      r.last_event === undefined || r.last_event === null ? null : String(r.last_event),
     );
   }
 }

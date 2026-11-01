@@ -37,7 +37,7 @@ export class AgentService extends BaseService {
   async update(actor: Actor, req: UpdateAgentInput): Promise<Agent> {
     return this.change(actor, req.id, req.version, (agent) => {
       if (req.name !== null) agent.name = req.name;
-      if (req.role !== null) agent.role = req.role;
+      if (req.role !== undefined) agent.role = req.role;
       if (req.tool !== null) agent.tool = req.tool;
       if (req.scopes !== null) agent.scopes = req.scopes;
       if (req.approvalActions !== null) agent.approvalActions = req.approvalActions;

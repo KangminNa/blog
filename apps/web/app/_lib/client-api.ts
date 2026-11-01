@@ -57,6 +57,10 @@ const FIELD_LABELS: Record<string, string> = {
   url: '주소',
   note: '메모',
   title: '제목',
+  role: '역할',
+  tool: 'AI 도구',
+  monthlyLimit: '월 한도',
+  instruction: '작업 내용',
 };
 
 /** 오류를 사람이 읽는 한 줄로 (필드 오류는 칸 이름과 함께) */

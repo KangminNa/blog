@@ -52,7 +52,7 @@
 
 결재는 작업에 묶이지 않는 경우(한도 변경 등)가 있어 작업 아래에 두지 않는다. 결재 메뉴는 위키 제안도 함께 보여 주되, 데이터는 각 모듈이 따로 가진다.
 
-`POST /api/tasks`의 제목은 지시의 첫 줄, 종류는 `general`이 기본이다. 일 요청 이벤트는 `kind`, `title`, `target*`, `baseVersion`, `priority`까지 적는다.
+작업 목록의 `lastEvent`는 마지막 실행 기록의 앞 200자다. `POST /api/tasks`의 제목은 지시의 첫 줄, 종류는 `general`이 기본이다. 일 요청 이벤트는 `kind`, `title`, `target*`, `baseVersion`, `priority`까지 적는다.
 
 작업 상태: `queued → running → waiting → running → done`, 실패는 `failed`, 취소는 `cancelled`. 결재 상태: `pending → approved · rejected · revision_requested · cancelled`.
 
@@ -76,7 +76,7 @@ MCP 입력과 응답은 snake_case다.
 - `report_progress { task_id, events: [{ kind, body?, tokens? }], request_id? }`는 기록을 모아 남기고 임대를 연장한다. 기록이 없으면 `events`를 비워 부른다 (`heartbeat_jobs`는 두지 않는다). 응답 `{ status, cancelled, paused, lease_until }`의 `cancelled`로 러너가 작업을 멈춘다. `request_id`를 주면 같은 보고의 토큰을 두 번 세지 않는다.
 - `submit_result { task_id, request_id, status: done·failed, result?, error? }`, `release_job { task_id, reason }`. 응답은 `{ task_id, status }`. 돌려준 이유는 실행 기록에 남는다.
 - `request_approval { request_id, action, target_kind, target_id, target_version, note? }`. `request_id`는 작업마다 따로 센다. 동작은 `blog.post.publish`, `sns.post.send`, `task.agent.raise_limit`로 시작한다.
-- `blog_get_post { post_id }`는 `{ post_id, title, body_md, status, version, tags }`, `blog_save_draft { request_id, post_id?, base_version?, title, body_md, tags? }`는 `{ post_id, version, status, url }`를 돌려준다. AI는 임시 글만 쓰고 고친다. `basket_get {}`은 `{ items }`를 돌려준다.
+- `blog_get_post { post_id }`는 `{ post_id, title, body_md, status, version, tags }`, `blog_save_draft { request_id, post_id?, base_version?, title, body_md, tags? }`는 `{ post_id, version, status, url }`를 돌려준다. AI는 임시 글만 쓰고 고친다. `post_id`가 있으면 `base_version`이 꼭 있어야 한다: 사람이 그사이 고친 내용을 AI가 모르고 덮지 않게. `request_id`는 작업 토큰이면 작업마다 따로 센다. `basket_get {}`은 `{ items }`를 돌려준다.
 - `submit_changes { request_id, message, ops: [{ op, target_id?, base_version?, payload }] }`는 vault 소유다. 변경 묶음을 쓰고 `{ change_set_id, ops: [{ seq, verdict, status, reason }] }`로 판정을 바로 돌려준다. 작업은 이벤트가 아니라 러너의 `submit_result`로 끝난다. 끝내는 길이 하나라 둘이 겹치지 않고, 러너가 도중에 죽어도 `change_sets.job_id`가 유일해서 같은 묶음은 한 번만 적용된다.
 - 도구 입력 모양을 바꾸면 `skills/`를 함께 고친다.
 
@@ -103,7 +103,7 @@ AI가 세션이나 메일 속 지시문에 속아도 이 권한을 넘을 수 �
 | 내용 | 변경 신호만 보낸다 (`{ topic, id }`). 화면은 REST로 다시 읽는다 |
 | 머리글 | `Content-Type: text/event-stream`, `Cache-Control: no-store, no-transform` |
 | 유지 | 25초마다 빈 주석을 보낸다 |
-| 재연결 | 브라우저 기본 재연결 후 화면이 다시 읽는다. 놓친 신호는 되돌리지 않는다 |
+| 재연결 | 브라우저 기본 재연결 후 화면이 다시 읽는다. 놓친 신호는 되돌리지 않는다. 서버가 오류로 답해 브라우저가 포기하면 `use-live`가 3초 뒤 다시 연다 |
 | 서버 | Postgres `LISTEN/NOTIFY`를 `platform/stream`이 받아 전달. 내용은 항상 테이블에 있다 |
 
 `no-transform`이 없으면 Next의 압축 때문에 스트림이 끝날 때 한꺼번에 도착한다 (Next 16.4.2의 `next start`, `next dev` rewrite에서 시험, 2026-10-31).

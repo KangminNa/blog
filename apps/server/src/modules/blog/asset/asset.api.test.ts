@@ -155,6 +155,16 @@ describe('사진 올리기 (POST /api/posts/:id/assets)', () => {
     assert.equal(gif.json().mime, 'image/gif');
   });
 
+  test('이미지 본문은 사진 올리기 주소에서만 읽는다', async () => {
+    const big = Buffer.alloc(11 * 1024 * 1024, 1);
+    const res = await fetch(`${api.baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'image/png' },
+      body: big,
+    });
+    assert.notEqual(res.status, 413);
+  });
+
   test('한도: 10MB는 받고, 1바이트라도 넘으면 413', async () => {
     const post = await newPost();
     const fits = Buffer.concat([PNG, Buffer.alloc(LIMIT - PNG.length, 1)]);
