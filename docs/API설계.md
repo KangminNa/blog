@@ -39,14 +39,16 @@
 | 메뉴 | 경로 | 단계 |
 |---|---|---|
 | 작업 | `GET·POST /api/tasks`, `GET /api/tasks/:id`, `POST /api/tasks/:id/cancel` | 3 |
-| 결재 | `GET /api/approvals`, `GET /api/approvals/:id`, `POST /api/approvals/:id/decide` | 3 |
+| 결재 | `GET /api/approvals`, `GET /api/approvals/:id`, `POST /api/approvals/:id/decide { version, decision: approve·revise·reject, note? }` | 3 |
 | 에이전트 | `GET·POST /api/agents`, `PATCH /api/agents/:id`, `POST /api/agents/:id/pause`, `POST /api/agents/:id/resume` | 3 |
 | AI | `GET /api/ai`, `PUT /api/ai/claude/token`, `POST /api/ai/:tool/test`, `POST /api/ai/codex/login` | 3~4 |
 | 소재 | `GET·POST /api/basket/items`, `DELETE /api/basket/items/:id` | 5 |
 | 지식 | `GET /api/wikis`, `GET /api/graph`, `GET /api/graph/public` | 6 |
 | 스케줄 | `GET·POST /api/schedules`, `PATCH /api/schedules/:id`, `POST /api/schedules/:id/run` | 7 |
 
-결재는 작업에 묶이지 않는 경우(한도 변경 등)가 있어 작업 아래에 두지 않는다.
+결재는 작업에 묶이지 않는 경우(한도 변경 등)가 있어 작업 아래에 두지 않는다. 결재 메뉴는 위키 제안도 함께 보여 주되, 데이터는 각 모듈이 따로 가진다.
+
+작업 상태: `queued → running → waiting → running → done`, 실패는 `failed`, 취소는 `cancelled`. 결재 상태: `pending → approved · rejected · revision_requested · cancelled`.
 
 ---
 
@@ -56,18 +58,23 @@
 |---|---|---|---|
 | `upload` | `check_session`, `save_session` | AI 도구 | 있음 |
 | `run` | `next_jobs`, `report_progress`, `submit_result`, `release_job` | 러너 | 3 |
-| `write` | `blog_get_post`, `blog_save_draft`, `request_approval` | 에이전트 | 3~5 |
-| `read_*` | `search_sessions`, `get_session`, `neighbors` | AI 도구, 에이전트 | 6 |
+| 작업 토큰 | `request_approval` | 에이전트 | 3 |
+| `write` | `blog_get_post`, `blog_save_draft` | 에이전트 | 5 |
+| `read_*` | `search_sessions`, `get_session` | AI 도구, 에이전트 | 1라운드 |
+| `read_*` | `neighbors` | AI 도구, 에이전트 | 6 |
+| `tidy` | `submit_changes` | 에이전트 | 6 |
 
 - `next_jobs`는 `waitSeconds`(최대 25초)를 받아 긴 폴링으로 동작한다. 일이 생기면 바로 돌려준다.
-- `report_progress`는 로그를 남기고 임대를 연장한다. 응답의 `cancelled`로 러너가 작업을 멈춘다.
+- `report_progress`는 로그를 남기고 임대를 연장한다 (`heartbeat_jobs`는 두지 않는다). 응답의 `cancelled`로 러너가 작업을 멈춘다.
+- `request_approval(action, target_kind, target_id, target_version, note)`. 동작은 `blog.post.publish`, `sns.post.send`, `task.agent.raise_limit`로 시작한다.
+- `submit_changes`는 vault 소유다. 변경 묶음을 쓰고 판정을 바로 돌려준 뒤 이벤트로 작업을 끝낸다.
 - 도구 입력 모양을 바꾸면 `skills/`를 함께 고친다.
 
 ---
 
 ## 5. 작업 토큰
 
-러너가 작업을 받으면 서버가 그 에이전트의 권한만 담은 토큰을 함께 준다. `SecretBox.pack`으로 만들어 저장하지 않고, 임대가 끝나면 함께 끝난다. AI CLI는 이 토큰만 받는다.
+러너가 작업을 받으면 서버가 그 에이전트의 권한만 담은 토큰을 함께 준다. `SecretBox.pack`으로 만들어 저장하지 않고, 임대가 끝나면 함께 끝난다. AI CLI는 이 토큰만 받는다. `ActorGuard`가 토큰을 읽어 Actor를 만들고, 호출마다 작업이 살아 있는지는 `mcp` 모듈이 `task`에 묻는다 (`account`는 `task`를 모른다).
 
 | 값 | 내용 |
 |---|---|

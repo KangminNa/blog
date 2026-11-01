@@ -192,10 +192,12 @@
 | `get_session` | 읽기 | 세션 노트와 첨부 목록 |
 | `list_topics` | 읽기 | 주제와 세션 수 |
 | `neighbors` | 읽기 | 연결된 세션·주제 |
-| `next_jobs` | 정리 | 일거리 빌리기 (최대 20개, 15분) |
-| `heartbeat_jobs` | 정리 | 임대 연장 |
-| `submit_result` | 정리 | 결과 제출 (서버가 재검사 후 적용 또는 제안) |
-| `release_job` | 정리 | 처리 못 한 일거리 반납 |
+| `next_jobs` | 실행 | 일거리 빌리기 (15분, 긴 폴링). 작업 토큰을 함께 준다 |
+| `report_progress` | 실행 | 진행 기록, 임대 연장, 취소 확인 |
+| `submit_result` | 실행 | 작업 끝내기 |
+| `release_job` | 실행 | 처리 못 한 일거리 반납 |
+| `submit_changes` | 정리 | 위키 변경 묶음 제출 (서버가 재검사 후 적용 또는 제안) |
+| `request_approval` | 작업 토큰 | 결재 요청 |
 | `basket_get` · `basket_add` | 읽기 · 글쓰기 | 글감 상자 읽기, 세션·사진·링크·글·메모 담기 |
 | `blog_search` · `blog_get_post` | 글쓰기 | 참고할 내 글 찾기, 다듬을 글 불러오기 |
 | `blog_style` | 글쓰기 | 블로그 문체 가이드 읽기 |
