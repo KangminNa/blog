@@ -2,7 +2,7 @@
 
 **내 서버 하나에서 도는 Personal AI OS. 흩어진 AI 세션을 모아 지식으로 키우고, 에이전트에게 작업을 맡겨 결재하고, 결과를 블로그로 내보내는 self-hosted 오픈소스.**
 
-> 상태: **콘솔 구조까지 구현.** 설치·로그인, 기기 연결(Claude Code · Codex · Claude 앱 · ChatGPT), 세션 저장, 블로그 글 쓰기(초안·공개·링크 공개), 관리 콘솔이 동작합니다. 작업과 결재, 그래프는 만드는 중입니다. 운영용 이미지는 v0.1에서 제공하고, 지금은 아래 "설치"대로 테스트 서버를 띄울 수 있습니다.
+> 상태: **콘솔 구조까지 구현.** 설치·로그인, 기기 연결(Claude Code · Codex · Claude 앱 · ChatGPT), 세션 저장, 블로그 글 쓰기(초안·공개·링크 공개), 관리 콘솔이 동작합니다. 작업과 결재, 그래프는 만드는 중입니다. 서버에는 아래 "운영 환경으로 올리기"대로 운영 이미지를 씁니다.
 
 ---
 
@@ -142,6 +142,7 @@ docker compose up --build
 | `pnpm owner reset-password` | 관리자 비밀번호 다시 정하기 (표준 입력으로. 모든 로그인이 끝남) |
 | `pnpm plugin` | 플러그인 상태·켜기·설정 (예: `pnpm plugin enable sync-github`). 관리 화면이 생기면 화면에서 |
 | `pnpm secret:new` | 서버 키 만들기 (`.env`의 `CAIRN_SECRET_KEY`) |
+| `pnpm secret:rotate` | 서버 키를 바꾼 뒤 비밀값을 새 키로 다시 암호화 (순서는 `.env.example`) |
 | `pnpm format` | 포맷 자동 수정 |
 | `pnpm db:up` | DB만 띄우고 마이그레이션 적용 |
 | `pnpm db:new <이름>` | 새 마이그레이션 파일 만들기 |
@@ -156,7 +157,7 @@ docker compose up --build
 
 ## 설치
 
-> 운영용 이미지는 v0.1(M5)에서 제공합니다. 지금은 개발용 Docker 구성(코드 감시 모드)으로 테스트 서버를 띄웁니다.
+> 아래는 개발 구성(코드 감시 모드)입니다. 서버에 올릴 때는 이어지는 "운영 환경으로 올리기"를 함께 따릅니다.
 > 화면을 처음 열 때 느리고 메모리를 많이 써서 RAM 2GB 이상인 서버를 권합니다.
 
 **1. 서버 띄우기**
@@ -173,8 +174,9 @@ cp .env.example .env
 
 ```ini
 DB_PASSWORD=<긴 임의 값>                     # DB를 처음 만들 때 정해져서 나중에 바꾸지 않습니다
-CAIRN_SECRET_KEY=<openssl rand -base64 32 결과>  # 비밀값 암호화 키. 한 번 정하면 바꾸지 않습니다
+CAIRN_SECRET_KEY=<openssl rand -base64 32 결과>  # 비밀값 암호화 키. 바꿀 때는 .env.example의 순서를 따릅니다
 CAIRN_WEB_URL=https://내블로그주소              # 꼭 넣기: 없으면 화면의 버튼이 동작하지 않습니다 (개발 모드 웹)
+COMPOSE_FILE=docker-compose.prod.yml           # 운영 환경으로 올리기. 설명은 아래
 ```
 
 ```bash
@@ -183,6 +185,12 @@ docker compose logs server | grep 설치     # 설치 코드
 ```
 
 업데이트는 `git pull && docker compose up -d --build`입니다. 새 마이그레이션은 `migrate`가 적용합니다.
+
+**운영 환경으로 올리기**
+
+`COMPOSE_FILE=docker-compose.prod.yml`이 있으면 `docker compose` 명령이 모두 운영 구성을 씁니다. 컴파일한 이미지를 root가 아닌 사용자로 돌리고, 소스 마운트와 감시 모드가 없습니다.
+프로젝트 이름과 볼륨이 개발 구성과 같아서, 개발 구성으로 돌리던 서버에 이 줄을 넣고 다시 올려도 DB를 그대로 이어 씁니다.
+아래의 `docker-compose.override.yml`을 쓰면 `COMPOSE_FILE=docker-compose.prod.yml:docker-compose.override.yml`처럼 함께 적습니다. 파일을 직접 고르면 저절로 합쳐지지 않습니다.
 
 **2. https 프록시 (Caddy 예시)**
 
@@ -223,7 +231,7 @@ Cairn의 컨테이너끼리는 `cairn-` 이 붙은 이름으로 부르기 때문
 
 `https://내블로그주소/install`을 열고 설치 코드 → 관리자 계정(아이디·비밀번호) → 블로그 정보 → 플러그인 순서로 진행합니다.
 **블로그 정보의 사이트 주소에 `https://내블로그주소`를 꼭 넣습니다.** 기기 연결과 앱 연결이 이 주소를 씁니다.
-비밀번호를 잊으면 서버에서 `docker compose exec server pnpm --silent --filter @cairn/server cli owner reset-password`로 다시 정합니다 (모든 로그인이 끝남).
+비밀번호를 잊으면 서버에서 `docker compose exec server cairn-admin owner reset-password`로 다시 정합니다 (모든 로그인이 끝남).
 
 **배포할 때 지킬 것**
 
