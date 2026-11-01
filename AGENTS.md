@@ -37,6 +37,7 @@ docs/          기획 문서 (기획서 · MVP 기획서 · 테이블 설계 · 
 | `pnpm plugin …` | 플러그인 상태·켜기·끄기·설정·동작 (`plugins/CLAUDE.md`). 관리 화면 전까지 쓰는 길 |
 | `pnpm cairn connect <블로그 주소>` | 이 컴퓨터의 Claude Code(`--tool codex`면 Codex)를 블로그에 연결 (스킬·검토자 넣기 · MCP 등록 · 브라우저 로그인 · 연결 확인). `pnpm cairn status`로 상태 |
 | `pnpm runner start` | 이 컴퓨터에서 러너 실행. 설정은 `apps/runner/.env` (`.env.example` 참고). 서버 러너는 운영 compose의 `runner` 프로필 |
+| `pnpm run restore` | 표준 입력의 백업 zip을 빈 Cairn에 복원. 기본은 미리 보기, `--apply`로 반영 (`docs/보관형식.md`) |
 | `pnpm secret:new` | 서버 키(`CAIRN_SECRET_KEY`) 만들기. 비밀값 암호화에 씀 |
 | `pnpm secret:rotate` | 서버 키를 바꾼 뒤 저장된 비밀값을 새 키로 다시 암호화 (순서는 `.env.example`) |
 | `pnpm format` | Biome 포맷·자동 수정 |
