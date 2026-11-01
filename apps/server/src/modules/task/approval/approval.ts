@@ -198,7 +198,8 @@ export class Approval extends TrackedEntity {
   /** 결정을 작업에 옮긴다: 승인이면 실행을 기다리고, 고칠 일이면 에이전트에게 돌아가고, 거절이면 멈춘다 */
   applyTo(task: Task, now: Date): void {
     if (this.statusValue === Approval.APPROVED) task.resume();
-    else if (this.statusValue === Approval.REVISION_REQUESTED) task.returnForRevision(this.note);
+    else if (this.statusValue === Approval.REVISION_REQUESTED)
+      task.returnForRevision(this.note, this.targetKind, this.targetId, this.targetVersion);
     else if (this.statusValue === Approval.REJECTED) task.cancel(now);
   }
 

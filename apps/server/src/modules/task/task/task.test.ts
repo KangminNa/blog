@@ -9,6 +9,7 @@ import { Task } from './task';
 const NOW = new Date('2026-11-01T00:00:00Z');
 const LATER = new Date(NOW.getTime() + Task.LEASE_MS + 1);
 const RUNNER = 'runner-1';
+const POST = '00000000-0000-7000-8000-0000000000a1';
 const AGENT = 'agent-1';
 
 function queued(): Task {
@@ -82,8 +83,8 @@ describe('작업 상태', () => {
     // 상태 쌍은 있어도 그 메서드의 길이 아니면 막는다
     assert.throws(() => waiting().lease(RUNNER, AGENT, NOW), RuleViolation);
     assert.throws(() => running().resume(), RuleViolation);
-    assert.throws(() => running().returnForRevision('다시'), RuleViolation);
-    assert.throws(() => queued().returnForRevision('다시'), RuleViolation);
+    assert.throws(() => running().returnForRevision('다시', 'post', POST, 2), RuleViolation);
+    assert.throws(() => queued().returnForRevision('다시', 'post', POST, 2), RuleViolation);
   });
 
   test('상태에는 set이 없다', () => {
@@ -149,7 +150,10 @@ describe('작업 상태', () => {
 
   test('고쳐 달라고 하면 말과 함께 대기열로 돌아가고 시도를 새로 센다', () => {
     const task = waiting();
-    task.returnForRevision('제목을 바꿔 주세요');
+    task.returnForRevision('제목을 바꿔 주세요', 'post', POST, 2);
+    assert.equal(task.targetKind, 'post');
+    assert.equal(task.targetId, POST);
+    assert.equal(task.baseVersion, 2);
     assert.equal(task.status, Task.QUEUED);
     assert.equal(task.revisionNote, '제목을 바꿔 주세요');
     assert.equal(task.attempts, 0);

@@ -232,7 +232,8 @@ describe('가짜 러너', () => {
     }
     api.service(CoreWorkers).on('task.approval.granted', new GrantProbe());
 
-    const agent = await newAgent();
+    // task는 무엇을 실행하는지 모른다: 실행하는 모듈이 없는 동작으로 가짜 결과까지 이어 본다 (글 공개는 blog의 publish.api.test)
+    const agent = await newAgent({ approvalActions: ['blog.post.publish', 'sns.post.send'] });
     const postId = randomUUID();
     const task = await newTask(agent, { targetKind: 'post', targetId: postId, baseVersion: 3 });
     assert.equal(task.status, 'queued');
@@ -255,7 +256,7 @@ describe('가짜 러너', () => {
       { status: 'running', cancelled: false, paused: false, lease_until: undefined },
     );
 
-    const asked = await askApproval(job.run_token, { target_id: postId });
+    const asked = await askApproval(job.run_token, { action: 'sns.post.send', target_id: postId });
     assert.equal(asked.ok, true, JSON.stringify(asked.body));
     assert.equal(asked.body.status, 'pending');
     assert.equal((await getTask(task.id)).status, 'waiting');
@@ -265,7 +266,7 @@ describe('가짜 러너', () => {
     };
     const approval = inbox.approvals.find((a) => a.id === asked.body.approval_id);
     assert.deepEqual(approval?.target, { kind: 'post', id: postId, version: 3 });
-    assert.equal(approval?.action, 'blog.post.publish');
+    assert.equal(approval?.action, 'sns.post.send');
     assert.equal(approval?.taskId, task.id);
 
     const decided = ok(await decide(approval?.id, approval?.version, 'approve'));
@@ -275,14 +276,14 @@ describe('가짜 러너', () => {
     // 승인은 outbox를 거쳐 대상 모듈에게 간다
     await drain();
     const event = granted.find((e) => e.data.approvalId === approval?.id);
-    assert.equal(event?.data.action, 'blog.post.publish');
+    assert.equal(event?.data.action, 'sns.post.send');
     assert.equal(event?.data.targetKind, 'post');
     assert.equal(event?.data.targetId, postId);
     assert.equal(event?.data.targetVersion, 3);
     assert.equal(typeof event?.data.decidedBy, 'string');
     assert.equal(event?.data.taskId, task.id);
 
-    // 아무것도 공개하지 않는다: 실행은 뒤 단계의 blog가 한다. 여기서는 가짜 결과 이벤트로 끝낸다
+    // 받는 모듈이 없으니 결과가 오기 전까지 그대로다. 가짜 결과 이벤트로 끝낸다
     assert.equal((await getTask(task.id)).status, 'running');
     await publish(
       new DomainEvent('blog.post.published', 1, await spaceId(), {
@@ -311,9 +312,10 @@ describe('가짜 러너', () => {
   });
 
   test('실패 결과 이벤트는 작업을 실패로 끝낸다', async () => {
-    const task = await newTask(await newAgent());
+    const agent = await newAgent({ approvalActions: ['blog.post.publish', 'sns.post.send'] });
+    const task = await newTask(agent);
     const job = await take();
-    const asked = await askApproval(job.run_token);
+    const asked = await askApproval(job.run_token, { action: 'sns.post.send' });
     const approval = await getApproval(asked.body.approval_id);
     ok(await decide(approval.id, approval.version, 'approve'));
     await publish(
