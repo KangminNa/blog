@@ -29,7 +29,7 @@ describe('GET /api/plugins', () => {
     const list = (await api.get('/api/plugins', owner)).json().plugins as Record<string, unknown>[];
     assert.deepEqual(
       list.map((p) => p.name),
-      ['comments-giscus', 'login-github', 'sync-github'],
+      ['comments-giscus', 'login-github', 'office', 'sync-github'],
     );
     const sync = list.find((p) => p.name === 'sync-github') as Record<string, unknown>;
     assert.equal(sync.enabled, false);

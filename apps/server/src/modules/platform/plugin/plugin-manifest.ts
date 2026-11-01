@@ -8,7 +8,7 @@ import { join } from 'node:path';
 const CAIRN_PLUGIN_API = '0.1';
 
 /** 웹 화면 자리. 늘릴 때는 웹의 <Slot>과 문서를 함께 고친다 */
-const WEB_SLOTS: readonly string[] = ['post.after'];
+const WEB_SLOTS: readonly string[] = ['post.after', 'task.office'];
 
 /**
  * 서버 확장 지점. 목록 파일의 `uses`에 적고, 켤 때 주인이 허락한 것만 PluginContext가 열어 준다.
