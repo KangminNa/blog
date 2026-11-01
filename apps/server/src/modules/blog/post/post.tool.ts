@@ -1,0 +1,133 @@
+import { Injectable } from '@nestjs/common';
+import { Actor, BaseResponse, BaseTool } from '../../platform';
+import type { Post } from './post';
+import { PostQuery, type PostView } from './post.query';
+import { ReadPostRequest, SaveDraftRequest } from './post.request';
+import { PostService } from './post.service';
+import { PostContent } from './post-content';
+
+// AI 도구의 글 쓰기 (write 권한). 기기와 에이전트의 작업 토큰이 같은 도구를 쓴다.
+// 초안까지만 쓴다. 공개와 공개된 글 고치기는 주인의 일이다 (Post가 막는다).
+// 입력 모양을 바꾸면 스킬을 함께 고친다. 깨지는 변경은 새 도구 이름으로 (API설계 2장).
+
+/** blog_get_post의 답 */
+export class ToolPostResponse extends BaseResponse {
+  private constructor(private readonly view: PostView) {
+    super();
+  }
+
+  static of(view: PostView): ToolPostResponse {
+    return new ToolPostResponse(view);
+  }
+
+  toJSON(): object {
+    const { summary, body } = this.view;
+    return {
+      post_id: summary.id,
+      title: summary.title,
+      body_md: body,
+      status: summary.status,
+      version: summary.version,
+      tags: summary.tags,
+    };
+  }
+}
+
+/** blog_save_draft의 답. url은 주인이 초안을 여는 편집기 주소 (초안은 방문자에게 보이지 않는다) */
+export class ToolDraftResponse extends BaseResponse {
+  private constructor(
+    private readonly post: Post,
+    private readonly site: string,
+  ) {
+    super();
+  }
+
+  static of(post: Post, site: string): ToolDraftResponse {
+    return new ToolDraftResponse(post, site);
+  }
+
+  toJSON(): object {
+    const p = this.post;
+    return {
+      post_id: p.id,
+      version: p.version,
+      status: p.status,
+      url: `${this.site}/admin/posts/${p.id}`,
+    };
+  }
+}
+
+@Injectable()
+export class BlogGetPostTool extends BaseTool {
+  readonly name = 'blog_get_post';
+  readonly scope = Actor.WRITE;
+  readonly readOnly = true;
+  readonly description = [
+    '글 하나의 제목, 본문 md, 공개 범위, 버전, 태그를 읽는다.',
+    '초안을 고치기 전에 불러서 version을 받고, blog_save_draft의 base_version에 그대로 넣는다.',
+    '휴지통에 있는 글은 없는 글과 같다.',
+  ].join(' ');
+  readonly inputSchema = {
+    properties: {
+      post_id: { type: 'string', format: 'uuid', description: '글 id' },
+    },
+    required: ['post_id'],
+  };
+
+  constructor(private readonly posts: PostQuery) {
+    super();
+  }
+
+  async handle(actor: Actor, raw: unknown): Promise<ToolPostResponse> {
+    return ToolPostResponse.of(await this.posts.editable(actor, ReadPostRequest.fromTool(raw)));
+  }
+}
+
+@Injectable()
+export class BlogSaveDraftTool extends BaseTool {
+  readonly name = 'blog_save_draft';
+  readonly scope = Actor.WRITE;
+  readonly readOnly = false;
+  override readonly idempotent = true;
+  readonly description = [
+    '블로그 글을 초안으로 저장한다. post_id가 없으면 새 초안을 만들고, 있으면 그 초안을 고친다.',
+    '고칠 때는 blog_get_post로 받은 version을 base_version에 넣는다. 그사이 바뀌었으면 409가 오니 다시 읽고 고친다.',
+    '공개된 글은 고칠 수 없고(403), 공개 범위도 정할 수 없다. 공개는 주인의 결재를 받는다.',
+    '응답을 받지 못해 다시 보낼 때는 같은 request_id를 쓴다. 응답의 url을 사용자에게 보여 준다.',
+  ].join(' ');
+  readonly inputSchema = {
+    properties: {
+      request_id: {
+        type: 'string',
+        maxLength: 200,
+        description: '이 저장의 id. 다시 보낼 때 같은 값을 쓰면 한 번만 저장된다',
+      },
+      post_id: { type: 'string', format: 'uuid', description: '고칠 글 id. 새 초안이면 비운다' },
+      base_version: {
+        type: 'integer',
+        minimum: 1,
+        description: '고칠 글을 읽을 때의 version. post_id가 있으면 꼭 넣는다',
+      },
+      title: { type: 'string', maxLength: PostContent.TITLE_MAX, description: '제목' },
+      body_md: { type: 'string', maxLength: PostContent.BODY_MAX, description: '본문 md' },
+      tags: {
+        type: 'array',
+        items: { type: 'string', maxLength: 40 },
+        maxItems: 20,
+        description: '태그. 고칠 때 비우면 지금 태그 그대로',
+      },
+    },
+    required: ['request_id', 'title', 'body_md'],
+  };
+
+  constructor(private readonly posts: PostService) {
+    super();
+  }
+
+  async handle(actor: Actor, raw: unknown, site: string): Promise<ToolDraftResponse> {
+    return ToolDraftResponse.of(
+      await this.posts.saveDraft(actor, SaveDraftRequest.from(raw)),
+      site,
+    );
+  }
+}

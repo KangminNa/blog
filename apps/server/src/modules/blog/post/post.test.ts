@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { type Actor, DeviceActor, Forbidden, OwnerActor, RuleViolation } from '../../platform';
+import {
+  type Actor,
+  AgentActor,
+  DeviceActor,
+  Forbidden,
+  OwnerActor,
+  RuleViolation,
+} from '../../platform';
 import { Post } from './post';
 import { PostContent } from './post-content';
 import { SlugPolicy } from './slug.policy';
@@ -105,6 +112,39 @@ describe('Post', () => {
     post.edit(PostContent.write('첫 글', '본문 고침'), 'first', ['db'], 'left', owner, now);
     assert.equal(added()?.seq, 2);
     assert.equal(post.revisionCount, 2);
+  });
+
+  test('판의 작성자: 주인은 user, 기기와 에이전트는 ai', () => {
+    const agent = new AgentActor(SPACE, 'a', 't', new Set(['write']));
+    assert.equal(draft(owner).addedRevision?.actorType, 'user');
+    assert.equal(draft(writer).addedRevision?.actorType, 'ai');
+    assert.equal(draft(agent).addedRevision?.actorType, 'ai');
+  });
+
+  test('에이전트도 공개된 글은 고칠 수 없고 공개 범위를 바꿀 수 없다', () => {
+    const agent = new AgentActor(SPACE, 'a', 't', new Set(['write']));
+    const open = (status: string) =>
+      Post.restore(
+        'id',
+        3,
+        SPACE,
+        'first',
+        status,
+        PostContent.restore('첫 글', '본문'),
+        [],
+        'left',
+        'r1',
+        1,
+        now,
+        now,
+        null,
+      );
+    for (const status of [Post.PUBLISHED, Post.UNLISTED])
+      assert.throws(
+        () => open(status).edit(PostContent.write('고침', ''), 'first', [], 'left', agent, now),
+        Forbidden,
+      );
+    assert.throws(() => open(Post.DRAFT).changeStatus(Post.PUBLISHED, agent, now), Forbidden);
   });
 
   test('공개 범위: 처음 공개한 때가 발행일, 공개·공개 취소에 이벤트. 주인만 바꾼다', () => {

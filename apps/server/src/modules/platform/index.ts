@@ -24,6 +24,7 @@ export { BaseRequest, RequestFields } from './base/base-request';
 export { BaseResponse } from './base/base-response';
 export { BaseService } from './base/base-service';
 export { BaseTool } from './base/base-tool';
+export { Blob, BlobStore } from './base/blob-store';
 export { Database, type Row, type Sql } from './base/database';
 export {
   Conflict,
@@ -33,8 +34,10 @@ export {
   InvalidRequest,
   NotFound,
   RuleViolation,
+  TooLarge,
   TooManyRequests,
   Unauthenticated,
+  UnsupportedType,
 } from './base/errors';
 export { DomainEvent } from './base/event';
 export { Idempotency } from './base/idempotency';

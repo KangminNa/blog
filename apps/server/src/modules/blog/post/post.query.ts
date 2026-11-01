@@ -101,6 +101,16 @@ export class PostQuery extends BaseQuery {
     return this.view(row, actor.canSeePrivate());
   }
 
+  /** 고칠 수 있는 글 하나 (AI 도구의 읽기, 사진 올리기). 휴지통 글은 없는 글과 같다 */
+  async editable(actor: Actor, req: ReadPostRequest): Promise<PostView> {
+    actor.assertCan(Actor.WRITE);
+    const [row] = await this.sql`
+      ${this.selectOne()}
+      WHERE ${this.inSpace(actor)} AND p.id = ${req.id} AND p.deleted_at IS NULL`;
+    if (!row) throw new NotFound('글을 찾을 수 없어요');
+    return this.view(row, actor.canSeePrivate());
+  }
+
   private async counts(actor: Actor): Promise<PostCountsView> {
     const [c] = await this.sql`
       SELECT count(*) FILTER (WHERE deleted_at IS NULL AND status = ${Post.DRAFT})::int AS draft,

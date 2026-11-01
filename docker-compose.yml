@@ -58,12 +58,14 @@ services:
       DATABASE_URL: *db-url
       PORT: 4000
       CAIRN_WEB_URL: ${CAIRN_WEB_URL:-http://localhost:${WEB_PORT:-3000}}   # 사람이 여는 웹 주소 (설치 코드 안내에 씀)
+      CAIRN_BLOBS_DIR: /data/blobs   # 올린 사진. 파일 이름은 내용의 sha256
     ports:
       - "127.0.0.1:${SERVER_PORT:-4000}:4000"   # 이 컴퓨터에서만. 웹은 컨테이너끼리 server:4000으로 부른다
     volumes:
       - ./apps/server/src:/repo/apps/server/src
       - ./plugins:/repo/plugins
       - ./skills:/repo/skills   # 앱에 올릴 스킬 묶음(관리 화면 → 기기 → 스킬 받기)을 여기서 만든다
+      - blob-data:/data/blobs
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -111,3 +113,4 @@ services:
 
 volumes:
   db-data:
+  blob-data:

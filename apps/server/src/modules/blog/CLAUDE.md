@@ -1,12 +1,17 @@
 # blog 모듈
 
 ## 하는 일
-방문자가 읽는 블로그. 글(판·발행), 카테고리, 시리즈, 사진, 글감 상자(글을 쓰기 위한 작업대).
-지금은 글만 있다 (M4 일부를 2026-10-24에 앞당김). 카테고리·사진·시리즈·글감 상자·블로그 MCP 도구는 M4에서.
+방문자가 읽는 블로그. 글(판·발행), 카테고리, 시리즈, 사진, 소재(글을 쓰기 위한 작업대).
+지금은 글, 사진, 소재, AI 도구의 초안까지 있다. 카테고리·시리즈는 뒤 단계에서.
 
 - `post/`: 글(`Post` + 판 `PostRevision`), 내용(`PostContent`: 제목·본문 md, 앞부분·찾기용 글자), 주소 규칙(`SlugPolicy`).
   `api/posts`: 목록(방문자는 공개 글만, 주인은 공개 범위별 + 탭별 글 수), 주소로 열기(`by-slug/:slug`, 방문자는 공개·링크만),
-  편집기용 읽기, 새 글(`requestId`로 한 번만), 고쳐 쓰기(새 판, `version`), 공개 범위(`/status`), 휴지통(`DELETE`)·되살리기(`/restore`)
+  편집기용 읽기, 새 글(`requestId`로 한 번만), 고쳐 쓰기(새 판, `version`), 공개 범위(`/status`), 휴지통(`DELETE`)·되살리기(`/restore`).
+  MCP 도구 `blog_get_post`(휴지통 글은 없는 글과 같다)와 `blog_save_draft`(`PostService.saveDraft`, 주소·정렬은 건드리지 않고, 고칠 때는 `base_version`이 꼭 있어야 한다)
+- `asset/`: 사진(`Asset`, 글 ↔ 파일 한 행), 형식 판단(`ImagePolicy`: 파일의 앞부분으로, PNG · JPEG · WebP · GIF만).
+  `POST api/posts/:id/assets`(주인만, 본문이 파일 그대로), `GET api/files/:hash`. 파일은 platform의 `BlobStore`에 있다
+- `basket/`: 소재(`BasketItem`, 공간마다 기본 상자 하나를 처음 담을 때 만든다). `api/basket/items`(주인만), MCP 도구 `basket_get`(write 권한).
+  지금은 세션·글·링크·메모만 담는다. 사진·파일은 소재용 올리는 길이 없어 받지 않는다
 
 ## 소유 데이터
 스키마 `blog`: categories, series, posts, post_revisions, assets, post_wiki_refs, chunks, chunk_embeddings, stone_log, edit_leases
@@ -16,10 +21,10 @@
 - 글: posts + post_revisions + post_wiki_refs + edit_leases(글)
 - 카테고리: categories
 - 사진: assets
-- 글감 상자: baskets + basket_items
+- 소재: baskets + basket_items
 
 ## 공개 API (`index.ts`)
-`BlogModule`
+`BlogModule`, `BlogTools`(블로그 도구 목록, mcp 모듈이 모아서 연다)
 
 ## 내보내는 이벤트 / 받는 이벤트
 `blog.post.published` · `blog.post.updated` · `blog.post.unpublished` · `blog.post.deleted` (v1: postId, slug, title, status, postVersion. 받는 곳은 아직 없음, vault가 글 자리 사본을 갱신할 예정) / 없음
@@ -34,6 +39,12 @@ platform, vault(Query만, 읽기 전용)
 - 판(post_revisions)은 추가만 한다. 제목·본문이 바뀔 때만 새 판, 주소·태그·정렬·공개 범위는 글에 둔다
 - 공개 범위: 임시(draft) · 공개(published) · 링크만(unlisted). 방문자 목록에는 공개 글만, 주소로는 공개·링크만. 임시·휴지통 글은 방문자에게 404
 - 공개 범위 바꾸기·휴지통·공개된 글 고치기는 주인만 (`Post`가 막는다). AI 도구의 글쓰기 권한은 임시 글까지
+- 기기와 에이전트가 쓴 판의 `actor_type`은 `ai`. `request_id`는 AI가 만들어서 에이전트는 작업마다 따로 센다
+- 사진의 공개 여부는 파일이 아니라 그 파일이 붙은 글로 정한다: 공개·링크 공개 글 하나에라도 붙어 있으면 누구나, 나머지는 주인만. 임시·휴지통 글의 사진은 방문자에게 없는 파일과 똑같이 404
+- 파일은 트랜잭션 밖에서 쓴다. 파일이 먼저고 행이 나중이다. 행 없이 남은 파일은 다시 올리면 그대로 쓰인다
+- SVG는 스크립트를 담을 수 있어 받지 않는다. 형식은 요청 머리글이 아니라 파일의 앞부분으로만 정한다
+- 소재에는 비공개 자료가 담긴다. REST는 주인만(`assertOwner`, write 권한 기기도 안 된다), MCP는 write 권한으로만 읽는다. 링크는 http·https만
+- 세션·글을 담을 때는 트랜잭션을 열기 전에 Query로 있는지 확인한다
 - 방문자는 공간을 모른다: MVP는 공간 하나라 방문자 읽기는 공간으로 거르지 않는다 (공간이 여럿이 되면 Guard가 주소로 정한다)
 
 ## 하지 말 것
