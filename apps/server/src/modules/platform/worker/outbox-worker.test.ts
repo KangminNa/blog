@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, describe, type TestContext, test } from 'node:test';
 import { ArchiveQuery } from '../archive/archive.query';
+import { ArchiveRestoreService } from '../archive/archive-restore.service';
 import { BaseHandler } from '../base/base-handler';
 import { BaseJob } from '../base/base-job';
+import { BlobStore } from '../base/blob-store';
 import { Database } from '../base/database';
 import { DomainEvent } from '../base/event';
 import { ChangeSignal, Outbox } from '../base/outbox';
@@ -18,6 +20,7 @@ import { OutboxWorker } from './outbox-worker';
 
 const db = new Database();
 const archive = new ArchiveQuery(db);
+const restore = new ArchiveRestoreService(db, archive, new BlobStore(db));
 const box = SecretBox.fromEnv({});
 after(async () => {
   await db.sql`DELETE FROM platform.plugins WHERE name = 'probe'`;
@@ -29,13 +32,13 @@ async function bootWith(root: string, granted: readonly string[]): Promise<Plugi
   await db.sql`
     INSERT INTO platform.plugins (name, enabled, version, granted_uses) VALUES ('probe', true, '0.1.0', ${granted as string[]})
     ON CONFLICT (name) DO UPDATE SET enabled = true, granted_uses = EXCLUDED.granted_uses`;
-  return PluginRegistry.boot(root, db.sql, archive, box);
+  return PluginRegistry.boot(root, db.sql, archive, box, restore);
 }
 
 const API = resolve(__dirname, '../../../plugin-api');
 const SPACE = '00000000-0000-7000-8000-00000000f00d';
 const emptyRegistry = () =>
-  PluginRegistry.boot(mkdtempSync(join(tmpdir(), 'cairn-core-')), db.sql, archive, box);
+  PluginRegistry.boot(mkdtempSync(join(tmpdir(), 'cairn-core-')), db.sql, archive, box, restore);
 
 /** 받은 이벤트를 전역 배열에 적고, ".failed" 이벤트는 실패하는 테스트 플러그인 */
 function makePlugin(uses: readonly string[]): string {
@@ -147,7 +150,7 @@ describe('재시작 없이 켜고 끄기', () => {
   test('platform.plugin.changed 이벤트를 받으면 일꾼이 다시 등록한다', async () => {
     const root = makePlugin(['event:vault.testprobe.*', 'job:tick', 'action:hello']);
     await db.sql`DELETE FROM platform.plugins WHERE name = 'probe'`;
-    const registry = await PluginRegistry.boot(root, db.sql, archive, box);
+    const registry = await PluginRegistry.boot(root, db.sql, archive, box, restore);
     const worker = new OutboxWorker(db, registry, new CoreWorkers());
     assert.equal(registry.jobs().length, 0, '처음엔 꺼져 있음');
 

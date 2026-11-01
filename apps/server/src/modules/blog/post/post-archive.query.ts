@@ -9,21 +9,15 @@ import {
   Database,
   NotFound,
 } from '../../platform';
+import { ImagePolicy } from '../asset/image.policy';
 import { Post } from './post';
+import { PostRestore } from './post-restore';
 
 // 글의 보관 파일 (docs/보관형식.md): blog/posts/<연도>/<주소>.md와 사진 assets/<sha256>.<확장자>.
-// 현재 판만, 휴지통 글과 휴지통 글에만 붙은 사진은 빼고.
+// 현재 판만, 휴지통 글과 휴지통 글에만 붙은 사진은 빼고. 글마다 붙은 사진 목록(cairn_assets)도 적어 복원 때 행이 그대로 돌아온다.
 // 카테고리·시리즈·표지는 그 기능이 생기는 단계에서 앞부분에 더한다.
 @Injectable()
 export class PostArchiveQuery extends BaseQuery implements OnModuleInit {
-  /** 사진의 확장자. 받는 형식은 ImagePolicy와 같다 */
-  private static readonly EXTENSIONS: Readonly<Record<string, string>> = {
-    'image/png': 'png',
-    'image/jpeg': 'jpg',
-    'image/webp': 'webp',
-    'image/gif': 'gif',
-  };
-
   private readonly logger = new Logger('보관 파일');
 
   constructor(
@@ -36,6 +30,7 @@ export class PostArchiveQuery extends BaseQuery implements OnModuleInit {
 
   onModuleInit(): void {
     this.archive.register('blog', (actor) => this.files(actor));
+    this.archive.registerRestore('blog', (files) => PostRestore.read(files), ['vault']);
   }
 
   async files(actor: Actor): Promise<readonly ArchiveFile[]> {
@@ -44,9 +39,10 @@ export class PostArchiveQuery extends BaseQuery implements OnModuleInit {
 
   private async posts(actor: Actor): Promise<ArchiveFile[]> {
     const rows = await this.sql`
-      SELECT p.id, p.slug, p.status, p.title, p.tags, p.align, p.main_wiki_id, p.published_at,
+      SELECT p.id, p.slug, p.status, p.title, p.tags, p.align, p.main_wiki_id, p.published_at, p.meta,
              r.body_md, first.created_at AS first_at,
-             (SELECT array_agg(x.wiki_id ORDER BY x.wiki_id) FROM blog.post_wiki_refs x WHERE x.post_id = p.id) AS refs
+             (SELECT array_agg(x.wiki_id ORDER BY x.wiki_id) FROM blog.post_wiki_refs x WHERE x.post_id = p.id) AS refs,
+             (SELECT array_agg(a.blob_hash ORDER BY a.blob_hash) FROM blog.assets a WHERE a.post_id = p.id) AS assets
       FROM blog.posts p
       JOIN blog.post_revisions r ON r.id = p.head_revision_id
       JOIN LATERAL (
@@ -73,8 +69,10 @@ export class PostArchiveQuery extends BaseQuery implements OnModuleInit {
           ...(refs.length === 0 ? {} : { cairn_ref_wikis: refs }),
           ...(tags.length === 0 ? {} : { tags }),
           align: r.align,
+          cairn_assets: (r.assets as string[] | null) ?? [],
         },
         String(r.body_md),
+        ArchiveFile.keptIn(r.meta),
       );
       return r.status === Post.PUBLISHED ? file : file.keptPrivate();
     });
@@ -100,7 +98,7 @@ export class PostArchiveQuery extends BaseQuery implements OnModuleInit {
   /** 사진 하나. 디스크에 없는 파일 하나로 백업 전체를 막지 않는다: 빼고 로그를 남긴다 */
   private async photo(hash: string): Promise<ArchiveFile | null> {
     const blob = await this.blobs.find(hash);
-    const extension = blob && PostArchiveQuery.EXTENSIONS[blob.mime];
+    const extension = blob && ImagePolicy.EXTENSIONS[blob.mime];
     if (!extension) {
       this.logger.warn(`형식을 몰라 사진을 뺐어요: ${hash} (${blob?.mime ?? '정보 없음'})`);
       return null;

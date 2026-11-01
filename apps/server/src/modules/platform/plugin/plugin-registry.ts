@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ArchiveQuery } from '../archive/archive.query';
+import type { ArchiveRestoreService } from '../archive/archive-restore.service';
 import type { Sql } from '../base/database';
 import type { DomainEvent } from '../base/event';
 import type { SecretBox } from '../base/secret-box';
@@ -33,6 +34,7 @@ export class PluginRegistry {
     private readonly sql: Sql,
     private readonly archive: ArchiveQuery,
     private readonly box: SecretBox,
+    private readonly restore: ArchiveRestoreService,
   ) {}
 
   static async boot(
@@ -40,8 +42,10 @@ export class PluginRegistry {
     sql: Sql,
     archive: ArchiveQuery,
     box: SecretBox,
+    restore: ArchiveRestoreService,
   ): Promise<PluginRegistry> {
-    const registry = new PluginRegistry(PluginRegistry.readCatalog(pluginsDir), sql, archive, box);
+    const catalog = PluginRegistry.readCatalog(pluginsDir);
+    const registry = new PluginRegistry(catalog, sql, archive, box, restore);
     await registry.reload();
     return registry;
   }
@@ -78,6 +82,7 @@ export class PluginRegistry {
           manifest,
           state.resolve(manifest, this.box),
           this.archive,
+          this.restore,
         );
         PluginRegistry.instantiate(manifest).register(context);
         subscriptions.push(...context.subscriptions);

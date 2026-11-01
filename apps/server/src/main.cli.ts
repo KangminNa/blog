@@ -3,6 +3,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { InstallPolicy, OwnerService, SpaceQuery } from './modules/account';
 import {
+  ArchiveFile,
+  ArchiveRestoreService,
   InvalidRequest,
   OwnerActor,
   PluginManifest,
@@ -10,6 +12,8 @@ import {
   PluginService,
   SecretRotation,
   SystemActor,
+  TooLarge,
+  ZipLimits,
 } from './modules/platform';
 
 // 명령줄. 서버에 접속할 수 있는 사람 = 주인으로 본다. 관리 화면·설치 마법사도 같은 Service를 부른다.
@@ -22,6 +26,8 @@ import {
 //   pnpm plugin set <플러그인> <설정> [값]         값 넣기. 값을 빼면 표준 입력에서 읽음 (비밀값용)
 //   pnpm plugin <플러그인> <동작>                  관리 동작 (예: sync-github check)
 //   pnpm secret:rotate                           저장된 비밀값을 지금 서버 키로 다시 암호화 (순서는 .env.example)
+//   pnpm run restore < 백업.zip                  백업 zip을 검사하고 무엇이 몇 개 들어올지 보여줌. 아무것도 쓰지 않음
+//   pnpm run restore --apply < 백업.zip          빈 Cairn에 정말 들여옴
 //
 // 컨테이너 안에서는 개발·운영 모두 cairn-admin <명령>으로 부른다 (Dockerfile).
 const owner = new OwnerActor('local', 'cli');
@@ -35,7 +41,14 @@ async function main() {
     if (command === 'owner' && args[0] === 'reset-password')
       return await resetPassword(app.get(OwnerService));
     if (command === 'plugin')
-      return await plugin(app.get(PluginRegistry), app.get(PluginService), args);
+      return await plugin(
+        app.get(PluginRegistry),
+        app.get(PluginService),
+        args,
+        await ownerOfSpace(app.get(SpaceQuery)),
+      );
+    if (command === 'restore')
+      return await restore(app.get(ArchiveRestoreService), app.get(SpaceQuery), args);
     if (command === 'secret' && args[0] === 'rotate')
       return await rotateSecrets(app.get(SecretRotation));
     throw new Error('명령을 알 수 없어요. 쓰는 법은 apps/server/src/main.cli.ts 맨 위에');
@@ -70,10 +83,40 @@ async function rotateSecrets(rotation: SecretRotation): Promise<void> {
   console.log('모든 비밀값이 지금 서버 키로 풀려요. CAIRN_SECRET_KEY_OLD를 지워도 돼요');
 }
 
+/** 공간을 아는 주인. 공간에 쓰는 동작(저장소에서 복원)은 진짜 공간 id가 있어야 한다 */
+async function ownerOfSpace(spaces: SpaceQuery): Promise<OwnerActor> {
+  const { spaceId } = await spaces.installStatus(new SystemActor(), null);
+  return spaceId ? new OwnerActor(spaceId, 'cli') : owner;
+}
+
+async function restore(
+  restores: ArchiveRestoreService,
+  spaces: SpaceQuery,
+  args: readonly string[],
+): Promise<void> {
+  const unknown = args.find((arg) => arg !== '--apply');
+  if (unknown) throw new Error(`모르는 옵션이에요: ${unknown}. 쓸 수 있는 옵션은 --apply 하나예요`);
+  const files = ArchiveFile.unzip(await readStdinBytes());
+  const system = new SystemActor();
+  if (!args.includes('--apply')) {
+    const report = await restores.preview(system, files);
+    console.log(`들어올 내용: ${report.summary}`);
+    for (const note of report.notes) console.log(`  ${note}`);
+    console.log('아직 아무것도 넣지 않았어요. 넣으려면 --apply를 붙여 다시 실행하세요');
+    return;
+  }
+  const { spaceId } = await spaces.installStatus(system, null);
+  const report = await restores.apply(system, spaceId, files);
+  console.log(`✔ 복원했어요: ${report.summary}`);
+  for (const note of report.notes) console.log(`  ${note}`);
+  console.log('기기는 다시 연결해 주세요: pnpm cairn connect <블로그 주소>');
+}
+
 async function plugin(
   registry: PluginRegistry,
   plugins: PluginService,
   args: readonly string[],
+  owner: OwnerActor,
 ): Promise<void> {
   const [first, name, key, value] = args;
   if (!first) return list(registry);
@@ -154,6 +197,22 @@ async function readStdin(
   let data = '';
   for await (const chunk of process.stdin) data += chunk;
   return data.trim();
+}
+
+/** 표준 입력을 바이트 그대로. 한도를 넘으면 다 읽기 전에 멈춘다 */
+async function readStdinBytes(): Promise<Buffer> {
+  if (process.stdin.isTTY)
+    throw new Error('백업 zip을 표준 입력으로 주세요. 예: pnpm run restore < 백업.zip');
+  const limit = ZipLimits.DEFAULT.maxZipBytes;
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of process.stdin) {
+    size += (chunk as Buffer).length;
+    if (size > limit)
+      throw new TooLarge(`백업 zip이 너무 커요 (${Math.round(limit / 1024 ** 2)}MB까지)`);
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks);
 }
 
 main().catch((error) => {

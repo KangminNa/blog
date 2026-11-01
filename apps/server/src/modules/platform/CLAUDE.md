@@ -19,9 +19,12 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 - `ChangeStream`: Postgres LISTEN 연결 하나로 변경 신호를 나눠 준다. SSE와 긴 폴링이 쓴다. 신호는 깨우기용이고 내용은 늘 테이블에 있다
 - `SecretRotation`: 서버 키 교체. 비밀값을 가진 모듈이 `register`로 다시 잠그는 방법을 등록
 - `CoreWorkers`: 코어 모듈의 이벤트 받기·반복 작업 등록 (`on`, `every`, `expect`)
-- `ArchiveQuery`: 보관 형식 파일 묶음. 내용을 가진 모듈이 `onModuleInit`에서 `register`로 자기 파일을 등록한다
+- `ArchiveQuery`: 보관 형식 파일 묶음. 내용을 가진 모듈이 `onModuleInit`에서 `register`로 자기 파일을, `registerRestore`로 복원을 등록한다
+- `ArchiveRestoreService`: 빈 Cairn에 복원 (`preview` · `apply`). GitHub와 zip이 같은 길이다. 주인과 `SystemActor`만 부른다. `steadyRead`: 복원과 겹치지 않게 읽기
+- `ArchivePart`(모듈의 복원 몫), `ArchiveRecord`(보관 파일의 앞부분·항목 읽기), `ArchiveBlob`, `ArchiveReport`(개수와 알림)
 - `BlobStore`: 내용 주소 파일 저장소 (`Blob`). 트랜잭션 밖에서 부른다
 - `ZipFile`: 라이브러리 없이 zip 만들기 (node:zlib). 앱에 올릴 스킬 묶음, 나중에 보관 형식 내보내기
+- `ZipReader` · `ZipLimits`: 믿을 수 없는 zip 읽기. 개수·크기 한도, 위험한 이름 거절, CRC 검사. 넘치면 `TooLarge`
 - 오류: `DomainError`와 단계별 하위 클래스, `DomainEvent`, `CurrentActor`(Controller 인자 데코레이터)
 
 ## 내보내는 이벤트 / 받는 이벤트
@@ -35,6 +38,8 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 - 기반 클래스는 얇게: 모든 하위 클래스가 똑같이 하는 일만 넣는다
 - 기반 클래스의 동작을 바꾸면 `base/base.test.ts`에 테스트를 더한다
 - 같은 트랜잭션에 들어가야 하는 기능(outbox 등)은 호출한 쪽의 `Sql`(트랜잭션)을 받는 클래스로 만든다
+- 복원은 모듈을 한 트랜잭션에 묶는 유일한 곳이다: 실패하면 Cairn이 비어 있는 채로 남아야 해서다. `ArchiveRestoreService`가 트랜잭션을 열고 모듈은 자기 스키마에만 쓴다. 이벤트는 남기지 않는다
+- 복원의 잠금은 두 가지다: 복원끼리와 `steadyRead`는 advisory 잠금, 빈 곳 확인은 모듈이 표를 잠근다 (`ArchivePart.existing`)
 
 ## 하지 말 것
 - 다른 모듈 import

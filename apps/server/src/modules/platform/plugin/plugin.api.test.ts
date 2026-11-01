@@ -33,7 +33,15 @@ describe('GET /api/plugins', () => {
     );
     const sync = list.find((p) => p.name === 'sync-github') as Record<string, unknown>;
     assert.equal(sync.enabled, false);
-    assert.deepEqual(sync.uses, ['archive:read', 'job:sync', 'action:check', 'action:sync-now']);
+    assert.deepEqual(sync.uses, [
+      'archive:read',
+      'archive:restore',
+      'job:sync',
+      'action:check',
+      'action:sync-now',
+      'action:restore-preview',
+      'action:restore',
+    ]);
     const token = (sync.settings as Record<string, unknown>[]).find((s) => s.key === 'token');
     assert.deepEqual(token, {
       key: 'token',

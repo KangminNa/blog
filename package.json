@@ -27,6 +27,7 @@
     "plugin": "docker compose exec -T server cairn-admin plugin",
     "install-code": "docker compose exec -T server cairn-admin install-code",
     "owner": "docker compose exec -T server cairn-admin owner",
+    "restore": "docker compose exec -T server cairn-admin restore",
     "cairn": "pnpm --silent --filter @cairn/cli cairn",
     "runner": "pnpm --silent --filter @cairn/runner",
     "secret:new": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\"",

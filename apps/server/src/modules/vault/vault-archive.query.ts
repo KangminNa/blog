@@ -1,5 +1,6 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { type Actor, ArchiveFile, ArchiveQuery, BaseQuery, Database } from '../platform';
+import { VaultRestore } from './restore/vault-restore';
 import { SlugPolicy } from './slug.policy';
 
 // vault의 보관 파일 (docs/보관형식.md): 카테고리, wiki, 세션, 선. 현재 판만 파일이 되고 지난 판은 git 이력으로 본다.
@@ -19,6 +20,7 @@ export class VaultArchiveQuery extends BaseQuery implements OnModuleInit {
 
   onModuleInit(): void {
     this.archive.register('vault', (actor) => this.files(actor));
+    this.archive.registerRestore('vault', (files) => VaultRestore.read(files));
   }
 
   async files(actor: Actor): Promise<readonly ArchiveFile[]> {
@@ -32,7 +34,7 @@ export class VaultArchiveQuery extends BaseQuery implements OnModuleInit {
 
   private async categories(actor: Actor): Promise<ArchiveFile> {
     const rows = await this.sql`
-      SELECT c.node_id, c.name, c.slug, c.color, c.sort, c.description
+      SELECT c.node_id, c.name, c.slug, c.color, c.sort, c.description, c.origin, c.pinned
       FROM vault.categories c JOIN vault.nodes n ON n.id = c.node_id
       WHERE ${this.inSpace(actor, 'c')} AND n.deleted_at IS NULL
       ORDER BY c.sort, c.node_id`;
@@ -45,13 +47,16 @@ export class VaultArchiveQuery extends BaseQuery implements OnModuleInit {
         color: r.color,
         sort: r.sort,
         description: r.description,
+        origin: r.origin,
+        pinned: r.pinned,
       })),
     );
   }
 
   private async wikis(actor: Actor): Promise<ArchiveFile[]> {
     const rows = await this.sql`
-      SELECT w.node_id, w.title, w.slug, w.visibility, w.category_id, r.body_md
+      SELECT w.node_id, w.title, w.slug, w.visibility, w.category_id, w.origin, w.pinned_sections,
+             w.meta, r.body_md
       FROM vault.wikis w
       JOIN vault.nodes n ON n.id = w.node_id
       JOIN vault.wiki_revisions r ON r.id = w.head_revision_id
@@ -67,19 +72,23 @@ export class VaultArchiveQuery extends BaseQuery implements OnModuleInit {
           title: r.title,
           visibility: r.visibility,
           ...(r.category_id === null ? {} : { cairn_category: r.category_id }),
+          cairn_origin: r.origin,
+          cairn_pinned: r.pinned_sections,
         },
         String(r.body_md),
+        ArchiveFile.keptIn(r.meta),
       ),
     );
   }
 
   private async sessions(actor: Actor): Promise<ArchiveFile[]> {
     const rows = await this.sql`
-      SELECT s.node_id, s.head_title, s.visibility, s.tool, s.project, s.wiki_id, s.started_at,
-             s.last_revision_at, r.body_md, r.sections
+      SELECT s.node_id, s.head_title, s.visibility, s.tool, s.project, live.id AS wiki_id, s.started_at,
+             s.last_revision_at, s.pinned_sections, s.meta, r.body_md, r.sections
       FROM vault.sessions s
       JOIN vault.nodes n ON n.id = s.node_id
       JOIN vault.session_revisions r ON r.id = s.head_revision_id
+      LEFT JOIN vault.nodes live ON live.id = s.wiki_id AND live.deleted_at IS NULL
       WHERE ${this.inSpace(actor, 's')} AND n.deleted_at IS NULL
       ORDER BY s.node_id`;
     const used = new Set<string>();
@@ -104,22 +113,30 @@ export class VaultArchiveQuery extends BaseQuery implements OnModuleInit {
           ...(r.wiki_id === null ? {} : { cairn_wiki: r.wiki_id }),
           ...(r.project === null ? {} : { project: r.project }),
           ...(tags.length === 0 ? {} : { tags }),
+          cairn_pinned: r.pinned_sections,
         },
         String(r.body_md),
+        ArchiveFile.keptIn(r.meta),
       );
     });
   }
 
-  /** 선과 그 출처·고정·사람이 지운 흔적, 고정한 점 위치. 지운 선의 행도 넣는다: 복원 뒤에도 AI가 다시 못 만들게 */
+  /**
+   * 선과 그 출처·고정·사람이 지운 흔적, 고정한 점 위치. 지운 선의 행도 넣는다: 복원 뒤에도 AI가 다시 못 만들게.
+   * 휴지통의 점에 닿은 선은 뺀다: 그 점이 파일에 없어 복원할 수 없다.
+   */
   private async graph(actor: Actor): Promise<ArchiveFile> {
     const edges = await this.sql`
       SELECT e.id, e.src, e.dst, e.kind, e.weight, e.origin, e.pinned, e.deleted_at, e.deleted_by_type
       FROM vault.edges e
+      JOIN vault.nodes a ON a.id = e.src AND a.deleted_at IS NULL
+      JOIN vault.nodes b ON b.id = e.dst AND b.deleted_at IS NULL
       WHERE ${this.inSpace(actor, 'e')}
       ORDER BY e.id`;
     const layout = await this.sql`
       SELECT v.name AS view, l.node_id, l.x, l.y
       FROM vault.node_layout l JOIN vault.graph_views v ON v.id = l.view_id
+      JOIN vault.nodes n ON n.id = l.node_id AND n.deleted_at IS NULL
       WHERE l.pinned AND ${this.inSpace(actor, 'v')}
       ORDER BY v.name, l.node_id`;
     const graph = {

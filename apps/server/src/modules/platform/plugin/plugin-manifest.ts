@@ -16,13 +16,14 @@ const WEB_SLOTS: readonly string[] = ['post.after', 'task.office'];
  *   job:<이름>    일꾼이 간격마다 돌리는 일
  *   action:<이름> 주인이 누르는 동작
  *   archive:read  보관 형식 파일 읽기 (vault 비공개 내용 포함)
+ *   archive:restore  보관 형식 파일을 빈 Cairn에 들여오기
  *   login:<이름>  로그인 방법 (예: login:github). 주인이 연결해 둔 계정으로만 로그인된다
  */
 const USES = [
   /^event:[a-z*][a-z_.*]*$/,
   /^job:[a-z][a-z0-9-]*$/,
   /^action:[a-z][a-z0-9-]*$/,
-  /^archive:read$/,
+  /^archive:(?:read|restore)$/,
   /^login:[a-z][a-z0-9-]*$/,
 ];
 
@@ -78,6 +79,7 @@ export class PluginManifest {
   /** 확장 지점을 켜는 사람이 읽을 말로 (설치 마법사·관리 화면·명령줄이 함께 씀) */
   static describeUse(use: string): string {
     const [kind, arg] = [use.slice(0, use.indexOf(':')), use.slice(use.indexOf(':') + 1)];
+    if (use === 'archive:restore') return '보관 파일을 빈 Cairn에 들여와요';
     if (kind === 'archive') return '블로그와 vault의 모든 내용(비공개 포함)을 읽어요';
     if (kind === 'event') return `"${arg}" 이벤트가 생기면 받아요`;
     if (kind === 'job') return `일꾼이 정해진 간격마다 "${arg}" 작업을 돌려요`;

@@ -50,6 +50,11 @@ export class RemoteSnapshot {
   hasPrivateArea(): boolean {
     return [...this.files.keys()].some((p) => p.startsWith('vault/'));
   }
+
+  /** 지우면 안 되는 내용이 있는가 (세션·wiki·글·사진). cairn.json과 빈 목록만 있으면 없는 것이다 */
+  hasContent(): boolean {
+    return [...this.files.keys()].some((p) => ArchiveFile.holdsContent(p));
+  }
 }
 
 /** 한 번의 커밋 결과 */
