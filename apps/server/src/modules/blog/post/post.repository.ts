@@ -9,7 +9,7 @@ import {
 import { Post } from './post';
 import { PostContent } from './post-content';
 
-// blog.posts + post_revisions ↔ Post. posts의 title·excerpt·head_text는 지금 판의 찾기용 사본이다.
+// blog.posts + post_revisions + post_wiki_refs ↔ Post. posts의 title·excerpt·head_text는 지금 판의 찾기용 사본이다.
 export class PostRepository extends BaseRepository<Post> {
   protected toEntity(row: Row): Post {
     return Post.restore(
@@ -26,6 +26,8 @@ export class PostRepository extends BaseRepository<Post> {
       row.published_at === null ? null : new Date(row.published_at),
       new Date(row.updated_at),
       row.deleted_at === null ? null : new Date(row.deleted_at),
+      row.main_wiki_id === null ? null : String(row.main_wiki_id),
+      (row.ref_wiki_ids as string[] | null) ?? [],
     );
   }
 
@@ -60,16 +62,17 @@ export class PostRepository extends BaseRepository<Post> {
       if (post.isNew) {
         await this.sql`
           INSERT INTO blog.posts (id, space_id, slug, status, title, excerpt, head_text, head_revision_id,
-            tags, align, published_at, updated_at)
+            tags, align, main_wiki_id, published_at, updated_at)
           VALUES (${post.id}, ${post.spaceId}, ${post.slug}, ${post.status}, ${c.title}, ${c.excerpt},
             ${c.searchText}, ${post.headRevisionId}, ${post.tags as string[]}, ${post.align},
-            ${post.publishedAt}, ${post.updatedAt})`;
+            ${post.mainWikiId}, ${post.publishedAt}, ${post.updatedAt})`;
         post.markSaved(post.version);
       } else {
         const result = await this.sql`
           UPDATE blog.posts SET slug = ${post.slug}, status = ${post.status}, title = ${c.title},
             excerpt = ${c.excerpt}, head_text = ${c.searchText}, head_revision_id = ${post.headRevisionId},
-            tags = ${post.tags as string[]}, align = ${post.align}, published_at = ${post.publishedAt},
+            tags = ${post.tags as string[]}, align = ${post.align}, main_wiki_id = ${post.mainWikiId},
+            published_at = ${post.publishedAt},
             updated_at = ${post.updatedAt}, deleted_at = ${post.deletedAt}, purge_after = ${post.purgeAfter},
             version = version + 1
           WHERE id = ${post.id} AND version = ${post.version}`;
@@ -87,6 +90,7 @@ export class PostRepository extends BaseRepository<Post> {
           actor_type, actor_id, created_at)
         VALUES (${r.id}, ${post.id}, ${r.seq}, ${r.content.title}, ${r.content.body}, ${r.baseRevisionId},
           ${r.requestId}, ${r.actorType}, ${r.actorId}, ${r.createdAt})`;
+    await this.saveRefs(post);
     await this.publishEvents(post);
   }
 
@@ -95,10 +99,24 @@ export class PostRepository extends BaseRepository<Post> {
     await new Outbox(this.sql).publish([event]);
   }
 
+  /** 참고 wiki를 글에 맞춘다. 그대로인 행은 두어 처음 이은 때가 남는다 */
+  private async saveRefs(post: Post): Promise<void> {
+    const refs = post.refWikiIds as string[];
+    await this.sql`
+      DELETE FROM blog.post_wiki_refs
+      WHERE post_id = ${post.id} AND wiki_id <> ALL(${refs}::uuid[])`;
+    await this.sql`
+      INSERT INTO blog.post_wiki_refs (post_id, wiki_id)
+      SELECT ${post.id}::uuid, unnest(${refs}::uuid[])
+      ON CONFLICT DO NOTHING`;
+  }
+
   private select(spaceId: string, id: string, lock: boolean) {
     return this.sql`
       SELECT p.*, r.title AS head_title, r.body_md AS head_body,
-             (SELECT count(*) FROM blog.post_revisions x WHERE x.post_id = p.id)::int AS revision_count
+             (SELECT count(*) FROM blog.post_revisions x WHERE x.post_id = p.id)::int AS revision_count,
+             (SELECT array_agg(x.wiki_id ORDER BY x.wiki_id)
+              FROM blog.post_wiki_refs x WHERE x.post_id = p.id) AS ref_wiki_ids
       FROM blog.posts p LEFT JOIN blog.post_revisions r ON r.id = p.head_revision_id
       WHERE p.id = ${id} AND p.space_id = ${spaceId}
       ${lock ? this.sql`FOR UPDATE OF p` : this.sql``}`;

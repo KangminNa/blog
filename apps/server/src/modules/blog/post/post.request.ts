@@ -1,4 +1,4 @@
-import { BaseRequest } from '../../platform';
+import { BaseRequest, type RequestFields } from '../../platform';
 import { Post } from './post';
 import { PostContent } from './post-content';
 import { SlugPolicy } from './slug.policy';
@@ -6,6 +6,31 @@ import { SlugPolicy } from './slug.policy';
 /** 주소의 글 id를 본문과 함께 읽는다 (본문이 객체가 아니면 그대로 두어 "객체여야 해요"로 알린다) */
 function withId(id: string, body: unknown): unknown {
   return typeof body === 'object' && body !== null && !Array.isArray(body) ? { ...body, id } : body;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 대표 wiki 칸. 보내지 않으면 undefined(그대로), null이면 비우기 */
+function mainWikiOf(f: RequestFields, raw: unknown, name: string): string | null | undefined {
+  const value = (raw as Record<string, unknown> | null)?.[name];
+  return value === undefined || value === null ? value : f.uuid(name);
+}
+
+/** 참고 wiki 칸. 보내지 않으면 undefined(그대로), []이면 비우기 */
+function refWikisOf(f: RequestFields, name: string): readonly string[] | undefined {
+  const ids = f.optionalTextList(name, Post.REFS_MAX, 36);
+  if (ids === null) return undefined;
+  for (const [i, id] of ids.entries())
+    if (!UUID.test(id)) f.reject(`${name}.${i}`, 'UUID 형식이어야 해요');
+  return ids.map((id) => id.toLowerCase());
+}
+
+/** 이번 저장으로 잇는 wiki들 (볼 수 있는지 확인할 값) */
+function linkedWikis(
+  main: string | null | undefined,
+  refs: readonly string[] | undefined,
+): readonly string[] {
+  return [...(main ? [main] : []), ...(refs ?? [])];
 }
 
 /** 새 글 (POST /api/posts). requestId: 같은 요청이 두 번 와도 글은 하나 */
@@ -18,8 +43,14 @@ export class CreatePostRequest extends BaseRequest {
     /** 사람이 정한 주소. 없으면 제목에서 만든다 */
     readonly slug: string | null,
     readonly align: string,
+    readonly mainWikiId: string | null | undefined,
+    readonly refWikiIds: readonly string[] | undefined,
   ) {
     super();
+  }
+
+  get wikiIds(): readonly string[] {
+    return linkedWikis(this.mainWikiId, this.refWikiIds);
   }
 
   static from(raw: unknown): CreatePostRequest {
@@ -33,6 +64,8 @@ export class CreatePostRequest extends BaseRequest {
           f.optionalTextList('tags', Post.TAGS_MAX, Post.TAG_MAX) ?? [],
           f.optionalText('slug', SlugPolicy.MAX),
           f.optionalText('align', 10) ?? 'left',
+          mainWikiOf(f, raw, 'mainWikiId'),
+          refWikisOf(f, 'refWikiIds'),
         ),
     );
   }
@@ -49,8 +82,15 @@ export class SavePostRequest extends BaseRequest {
     /** 바꿀 주소. 없으면 지금 주소 그대로 */
     readonly slug: string | null,
     readonly align: string,
+    /** 보내지 않으면 지금 연결 그대로. 대표 null·참고 []는 비우기 */
+    readonly mainWikiId: string | null | undefined,
+    readonly refWikiIds: readonly string[] | undefined,
   ) {
     super();
+  }
+
+  get wikiIds(): readonly string[] {
+    return linkedWikis(this.mainWikiId, this.refWikiIds);
   }
 
   static from(id: string, raw: unknown): SavePostRequest {
@@ -65,6 +105,8 @@ export class SavePostRequest extends BaseRequest {
           f.optionalTextList('tags', Post.TAGS_MAX, Post.TAG_MAX) ?? [],
           f.optionalText('slug', SlugPolicy.MAX),
           f.optionalText('align', 10) ?? 'left',
+          mainWikiOf(f, raw, 'mainWikiId'),
+          refWikisOf(f, 'refWikiIds'),
         ),
     );
   }
@@ -176,8 +218,15 @@ export class SaveDraftRequest extends BaseRequest {
     readonly body: string,
     /** 없으면 고칠 때 지금 태그 그대로 */
     readonly tags: readonly string[] | null,
+    /** 보내지 않으면 지금 연결 그대로. 대표 null·참고 []는 비우기 */
+    readonly mainWikiId: string | null | undefined,
+    readonly refWikiIds: readonly string[] | undefined,
   ) {
     super();
+  }
+
+  get wikiIds(): readonly string[] {
+    return linkedWikis(this.mainWikiId, this.refWikiIds);
   }
 
   static from(raw: unknown): SaveDraftRequest {
@@ -190,6 +239,8 @@ export class SaveDraftRequest extends BaseRequest {
         f.text('title', PostContent.TITLE_MAX),
         f.text('body_md', PostContent.BODY_MAX),
         f.optionalTextList('tags', Post.TAGS_MAX, Post.TAG_MAX),
+        mainWikiOf(f, raw, 'main_wiki_id'),
+        refWikisOf(f, 'ref_wiki_ids'),
       );
     });
   }

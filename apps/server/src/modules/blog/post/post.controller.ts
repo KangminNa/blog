@@ -39,7 +39,10 @@ export class PostController {
 
   @Post()
   async create(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<PostSavedResponse> {
-    return PostSavedResponse.of(await this.service.create(actor, CreatePostRequest.from(body)));
+    return PostSavedResponse.of(
+      await this.service.create(actor, CreatePostRequest.from(body)),
+      actor,
+    );
   }
 
   @Put(':id')
@@ -48,7 +51,10 @@ export class PostController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<PostSavedResponse> {
-    return PostSavedResponse.of(await this.service.save(actor, SavePostRequest.from(id, body)));
+    return PostSavedResponse.of(
+      await this.service.save(actor, SavePostRequest.from(id, body)),
+      actor,
+    );
   }
 
   @HttpCode(200)
@@ -60,6 +66,7 @@ export class PostController {
   ): Promise<PostSavedResponse> {
     return PostSavedResponse.of(
       await this.service.changeStatus(actor, PostStatusRequest.from(id, body)),
+      actor,
     );
   }
 
@@ -69,7 +76,10 @@ export class PostController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<PostSavedResponse> {
-    return PostSavedResponse.of(await this.service.trash(actor, PostVersionRequest.from(id, body)));
+    return PostSavedResponse.of(
+      await this.service.trash(actor, PostVersionRequest.from(id, body)),
+      actor,
+    );
   }
 
   @HttpCode(200)
@@ -81,6 +91,7 @@ export class PostController {
   ): Promise<PostSavedResponse> {
     return PostSavedResponse.of(
       await this.service.recover(actor, PostVersionRequest.from(id, body)),
+      actor,
     );
   }
 }

@@ -254,6 +254,8 @@ describe('결재한 공개', () => {
       title,
       status: 'published',
       postVersion: post.version,
+      mainWikiId: null,
+      refWikiIds: [],
       approvalId: approval.id,
       outcome: 'done',
     });

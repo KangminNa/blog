@@ -1,8 +1,8 @@
 import { notFound, redirect } from 'next/navigation';
 import '../../../_blog/blog.css';
 import { serverGet } from '../../../_lib/server-api';
-import type { EditablePost, Owner } from '../../../_lib/types';
-import { PostEditor } from '../PostEditor';
+import type { Owner } from '../../../_lib/types';
+import { type LinkedPost, PostEditor } from '../PostEditor';
 
 // 글 편집기 (/admin/posts/new: 새 글, /admin/posts/<id>: 고쳐 쓰기). 주인만.
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ export default async function EditPost({ params }: { params: Promise<{ id: strin
   const owner = await serverGet<Owner>('/api/auth/me');
   if (!owner) redirect(`/login?return=${encodeURIComponent(`/admin/posts/${id}`)}`);
   if (id === 'new') return <PostEditor initial={null} />;
-  const post = await serverGet<EditablePost>(`/api/posts/${encodeURIComponent(id)}`);
+  const post = await serverGet<LinkedPost>(`/api/posts/${encodeURIComponent(id)}`);
   if (!post) notFound();
   return <PostEditor initial={post} />;
 }

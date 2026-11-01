@@ -12,6 +12,7 @@ import { GraphQuery } from './graph/graph.query';
 import { NeighborsTool } from './graph/graph.tool';
 import { PostMarkHandler } from './post-mark/post-mark.handler';
 import { PostMarkService } from './post-mark/post-mark.service';
+import { PostWikiQuery } from './post-mark/post-wiki.query';
 import { CheckSessionTool } from './session/check-session.tool';
 import { GetSessionTool } from './session/get-session.tool';
 import { SaveSessionTool } from './session/save-session.tool';
@@ -55,6 +56,7 @@ import { GetWikiTool, SearchWikisTool } from './wiki/wiki.tool';
     TidyRequestHandler,
     PostMarkService,
     PostMarkHandler,
+    PostWikiQuery,
     GraphQuery,
     NeighborsTool,
     VaultArchiveQuery,
@@ -69,7 +71,7 @@ import { GetWikiTool, SearchWikisTool } from './wiki/wiki.tool';
     GraphController,
     ArchiveController,
   ],
-  exports: [VaultTools, SessionQuery],
+  exports: [VaultTools, SessionQuery, PostWikiQuery],
 })
 export class VaultModule implements OnModuleInit {
   constructor(

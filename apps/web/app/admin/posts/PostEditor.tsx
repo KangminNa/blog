@@ -5,7 +5,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { Placeholder } from '@tiptap/extensions';
 import { type Editor, EditorContent, useEditor, useEditorState } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AssetView } from '../../../../server/src/modules/blog/asset/asset.view';
 import { postPath } from '../../_blog/format';
 import { api, describe, uploadFile } from '../../_lib/client-api';
@@ -13,9 +13,19 @@ import { type EditablePost, POST_STATUS_LABELS, type PostStatus } from '../../_l
 import { useToast } from '../../_ui/useToast';
 import { BigQuote } from './editor/big-quote';
 import { docToMarkdown, markdownToEditorHtml } from './editor/markdown-doc';
+import { WikiPicker } from './WikiPicker';
+
+/** 편집기가 다루는 글: 쓰는 결과도 같은 모양 */
+export type LinkedPost = EditablePost & { mainWikiId: string | null; refWikiIds: string[] };
 
 /** 글 설정 (발행 창에서 고르는 것) */
-type Settings = { tags: string; slug: string; align: 'left' | 'center' };
+type Settings = {
+  tags: string;
+  slug: string;
+  align: 'left' | 'center';
+  mainWikiId: string | null;
+  refWikiIds: readonly string[];
+};
 
 /** 올린 사진 (서버의 asset.view.ts) */
 type Asset = ReturnType<AssetView['toJSON']>;
@@ -24,6 +34,9 @@ type Asset = ReturnType<AssetView['toJSON']>;
 const PHOTO_MAX = 10 * 1024 * 1024;
 const PHOTO_TOO_BIG = '10MB 이하 사진만 올릴 수 있어요';
 const PHOTO_TYPES = 'image/png,image/jpeg,image/webp,image/gif';
+
+/** 서버의 Post.REFS_MAX와 같다 */
+const REFS_MAX = 20;
 
 const STATUSES: readonly [PostStatus, string][] = [
   ['published', '목록에 표시'],
@@ -50,10 +63,21 @@ const EXTENSIONS = [
   BigQuote,
 ];
 
-function settingsOf(post: EditablePost | null): Settings {
+function settingsOf(post: LinkedPost | null): Settings {
   return post
-    ? { tags: post.tags.join(', '), slug: post.slug, align: post.align }
-    : { tags: '', slug: '', align: 'left' };
+    ? {
+        tags: post.tags.join(', '),
+        slug: post.slug,
+        align: post.align,
+        mainWikiId: post.mainWikiId,
+        refWikiIds: post.refWikiIds,
+      }
+    : { tags: '', slug: '', align: 'left', mainWikiId: null, refWikiIds: [] };
+}
+
+/** 고른 순서는 뜻이 없어서 순서 없이 견준다 */
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+  return [...a].sort().join('\n') === [...b].sort().join('\n');
 }
 
 function tagsOf(text: string): string[] {
@@ -86,9 +110,10 @@ function toolState({ editor }: { editor: Editor | null }) {
 
 // 글 편집기: 쓰는 화면이 곧 보이는 화면 (Tiptap). 방문자가 볼 모양 그대로 쓴다.
 // 저장은 md 그대로 (editor/markdown-doc.ts). 제목·본문이 바뀌었으면 새 판이 쌓인다.
-// 공개 범위·태그·주소·전체 가운데 정렬은 "발행" 창에서 고른다. 주소는 비우면 제목에서 만든다.
+// 공개 범위·태그·주소·위키·전체 가운데 정렬은 "발행" 창에서 고른다. 주소는 비우면 제목에서 만든다.
+// 위키는 바뀐 칸만 보낸다: 그사이 지워진 wiki가 이어져 있어도 나머지를 고쳐 저장할 수 있게.
 // 다른 탭에서 먼저 고쳤으면 서버가 409로 막고, 덮어쓰지 않고 다시 불러오라고 알린다.
-export function PostEditor({ initial }: { initial: EditablePost | null }) {
+export function PostEditor({ initial }: { initial: LinkedPost | null }) {
   const [post, setPost] = useState(initial);
   const [title, setTitle] = useState(initial?.title ?? '');
   const [settings, setSettings] = useState(() => settingsOf(initial));
@@ -103,6 +128,7 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
   const [uploading, setUploading] = useState(false);
   const [toast, showToast] = useToast();
   const photoInput = useRef<HTMLInputElement>(null);
+  const noticeRef = useRef<HTMLParagraphElement>(null);
   const requestId = useRef('');
   if (!requestId.current) requestId.current = crypto.randomUUID();
 
@@ -123,29 +149,47 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
 
   const slugChanged =
     post !== null && settings.slug.trim() !== '' && settings.slug.trim() !== post.slug;
-  const dirty = post
-    ? title.trim() !== post.title ||
-      body !== baseline ||
-      tagsOf(settings.tags).join('\n') !== post.tags.join('\n') ||
-      settings.align !== post.align ||
-      slugChanged
-    : title.trim() !== '' || body !== '';
+  const mainChanged = settings.mainWikiId !== (post?.mainWikiId ?? null);
+  const refsChanged = !sameIds(settings.refWikiIds, post?.refWikiIds ?? []);
+  const mainPicks = useMemo(
+    () => (settings.mainWikiId ? [settings.mainWikiId] : []),
+    [settings.mainWikiId],
+  );
+  const refExclude = useMemo(() => [settings.mainWikiId], [settings.mainWikiId]);
+  const dirty =
+    mainChanged ||
+    refsChanged ||
+    (post
+      ? title.trim() !== post.title ||
+        body !== baseline ||
+        tagsOf(settings.tags).join('\n') !== post.tags.join('\n') ||
+        settings.align !== post.align ||
+        slugChanged
+      : title.trim() !== '' || body !== '');
 
-  const save = useCallback(async (): Promise<EditablePost | null> => {
+  const save = useCallback(async (): Promise<LinkedPost | null> => {
     if (!title.trim()) {
       setError('제목을 적어 주세요');
       return null;
     }
     setBusy(true);
     setError(null);
-    const fields = { title, body, tags: tagsOf(settings.tags), align: settings.align };
+    const fields = {
+      title,
+      // 본문을 손대지 않았으면 저장된 md 그대로: 편집기가 다시 쓴 모양만 달라 새 판이 쌓이지 않게
+      body: post && body === baseline ? post.body : body,
+      tags: tagsOf(settings.tags),
+      align: settings.align,
+      ...(mainChanged ? { mainWikiId: settings.mainWikiId } : {}),
+      ...(refsChanged ? { refWikiIds: settings.refWikiIds } : {}),
+    };
     const reply = post
-      ? await api<EditablePost>('PUT', `/api/posts/${post.id}`, {
+      ? await api<LinkedPost>('PUT', `/api/posts/${post.id}`, {
           ...fields,
           version: post.version,
           slug: slugChanged ? settings.slug.trim() : null,
         })
-      : await api<EditablePost>('POST', '/api/posts', {
+      : await api<LinkedPost>('POST', '/api/posts', {
           ...fields,
           requestId: requestId.current,
           slug: settings.slug.trim() || null,
@@ -160,10 +204,16 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
     if (!post) window.history.replaceState(null, '', `/admin/posts/${saved.id}`);
     setPost(saved);
     setBaseline(body);
-    setSettings((s) => ({ ...s, slug: saved.slug }));
-    showToast(saved.revised ? `저장했어요 · ${saved.revisionCount}판` : '바뀐 내용이 없어요');
+    setSettings((s) => ({
+      ...s,
+      slug: saved.slug,
+      mainWikiId: saved.mainWikiId,
+      refWikiIds: saved.refWikiIds,
+    }));
+    if (saved.revised) showToast(`저장했어요 · ${saved.revisionCount}판`);
+    else showToast(saved.version === post?.version ? '바뀐 내용이 없어요' : '저장했어요');
     return saved;
-  }, [title, body, settings, post, slugChanged, showToast]);
+  }, [title, body, baseline, settings, post, slugChanged, mainChanged, refsChanged, showToast]);
 
   /** 발행 창의 "적용": 저장한 뒤 공개 범위가 다르면 바꾼다 */
   async function apply() {
@@ -171,7 +221,7 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
     if (!current) return;
     if (current.status !== choice) {
       setBusy(true);
-      const reply = await api<EditablePost>('POST', `/api/posts/${current.id}/status`, {
+      const reply = await api<LinkedPost>('POST', `/api/posts/${current.id}/status`, {
         version: current.version,
         status: choice,
       });
@@ -201,7 +251,7 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
 
   async function recover() {
     if (!post) return;
-    const reply = await api<EditablePost>('POST', `/api/posts/${post.id}/restore`, {
+    const reply = await api<LinkedPost>('POST', `/api/posts/${post.id}/restore`, {
       version: post.version,
     });
     if (!reply.ok) return setError(describe(reply.error));
@@ -234,6 +284,11 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
     if (!href || href === 'https://') return;
     editor.chain().focus().extendMarkRange('link').setLink({ href }).run();
   }
+
+  // 발행 창은 길어서 스크롤되므로 오류가 보이는 곳까지 옮긴다
+  useEffect(() => {
+    if (error) noticeRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [error]);
 
   // ⌘S · Ctrl+S로 저장, 저장 안 한 채 떠나려 하면 묻는다
   useEffect(() => {
@@ -276,6 +331,18 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
     </button>
   );
   const chain = () => editor?.chain().focus();
+  /** 저장 오류. 발행 창이 열려 있으면 창이 본문 위의 알림을 가리므로 창 안에 보여 준다 */
+  const notice = (place: string) =>
+    error && (
+      <p ref={noticeRef} className={place} role="alert">
+        {error}
+        {conflict && (
+          <button type="button" className="ghost" onClick={() => window.location.reload()}>
+            다시 불러오기
+          </button>
+        )}
+      </p>
+    );
 
   return (
     <div className="editor">
@@ -355,6 +422,25 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
                 : ''}
             </small>
           </label>
+          <WikiPicker
+            label="대표 위키"
+            picks={mainPicks}
+            max={1}
+            onChange={([main = null]) =>
+              setSettings((s) => ({
+                ...s,
+                mainWikiId: main,
+                refWikiIds: s.refWikiIds.filter((id) => id !== main),
+              }))
+            }
+          />
+          <WikiPicker
+            label="참고 위키"
+            picks={settings.refWikiIds}
+            max={REFS_MAX}
+            exclude={refExclude}
+            onChange={(refWikiIds) => setSettings((s) => ({ ...s, refWikiIds }))}
+          />
           <div className="plugin-head">
             <span>글 전체 가운데 정렬</span>
             <button
@@ -368,6 +454,7 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
               }
             />
           </div>
+          {notice('error')}
           <div className="row" style={{ justifyContent: 'flex-end' }}>
             <button type="button" className="ghost" onClick={() => setPanel(false)}>
               닫기
@@ -384,16 +471,7 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
         </section>
       )}
 
-      {error && (
-        <p className="error editor-note" role="alert">
-          {error}
-          {conflict && (
-            <button type="button" className="ghost" onClick={() => window.location.reload()}>
-              다시 불러오기
-            </button>
-          )}
-        </p>
-      )}
+      {!panel && notice('error editor-note')}
       {trashed && (
         <p className="warn editor-note">
           휴지통에 있는 글이에요. 되살린 뒤 고칠 수 있어요
