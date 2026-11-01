@@ -1,4 +1,11 @@
-import { BaseRepository, Database, type Row, RuleViolation } from '../../platform';
+import {
+  BaseRepository,
+  Database,
+  type DomainEvent,
+  Outbox,
+  type Row,
+  RuleViolation,
+} from '../../platform';
 import { Post } from './post';
 import { PostContent } from './post-content';
 
@@ -25,6 +32,11 @@ export class PostRepository extends BaseRepository<Post> {
   /** 고칠 글 하나를 잠근다 (휴지통 글 포함). 없으면 NotFound */
   async lock(spaceId: string, id: string): Promise<Post> {
     return this.one(await this.select(spaceId, id, true), '글');
+  }
+
+  /** 없을 수도 있는 글을 잠근다 (결재의 대상은 AI가 적은 값이다) */
+  async lockIfAny(spaceId: string, id: string): Promise<Post | null> {
+    return this.maybeOne(await this.select(spaceId, id, true));
   }
 
   /** 잠그지 않고 읽기 (같은 요청이 다시 왔을 때 처음 만든 글을 돌려줄 때) */
@@ -76,6 +88,11 @@ export class PostRepository extends BaseRepository<Post> {
         VALUES (${r.id}, ${post.id}, ${r.seq}, ${r.content.title}, ${r.content.body}, ${r.baseRevisionId},
           ${r.requestId}, ${r.actorType}, ${r.actorId}, ${r.createdAt})`;
     await this.publishEvents(post);
+  }
+
+  /** 글 저장과 따로 내는 이벤트 (결재 결과: 글이 없거나 바뀌지 않았어도 알려야 작업이 끝난다) */
+  async announce(event: DomainEvent): Promise<void> {
+    await new Outbox(this.sql).publish([event]);
   }
 
   private select(spaceId: string, id: string, lock: boolean) {

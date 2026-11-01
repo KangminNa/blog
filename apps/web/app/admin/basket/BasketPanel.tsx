@@ -36,13 +36,30 @@ function headOf(item: Item): string {
   return item.title || item.url || item.note || '제목 없음';
 }
 
+const NAMED_MAX = 30;
+const NAME_MAX = 80;
+
+/** 작업 지시: 소재의 이름만 적는다. 내용은 에이전트가 basket_get으로 읽는다 */
+function draftInstruction(items: readonly Item[]): string {
+  const names = items.slice(0, NAMED_MAX).map((item) => {
+    const name = headOf(item).replace(/\s+/g, ' ').slice(0, NAME_MAX);
+    return `- ${KIND_LABELS[item.kind] ?? item.kind}: ${name}`;
+  });
+  const rest = items.length - names.length;
+  return [
+    '아래 소재로 블로그 초안을 써 주세요.',
+    ...names,
+    ...(rest > 0 ? [`- 외 ${rest}개`] : []),
+  ].join('\n');
+}
+
 /** 큰 줄 아래의 작은 줄. 큰 줄에 이미 쓴 내용은 되풀이하지 않는다 */
 function detailOf(item: Item): string | null {
   const head = headOf(item);
   return [item.url, item.note].filter((t) => t && t !== head).join(' · ') || null;
 }
 
-// 소재: 글을 쓰려고 모아 둔 세션·글·링크·메모. 여기서는 링크와 메모를 담고, 지운다.
+// 소재: 글을 쓰려고 모아 둔 세션·글·링크·메모. 여기서는 링크와 메모를 담고, 지우고, 초안 작업을 맡긴다.
 // 소재를 지워도 가리키던 세션·글은 그대로다.
 export function BasketPanel() {
   const notify = useNotify();
@@ -52,6 +69,7 @@ export function BasketPanel() {
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [drafting, setDrafting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** 응답을 못 받아 다시 눌러도 하나만 담기게, 담은 뒤에만 새 값으로 바꾼다 */
   const requestId = useRef('');
@@ -85,6 +103,21 @@ export function BasketPanel() {
     setNote('');
     setItems((before) => [reply.data, ...(before ?? [])]);
     notify('소재에 추가했어요');
+  }
+
+  /** 누를 때마다 작업 하나. 담당은 정하지 않아 일을 받을 수 있는 에이전트가 맡는다 */
+  async function draft(from: readonly Item[]) {
+    setDrafting(true);
+    setError(null);
+    const reply = await api('POST', '/api/tasks', {
+      requestId: crypto.randomUUID(),
+      kind: 'draft_post',
+      title: `소재 ${from.length}개로 초안 쓰기`,
+      instruction: draftInstruction(from),
+    });
+    setDrafting(false);
+    if (!reply.ok) return setError(describe(reply.error));
+    notify('초안 작업을 만들었어요');
   }
 
   async function remove(item: Item) {
@@ -157,6 +190,19 @@ export function BasketPanel() {
           {busy ? '추가 중' : '추가'}
         </button>
       </form>
+
+      {items && items.length > 0 && (
+        <div className="row">
+          <button
+            type="button"
+            className="cta small"
+            disabled={drafting}
+            onClick={() => void draft(items)}
+          >
+            {drafting ? '만드는 중' : '이 소재로 초안 쓰기'}
+          </button>
+        </div>
+      )}
 
       {items === null ? (
         !error && <p className="label-mono">불러오는 중…</p>
