@@ -12,12 +12,14 @@ export class RunnerHalted extends Error {}
 
 // 러너의 고리: 일을 하나 빌리고, 끝까지 처리하고, 다시 빌린다. 한 번에 일 하나.
 // 서버에 닿지 못하면 간격을 늘려 다시 묻는다. 들어오는 포트 없이 나가는 요청만 쓴다 (객체설계 13장 임대 큐).
+// 쓸 AI 토큰이 없으면 빌리지 않는다: 빌렸다가 돌려주면 작업 기록에 오류가 한 줄씩 쌓인다.
+// 연결 확인은 우선순위가 가장 높아 토큰이 돌아오면 가장 먼저 빌려진다. 러너는 빌리지 않고는 대기열을 볼 수 없다.
 export class Runner {
   /** next_jobs가 기다리는 시간. 서버의 NextJobsInput.WAIT_MAX */
   private static readonly WAIT_SECONDS = 25;
   private static readonly BACKOFF_FIRST_MS = 1_000;
   private static readonly BACKOFF_MAX_MS = 60_000;
-  /** AI 토큰이 없을 때. 돌려준 일이 바로 다시 빌려지므로 쉬지 않으면 빌리고 돌려주기를 되풀이한다 */
+  /** 일을 빌린 뒤에 토큰을 받지 못했을 때. 돌려준 일이 바로 다시 빌려지므로 쉬지 않으면 빌리고 돌려주기를 되풀이한다 */
   private static readonly LOGIN_WAIT_FIRST_MS = 5_000;
   private static readonly LOGIN_WAIT_MAX_MS = 120_000;
 
@@ -27,6 +29,8 @@ export class Runner {
   private readonly backoff = new Backoff(Runner.BACKOFF_FIRST_MS, Runner.BACKOFF_MAX_MS);
   /** next_jobs가 되는 동안에도 늘어나야 해서 backoff와 따로 센다 */
   private readonly loginWait = new Backoff(Runner.LOGIN_WAIT_FIRST_MS, Runner.LOGIN_WAIT_MAX_MS);
+  /** 지금 토큰이 없는 이유. 같은 이유를 고리마다 되풀이해 적지 않는다 */
+  private loginProblem: string | null = null;
   private readonly redactor: Redactor;
   private readonly log: RunLog;
   private readonly server: CairnServer;
@@ -61,6 +65,13 @@ export class Runner {
       this.log.info('AI 토큰은 콘솔의 AI 메뉴에 넣은 값을 써요');
     while (!stop.aborted) {
       try {
+        const problem = await this.logins.shortage(this.pollCutter.signal);
+        this.noteLogin(problem);
+        if (problem !== null) {
+          await this.backoff.wait(stop);
+          continue;
+        }
+        if (stop.aborted) break;
         this.polling = true;
         const jobs = await this.server.nextJobs(Runner.WAIT_SECONDS, this.pollCutter.signal);
         this.polling = false;
@@ -75,6 +86,17 @@ export class Runner {
       }
     }
     this.log.info('러너를 멈췄어요');
+  }
+
+  /** 상태가 바뀔 때만 적는다. 토큰이 없어도 고리는 돌고, 토큰이 생기면 다시 켜지 않아도 이어 간다 */
+  private noteLogin(problem: string | null): void {
+    if (problem === this.loginProblem) return;
+    this.loginProblem = problem;
+    this.log.info(
+      problem === null
+        ? 'AI 토큰을 받아 일을 빌려요'
+        : `AI 토큰이 없어 일을 빌리지 않아요: ${problem}`,
+    );
   }
 
   private async perform(job: Job): Promise<void> {

@@ -14,8 +14,8 @@ export class CairnServer {
   }
 
   /** 콘솔에 넣은 AI 토큰. 없거나 만료됐으면 서버가 거절한다 (ToolRefused) */
-  async aiLogin(tool: string): Promise<string> {
-    return (await this.mcp.call('ai_login', { tool })).text('token');
+  async aiLogin(tool: string, stop?: AbortSignal): Promise<string> {
+    return (await this.mcp.call('ai_login', { tool }, 0, stop)).text('token');
   }
 
   async report(taskId: string, batch: ProgressBatch): Promise<ProgressState> {
