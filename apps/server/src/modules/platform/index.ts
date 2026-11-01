@@ -45,4 +45,5 @@ export type { PluginContext } from './plugin/plugin-context';
 export { LoginMethod } from './plugin/plugin-context';
 export { PluginManifest } from './plugin/plugin-manifest';
 export { PluginRegistry } from './plugin/plugin-registry';
+export { CoreWorkers } from './worker/core-workers';
 export { OutboxWorker } from './worker/outbox-worker';

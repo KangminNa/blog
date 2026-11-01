@@ -28,7 +28,7 @@
 | 오류 | `{ code, message, fields?, scope? }`. 코드는 [객체설계.md](객체설계.md) 3장 |
 | 형식 | JSON camelCase, ID는 UUIDv7, 시간은 ISO 8601 |
 | 공개 범위 | Query가 Actor를 받아 서버에서 거른 뒤 순위와 개수를 계산한다 |
-| 타입 | Response의 `toJSON()`이 실제 모양을 돌려주고, 웹은 `import type`으로 가져온다. `pnpm check`가 어긋남을 잡는다. 기존 `_lib/types.ts`는 단계적으로 없앤다 |
+| 타입 | import가 없는 `<이름>.view.ts`의 `toJSON()`이 실제 모양을 돌려주고, 웹은 이 파일만 `import type`으로 가져온다. `pnpm check`가 어긋남을 잡는다. 기존 `_lib/types.ts`는 단계적으로 없앤다 |
 
 ---
 

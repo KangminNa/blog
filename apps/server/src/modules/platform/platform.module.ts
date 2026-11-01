@@ -11,6 +11,7 @@ import { PluginController } from './plugin/plugin.controller';
 import { PluginQuery } from './plugin/plugin.query';
 import { PluginService } from './plugin/plugin.service';
 import { PluginRegistry } from './plugin/plugin-registry';
+import { CoreWorkers } from './worker/core-workers';
 import { OutboxWorker } from './worker/outbox-worker';
 
 // 공통 기반. 비즈니스 규칙을 두지 않는다. 다른 모듈은 index.ts로만 가져다 쓴다.
@@ -23,6 +24,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     PluginService,
     { provide: SecretBox, useFactory: () => SecretBox.fromEnv(process.env) },
     ArchiveQuery,
+    CoreWorkers,
     OutboxWorker,
     {
       // 들어 있는 플러그인을 시작할 때 모두 읽고(목록 파일이 틀리면 서버가 뜨지 않음), 켜짐·설정은 DB에서
@@ -39,6 +41,14 @@ import { OutboxWorker } from './worker/outbox-worker';
     { provide: APP_FILTER, useClass: DomainErrorFilter },
   ],
   controllers: [HealthController, PluginController],
-  exports: [Database, SecretBox, PluginRegistry, PluginService, ArchiveQuery, OutboxWorker],
+  exports: [
+    Database,
+    SecretBox,
+    PluginRegistry,
+    PluginService,
+    ArchiveQuery,
+    CoreWorkers,
+    OutboxWorker,
+  ],
 })
 export class PlatformModule {}

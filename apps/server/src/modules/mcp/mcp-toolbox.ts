@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { BlogTools } from '../blog';
 import type { BaseTool } from '../platform';
-import { CheckSessionTool, SaveSessionTool } from '../vault';
+import { VaultTools } from '../vault';
 
-// AI 도구에게 여는 MCP 도구 모음. 도구 자체(`*.tool.ts`)는 각 모듈에 있고, 그 모듈의 index.ts가 내보낸 것을 여기 모은다.
-// 새 도구는 그 모듈의 index.ts에서 내보내고 여기 생성자에 하나 더한다.
+// AI 도구에게 여는 MCP 도구 모음. 도구는 각 모듈의 목록(`*-tools.ts`)에 더하고, 여기서는 모듈별 목록을 모으기만 한다.
 @Injectable()
 export class McpToolbox {
   /**
@@ -21,7 +21,7 @@ export class McpToolbox {
 
   readonly tools: readonly BaseTool[];
 
-  constructor(saveSession: SaveSessionTool, checkSession: CheckSessionTool) {
-    this.tools = [checkSession, saveSession];
+  constructor(vault: VaultTools, blog: BlogTools) {
+    this.tools = [...vault.tools, ...blog.tools];
   }
 }

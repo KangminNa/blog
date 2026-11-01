@@ -4,9 +4,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { ArchiveQuery } from '../archive/archive.query';
+import { BaseHandler } from '../base/base-handler';
+import { BaseJob } from '../base/base-job';
 import { Database } from '../base/database';
+import type { DomainEvent } from '../base/event';
 import { SecretBox } from '../base/secret-box';
 import { PluginRegistry } from '../plugin/plugin-registry';
+import { CoreWorkers } from './core-workers';
 import { OutboxWorker } from './outbox-worker';
 
 // 서버 코드를 가진 플러그인을 불러오고, 일꾼이 outbox 이벤트를 넘기는지 실제 DB로 확인한다.
@@ -94,6 +98,7 @@ describe('일꾼', () => {
     const worker = new OutboxWorker(
       db,
       await bootWith(root, ['event:vault.testprobe.*', 'job:tick', 'action:hello']),
+      new CoreWorkers(),
     );
     await db.sql`DELETE FROM platform.outbox WHERE space_id = ${SPACE}`;
     await db.sql`
@@ -126,7 +131,7 @@ describe('일꾼', () => {
   test('반복 작업은 앞 실행이 안 끝났으면 건너뛴다', async () => {
     const root = makePlugin(['event:vault.testprobe.*', 'job:tick', 'action:hello']);
     const registry = await bootWith(root, ['event:vault.testprobe.*', 'job:tick', 'action:hello']);
-    const worker = new OutboxWorker(db, registry);
+    const worker = new OutboxWorker(db, registry, new CoreWorkers());
     const before = seen().filter((s) => s === 'job').length;
     const job = registry.jobs()[0];
     assert.ok(job);
@@ -140,7 +145,7 @@ describe('재시작 없이 켜고 끄기', () => {
     const root = makePlugin(['event:vault.testprobe.*', 'job:tick', 'action:hello']);
     await db.sql`DELETE FROM platform.plugins WHERE name = 'probe'`;
     const registry = await PluginRegistry.boot(root, db.sql, archive, box);
-    const worker = new OutboxWorker(db, registry);
+    const worker = new OutboxWorker(db, registry, new CoreWorkers());
     assert.equal(registry.jobs().length, 0, '처음엔 꺼져 있음');
 
     await db.sql`
@@ -151,5 +156,70 @@ describe('재시작 없이 켜고 끄기', () => {
       VALUES ('00000000-0000-0000-0000-000000000000', 'platform.plugin.changed', '{"v":1,"plugin":"probe"}')`;
     await worker.tick();
     assert.equal(registry.jobs().length, 1, '이벤트를 받고 켜진 상태로 다시 등록됨');
+  });
+});
+
+describe('코어 일꾼', () => {
+  class Recorder extends BaseHandler {
+    readonly names: string[] = [];
+    async handle(event: DomainEvent): Promise<void> {
+      this.names.push(event.name);
+    }
+  }
+  class Failing extends BaseHandler {
+    async handle(): Promise<void> {
+      throw new Error('코어 실패');
+    }
+  }
+  class Count extends BaseJob {
+    readonly name = 'count';
+    runs = 0;
+    async run(): Promise<void> {
+      this.runs++;
+    }
+  }
+  const emptyRegistry = () =>
+    PluginRegistry.boot(mkdtempSync(join(tmpdir(), 'cairn-core-')), db.sql, archive, box);
+
+  test('코어 Handler가 이벤트를 받고, 실패하면 다시 시도하도록 남긴다', async () => {
+    await db.sql`DELETE FROM platform.outbox WHERE space_id = ${SPACE}`;
+    await db.sql`
+      INSERT INTO platform.outbox (space_id, topic, payload) VALUES
+        (${SPACE}, 'task.testcore.done', '{"v":1}'),
+        (${SPACE}, 'task.testcore.broken', '{"v":1}')`;
+    const core = new CoreWorkers();
+    const recorder = new Recorder();
+    core.on('task.testcore.done', recorder);
+    core.on('task.testcore.broken', new Failing());
+    await new OutboxWorker(db, await emptyRegistry(), core).tick();
+
+    assert.deepEqual(recorder.names, ['task.testcore.done']);
+    const rows = await db.sql`
+      SELECT topic, processed_at IS NOT NULL AS done, last_error
+        FROM platform.outbox WHERE space_id = ${SPACE} ORDER BY id`;
+    assert.equal(rows[0]?.done, true);
+    assert.equal(rows[1]?.done, false);
+    assert.equal(rows[1]?.last_error, '코어 실패');
+  });
+
+  test('필수 주제에 받는 쪽이 없으면 일꾼이 시작하지 않는다', async () => {
+    const core = new CoreWorkers();
+    core.expect('task.approval.granted');
+    core.expect('blog.post.published');
+    core.on('blog.post.*', new Recorder());
+    assert.deepEqual(core.missing(), ['task.approval.granted']);
+    const worker = new OutboxWorker(db, await emptyRegistry(), core);
+    assert.throws(() => worker.start(), /task\.approval\.granted/);
+  });
+
+  test('코어 반복 작업도 같은 방식으로 돈다', async () => {
+    const core = new CoreWorkers();
+    const job = new Count();
+    core.every(job, 60_000);
+    const worker = new OutboxWorker(db, await emptyRegistry(), core);
+    const [scheduled] = core.jobs();
+    assert.ok(scheduled);
+    await worker.runJob(scheduled);
+    assert.equal(job.runs, 1);
   });
 });

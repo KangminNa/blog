@@ -3,8 +3,9 @@ import { Database } from '../base/database';
 import { DomainEvent } from '../base/event';
 import type { ScheduledJob } from '../plugin/plugin-context';
 import { PluginRegistry } from '../plugin/plugin-registry';
+import { CoreWorkers } from './core-workers';
 
-// 일꾼: outbox에 쌓인 이벤트를 받는 쪽(Handler)에 넘기고, 플러그인의 반복 작업을 돌린다. (진입 계층)
+// 일꾼: outbox에 쌓인 이벤트를 받는 쪽(Handler)에 넘기고, 코어와 플러그인의 반복 작업을 돌린다. (진입 계층)
 //   빌리기    한 문장으로 최대 50개를 고르며 다음 시도 시각을 2분 뒤로 미뤄 둔다 (다른 일꾼과 겹치지 않음)
 //   넘기기    트랜잭션 밖에서 Handler를 차례로 부른다 (외부 호출이 있어도 잠금을 잡고 있지 않음)
 //   결과      모두 성공 → processed_at / 실패 → 점점 늦게 다시 / 8번 실패 → failed_at (지우지 않음)
@@ -22,18 +23,21 @@ export class OutboxWorker implements OnApplicationShutdown {
   constructor(
     private readonly db: Database,
     private readonly registry: PluginRegistry,
+    private readonly core: CoreWorkers,
   ) {}
 
   start(pollMs = 1000): void {
+    const missing = this.core.missing();
+    if (missing.length > 0) throw new Error(`받는 쪽이 없는 필수 이벤트: ${missing.join(', ')}`);
     this.timers.push(setInterval(() => void this.tickSafely(), pollMs));
     this.scheduleJobs();
     this.logger.log('시작했어요');
   }
 
-  /** 지금 켜진 플러그인의 반복 작업으로 일정을 다시 짠다 */
+  /** 코어의 반복 작업과 지금 켜진 플러그인의 반복 작업으로 일정을 다시 짠다 */
   private scheduleJobs(): void {
     for (const t of this.jobTimers) clearInterval(t);
-    this.jobTimers = this.registry.jobs().map((scheduled) => {
+    this.jobTimers = [...this.core.jobs(), ...this.registry.jobs()].map((scheduled) => {
       this.logger.log(
         `반복 작업: ${scheduled.plugin}/${scheduled.job.name} (${scheduled.everyMs / 1000}초마다)`,
       );
@@ -61,6 +65,7 @@ export class OutboxWorker implements OnApplicationShutdown {
           await this.registry.reload();
           if (this.timers.length > 0) this.scheduleJobs();
         }
+        for (const handler of this.core.handlersFor(event)) await handler.handle(event);
         for (const sub of this.registry.handlersFor(event)) await sub.handler.handle(event);
         await this.db
           .sql`UPDATE platform.outbox SET processed_at = now(), last_error = NULL WHERE id = ${row.id}`;
