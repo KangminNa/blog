@@ -55,6 +55,7 @@ export class PostRevision {
 // 공개 범위(status): draft 임시(나만) · published 공개(목록에 보임) · unlisted 링크만(목록·검색에는 안 나오고 주소로만).
 // 공개 범위 바꾸기·휴지통·공개된 글 고치기는 주인만 (AI 도구의 글쓰기 권한은 임시 글까지, 2026-10-03 결정).
 // 주인이 결재한 공개 하나만 예외다 (publishApproved).
+// 글 → wiki 연결(대표 하나 + 참고 여럿)은 판 없이 글에 둔다. vault에는 이벤트로 알린다 (외래키 없음).
 export class Post extends BaseEntity {
   static readonly DRAFT = 'draft';
   static readonly PUBLISHED = 'published';
@@ -63,6 +64,8 @@ export class Post extends BaseEntity {
   static readonly ALIGNS: readonly string[] = ['left', 'center'];
   static readonly TAGS_MAX = 20;
   static readonly TAG_MAX = 40;
+  /** 글 하나의 참고 wiki */
+  static readonly REFS_MAX = 20;
   /** 휴지통에 둔 글을 영구히 지우기까지 (영구 삭제 일꾼은 뒤 단계) */
   static readonly TRASH_DAYS = 30;
   /** 결재로 맡기는 공개 (task.approvals.action) */
@@ -89,6 +92,9 @@ export class Post extends BaseEntity {
     private publishedOn: Date | null,
     private updatedOn: Date,
     private deletedOn: Date | null,
+    private mainWiki: string | null,
+    /** 대표와 겹치지 않는 참고 wiki. 늘 id 순서다 */
+    private refWikis: readonly string[],
     readonly isNew: boolean,
   ) {
     super(id, version);
@@ -155,6 +161,8 @@ export class Post extends BaseEntity {
       null,
       now,
       null,
+      null,
+      [],
       true,
     );
     post.addRevision(content, requestId, by, now);
@@ -175,6 +183,8 @@ export class Post extends BaseEntity {
     publishedAt: Date | null,
     updatedAt: Date,
     deletedAt: Date | null,
+    mainWikiId: string | null,
+    refWikiIds: readonly string[],
   ): Post {
     return new Post(
       id,
@@ -190,6 +200,8 @@ export class Post extends BaseEntity {
       publishedAt,
       updatedAt,
       deletedAt,
+      mainWikiId,
+      refWikiIds,
       false,
     );
   }
@@ -232,6 +244,14 @@ export class Post extends BaseEntity {
 
   get deletedAt(): Date | null {
     return this.deletedOn;
+  }
+
+  get mainWikiId(): string | null {
+    return this.mainWiki;
+  }
+
+  get refWikiIds(): readonly string[] {
+    return this.refWikis;
   }
 
   /** 휴지통 글을 영구히 지울 수 있게 되는 때 */
@@ -280,7 +300,32 @@ export class Post extends BaseEntity {
       this.alignValue = nextAlign;
       this.touch(now);
     }
-    if (revised && this.statusValue === Post.PUBLISHED) this.announce('blog.post.updated');
+    if (revised && this.statusValue === Post.PUBLISHED) this.announceUpdate();
+  }
+
+  /**
+   * 글 → wiki 연결 바꾸기. undefined는 그대로, 대표 null과 참고 []는 비우기다.
+   * 겹치는 참고와 대표와 같은 참고는 뺀다. 판은 쌓지 않는다 (판은 제목·본문만).
+   * AI는 임시 글까지만 잇고, 공개된 글은 주인만. 결재한 공개는 공개만 하고 연결을 바꾸지 않는다.
+   */
+  linkWikis(
+    mainWikiId: string | null | undefined,
+    refWikiIds: readonly string[] | undefined,
+    by: Actor,
+    now: Date,
+  ): void {
+    if (mainWikiId === undefined && refWikiIds === undefined) return;
+    if (by instanceof ApprovedActor)
+      throw new Forbidden('publish', '결재한 공개는 wiki 연결을 바꾸지 못해요');
+    this.assertLive();
+    if (this.statusValue !== Post.DRAFT) Post.assertOwner(by);
+    const main = mainWikiId === undefined ? this.mainWiki : mainWikiId;
+    const refs = Post.cleanRefs(refWikiIds ?? this.refWikis, main);
+    if (main === this.mainWiki && refs.join('\n') === this.refWikis.join('\n')) return;
+    this.mainWiki = main;
+    this.refWikis = refs;
+    this.touch(now);
+    if (this.statusValue === Post.PUBLISHED) this.announceUpdate();
   }
 
   /** 공개 범위 바꾸기. 처음 공개(공개·링크만)한 때를 발행일로 남긴다 */
@@ -355,6 +400,15 @@ export class Post extends BaseEntity {
     this.record(this.event(topic));
   }
 
+  /**
+   * 공개 글이 바뀌었다고 알린다. 한 번의 저장에 내용과 연결이 함께 바뀌어도 이벤트는 마지막 모습 하나다:
+   * 두 이벤트의 postVersion이 같아 vault 사본은 앞의 것만 받으므로, 앞의 것을 버리고 다시 적는다.
+   */
+  private announceUpdate(): void {
+    this.pullEvents();
+    this.announce('blog.post.updated');
+  }
+
   /** vault의 글 자리 사본이 순서를 맞추도록 저장 뒤의 글 버전을 함께 보낸다 */
   private event(topic: string, more: Readonly<Record<string, unknown>> = {}): DomainEvent {
     return new DomainEvent(topic, 1, this.spaceId, {
@@ -363,6 +417,8 @@ export class Post extends BaseEntity {
       title: this.head.title,
       status: this.statusValue,
       postVersion: this.isNew ? 1 : this.version + 1,
+      mainWikiId: this.mainWiki,
+      refWikiIds: this.refWikis,
       ...more,
     });
   }
@@ -394,6 +450,11 @@ export class Post extends BaseEntity {
     const long = clean.find((t) => t.length > Post.TAG_MAX);
     if (long) throw new RuleViolation(`태그는 ${Post.TAG_MAX}자까지예요: ${long}`);
     return clean;
+  }
+
+  /** 참고 wiki: 겹치는 것과 대표와 같은 것을 빼고 id 순서로 (보낸 순서만 달라서는 바뀐 것이 아니다) */
+  private static cleanRefs(refs: readonly string[], main: string | null): readonly string[] {
+    return [...new Set(refs)].filter((id) => id !== main).sort();
   }
 
   private static alignOf(align: string): string {

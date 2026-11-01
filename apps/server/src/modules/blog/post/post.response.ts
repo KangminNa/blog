@@ -1,4 +1,4 @@
-import { BaseResponse } from '../../platform';
+import { type Actor, BaseResponse } from '../../platform';
 import { Post } from './post';
 import type { PostPageView, PostSummaryView, PostView } from './post.query';
 
@@ -41,18 +41,28 @@ export class PostResponse extends BaseResponse {
       align: v.align,
       listed: v.summary.status === Post.PUBLISHED,
     };
-    return v.owner ? { ...base, ...ownerSummary(v.summary) } : base;
+    return v.owner
+      ? {
+          ...base,
+          ...ownerSummary(v.summary),
+          mainWikiId: v.mainWikiId,
+          refWikiIds: v.refWikiIds,
+        }
+      : base;
   }
 }
 
-/** 쓰기 결과 (편집기에게). revised: 이번 저장으로 새 판이 쌓였는가 */
+/** 쓰기 결과 (편집기에게). revised: 이번 저장으로 새 판이 쌓였는가. wiki 연결은 비공개까지 보는 요청자에게만 */
 export class PostSavedResponse extends BaseResponse {
-  private constructor(private readonly post: Post) {
+  private constructor(
+    private readonly post: Post,
+    private readonly full: boolean,
+  ) {
     super();
   }
 
-  static of(post: Post): PostSavedResponse {
-    return new PostSavedResponse(post);
+  static of(post: Post, actor: Actor): PostSavedResponse {
+    return new PostSavedResponse(post, actor.canSeePrivate());
   }
 
   toJSON(): object {
@@ -72,6 +82,7 @@ export class PostSavedResponse extends BaseResponse {
       publishedAt: p.publishedAt,
       updatedAt: p.updatedAt,
       deletedAt: p.deletedAt,
+      ...(this.full ? { mainWikiId: p.mainWikiId, refWikiIds: p.refWikiIds } : {}),
     };
   }
 }

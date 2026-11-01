@@ -1,0 +1,71 @@
+/* 글 설정의 위키 고르기. 색은 globals.css의 토큰만 쓰고, 누르는 곳은 44px */
+.wiki-pick .input {
+  min-height: 44px;
+}
+
+.wiki-pick small:empty {
+  display: none;
+}
+
+.wiki-pick-list,
+.wiki-pick-hits {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wiki-pick-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding-left: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--raised);
+}
+
+.wiki-pick-list li.gone {
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+}
+
+.wiki-pick-list span {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.wiki-pick-list .ghost {
+  flex: none;
+  height: 44px;
+  border: 0;
+}
+
+.wiki-pick-hits button {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 14px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.wiki-pick-hits button:hover {
+  background: var(--hover);
+}
+
+@media (max-width: 760px) {
+  .wiki-pick .input {
+    font-size: 16px;
+  }
+}
