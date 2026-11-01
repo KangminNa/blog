@@ -12,7 +12,8 @@ import { unified } from 'unified';
 //   ::: center … :::   가운데 정렬 블록
 //   > [!quote]         큰 인용 (옵시디언 callout과 같은 모양)
 //   그 밖은 일반 md + GFM(표·취소선·체크 목록). 한글 옆 굵게·기울임("**중요.**이다")도 먹게 cjk-friendly. 문단 안의 줄바꿈(엔터 한 번)도 줄을 바꾼다 (블로그 글쓰기 습관)
-// 사진·갤러리(::: gallery)·영상(::youtube{…})·링크 카드(::link{…})는 사진 올리기 단계에서 더한다.
+//   사진은 일반 md: ![설명](/api/files/<해시>). 거르기가 http·https와 이 사이트 안의 주소만 남긴다 (javascript:·data: 는 지운다)
+// 갤러리(::: gallery)·영상(::youtube{…})·링크 카드(::link{…})는 뒤 단계에서 더한다.
 // 본문에 쓴 HTML은 그리지 않고(remark-rehype 기본), 결과도 한 번 더 거른다(rehype-sanitize).
 
 /** md 문법 나무의 마디 (remark가 만드는 모양 중 여기서 보는 것만) */

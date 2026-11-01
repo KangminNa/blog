@@ -20,6 +20,20 @@ export class SessionRepository extends BaseRepository<Session> {
       Number(row.revision_count),
       row.last_revision_at === null ? null : new Date(row.last_revision_at),
       new Map(known.map(([hash, seq]) => [hash, Number(seq)])),
+      row.wiki_id === null ? null : String(row.wiki_id),
+      (row.pinned_sections as string[] | null) ?? [],
+      row.deleted_at !== null && row.deleted_at !== undefined,
+    );
+  }
+
+  /** 대표 wiki를 바꿀 세션을 잠근다 (휴지통 포함). 없으면 null */
+  async lock(spaceId: string, id: string): Promise<Session | null> {
+    return this.maybeOne(
+      await this.sql`
+        SELECT s.*, n.deleted_at
+        FROM vault.sessions s JOIN vault.nodes n ON n.id = s.node_id
+        WHERE s.node_id = ${id} AND s.space_id = ${spaceId}
+        FOR UPDATE OF s`,
     );
   }
 
@@ -62,6 +76,13 @@ export class SessionRepository extends BaseRepository<Session> {
           ${note?.title ?? null}, ${note?.toMarkdown() ?? null}, ${session.revisionCount},
           ${session.startedAt}, ${session.lastRevisionAt})`;
       session.markSaved(session.version);
+      session.markInserted();
+    } else if (session.changed) {
+      const result = await this.sql`
+        UPDATE vault.sessions SET ${this.sql(session.changes)}, version = version + 1
+        WHERE node_id = ${session.id} AND version = ${session.version}`;
+      this.expectUpdated(result.count, session);
+      session.clearChanges();
     } else if (note) {
       const result = await this.sql`
         UPDATE vault.sessions SET head_revision_id = ${session.headRevisionId},

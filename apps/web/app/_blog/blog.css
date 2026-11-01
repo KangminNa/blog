@@ -382,6 +382,11 @@
   outline-offset: 6px;
 }
 
+.editor-prose img.ProseMirror-selectednode {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
 @media (max-width: 640px) {
   .editor-paper {
     padding: 24px 18px 56px;

@@ -32,17 +32,20 @@ export class SensitivePolicy {
 
   /** 노트의 제목과 모든 칸에서 지운다. 지운 것은 노트의 redactions에 쌓인다 */
   clean(note: SessionNote): SessionNote {
-    return note.rewrite((section, text) => {
-      const found: Redaction[] = [];
-      let cleaned = text;
-      for (const [label, pattern] of SensitivePolicy.RULES) {
-        cleaned = cleaned.replace(pattern, (...args) => {
-          found.push(new Redaction(section, label));
-          const groups = args.at(-1) as Record<string, string | undefined> | undefined;
-          return `${groups?.keep ?? ''}[지움: ${label}]`;
-        });
-      }
-      return [cleaned, found];
-    });
+    return note.rewrite((section, text) => this.scrub(section, text));
+  }
+
+  /** 글 하나에서 지운다 (wiki의 판도 고칠 수 없다). [지운 글, 무엇을 지웠는지] */
+  scrub(section: string, text: string): readonly [string, readonly Redaction[]] {
+    const found: Redaction[] = [];
+    let cleaned = text;
+    for (const [label, pattern] of SensitivePolicy.RULES) {
+      cleaned = cleaned.replace(pattern, (...args) => {
+        found.push(new Redaction(section, label));
+        const groups = args.at(-1) as Record<string, string | undefined> | undefined;
+        return `${groups?.keep ?? ''}[지움: ${label}]`;
+      });
+    }
+    return [cleaned, found];
   }
 }

@@ -1,7 +1,6 @@
-import { BaseEntity, DomainEvent, RuleViolation } from '../../platform';
+import { BaseEntity, DomainEvent, RuleViolation, TrackedEntity } from '../../platform';
 import type { Agent } from '../agent/agent';
 import { type Task, TaskLogEntry } from '../task/task';
-import { TrackedEntity } from '../tracked-entity';
 
 // 결재 하나. 위험한 동작을 대상·판 번호와 함께 저장만 하고, 주인이 승인한 뒤에 다른 모듈이 실행한다.
 //   pending → approved · rejected · revision_requested · cancelled

@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { Global, Module, type OnModuleInit } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { ArchiveQuery } from './archive/archive.query';
+import { BlobStore } from './base/blob-store';
 import { Database } from './base/database';
 import { SecretBox } from './base/secret-box';
 import { SecretRotation } from './base/secret-rotation';
@@ -22,6 +23,7 @@ import { OutboxWorker } from './worker/outbox-worker';
 @Module({
   providers: [
     Database,
+    BlobStore,
     HealthQuery,
     PluginQuery,
     PluginService,
@@ -48,6 +50,7 @@ import { OutboxWorker } from './worker/outbox-worker';
   controllers: [HealthController, PluginController, StreamController],
   exports: [
     Database,
+    BlobStore,
     SecretBox,
     SecretRotation,
     PluginRegistry,

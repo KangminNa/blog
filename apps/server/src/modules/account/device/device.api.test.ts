@@ -379,7 +379,14 @@ describe('MCP', () => {
     const names = (tools.json().result as { tools: { name: string }[] }).tools.map((t) => t.name);
     assert.deepEqual(
       names,
-      ['check_session', 'save_session', 'search_sessions', 'get_session'],
+      [
+        'check_session',
+        'save_session',
+        'search_sessions',
+        'get_session',
+        'search_wikis',
+        'get_wiki',
+      ],
       '기본 권한(올리기 + 공개 읽기)으로 보이는 도구',
     );
     const annotated = (
@@ -390,6 +397,8 @@ describe('MCP', () => {
       ['save_session', false, false],
       ['search_sessions', true, false],
       ['get_session', true, false],
+      ['search_wikis', true, false],
+      ['get_wiki', true, false],
     ]);
     const instructions = String(
       (init.json().result as { instructions?: string }).instructions ?? '',

@@ -63,6 +63,7 @@ export class TaskResponse extends BaseResponse {
       t.version,
       t.createdAt,
       t.finishedAt,
+      null,
     ).toJSON();
   }
 }

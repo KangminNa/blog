@@ -35,6 +35,18 @@ export class InvalidRequest extends DomainError {
   }
 }
 
+/** ② 요청 해석: 본문이 한도보다 큼 */
+export class TooLarge extends DomainError {
+  readonly code = 'too_large';
+  readonly status = 413;
+}
+
+/** ② 요청 해석: 받지 않는 파일 형식 */
+export class UnsupportedType extends DomainError {
+  readonly code = 'unsupported_type';
+  readonly status = 415;
+}
+
 /** ③ 권한: 요청자에게 그 권한이 없음 */
 export class Forbidden extends DomainError {
   readonly code = 'forbidden';

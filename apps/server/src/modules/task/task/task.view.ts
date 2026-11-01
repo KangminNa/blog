@@ -17,6 +17,8 @@ export class TaskView {
     readonly version: number,
     readonly createdAt: Date,
     readonly finishedAt: Date | null,
+    /** 마지막 실행 기록 앞부분. 목록에서만 채운다 */
+    readonly lastEvent: string | null,
   ) {}
 
   toJSON() {
@@ -36,6 +38,7 @@ export class TaskView {
       version: this.version,
       createdAt: this.createdAt.toISOString(),
       finishedAt: this.finishedAt?.toISOString() ?? null,
+      lastEvent: this.lastEvent,
     };
   }
 }

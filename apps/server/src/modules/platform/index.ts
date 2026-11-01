@@ -24,6 +24,7 @@ export { BaseRequest, RequestFields } from './base/base-request';
 export { BaseResponse } from './base/base-response';
 export { BaseService } from './base/base-service';
 export { BaseTool } from './base/base-tool';
+export { Blob, BlobStore } from './base/blob-store';
 export { Database, type Row, type Sql } from './base/database';
 export {
   Conflict,
@@ -33,8 +34,10 @@ export {
   InvalidRequest,
   NotFound,
   RuleViolation,
+  TooLarge,
   TooManyRequests,
   Unauthenticated,
+  UnsupportedType,
 } from './base/errors';
 export { DomainEvent } from './base/event';
 export { Idempotency } from './base/idempotency';
@@ -43,6 +46,7 @@ export { ChangeSignal, Outbox } from './base/outbox';
 export { PasswordHasher } from './base/password-hasher';
 export { SealedSecret, SecretBox } from './base/secret-box';
 export { SecretRotation } from './base/secret-rotation';
+export { TrackedEntity } from './base/tracked-entity';
 export { ZipFile } from './base/zip-file';
 export { Cookies } from './http/cookies';
 export { CurrentActor } from './http/current-actor';

@@ -9,7 +9,7 @@
 //   3. 외부 라이브러리는 platform/base 안에서만 가져온다 (프레임워크 제외)
 //   4. SQL(sql`…`, tx`…`)은 자기 모듈이 소유한 스키마만 쓴다
 //   5. 플러그인(plugins/<이름>/)은 자기 폴더 안의 파일, react(화면), node:*·apps/server/src/plugin-api(서버)만 가져온다
-//   6. task 모듈의 <이름>.view.ts는 아무것도 가져오지 않는다 (웹이 import type으로 가져오는 파일)
+//   6. 모듈의 <이름>.view.ts는 아무것도 가져오지 않는다 (웹이 import type으로 가져오는 파일)
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
@@ -38,7 +38,7 @@ function checkCode() {
     const owner = moduleOf(file);
     for (const { spec, line } of imports(text)) checkImport(file, owner, spec, line);
     if (owner) checkSql(file, owner, text);
-    if (owner === 'task' && file.endsWith('.view.ts')) checkView(file, text);
+    if (owner && file.endsWith('.view.ts')) checkView(file, text);
   }
   checkPlugins();
 }

@@ -64,8 +64,11 @@ services:
       DATABASE_URL: *db-url
       PORT: 4000
       CAIRN_WEB_URL: ${CAIRN_WEB_URL:-http://localhost:${WEB_PORT:-3000}}   # 사람이 여는 웹 주소 (설치 코드 안내에 씀)
+      CAIRN_BLOBS_DIR: /data/blobs   # 올린 사진. DB와 함께 백업한다
     ports:
       - "127.0.0.1:${SERVER_PORT:-4000}:4000"   # 이 컴퓨터에서만. 밖에는 앞의 https 프록시만 연다
+    volumes:
+      - blob-data:/data/blobs   # 이미지가 node 사용자의 폴더로 만들어 둔다 (Dockerfile)
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
       interval: 10s
@@ -116,3 +119,4 @@ services:
 
 volumes:
   db-data:
+  blob-data:

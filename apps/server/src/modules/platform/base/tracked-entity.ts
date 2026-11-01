@@ -1,6 +1,6 @@
-import { BaseEntity } from '../platform';
+import { BaseEntity } from './base-entity';
 
-// task 모듈의 엔티티 기반 (새 파일 구조 시범, 객체설계 6장). 바뀐 열을 기억해 Repository가 그 열만 저장한다.
+// 새 파일 구조의 엔티티 기반 (객체설계 6장). 바뀐 열을 기억해 Repository가 그 열만 저장한다.
 // 단순한 칸은 set으로 바꾸고, 상태는 규칙을 지키는 메서드로만 바꾼다. 둘 다 track으로 적는다.
 export abstract class TrackedEntity extends BaseEntity {
   private readonly dirty = new Map<string, unknown>();
