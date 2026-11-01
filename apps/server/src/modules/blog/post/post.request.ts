@@ -195,6 +195,33 @@ export class SaveDraftRequest extends BaseRequest {
   }
 }
 
+/** 주인이 승인한 공개: 일꾼이 꺼낸 task.approval.granted의 내용. blog는 task를 모르므로 값으로만 읽는다 */
+export class ApprovedPublishRequest extends BaseRequest {
+  private constructor(
+    readonly approvalId: string,
+    readonly action: string,
+    readonly decidedBy: string,
+    readonly postId: string,
+    readonly targetVersion: number,
+  ) {
+    super();
+  }
+
+  static from(data: Readonly<Record<string, unknown>>): ApprovedPublishRequest {
+    return BaseRequest.read(
+      data,
+      (f) =>
+        new ApprovedPublishRequest(
+          f.uuid('approvalId'),
+          f.text('action', 100),
+          f.uuid('decidedBy'),
+          f.uuid('targetId'),
+          f.integer('targetVersion', 0, 2_147_483_647),
+        ),
+    );
+  }
+}
+
 /** 주소로 글 하나 (GET /api/posts/by-slug/:slug) */
 export class PostSlugRequest extends BaseRequest {
   private constructor(readonly slug: string) {

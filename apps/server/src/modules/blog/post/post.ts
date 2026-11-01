@@ -1,4 +1,11 @@
-import { Actor, BaseEntity, DomainEvent, Forbidden, RuleViolation } from '../../platform';
+import {
+  Actor,
+  ApprovedActor,
+  BaseEntity,
+  DomainEvent,
+  Forbidden,
+  RuleViolation,
+} from '../../platform';
 import type { PostContent } from './post-content';
 
 /** 글의 판 하나 (추가만): 그때의 제목과 본문 */
@@ -47,6 +54,7 @@ export class PostRevision {
 // 글. 저장할 때 내용(제목·본문)이 바뀌었으면 새 판이 쌓인다. 주소·태그·정렬·공개 범위는 판 없이 글에 둔다.
 // 공개 범위(status): draft 임시(나만) · published 공개(목록에 보임) · unlisted 링크만(목록·검색에는 안 나오고 주소로만).
 // 공개 범위 바꾸기·휴지통·공개된 글 고치기는 주인만 (AI 도구의 글쓰기 권한은 임시 글까지, 2026-10-03 결정).
+// 주인이 결재한 공개 하나만 예외다 (publishApproved).
 export class Post extends BaseEntity {
   static readonly DRAFT = 'draft';
   static readonly PUBLISHED = 'published';
@@ -57,6 +65,11 @@ export class Post extends BaseEntity {
   static readonly TAG_MAX = 40;
   /** 휴지통에 둔 글을 영구히 지우기까지 (영구 삭제 일꾼은 뒤 단계) */
   static readonly TRASH_DAYS = 30;
+  /** 결재로 맡기는 공개 (task.approvals.action) */
+  static readonly PUBLISH_ACTION = 'blog.post.publish';
+  /** 대상이 없어 결재한 공개를 하지 못했을 때의 이유 */
+  static readonly NO_POST = '없는 글이라 공개하지 않았어요';
+  private static readonly PUBLISH_FAILED = 'blog.post.publish_failed';
 
   private added: PostRevision | null = null;
   private dirty = false;
@@ -85,6 +98,37 @@ export class Post extends BaseEntity {
   static spaceOf(by: Actor): string {
     if (!by.spaceId) throw new Forbidden(Actor.WRITE);
     return by.spaceId;
+  }
+
+  /** 결재로 공개하는 요청자의 결재 id. 그 밖의 요청자(주인도)와 다른 동작의 결재는 이 길로 오지 못한다 */
+  static approvalOf(by: Actor): string {
+    if (by instanceof ApprovedActor && by.action === Post.PUBLISH_ACTION) return by.approvalId;
+    throw new Forbidden('publish', '결재한 공개만 할 수 있어요');
+  }
+
+  /** 결재한 공개의 실패 결과. 글을 찾지 못해도 작업은 끝나야 해서 글 없이 만든다 */
+  static publishFailed(
+    spaceId: string,
+    postId: string,
+    approvalId: string,
+    error: string,
+  ): DomainEvent {
+    return new DomainEvent(Post.PUBLISH_FAILED, 1, spaceId, {
+      postId,
+      approvalId,
+      outcome: 'failed',
+      error,
+    });
+  }
+
+  /** 앞서 낸 결과 그대로 (같은 결재가 다시 왔을 때). before는 그 이벤트의 toJSON() */
+  static sameResult(spaceId: string, before: Readonly<Record<string, unknown>>): DomainEvent {
+    return new DomainEvent(
+      String(before.name),
+      Number(before.v),
+      spaceId,
+      before.data as Readonly<Record<string, unknown>>,
+    );
   }
 
   /** 새 글: 임시 상태로 첫 판과 함께 */
@@ -254,6 +298,20 @@ export class Post extends BaseEntity {
     else if (was === Post.PUBLISHED) this.announce('blog.post.unpublished');
   }
 
+  /**
+   * 주인이 결재한 공개. 결재한 그대로일 때만 공개하고, 아니면 아무것도 바꾸지 않고 실패를 돌려준다.
+   * 결과는 기록하지 않고 돌려준다: 같은 결재가 다시 오면 Service가 이 결과를 그대로 다시 낸다.
+   */
+  publishApproved(by: Actor, targetVersion: number, now: Date): DomainEvent {
+    const approvalId = Post.approvalOf(by);
+    const problem = this.publishProblem(targetVersion);
+    if (problem) return Post.publishFailed(this.spaceId, this.id, approvalId, problem);
+    this.statusValue = Post.PUBLISHED;
+    this.publishedOn ??= now;
+    this.touch(now);
+    return this.event('blog.post.published', { approvalId, outcome: 'done' });
+  }
+
   /** 휴지통으로. 판과 주소는 그대로 두고, TRASH_DAYS 뒤에 영구히 지울 수 있다 */
   trash(by: Actor, now: Date): void {
     Post.assertOwner(by);
@@ -293,17 +351,29 @@ export class Post extends BaseEntity {
     this.dirty = true;
   }
 
-  /** vault의 글 자리 사본이 순서를 맞추도록 저장 뒤의 글 버전을 함께 보낸다 */
   private announce(topic: string): void {
-    this.record(
-      new DomainEvent(topic, 1, this.spaceId, {
-        postId: this.id,
-        slug: this.slugValue,
-        title: this.head.title,
-        status: this.statusValue,
-        postVersion: this.isNew ? 1 : this.version + 1,
-      }),
-    );
+    this.record(this.event(topic));
+  }
+
+  /** vault의 글 자리 사본이 순서를 맞추도록 저장 뒤의 글 버전을 함께 보낸다 */
+  private event(topic: string, more: Readonly<Record<string, unknown>> = {}): DomainEvent {
+    return new DomainEvent(topic, 1, this.spaceId, {
+      postId: this.id,
+      slug: this.slugValue,
+      title: this.head.title,
+      status: this.statusValue,
+      postVersion: this.isNew ? 1 : this.version + 1,
+      ...more,
+    });
+  }
+
+  /** 결재한 대로 공개할 수 없는 이유. 공개 범위를 바꿔도 버전이 오르므로 사람이 먼저 공개했으면 바뀐 글이다 */
+  private publishProblem(targetVersion: number): string | null {
+    if (this.deletedOn) return '휴지통에 있는 글이라 공개하지 않았어요';
+    if (this.version !== targetVersion)
+      return `결재를 올린 뒤 바뀐 글이라 공개하지 않았어요 (결재 ${targetVersion}, 지금 ${this.version})`;
+    if (this.statusValue === Post.PUBLISHED) return '이미 공개된 글이에요';
+    return null;
   }
 
   private assertLive(): void {

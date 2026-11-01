@@ -386,9 +386,21 @@ describe('러너가 일을 처리한다', () => {
 
   test('스킬이 아직 없으면 지시만으로 하고 로그에 남긴다', async () => {
     const agent = await newAgent();
-    const created = await newTask(agent, '', { kind: 'draft_post', title: '초안' });
+    const created = await newTask(agent, '', { kind: 'tidy_session', title: '정리' });
     await taskIn(created.id, 'done');
-    await runner.logged('스킬 cairn-write이 없어 지시만으로 해요');
+    await runner.logged('스킬 cairn-tidy이 없어 지시만으로 해요');
+  });
+
+  test('스킬이 있으면 설정 폴더에 넣고 따르라고 알린다', async () => {
+    const agent = await newAgent();
+    const spy = new Spy();
+    const created = await newTask(agent, spy.mark, { kind: 'draft_post', title: '초안' });
+    const seen = await spy.seen();
+    await taskIn(created.id, 'done');
+    assert.ok(String(seen.prompt).includes('cairn-write 스킬을 따릅니다'));
+    assert.ok((seen.configEntries as string[]).includes('skills'));
+    const args = seen.argv as string[];
+    assert.equal(args[args.indexOf('--tools') + 1], 'Read,Write,Edit,Skill');
   });
 
   test('0이 아닌 코드로 끝나면 failed와 짧은 이유', async () => {

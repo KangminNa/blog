@@ -34,7 +34,7 @@
 | `task.agent.changed` | `agentId, status` |
 | `task.approval.requested` · `granted` · `rejected` · `revision_requested` · `cancelled` | `approvalId, taskId, agentId, action, targetKind, targetId, targetVersion, decidedBy, note` |
 
-`task.approval.granted`를 받은 모듈이 동작을 실행한다. 받는 쪽이 생기는 단계에서 `CoreWorkers.expect`를 적는다 (없는 채로 적으면 일꾼이 뜨지 않는다).
+`task.approval.granted`를 받은 모듈이 동작을 실행한다. 받는 모듈이 `CoreWorkers.expect`도 적는다 (지금은 blog의 `blog.post.publish`). 실행하는 모듈이 없는 동작은 승인해도 작업이 끝나지 않는다.
 변경 신호(SSE)만 있고 이벤트가 아닌 것: `task.event.added` (실행 기록이 쌓임, id는 작업), `task.usage.changed` (구독 사용률이 옴, id는 도구).
 
 ## 받는 이벤트
