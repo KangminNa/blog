@@ -46,7 +46,7 @@
 | 사진 | `POST /api/posts/:id/assets` (이미지 본문 그대로, 10MB 이하), `GET /api/files/:hash` (공개 글의 사진은 누구나, 나머지는 주인만) | 5 |
 | RSS | `/rss.xml` (공개 글 20개, 웹이 서버 API로 만든다) | 5 |
 | 지식 | `GET·POST /api/wikis`(`?q=&category=&cursor=`), `GET·PUT /api/wikis/:id`, `GET·POST /api/categories`, `PATCH·DELETE /api/categories/:id`, `GET /api/graph`, `GET /api/graph/public` | 6 |
-| 변경 묶음 | `GET /api/changes?status=waiting&cursor=`, `POST /api/changes/:id/ops/:seq/decide { version, decision }`, `POST /api/changes/:id/revert { version }` | 6 |
+| 변경 묶음 | `GET /api/changes?status=waiting&cursor=`, `POST /api/changes/:id/ops/:seq/decide { version, decision: approve·decline }`, `POST /api/changes/:id/revert { version }` | 6 |
 | 백업 | `GET /api/archive.zip` (주인만, 보관 형식) | 6 |
 | 스케줄 | `GET·POST /api/schedules`, `PATCH /api/schedules/:id`, `POST /api/schedules/:id/run` | 7 |
 
@@ -77,7 +77,7 @@ MCP 입력과 응답은 snake_case다.
 - `submit_result { task_id, request_id, status: done·failed, result?, error? }`, `release_job { task_id, reason }`. 응답은 `{ task_id, status }`. 돌려준 이유는 실행 기록에 남는다.
 - `request_approval { request_id, action, target_kind, target_id, target_version, note? }`. `request_id`는 작업마다 따로 센다. 동작은 `blog.post.publish`, `sns.post.send`, `task.agent.raise_limit`로 시작한다.
 - `blog_get_post { post_id }`는 `{ post_id, title, body_md, status, version, tags }`, `blog_save_draft { request_id, post_id?, base_version?, title, body_md, tags? }`는 `{ post_id, version, status, url }`를 돌려준다. AI는 임시 글만 쓰고 고친다. `post_id`가 있으면 `base_version`이 꼭 있어야 한다: 사람이 그사이 고친 내용을 AI가 모르고 덮지 않게. `request_id`는 작업 토큰이면 작업마다 따로 센다. `basket_get {}`은 `{ items }`를 돌려준다.
-- `submit_changes { request_id, message, ops: [{ op, target_id?, base_version?, payload }] }`는 vault 소유다. 변경 묶음을 쓰고 `{ change_set_id, ops: [{ seq, verdict, status, reason }] }`로 판정을 바로 돌려준다. 작업은 이벤트가 아니라 러너의 `submit_result`로 끝난다. 끝내는 길이 하나라 둘이 겹치지 않고, 러너가 도중에 죽어도 `change_sets.job_id`가 유일해서 같은 묶음은 한 번만 적용된다.
+- `submit_changes { request_id, message, ops: [{ op, target_id?, base_version?, payload }] }`는 vault 소유다. 변경 묶음을 쓰고 `{ change_set_id, ops: [{ seq, verdict, status, reason }] }`로 판정을 바로 돌려준다. `ops`의 대상은 변경마다 다르다: `wiki.create { title, body_md, slug? }`, `wiki.revise { target_id, base_version, title?, body_md }`, `session.assign { target_id, base_version, wiki_id }`, `edge.add`·`edge.remove { src, dst, kind }`, `category.create { name, slug?, color?, description? }`, `category.assign { target_id, base_version, category_id }`. 앞 변경이 만든 것은 `@번호`로 가리킨다 (토큰 하나에 제출 한 번이라 만들고 잇는 일을 한 묶음에 넣는다). 작업은 이벤트가 아니라 러너의 `submit_result`로 끝난다. 끝내는 길이 하나라 둘이 겹치지 않고, 러너가 도중에 죽어도 `change_sets.job_id`가 유일해서 같은 묶음은 한 번만 적용된다.
 - 도구 입력 모양을 바꾸면 `skills/`를 함께 고친다.
 
 ---

@@ -778,7 +778,13 @@ describe('작업 토큰', () => {
     await newTask(await newAgent({ scopes: ['read_public'] }));
     const reader = await take();
     const names = await toolNames(reader.run_token);
-    assert.deepEqual(names, ['search_sessions', 'get_session', 'request_approval']);
+    assert.deepEqual(names, [
+      'search_sessions',
+      'get_session',
+      'search_wikis',
+      'get_wiki',
+      'request_approval',
+    ]);
     assert.equal((await tool(reader.run_token, 'save_session')).body.scope, 'upload');
     assert.equal((await tool(reader.run_token, 'next_jobs')).body.scope, 'run');
 

@@ -1,4 +1,5 @@
 import { Actor, BaseEntity, DomainEvent, RuleViolation } from '../../platform';
+import { ChangeTarget, type ChangeWork } from '../change/change-target';
 import { Redaction, type SessionNote } from './session-note';
 
 /** 세션의 판 하나 (추가만). 원본(origin)은 AI 도구가 올린 노트. 사람 판·합친 판은 관리 화면 편집 때 생긴다 */
@@ -95,12 +96,16 @@ export class SessionReceipt {
 // 세션: AI 도구의 대화 하나. 같은 대화를 다시 저장하면 새 판이 쌓이고, 지금 판(head)이 새 판으로 바뀐다.
 // 대화는 (공간, 기기, 도구, 대화 id)로 구분한다: 다른 기기가 같은 대화 id를 보내도 다른 세션이다.
 // AI는 공개 여부를 정할 수 없다. 새 세션은 늘 비공개 (2026-10-10 결정, 공개는 사람이나 검토 규칙을 거친다).
-export class Session extends BaseEntity {
+// 대표 wiki(도착 구역이면 비어 있음)는 변경 묶음으로만 바꾼다. 사람이 정하면 AI가 바로 바꾸지 못한다.
+export class Session extends ChangeTarget {
   static readonly PRIVATE = 'private';
   static readonly PUBLIC = 'public';
+  /** 사람이 정한 대표 wiki를 pinned_sections에 적는 이름. 칸 이름과 겹치지 않는다 */
+  static readonly WIKI_KEY = '#wiki';
   /** 도구 이름: claude-code, codex … */
   private static readonly TOOL = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
+  readonly targetKind = 'session';
   private added: SessionRevision | null = null;
 
   private constructor(
@@ -118,9 +123,12 @@ export class Session extends BaseEntity {
     private lastAt: Date | null,
     /** 이미 있는 판의 내용 해시 → 판 번호 (같은 내용이 다시 오면 판을 만들지 않는다) */
     private readonly known: Map<string, number>,
-    readonly isNew: boolean,
+    private wikiValue: string | null,
+    private pinned: readonly string[],
+    private readonly deleted: boolean,
+    isNew: boolean,
   ) {
-    super(id, version);
+    super(id, version, isNew);
   }
 
   /** 세션을 올릴 수 있는 요청자: 연결된 기기만. [공간 id, 기기 id] */
@@ -157,6 +165,9 @@ export class Session extends BaseEntity {
       0,
       null,
       new Map(),
+      null,
+      [],
+      false,
       true,
     );
   }
@@ -175,6 +186,9 @@ export class Session extends BaseEntity {
     revisionCount: number,
     lastRevisionAt: Date | null,
     known: ReadonlyMap<string, number>,
+    wikiId: string | null,
+    pinnedSections: readonly string[],
+    deleted: boolean,
   ): Session {
     return new Session(
       id,
@@ -190,6 +204,9 @@ export class Session extends BaseEntity {
       revisionCount,
       lastRevisionAt,
       new Map(known),
+      wikiId,
+      pinnedSections,
+      deleted,
       false,
     );
   }
@@ -209,6 +226,52 @@ export class Session extends BaseEntity {
   /** 이번에 새로 쌓인 판 (Repository가 저장한다) */
   get addedRevision(): SessionRevision | null {
     return this.added;
+  }
+
+  /** 대표 wiki. 비어 있으면 도착 구역 */
+  get wikiId(): string | null {
+    return this.wikiValue;
+  }
+
+  /** 대표 wiki를 사람이 정했는가 */
+  get wikiPinned(): boolean {
+    return this.pinned.includes(Session.WIKI_KEY);
+  }
+
+  get gone(): boolean {
+    return this.deleted;
+  }
+
+  /** 대표 wiki를 정한다. null이면 도착 구역으로. 사람이 정하면 표시가 남는다 */
+  assignTo(wikiId: string | null, work: ChangeWork): void {
+    if (work.human && !this.wikiPinned) this.pinWith([...this.pinned, Session.WIKI_KEY]);
+    if (wikiId === this.wikiValue) return;
+    this.wikiValue = wikiId;
+    this.track('wiki_id', wikiId);
+    this.record(
+      new DomainEvent('vault.session.assigned', 1, this.spaceId, { sessionId: this.id, wikiId }),
+    );
+  }
+
+  snapshot(): Readonly<Record<string, unknown>> {
+    return {
+      version: this.version,
+      wiki_id: this.wikiValue,
+      pinned_sections: this.pinned,
+    };
+  }
+
+  /** 앞 상태로 돌아간다. 세션은 변경 묶음이 만들지 않으므로 before는 늘 있다 */
+  rollBack(before: Readonly<Record<string, unknown>> | null): void {
+    if (before === null) return;
+    this.wikiValue = before.wiki_id === null ? null : String(before.wiki_id);
+    this.track('wiki_id', this.wikiValue);
+    this.pinWith(before.pinned_sections as string[]);
+  }
+
+  private pinWith(pinned: readonly string[]): void {
+    this.pinned = pinned;
+    this.track('pinned_sections', pinned);
   }
 
   /**

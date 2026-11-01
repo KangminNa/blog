@@ -1,19 +1,44 @@
 import { Injectable } from '@nestjs/common';
 import { Actor } from '../base/actor';
 import { BaseQuery } from '../base/base-query';
+import { ZipFile } from '../base/zip-file';
 import { ArchiveFile } from './archive-file';
 
 /** 보관 형식 버전. 형식을 바꾸면 올리고 docs/보관형식.md와 복원 쪽을 함께 고친다 */
 const ARCHIVE_FORMAT = 1;
 
-// Cairn의 내용을 보관 형식 파일 묶음으로 만든다.
-// 지금은 맨 위 cairn.json뿐이다. 각 모듈이 데이터를 만들면서 자기 파일을 더한다
-// (M1 세션·사진, M2·M3 카테고리·wiki·선, M4 글).
+// Cairn의 내용을 보관 형식 파일 묶음으로 만든다. 맨 위 cairn.json은 여기서, 내용은 각 모듈이 만든다.
+// platform은 다른 모듈의 스키마를 모르므로, 내용을 가진 모듈이 onModuleInit에서 자기 파일을 만드는 방법을 등록한다.
+//
+//   archive.register('vault', (actor) => this.files(actor));
+//
+// 등록하는 일은 자기 Query의 메서드 하나다. SystemActor(동기화 플러그인)로도 불리므로 공간이 없을 수 있다.
+// 비밀값(기기, 토큰, 로그인, 비밀 설정)은 어느 모듈도 파일에 넣지 않는다.
 @Injectable()
 export class ArchiveQuery extends BaseQuery {
+  /** 앞부분의 `cairn_format` 값 */
+  static readonly FORMAT = ARCHIVE_FORMAT;
+
+  private readonly sources = new Map<string, (actor: Actor) => Promise<readonly ArchiveFile[]>>();
+
+  register(name: string, files: (actor: Actor) => Promise<readonly ArchiveFile[]>): void {
+    if (this.sources.has(name)) throw new Error(`이미 등록된 보관 파일이에요: ${name}`);
+    this.sources.set(name, files);
+  }
+
   async files(actor: Actor): Promise<readonly ArchiveFile[]> {
     actor.assertCan(Actor.READ_ALL);
     const head = { format: ARCHIVE_FORMAT, generator: 'cairn', spec: 'docs/보관형식.md' };
-    return [ArchiveFile.text('cairn.json', `${JSON.stringify(head, null, 2)}\n`)];
+    const files = [ArchiveFile.text('cairn.json', `${JSON.stringify(head, null, 2)}\n`)];
+    for (const read of this.sources.values()) files.push(...(await read(actor)));
+    return files;
+  }
+
+  /** 백업: 보관 형식 그대로 묶은 zip (주인만). 비공개 내용이 들어 있다 */
+  async zip(actor: Actor): Promise<Buffer> {
+    actor.assertOwner();
+    const zip = new ZipFile();
+    for (const file of await this.files(actor)) zip.add(file.path, file.body);
+    return zip.toBuffer();
   }
 }
