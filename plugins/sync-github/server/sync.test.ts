@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
-import { ArchiveFile, OwnerActor, VisitorActor } from '../../../apps/server/src/plugin-api';
+import {
+  ArchiveFile,
+  type ArchiveRestoreService,
+  OwnerActor,
+  VisitorActor,
+} from '../../../apps/server/src/plugin-api';
 import { CheckAction } from './check.action';
 import { FakeGithub } from './fake-github';
 import { GithubGateway } from './github.gateway';
+import { RestoreAction } from './restore.action';
+import { RestorePreviewAction } from './restore-preview.action';
 import { SyncJob } from './sync.job';
 
 // 가짜 GitHub로 동기화의 약속을 확인한다: 바뀐 것만 커밋, 없어진 파일은 지움, 다른 파일은 안 건드림,
@@ -94,6 +101,72 @@ describe('sync-github', () => {
     const fresh = await job('public-site').syncOnce();
     assert.equal(fresh.ok, false, '갈라 만든 브랜치에도 main의 vault가 따라오므로 막혀야 한다');
     fake.isPrivate = true;
+  });
+
+  test('빈 Cairn은 백업이 있는 저장소를 지우지 않는다', async () => {
+    const guarded = new FakeGithub();
+    const url = await guarded.start();
+    const gh = new GithubGateway('me/backup', 't0ken', url);
+    const sync = new SyncJob(gh, 'main', async () => archive, []);
+    archive = [cairnJson, session, post, photo];
+    await sync.syncOnce();
+    const backup = guarded.filesAt('main');
+
+    archive = [cairnJson, ArchiveFile.text('vault/categories.yml', '[]\n')];
+    const refused = await sync.syncOnce();
+    assert.equal(refused.ok, false);
+    assert.match(refused.message, /비어 있는 Cairn이라 동기화를 멈췄어요/);
+    assert.ok(refused.details.some((d) => d.includes('restore-preview')));
+    assert.deepEqual(guarded.filesAt('main'), backup);
+    await assert.rejects(sync.run(), /비어 있는 Cairn/);
+
+    const onlyNew = await new SyncJob(gh, 'other', async () => archive, []).syncOnce();
+    assert.equal(onlyNew.ok, false, '새 브랜치도 기본 브랜치의 백업을 보고 멈춘다');
+    await guarded.stop();
+  });
+
+  test('처음 쓰는 저장소와 내용 없는 저장소는 빈 Cairn도 맞춘다', async () => {
+    const empty = new FakeGithub();
+    const url = await empty.start();
+    const gh = new GithubGateway('me/new', 't0ken', url);
+    archive = [cairnJson, ArchiveFile.text('vault/categories.yml', '[]\n')];
+    const sync = new SyncJob(gh, 'main', async () => archive, []);
+    const first = await sync.syncOnce();
+    assert.equal(first.ok, true, first.message);
+    const second = await sync.syncOnce();
+    assert.equal(second.message, '바뀐 것이 없어요');
+    await empty.stop();
+  });
+
+  test('내용이 있으면 공개 저장소로 보낼 것이 없어도 빈 Cairn으로 보지 않는다', async () => {
+    const open = new FakeGithub();
+    open.isPrivate = false;
+    const url = await open.start();
+    const gh = new GithubGateway('me/site', 't0ken', url);
+    archive = [cairnJson, post];
+    await new SyncJob(gh, 'main', async () => archive, []).syncOnce();
+    archive = [cairnJson, session];
+    const result = await new SyncJob(gh, 'main', async () => archive, []).syncOnce();
+    assert.equal(result.ok, true, result.message);
+    assert.equal(open.filesAt('main').has(post.path), false, '내린 글은 지운다');
+    await open.stop();
+  });
+
+  test('복원 동작은 주인만, 설정이 비어 있으면 받지 않는다', async () => {
+    const restorer = {} as ArchiveRestoreService;
+    const gh = new GithubGateway('me/cairn-archive', 't0ken', api);
+    for (const action of [
+      new RestorePreviewAction(gh, 'main', restorer, []),
+      new RestoreAction(gh, 'main', restorer, []),
+    ])
+      await assert.rejects(action.run(new VisitorActor()), /주인만/);
+    for (const action of [
+      new RestorePreviewAction(null, 'main', restorer, ['repo']),
+      new RestoreAction(null, 'main', restorer, ['repo']),
+    ]) {
+      const result = await action.run(new OwnerActor('s', 'u'));
+      assert.deepEqual([result.ok, result.details], [false, ['repo']]);
+    }
   });
 
   test('연결 확인은 주인만, 결과에 private 여부와 브랜치 상태가 나온다', async () => {

@@ -1,8 +1,9 @@
-import { ActionResult, type ArchiveFile, BaseJob } from '../../../apps/server/src/plugin-api';
+import { ActionResult, ArchiveFile, BaseJob } from '../../../apps/server/src/plugin-api';
 import type { GithubGateway } from './github.gateway';
 
 // 보관 형식 파일을 GitHub 브랜치에 맞춘다. 바뀐 파일만 올리고, 바뀐 게 없으면 커밋하지 않는다.
 // 저장소가 공개면 비공개 파일(vault 전부, 임시 글, 공개 글에 쓰이지 않는 사진)은 보내지 않는다.
+// 빈 Cairn이 백업이 있는 저장소를 만나면 멈춘다: 그대로 맞추면 복원하기 전에 백업이 지워진다.
 export class SyncJob extends BaseJob {
   readonly name = 'sync';
 
@@ -33,6 +34,13 @@ export class SyncJob extends BaseJob {
       ]);
     }
     const all = await this.readArchive();
+    if (lineage.hasContent() && !all.some((f) => ArchiveFile.holdsContent(f.path))) {
+      return ActionResult.failed('비어 있는 Cairn이라 동기화를 멈췄어요', [
+        '그대로 맞추면 저장소의 백업이 지워져요',
+        '복원: pnpm plugin sync-github restore-preview, 그다음 pnpm plugin sync-github restore',
+        '일부러 비운 거라면 저장소의 보관 파일을 직접 지워 주세요',
+      ]);
+    }
     const files = repo.isPrivate ? all : all.filter((f) => !f.isPrivateArea());
     const skipped = all.length - files.length;
     const result = await this.github.commit(
