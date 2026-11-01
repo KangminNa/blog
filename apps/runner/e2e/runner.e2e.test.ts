@@ -386,9 +386,21 @@ describe('러너가 일을 처리한다', () => {
 
   test('스킬이 아직 없으면 지시만으로 하고 로그에 남긴다', async () => {
     const agent = await newAgent();
-    const created = await newTask(agent, '', { kind: 'draft_post', title: '초안' });
+    const created = await newTask(agent, '', { kind: 'tidy_session', title: '정리' });
     await taskIn(created.id, 'done');
-    await runner.logged('스킬 cairn-write이 없어 지시만으로 해요');
+    await runner.logged('스킬 cairn-tidy이 없어 지시만으로 해요');
+  });
+
+  test('스킬이 있으면 설정 폴더에 넣고 따르라고 알린다', async () => {
+    const agent = await newAgent();
+    const spy = new Spy();
+    const created = await newTask(agent, spy.mark, { kind: 'draft_post', title: '초안' });
+    const seen = await spy.seen();
+    await taskIn(created.id, 'done');
+    assert.ok(String(seen.prompt).includes('cairn-write 스킬을 따릅니다'));
+    assert.ok((seen.configEntries as string[]).includes('skills'));
+    const args = seen.argv as string[];
+    assert.equal(args[args.indexOf('--tools') + 1], 'Read,Write,Edit,Skill');
   });
 
   test('0이 아닌 코드로 끝나면 failed와 짧은 이유', async () => {
@@ -513,6 +525,86 @@ describe('러너가 일을 처리한다', () => {
   });
 });
 
+// 서버 러너의 길: 환경 변수에 토큰이 없고, 콘솔에 넣은 토큰을 일마다 ai_login으로 받는다.
+describe('콘솔에 넣은 토큰으로 일한다', () => {
+  let runner: RunnerProcess;
+
+  const claude = async (): Promise<Json> =>
+    (ok(await api.get('/api/ai', owner)) as { tools: Json[] }).tools[0] as Json;
+  const saveToken = async (token: string): Promise<void> => {
+    ok(await api.request('PUT', '/api/ai/claude/token', owner, { token }));
+  };
+  const startTest = async (): Promise<Json> =>
+    ok(await api.request('POST', '/api/ai/claude/test', owner));
+
+  before(async () => {
+    runner = RunnerProcess.start(api.baseUrl, { CLAUDE_CODE_OAUTH_TOKEN: '' });
+    await runner.logged('AI 토큰은 콘솔의 AI 메뉴에 넣은 값을 써요');
+  });
+
+  after(async () => {
+    assert.equal(await runner.stop(), 0);
+  });
+
+  test('토큰이 없으면 실패로 끝내지 않고 돌려주며 쉬었다가, 넣으면 그 토큰으로 일한다', async () => {
+    const agent = await newAgent();
+    const spy = new Spy();
+    const created = await newTask(agent, spy.mark);
+
+    await until('일을 돌려줌', async () => {
+      const task = await getTask(created.id);
+      return task.status === 'queued' && events(task).length > 0 ? task : null;
+    });
+    await new Promise((done) => setTimeout(done, 2_000));
+    const held = await getTask(created.id);
+    assert.equal(held.status, 'queued', '실패로 끝내지 않는다');
+    assert.equal(held.attempts, 0);
+    assert.equal(events(held).length, 1, '빌리고 돌려주기를 되풀이하지 않는다');
+    assert.match(String(events(held)[0]?.body), /^돌려줌: .*AI 메뉴/);
+
+    const token = `sk-ant-oat01-${randomUUID()}`;
+    await saveToken(token);
+
+    const seen = await spy.seen();
+    assert.equal((seen.env as Json).CLAUDE_CODE_OAUTH_TOKEN, token);
+    const task = await taskIn(created.id, 'done');
+    await runner.logged(`${created.id}: 끝났어요`);
+    const record = `${JSON.stringify(task)}\n${runner.logs}`;
+    assert.equal(record.includes(token), false);
+    assert.ok(JSON.stringify(task).includes('[지움: 토큰]'), '가짜 CLI가 뱉은 토큰을 지웠다');
+  });
+
+  test('연결 확인은 일을 받을 에이전트가 없어도 MCP 없이 돌고 결과를 남긴다', async () => {
+    await db.sql`UPDATE task.agents SET status = 'paused'`;
+    await saveToken(`sk-ant-oat01-${randomUUID()}`);
+    assert.equal((await claude()).checkedAt, null);
+
+    const { taskId } = await startTest();
+    const task = await taskIn(taskId, 'done');
+
+    assert.deepEqual(task.result, { text: 'ok' }, 'MCP 설정이 있었다면 가짜 CLI가 다르게 답한다');
+    assert.equal(task.agentId, null);
+    const state = await claude();
+    assert.ok(state.checkedAt);
+    assert.equal(state.lastError, null);
+  });
+
+  test('틀린 토큰이면 이유를 남기고, 토큰은 어디에도 남지 않는다', async () => {
+    const token = `sk-ant-oat01-wrong-${randomUUID()}`;
+    await saveToken(token);
+
+    const { taskId } = await startTest();
+    const task = await taskIn(taskId, 'failed');
+
+    const state = await claude();
+    assert.ok(state.checkedAt);
+    assert.match(String(state.lastError), /코드 1.*틀린 토큰/);
+    const record = `${JSON.stringify(task)}\n${JSON.stringify(state)}\n${runner.logs}`;
+    assert.equal(record.includes(token), false);
+    assert.equal(record.includes('[지움: 토큰]'), true);
+  });
+});
+
 describe('러너를 멈춘다', () => {
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     test(`${signal}이면 AI CLI를 끄고 일을 돌려준 뒤 0으로 끝난다`, async () => {
@@ -589,9 +681,9 @@ describe('러너를 멈춘다', () => {
   });
 
   test('설정이 빠지면 짧은 문구로 멈춘다', async () => {
-    const blank = RunnerProcess.start(api.baseUrl, { CLAUDE_CODE_OAUTH_TOKEN: '' });
+    const blank = RunnerProcess.start(api.baseUrl, { CAIRN_RUNNER_TOKEN: '' });
     assert.equal(await blank.exited(), 1);
-    assert.ok(blank.logs.includes('러너 설정이 빠졌어요: CLAUDE_CODE_OAUTH_TOKEN'), blank.logs);
+    assert.ok(blank.logs.includes('러너 설정이 빠졌어요: CAIRN_RUNNER_TOKEN'), blank.logs);
   });
 
   // 끊긴 긴 폴링이 서버에 남으므로 일을 쓰는 테스트는 이 앞에 둔다

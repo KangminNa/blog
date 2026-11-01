@@ -32,9 +32,22 @@ describe('러너 설정', () => {
       (error: Error) =>
         error instanceof ConfigProblem &&
         error.message.includes('CAIRN_RUNNER_URL') &&
-        error.message.includes('CLAUDE_CODE_OAUTH_TOKEN') &&
         !error.message.includes('device-secret'),
     );
+    assert.throws(
+      () => RunnerConfig.fromEnv({ CAIRN_RUNNER_URL: env.CAIRN_RUNNER_URL }),
+      /CAIRN_RUNNER_TOKEN/,
+    );
+  });
+
+  test('Claude 토큰은 없어도 된다: 콘솔에 넣은 토큰을 서버에서 받는다', () => {
+    const { CLAUDE_CODE_OAUTH_TOKEN: _, ...rest } = env;
+    assert.equal(RunnerConfig.fromEnv(rest).claudeToken, null);
+    assert.equal(
+      RunnerConfig.fromEnv({ ...rest, CLAUDE_CODE_OAUTH_TOKEN: '  ' }).claudeToken,
+      null,
+    );
+    assert.equal(RunnerConfig.fromEnv(env).claudeToken, 'claude-secret');
   });
 
   test('공백뿐인 값은 없는 것과 같다', () => {

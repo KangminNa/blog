@@ -1,9 +1,12 @@
 import { readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { AiTool, McpServerState } from './ai-tool';
 
 // Claude Code: 스킬은 ~/.claude/skills, 검토자는 ~/.claude/agents, MCP는 `claude mcp`.
 export class ClaudeCode extends AiTool {
+  /** 묻지 않을 도구를 적는 스킬. 다른 스킬은 사용자가 그때그때 허락한다 */
+  private static readonly SAVE_SKILL = 'cairn-save';
+
   readonly id = 'claude-code';
   readonly label = 'Claude Code';
   readonly command = 'claude';
@@ -26,6 +29,7 @@ export class ClaudeCode extends AiTool {
 
   /** 저장할 때 묻지 않을 것: cairn 도구 두 개와 이 스킬의 스크립트 */
   override renderSkill(text: string, skillDir: string): string {
+    if (basename(skillDir) !== ClaudeCode.SAVE_SKILL) return super.renderSkill(text, skillDir);
     const allowed = `allowed-tools: mcp__${AiTool.SERVER}__check_session, mcp__${AiTool.SERVER}__save_session, Bash(node \${CLAUDE_SKILL_DIR}/scripts/*)`;
     return super
       .renderSkill(text, skillDir)

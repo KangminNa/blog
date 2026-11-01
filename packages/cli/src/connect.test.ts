@@ -140,6 +140,14 @@ beforeEach(() => {
   resource = { resource: 'https://blog.example.com/mcp', resource_name: 'Cairn' };
 });
 
+describe('함께 든 스킬', () => {
+  test('러너 전용 스킬은 사람의 AI 도구에 넣지 않는다', () => {
+    const names = SkillPackage.bundled().map((skill) => skill.name);
+    assert.ok(names.includes('cairn-save'));
+    assert.equal(names.includes('cairn-write'), false);
+  });
+});
+
 describe('블로그 주소', () => {
   test('https와 이 컴퓨터 안의 주소만. 앞에 https://가 없으면 붙인다', () => {
     assert.equal(CairnSite.parse('blog.example.com').origin, 'https://blog.example.com');

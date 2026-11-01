@@ -2,6 +2,7 @@
 #   dev     개발. 소스 전체 + 감시 모드 (docker-compose.yml)
 #   server  운영 서버·일꾼. 컴파일한 JS만 (docker-compose.prod.yml)
 #   web     운영 웹. next build의 standalone 결과만 (docker-compose.prod.yml)
+#   runner  운영 서버 러너. 컴파일한 러너와 Claude CLI (docker-compose.prod.yml의 runner 프로필)
 # 운영 이미지는 root가 아닌 node 사용자로 돌고, 코드는 root 소유라 실행 중에 고칠 수 없다.
 FROM node:24-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm \
@@ -16,6 +17,7 @@ FROM base AS deps
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
+COPY apps/runner/package.json apps/runner/
 COPY packages/cli/package.json packages/cli/
 RUN pnpm install --frozen-lockfile
 
@@ -74,3 +76,21 @@ COPY --from=web-build /repo/apps/web/.next/static apps/web/.next/static
 RUN mkdir -p apps/web/.next/cache && chown node:node apps/web/.next/cache
 USER node
 CMD ["node", "apps/web/server.js"]
+
+# 운영 러너 빌드: src만 복사한다. 러너 폴더의 .env에는 주인 컴퓨터의 토큰이 있을 수 있다
+FROM deps AS runner-build
+COPY apps/runner/src apps/runner/src
+COPY apps/runner/tsconfig.json apps/runner/tsconfig.build.json apps/runner/
+RUN pnpm --filter @cairn/runner build
+
+# 운영 러너: 러너는 런타임 의존 패키지가 없어 컴파일한 JS만 둔다. 저장소와 같은 모양이라 스킬은 /app/skills에서 찾는다.
+# Claude CLI는 이 이미지에만 넣고 정확한 버전으로 고정한다 (package.json에 넣지 않는다: 서버와 웹에 딸려 가면 안 된다).
+# 비밀값은 이미지와 홈에 두지 않는다. 기기 토큰은 환경 변수, AI 토큰은 일마다 서버에서 받아 메모리에만 둔다
+FROM node:24-bookworm-slim AS runner
+ENV NODE_ENV=production
+WORKDIR /app/apps/runner
+RUN npm install -g @anthropic-ai/claude-code@2.1.302
+COPY skills /app/skills
+COPY --from=runner-build /repo/apps/runner/dist /app/apps/runner/src
+USER node
+CMD ["node", "src/main.js"]

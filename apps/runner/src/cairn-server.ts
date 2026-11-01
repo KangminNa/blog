@@ -2,7 +2,7 @@ import { Job } from './job';
 import type { McpClient } from './mcp-client';
 import { type ProgressBatch, ProgressState, type RunResult } from './progress';
 
-// 러너가 쓰는 MCP 도구 네 개. 모양의 원본은 docs/API설계.md 4장이다.
+// 러너가 쓰는 MCP 도구 다섯 개. 모양의 원본은 docs/API설계.md 4장이다.
 export class CairnServer {
   constructor(private readonly mcp: McpClient) {}
 
@@ -11,6 +11,11 @@ export class CairnServer {
     const args = { wait_seconds: waitSeconds, limit: 1 };
     const body = await this.mcp.call('next_jobs', args, waitSeconds * 1000, stop);
     return body.list('jobs').map((job) => Job.from(job));
+  }
+
+  /** 콘솔에 넣은 AI 토큰. 없거나 만료됐으면 서버가 거절한다 (ToolRefused) */
+  async aiLogin(tool: string): Promise<string> {
+    return (await this.mcp.call('ai_login', { tool })).text('token');
   }
 
   async report(taskId: string, batch: ProgressBatch): Promise<ProgressState> {

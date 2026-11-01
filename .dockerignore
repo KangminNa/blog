@@ -5,5 +5,5 @@
 .claude
 docs
 *.log
-.env
-.env.*
+**/.env
+**/.env.*

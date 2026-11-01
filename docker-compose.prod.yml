@@ -1,6 +1,7 @@
 # Cairn 운영 환경. 컴파일한 이미지만 돌린다 (감시 모드 없음, 소스 마운트 없음, root가 아닌 사용자)
 #   서버의 .env에 COMPOSE_FILE=docker-compose.prod.yml 을 적으면 docker compose 명령이 모두 이 파일을 쓴다
 #   docker compose up -d --build   →  db → migrate(마이그레이션 적용 후 종료) → server · worker → web
+#   서버 러너는 runner 프로필일 때만 뜬다. 켜는 법은 .env.example
 #
 # 프록시 네트워크에 붙이는 docker-compose.override.yml은 파일을 직접 고르면 저절로 합쳐지지 않으므로 함께 적는다:
 #   COMPOSE_FILE=docker-compose.prod.yml:docker-compose.override.yml
@@ -113,6 +114,32 @@ services:
       timeout: 5s
       retries: 6
       start_period: 20s
+    depends_on:
+      server:
+        condition: service_healthy
+
+  # 서버 러너: 일을 빌려 Claude CLI로 처리한다. 토큰이 없는 서버가 깨지지 않게 프로필로 켠다.
+  # 서버 키와 DB 주소를 주지 않는다. 받는 포트도 볼륨도 없고, 나가는 요청으로 서버의 /mcp만 부른다.
+  # 쓸 수 있는 곳은 메모리에 있는 /tmp와 홈뿐이고 컨테이너가 끝나면 사라진다. 일의 자리도 /tmp 안에 만들고 지운다
+  runner:
+    profiles: [runner]
+    build:
+      context: .
+      target: runner
+    image: cairn-runner:${CAIRN_IMAGE_TAG:-dev}
+    restart: unless-stopped
+    init: true                # AI CLI가 남긴 손자 프로세스를 거둔다
+    stop_grace_period: 40s    # 첫 신호는 기다리는 next_jobs(25초)가 끝나기를 기다렸다가 일을 돌려준다
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /home/node:size=64m,uid=1000,gid=1000,mode=700
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CAIRN_RUNNER_URL: http://cairn-server:4000
+      CAIRN_RUNNER_TOKEN: ${CAIRN_RUNNER_TOKEN:-}   # 프로필을 켠 서버에만 있다. 없으면 러너가 빠진 설정을 로그에 남기고 끝난다
     depends_on:
       server:
         condition: service_healthy

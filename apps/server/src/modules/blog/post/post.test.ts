@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import {
   type Actor,
   AgentActor,
+  ApprovedActor,
   DeviceActor,
   Forbidden,
   OwnerActor,
@@ -197,5 +198,122 @@ describe('Post', () => {
     assert.equal(post.status, Post.PUBLISHED);
     assert.equal(post.deletedAt, null);
     assert.throws(() => post.recover(owner, now), /휴지통에 있는 글이 아니에요/);
+  });
+});
+
+describe('결재한 공개', () => {
+  const APPROVAL = '0192d2a0-0000-7000-8000-0000000000b1';
+  const approved = new ApprovedActor(SPACE, String(owner.id), APPROVAL, Post.PUBLISH_ACTION);
+  const later = new Date('2026-10-30T00:00:00Z');
+  const saved = (status: string, publishedAt: Date | null = null, deletedAt: Date | null = null) =>
+    Post.restore(
+      'id',
+      3,
+      SPACE,
+      'first',
+      status,
+      PostContent.restore('첫 글', '본문'),
+      [],
+      'left',
+      'r1',
+      1,
+      publishedAt,
+      now,
+      deletedAt,
+    );
+
+  test('결재한 버전 그대로면 공개하고, 원래 내용에 결재 결과를 더해 돌려준다', () => {
+    const post = saved(Post.DRAFT);
+    const result = post.publishApproved(approved, 3, later);
+    assert.equal(post.status, Post.PUBLISHED);
+    assert.equal(post.publishedAt, later);
+    assert.equal(post.changed, true);
+    assert.equal(post.addedRevision, null);
+    assert.equal(result.name, 'blog.post.published');
+    assert.deepEqual(result.data, {
+      postId: 'id',
+      slug: 'first',
+      title: '첫 글',
+      status: Post.PUBLISHED,
+      postVersion: 4,
+      approvalId: APPROVAL,
+      outcome: 'done',
+    });
+  });
+
+  test('한 번 내렸던 글은 처음 공개한 때가 발행일이다', () => {
+    const post = saved(Post.DRAFT, now);
+    post.publishApproved(approved, 3, later);
+    assert.equal(post.publishedAt, now);
+  });
+
+  test('공개할 수 없으면 아무것도 바꾸지 않고 실패를 돌려준다', () => {
+    const cases: readonly [Post, number, RegExp][] = [
+      [saved(Post.DRAFT), 2, /바뀐 글이라 공개하지 않았어요 \(결재 2, 지금 3\)/],
+      [saved(Post.DRAFT, null, now), 3, /휴지통/],
+      [saved(Post.PUBLISHED, now), 3, /이미 공개된 글/],
+    ];
+    for (const [post, version, reason] of cases) {
+      const status = post.status;
+      const result = post.publishApproved(approved, version, later);
+      assert.equal(post.status, status);
+      assert.equal(post.changed, false);
+      assert.equal(result.name, 'blog.post.publish_failed');
+      assert.equal(result.data.approvalId, APPROVAL);
+      assert.equal(result.data.outcome, 'failed');
+      assert.match(String(result.data.error), reason);
+    }
+  });
+
+  test('결재는 공개만 허락한다: 휴지통, 공개된 글 고치기, 공개 범위 바꾸기는 주인만', () => {
+    const content = PostContent.write('고침', '');
+    assert.throws(() => saved(Post.PUBLISHED, now).trash(approved, now), Forbidden);
+    assert.throws(() => saved(Post.DRAFT).trash(approved, now), Forbidden);
+    assert.throws(
+      () => saved(Post.PUBLISHED, now).edit(content, 'first', [], 'left', approved, now),
+      Forbidden,
+    );
+    assert.throws(
+      () => saved(Post.UNLISTED, now).changeStatus(Post.DRAFT, approved, now),
+      Forbidden,
+    );
+    assert.throws(() => saved(Post.DRAFT).changeStatus(Post.PUBLISHED, approved, now), Forbidden);
+    assert.throws(() => saved(Post.DRAFT, null, now).recover(approved, now), Forbidden);
+  });
+
+  test('다른 동작의 결재, 기기, 에이전트, 주인은 이 길로 공개하지 못한다', () => {
+    const agent = new AgentActor(SPACE, 'a', 't', new Set(['write']));
+    const otherAction = new ApprovedActor(SPACE, String(owner.id), APPROVAL, 'sns.post.send');
+    for (const by of [otherAction, writer, agent, owner]) {
+      const post = saved(Post.DRAFT);
+      assert.throws(() => post.publishApproved(by, 3, later), Forbidden);
+      assert.equal(post.status, Post.DRAFT);
+    }
+  });
+
+  test('기기와 에이전트는 공개 범위도 바꾸지 못한다', () => {
+    const agent = new AgentActor(SPACE, 'a', 't', new Set(['write']));
+    for (const by of [writer, agent])
+      assert.throws(() => saved(Post.DRAFT).changeStatus(Post.PUBLISHED, by, now), Forbidden);
+  });
+
+  test('사람의 공개에는 결재 결과가 붙지 않는다', () => {
+    const post = saved(Post.DRAFT);
+    post.changeStatus(Post.PUBLISHED, owner, now);
+    const [event] = post.pullEvents();
+    assert.equal(event?.name, 'blog.post.published');
+    assert.deepEqual(Object.keys(event?.data ?? {}), [
+      'postId',
+      'slug',
+      'title',
+      'status',
+      'postVersion',
+    ]);
+  });
+
+  test('다시 낼 결과는 처음 결과와 같다', () => {
+    const result = saved(Post.DRAFT).publishApproved(approved, 3, later);
+    const stored = JSON.parse(JSON.stringify(result.toJSON()));
+    assert.deepEqual(Post.sameResult(SPACE, stored).toJSON(), result.toJSON());
   });
 });
