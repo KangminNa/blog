@@ -198,10 +198,11 @@ export class TaskService extends BaseService {
       const ready = usage.filter((u) => u.ready).map((u) => u.agent);
       if (ready.length === 0) return [];
       const jobs: JobView[] = [];
-      const ids = ready.map((a) => a.id);
-      for (const task of await tasks.lockNext(spaceId, ids, limit)) {
-        // 담당을 정하지 않은 일은 가장 먼저 만든, 일을 받을 수 있는 에이전트가 맡는다
-        const agent = task.agentId ? ready.find((a) => a.id === task.agentId) : ready[0];
+      for (const task of await tasks.lockNext(spaceId, ready, limit)) {
+        // 담당을 정하지 않은 일은 그 일의 권한이 있는 에이전트 중 가장 먼저 만든, 일을 받을 수 있는 에이전트가 맡는다
+        const agent = task.agentId
+          ? ready.find((a) => a.id === task.agentId)
+          : ready.find((a) => task.doableWith(a.scopes));
         if (!agent) continue;
         task.lease(runnerId, agent.id, now);
         await tasks.save(task);

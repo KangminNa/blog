@@ -1,4 +1,5 @@
 import { BaseRepository, ChangeSignal, type Row } from '../../platform';
+import type { Agent } from '../agent/agent';
 import { Task } from './task';
 
 // task.tasks + task_events ↔ Task. 고칠 때는 엔티티가 기억한 바뀐 열만 저장한다.
@@ -61,22 +62,33 @@ export class TaskRepository extends BaseRepository<Task> {
   }
 
   /**
-   * 빌려 줄 작업을 잠근다. 다른 러너가 잡은 행은 건너뛰고, 담당이 없거나 일을 받을 수 있는 에이전트(agentIds)의 일만,
-   * 우선순위 → 오래된 순. 멈췄거나 쉬는 에이전트의 일은 대기열에 남아 뒤의 일을 막지 않는다.
+   * 빌려 줄 작업을 잠근다. 다른 러너가 잡은 행은 건너뛰고, 담당이 없거나 일을 받을 수 있는 에이전트(ready)의 일만,
+   * 우선순위 → 오래된 순. 멈췄거나 쉬는 에이전트의 일과 맡을 권한이 없는 일은 대기열에 남아 뒤의 일을 막지 않는다.
    */
   async lockNext(
     spaceId: string,
-    agentIds: readonly string[],
+    ready: readonly Agent[],
     limit: number,
   ): Promise<readonly Task[]> {
+    const agentIds = ready.map((a) => a.id);
     const rows = await this.sql`
       SELECT * FROM task.tasks
       WHERE space_id = ${spaceId} AND status = ${Task.QUEUED}
-        AND (agent_id IS NULL OR agent_id = ANY(${agentIds as string[]}::uuid[]))
+        AND (agent_id IS NULL OR agent_id = ANY(${agentIds}::uuid[]))
+        ${this.scoped(ready)}
       ORDER BY priority DESC, id
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED`;
     return rows.map((r) => this.toEntity(r));
+  }
+
+  /** 권한이 필요한 종류는 그 권한을 가진 에이전트의 일이거나, 담당이 없어도 맡을 에이전트가 있을 때만 */
+  private scoped(ready: readonly Agent[]) {
+    return Object.entries(Task.SCOPES).reduce((found, [kind, scope]) => {
+      const able = ready.filter((a) => a.scopes.includes(scope)).map((a) => a.id);
+      return this.sql`${found} AND (kind <> ${kind} OR agent_id = ANY(${able}::uuid[])
+        OR (agent_id IS NULL AND ${able.length > 0}::boolean))`;
+    }, this.sql``);
   }
 
   /** 임대가 끝난 작업을 잠근다 */

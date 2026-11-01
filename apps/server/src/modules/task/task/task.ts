@@ -1,4 +1,11 @@
-import { AgentActor, BaseEntity, DomainEvent, RuleViolation, TrackedEntity } from '../../platform';
+import {
+  Actor,
+  AgentActor,
+  BaseEntity,
+  DomainEvent,
+  RuleViolation,
+  TrackedEntity,
+} from '../../platform';
 
 /** 실행 기록 한 줄 (추가만). 작업과 함께 저장한다 */
 export class TaskLogEntry {
@@ -47,6 +54,10 @@ export class Task extends TrackedEntity {
   private static readonly SKILLS: Readonly<Record<string, string>> = {
     draft_post: 'cairn-write',
     tidy_session: 'cairn-tidy',
+  };
+  /** 이 종류의 일을 맡으려면 에이전트에게 있어야 하는 권한. 없는 종류는 누구나 맡는다 */
+  static readonly SCOPES: Readonly<Record<string, string>> = {
+    tidy_session: Actor.TIDY,
   };
 
   private readonly logged: TaskLogEntry[] = [];
@@ -204,6 +215,12 @@ export class Task extends TrackedEntity {
   /** 러너가 쓸 스킬. 없으면 지시만으로 일한다 */
   get skill(): string | null {
     return Task.SKILLS[this.kind] ?? null;
+  }
+
+  /** 이 권한을 가진 에이전트가 맡을 수 있는 일인가 */
+  doableWith(scopes: readonly string[]): boolean {
+    const needed = Task.SCOPES[this.kind];
+    return needed === undefined || scopes.includes(needed);
   }
 
   /** 주인이 결재에서 고쳐 달라고 남긴 말 */
