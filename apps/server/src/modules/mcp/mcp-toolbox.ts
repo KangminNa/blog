@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BlogTools } from '../blog';
 import type { BaseTool } from '../platform';
+import { TaskTools } from '../task';
 import { VaultTools } from '../vault';
 
 // AI 도구에게 여는 MCP 도구 모음. 도구는 각 모듈의 목록(`*-tools.ts`)에 더하고, 여기서는 모듈별 목록을 모으기만 한다.
@@ -21,7 +22,7 @@ export class McpToolbox {
 
   readonly tools: readonly BaseTool[];
 
-  constructor(vault: VaultTools, blog: BlogTools) {
-    this.tools = [...vault.tools, ...blog.tools];
+  constructor(vault: VaultTools, blog: BlogTools, task: TaskTools) {
+    this.tools = [...vault.tools, ...blog.tools, ...task.tools];
   }
 }

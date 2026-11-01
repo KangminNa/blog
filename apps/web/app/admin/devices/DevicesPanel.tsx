@@ -5,7 +5,7 @@ import { api, describe } from '../../_lib/client-api';
 import { type Device, SCOPE_LABELS, type SpaceInfo } from '../../_lib/types';
 import { ConnectGuide } from './ConnectGuide';
 
-const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write'];
+const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write', 'run'];
 
 // 기기: 연결하는 법(도구별), 연결된 기기의 권한 바꾸기·끊기, 예비 기기 토큰.
 // 설치 마법사의 마지막 단계도 이 목록을 보며 첫 기기가 붙기를 기다린다.
