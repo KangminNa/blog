@@ -23,6 +23,14 @@ function limitOf(text: string): number | null | undefined {
   return Number.isSafeInteger(limit) && limit >= 1 ? limit : undefined;
 }
 
+/** 빈 칸은 쓰지 않음. 맞지 않는 값이면 undefined */
+function percentOf(text: string): number | null | undefined {
+  const value = text.trim();
+  if (value === '') return null;
+  const percent = Number(value);
+  return Number.isInteger(percent) && percent >= 1 && percent <= 100 ? percent : undefined;
+}
+
 // 에이전트 추가·편집. agent가 있으면 편집이다.
 export function AgentForm({
   agent,
@@ -42,7 +50,13 @@ export function AgentForm({
   const [scopes, setScopes] = useState<readonly string[]>(agent?.scopes ?? []);
   const [actions, setActions] = useState<readonly string[]>(agent?.approvalActions ?? []);
   const [limit, setLimit] = useState(agent?.monthlyLimit?.toString() ?? '');
-  const [problems, setProblems] = useState<{ limit?: string }>({});
+  const [fiveHour, setFiveHour] = useState(agent?.fiveHourLimit?.toString() ?? '');
+  const [planStop, setPlanStop] = useState(agent?.planStopPercent?.toString() ?? '');
+  const [problems, setProblems] = useState<{
+    limit?: string;
+    fiveHour?: string;
+    planStop?: string;
+  }>({});
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
@@ -57,7 +71,13 @@ export function AgentForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     const monthlyLimit = limitOf(limit);
-    const found = monthlyLimit === undefined ? { limit: '1 이상의 정수를 입력해 주세요' } : {};
+    const fiveHourLimit = limitOf(fiveHour);
+    const planStopPercent = percentOf(planStop);
+    const found = {
+      ...(monthlyLimit === undefined ? { limit: '1 이상의 정수를 입력해 주세요' } : {}),
+      ...(fiveHourLimit === undefined ? { fiveHour: '1 이상의 정수를 입력해 주세요' } : {}),
+      ...(planStopPercent === undefined ? { planStop: '1~100 사이의 정수를 입력해 주세요' } : {}),
+    };
     setProblems(found);
     setProblem(null);
     if (Object.keys(found).length > 0 || sending.current) return;
@@ -70,6 +90,8 @@ export function AgentForm({
       scopes,
       approvalActions: actions,
       monthlyLimit,
+      fiveHourLimit,
+      planStopPercent,
     };
     requestId.current ??= crypto.randomUUID();
     const reply = agent
@@ -167,6 +189,38 @@ export function AgentForm({
         />
         <small id={`${id}-limit-help`}>비우면 한도 없음. 넘기면 자동 중지 후 결재 요청</small>
         {problems.limit && <p className="error">{problems.limit}</p>}
+      </div>
+      <div className="field">
+        <label htmlFor={`${id}-five-hour`}>5시간 한도 (토큰)</label>
+        <input
+          id={`${id}-five-hour`}
+          className="input"
+          inputMode="numeric"
+          value={fiveHour}
+          aria-invalid={problems.fiveHour !== undefined}
+          aria-describedby={`${id}-five-hour-help`}
+          onChange={(e) => change(() => setFiveHour(e.target.value))}
+        />
+        <small id={`${id}-five-hour-help`}>
+          비우면 한도 없음. 닿으면 새 작업만 쉬고 시간이 지나면 다시 시작
+        </small>
+        {problems.fiveHour && <p className="error">{problems.fiveHour}</p>}
+      </div>
+      <div className="field">
+        <label htmlFor={`${id}-plan-stop`}>구독 사용률 N%에서 멈춤</label>
+        <input
+          id={`${id}-plan-stop`}
+          className="input"
+          inputMode="numeric"
+          value={planStop}
+          aria-invalid={problems.planStop !== undefined}
+          aria-describedby={`${id}-plan-stop-help`}
+          onChange={(e) => change(() => setPlanStop(e.target.value))}
+        />
+        <small id={`${id}-plan-stop-help`}>
+          1~100. 비우면 멈추지 않음. 닿으면 새 작업만 쉬고 초기화되면 다시 시작
+        </small>
+        {problems.planStop && <p className="error">{problems.planStop}</p>}
       </div>
       {problem && <p className="error">{problem}</p>}
       <div className="row">

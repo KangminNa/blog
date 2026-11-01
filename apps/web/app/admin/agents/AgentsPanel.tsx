@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
 import { SCOPE_LABELS } from '../../_lib/types';
-import { actionLabel, TASK_STATUS, TOOL_LABELS } from '../../_task/labels';
-import { useAgents, useTasksIn } from '../../_task/live';
+import { actionLabel, holdLabel, TASK_STATUS, TOOL_LABELS } from '../../_task/labels';
+import { useAgents, useTasksIn, useUsage } from '../../_task/live';
 import { AgentUsage } from '../../_task/parts';
 import type { Agent } from '../../_task/types';
 import { useNotify } from '../AdminShell';
@@ -18,6 +18,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
   const agents = useAgents();
   const running = useTasksIn('running');
   const waiting = useTasksIn('waiting');
+  const usage = useUsage();
   // 열린 입력 칸: 추가, 또는 편집 중인 에이전트의 id
   const [open, setOpen] = useState<string | null>(adding ? NEW : null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -51,7 +52,8 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
   async function saved(text: string) {
     setOpen(null);
     notify(text);
-    await agents.reload();
+    // 한도를 바꾸면 쉬는지도 바뀐다. 이 저장에는 사용량 신호가 없다
+    await Promise.all([agents.reload(), usage.reload()]);
   }
 
   return (
@@ -103,6 +105,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
                 key={a.id}
                 agent={a}
                 work={workOf(a)}
+                hold={holdLabel(usage.data?.agents.find((u) => u.id === a.id))}
                 busy={busy === a.id}
                 onFlip={() => flip(a)}
                 onEdit={() => setOpen(a.id)}
@@ -118,12 +121,14 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
 function AgentCard({
   agent,
   work,
+  hold,
   busy,
   onFlip,
   onEdit,
 }: {
   agent: Agent;
   work: string | null;
+  hold: string | null;
   busy: boolean;
   onFlip: () => void;
   onEdit: () => void;
@@ -139,9 +144,12 @@ function AgentCard({
             {TOOL_LABELS[agent.tool] ?? agent.tool}
           </small>
         </div>
-        <span className={paused ? 'pill off' : work ? 'pill on' : 'pill'}>
-          {paused ? '중지' : work ? TASK_STATUS[work] : '대기'}
-        </span>
+        {!paused && hold && <span className="pill strong">{hold}</span>}
+        {(paused || work || !hold) && (
+          <span className={paused ? 'pill off' : work ? 'pill on' : 'pill'}>
+            {paused ? '중지' : work ? TASK_STATUS[work] : '대기'}
+          </span>
+        )}
       </div>
       <ul className="perm" aria-label="권한">
         {agent.scopes.map((s) => (
