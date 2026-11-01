@@ -7,7 +7,7 @@ paths:
 
 - 새 파일은 `pnpm db:new <영문_이름>`으로 만든다. 커밋된 파일은 고치지 않는다.
 - 모든 파일에 `-- migrate:up`과 `-- migrate:down`을 둔다. down은 up을 정확히 되돌린다 (CI가 전부 되돌렸다 다시 적용해 본다).
-- 테이블은 그 모듈의 스키마를 붙여 만든다 (`apps/server/modules.json`: `platform` · `account` · `vault` · `blog`·`work` · `mcp`). 모듈 사이 외래키 금지 (`pnpm db:check`가 막는다).
+- 테이블은 그 모듈의 스키마를 붙여 만든다 (`apps/server/modules.json`: `platform` · `account` · `vault` · `blog`·`work` · `task` · `mcp`). 모듈 사이 외래키 금지 (`pnpm db:check`가 막는다).
 - 기본키는 `uuid DEFAULT platform.uuid_v7()`, 시간은 `timestamptz NOT NULL DEFAULT now()`.
 - 판(revision) 테이블은 `platform.forbid_update_delete()` 트리거를 붙여 추가만 허용한다.
 - 값의 범위는 `CHECK`로 DB에서 막는다 (상태값, 권한 목록, 해시 길이 등).
