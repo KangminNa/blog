@@ -5,7 +5,8 @@
     "account": { "dependsOn": ["platform"], "schemas": ["account"] },
     "vault": { "dependsOn": ["platform"], "schemas": ["vault"] },
     "blog": { "dependsOn": ["platform", "vault"], "schemas": ["blog", "work"] },
-    "mcp": { "dependsOn": ["platform", "account", "vault", "blog"], "schemas": ["mcp"] }
+    "task": { "dependsOn": ["platform"], "schemas": ["task"] },
+    "mcp": { "dependsOn": ["platform", "account", "vault", "blog", "task"], "schemas": ["mcp"] }
   },
   "frameworkPackages": ["@nestjs/common", "@nestjs/core", "node:"],
   "libraryHome": "platform/base"

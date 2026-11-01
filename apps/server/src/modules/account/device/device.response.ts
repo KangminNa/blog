@@ -36,6 +36,7 @@ export class AuthorizationServerResponse extends BaseResponse {
         Actor.READ_ALL,
         Actor.TIDY,
         Actor.WRITE,
+        Actor.RUN,
         'offline_access',
       ],
     };

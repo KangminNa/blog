@@ -71,6 +71,12 @@ export class RequestFields {
     return value;
   }
 
+  /** 없거나 null이면 null, 있으면 범위 안의 정수 */
+  optionalInteger(name: string, min: number, max: number): number | null {
+    const value = this.source[name];
+    return value === undefined || value === null ? null : this.integer(name, min, max);
+  }
+
   /** 문자열 목록 (예: 돌려보낼 주소들, 권한들). 없으면 null */
   optionalTextList(name: string, maxItems: number, maxLength: number): readonly string[] | null {
     const value = this.source[name];
@@ -107,6 +113,14 @@ export class RequestFields {
   /** 안쪽 객체. 같은 방식으로 읽고, 틀린 필드는 `바깥.안쪽` 이름으로 함께 모인다 */
   nested(name: string): RequestFields {
     return new RequestFields(this.source[name], this.key(name), this.problems);
+  }
+
+  /** 객체 목록. 항목마다 같은 방식으로 읽고, 틀린 필드는 `바깥.번호.안쪽` 이름으로 함께 모인다. 비어 있어도 된다 */
+  nestedList(name: string, maxItems: number): readonly RequestFields[] {
+    const value = this.source[name];
+    if (!Array.isArray(value)) return this.fail(name, '목록이어야 해요', []);
+    if (value.length > maxItems) return this.fail(name, `${maxItems}개 이하여야 해요`, []);
+    return value.map((item, i) => new RequestFields(item, this.key(`${name}.${i}`), this.problems));
   }
 
   /** 모르는 키도 버리지 않는 자유 형식 객체 (도구별 추가 정보 등) */

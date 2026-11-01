@@ -12,6 +12,8 @@ import { PluginController } from './plugin/plugin.controller';
 import { PluginQuery } from './plugin/plugin.query';
 import { PluginService } from './plugin/plugin.service';
 import { PluginRegistry } from './plugin/plugin-registry';
+import { ChangeStream } from './stream/change-stream';
+import { StreamController } from './stream/stream.controller';
 import { CoreWorkers } from './worker/core-workers';
 import { OutboxWorker } from './worker/outbox-worker';
 
@@ -26,6 +28,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     { provide: SecretBox, useFactory: () => SecretBox.fromEnv(process.env) },
     SecretRotation,
     ArchiveQuery,
+    ChangeStream,
     CoreWorkers,
     OutboxWorker,
     {
@@ -42,7 +45,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     },
     { provide: APP_FILTER, useClass: DomainErrorFilter },
   ],
-  controllers: [HealthController, PluginController],
+  controllers: [HealthController, PluginController, StreamController],
   exports: [
     Database,
     SecretBox,
@@ -50,6 +53,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     PluginRegistry,
     PluginService,
     ArchiveQuery,
+    ChangeStream,
     CoreWorkers,
     OutboxWorker,
   ],

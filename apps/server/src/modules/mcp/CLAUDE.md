@@ -3,7 +3,7 @@
 ## 하는 일
 AI 도구(Claude Code, Codex 등)가 들어오는 입구. MCP 프로토콜, 도구 등록, 읽기 기록.
 도구 자체(`*.tool.ts`)는 각 모듈에 있고, 여기서는 모아서 연다. 비즈니스 규칙을 두지 않는다.
-`McpController`(`/mcp`, 기기 토큰이 없으면 401 + 인증 안내 주소)와 `McpToolbox`(각 모듈의 도구 모음: 모듈별 목록 `vault-tools.ts` · `blog-tools.ts`를 모은다, 서버 안내문 `INSTRUCTIONS`: 저장 순서).
+`McpController`(`/mcp`, 기기 토큰이나 살아 있는 작업의 작업 토큰이 없으면 401 + 인증 안내 주소. 작업 토큰은 호출마다 `TaskQuery.isLive`로 묻는다)와 `McpToolbox`(각 모듈의 도구 모음: 모듈별 목록 `vault-tools.ts` · `blog-tools.ts` · `task-tools.ts`를 모은다, 서버 안내문 `INSTRUCTIONS`: 저장 순서).
 `SkillController`(`api/skills/<이름>.zip`, 주인만): ChatGPT·Claude 앱에 올릴 스킬 zip. `SkillQuery`가 저장소의 `skills/<이름>/`에서 SKILL.md와 references만 읽는다 (scripts·agents 빼고, `{{SKILL_DIR}}`은 "이 스킬 폴더"로). 폴더는 `CAIRN_SKILLS_DIR`로 바꿀 수 있다
 도구 응답의 링크에 쓸 사이트 주소는 `McpController`가 account에서 읽어 도구에 넘긴다 (`BaseTool.handle(actor, raw, site)`).
 통신은 platform/base의 `McpEndpoint`가 한다. 인증(OAuth)과 기기는 account 모듈.
@@ -21,7 +21,7 @@ AI 도구(Claude Code, Codex 등)가 들어오는 입구. MCP 프로토콜, 도�
 없음 / 없음
 
 ## 써도 되는 모듈
-platform, account(인증 → Actor), vault, blog (각 모듈의 `index.ts`가 내보낸 도구만)
+platform, account(인증 → Actor), vault, blog, task (각 모듈의 `index.ts`가 내보낸 도구만. task는 작업 토큰 확인도)
 
 ## 지켜야 할 것
 - MCP SDK는 `platform/base` 안에서만 감싸 쓴다 (2026-10-10 결정). 이 모듈은 각 모듈의 `BaseTool`을 모아 그 입구에 등록한다

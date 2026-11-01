@@ -6,11 +6,11 @@ DB는 [docs/테이블설계.md](docs/테이블설계.md), 서버 코드 구조�
 
 ## 지금 단계
 
-M1(수집)을 마치고 8단계 계획의 1단계(콘솔 구조)를 진행 중 (MVP 기획서 11장). 저장소에는 **지금 단계에 필요한 것만** 둔다.
+8단계 계획의 1단계(콘솔 구조)와 2단계(서버 보안)를 마치고 3단계(작업·러너)를 진행 중 (MVP 기획서 11장). 저장소에는 **지금 단계에 필요한 것만** 둔다.
 쓰지 않는 패키지·폴더·설정을 미리 만들지 않는다. 필요해지는 단계에서 추가한다. 메뉴도 기능이 생길 때 더한다.
 
 ```
-apps/server/   NestJS. src/modules/<모듈>/ (platform · account · vault · blog · mcp), 지도는 modules.json
+apps/server/   NestJS. src/modules/<모듈>/ (platform · account · vault · blog · task · mcp), 지도는 modules.json
                모듈마다 CLAUDE.md에 그 모듈의 규칙이 있다
 apps/web/      Next.js (App Router). app/(blog)/ 공개 화면, app/admin/<메뉴>/ 콘솔
 db/            DB 이미지(Postgres 17 + pgvector + pg_bigm)와 SQL 마이그레이션(dbmate)

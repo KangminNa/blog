@@ -1,21 +1,22 @@
 # platform 모듈
 
 ## 하는 일
-모든 모듈이 쓰는 공통 기반. DB 연결, 기반 클래스, 오류, 요청자(Actor), 이벤트와 outbox, 서버 상태 확인.
-나중에: 파일 저장(blobs), AI 일거리 빌려주기(jobs), 알림, 임베딩 모델 목록.
+모든 모듈이 쓰는 공통 기반. DB 연결, 기반 클래스, 오류, 요청자(Actor), 이벤트와 outbox, 변경 신호(`/api/stream`), 서버 상태 확인.
+나중에: 파일 저장(blobs), 알림, 임베딩 모델 목록. AI 일거리는 task 모듈이 맡는다.
 **비즈니스 규칙을 두지 않는다.** 세션·글 같은 단어가 여기 코드에 나오면 잘못 들어온 것이다.
 
 ## 소유 데이터
-스키마 `platform`: blobs, idempotency, jobs, notifications, push_subscriptions, embedding_models, outbox
+스키마 `platform`: blobs, idempotency, notifications, push_subscriptions, embedding_models, outbox
 DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모듈의 테이블이 씀)
 
 ## 데이터 묶음
-일거리(jobs), 알림(notifications + push_subscriptions). 아직 코드 없음
+알림(notifications + push_subscriptions). 아직 코드 없음
 
 ## 공개 API (`index.ts`)
 - 기반 클래스: `BaseService` · `BaseQuery` · `BaseRepository` · `BaseEntity` · `BaseRequest`(+`RequestFields`) · `BaseResponse` · `BaseGateway` · `BaseTool`
-- `Database`, `Sql`·`Row`(라이브러리 타입 별칭), `Actor`와 `OwnerActor`·`DeviceActor`·`VisitorActor`
-- 같은 트랜잭션에 들어가는 것: `Outbox`(이벤트), `Idempotency`(같은 request_id는 한 번만)
+- `Database`, `Sql`·`Row`(라이브러리 타입 별칭), `Actor`와 `OwnerActor`·`DeviceActor`·`AgentActor`·`ApprovedActor`·`SystemActor`·`VisitorActor`
+- 같은 트랜잭션에 들어가는 것: `Outbox`(이벤트와 변경 신호), `ChangeSignal`(내용 없는 신호), `Idempotency`(같은 request_id는 한 번만)
+- `ChangeStream`: Postgres LISTEN 연결 하나로 변경 신호를 나눠 준다. SSE와 긴 폴링이 쓴다. 신호는 깨우기용이고 내용은 늘 테이블에 있다
 - `SecretRotation`: 서버 키 교체. 비밀값을 가진 모듈이 `register`로 다시 잠그는 방법을 등록
 - `CoreWorkers`: 코어 모듈의 이벤트 받기·반복 작업 등록 (`on`, `every`, `expect`)
 - `ZipFile`: 라이브러리 없이 zip 만들기 (node:zlib). 앱에 올릴 스킬 묶음, 나중에 보관 형식 내보내기

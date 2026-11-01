@@ -60,6 +60,7 @@ export class Device extends BaseEntity {
     Actor.READ_ALL,
     Actor.TIDY,
     Actor.WRITE,
+    Actor.RUN,
   ];
 
   private readonly issued: DeviceCredential[] = [];

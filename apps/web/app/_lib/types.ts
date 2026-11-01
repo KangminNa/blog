@@ -82,6 +82,7 @@ export const SCOPE_LABELS: Record<string, string> = {
   read_all: '전체 읽기',
   tidy: '정리',
   write: '초안 작성',
+  run: '작업 실행',
 };
 
 /** 세션 목록의 한 줄 (콘솔의 세션 메뉴). 기기는 id만: 이름은 기기 목록과 맞춘다 */

@@ -58,8 +58,8 @@ export class OutboxWorker implements OnApplicationShutdown {
           FOR UPDATE SKIP LOCKED)
       RETURNING o.id, o.space_id, o.topic, o.payload, o.attempts`;
     for (const row of rows) {
-      const event = DomainEvent.fromOutbox(String(row.topic), String(row.space_id), row.payload);
       try {
+        const event = DomainEvent.fromOutbox(String(row.topic), String(row.space_id), row.payload);
         // 플러그인을 켜거나 끄거나 설정을 바꾸면: 재시작 없이 다시 등록하고 일정을 다시 짠다
         if (event.name === 'platform.plugin.changed') {
           await this.registry.reload();

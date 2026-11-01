@@ -1,26 +1,43 @@
 import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
-import { Cookies, Forbidden, type HttpRequest, SystemActor } from '../../platform';
+import {
+  AgentActor,
+  Cookies,
+  Forbidden,
+  type HttpRequest,
+  SecretBox,
+  SystemActor,
+} from '../../platform';
 import { DeviceQuery } from '../device/device.query';
 import { WebSession } from '../owner/owner';
 import { OwnerQuery } from '../owner/owner.query';
 import { SpaceQuery } from '../space/space.query';
 
-// 모든 요청에서 요청자를 정한다: Bearer 토큰 → 기기(MCP), 로그인 쿠키 → 주인, 없으면 방문자.
+// 모든 요청에서 요청자를 정한다: 작업 토큰 → 에이전트(/mcp만), 그 밖의 Bearer 토큰 → 기기(MCP),
+// 로그인 쿠키 → 주인, 없으면 방문자.
 // 누구인지 정하는 것 말고 막는 일은 하나뿐이다: 로그인 쿠키로 오는 쓰기 요청의 출처 확인.
-// 그 밖의 권한은 Service 첫 줄에서 확인한다 (/mcp는 기기가 아니면 401).
+// 그 밖의 권한은 Service 첫 줄에서 확인한다 (/mcp는 기기나 살아 있는 작업이 아니면 401).
 @Injectable()
 export class ActorGuard implements CanActivate {
   private static readonly READS = new Set(['GET', 'HEAD', 'OPTIONS']);
+  private static readonly MCP = '/mcp';
 
   constructor(
     private readonly owners: OwnerQuery,
     private readonly devices: DeviceQuery,
     private readonly spaces: SpaceQuery,
+    private readonly box: SecretBox,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<HttpRequest>();
+    const request = context.switchToHttp().getRequest<HttpRequest & { path: string }>();
     const bearer = /^Bearer\s+(\S+)$/i.exec(String(request.headers.authorization ?? ''))?.[1];
+    if (bearer && AgentActor.isToken(bearer)) {
+      // 작업 토큰은 MCP 입구에서만 쓴다. 호출마다 작업을 확인하는 곳이 거기뿐이고,
+      // REST에서 write 권한으로 통하면 기기 토큰 만들기처럼 에이전트에게 주지 않은 일까지 닿는다
+      if (request.path === ActorGuard.MCP)
+        request.actor = AgentActor.open(this.box, bearer) ?? undefined;
+      return true;
+    }
     if (bearer) {
       request.actor = (await this.devices.actorFor(bearer)) ?? undefined;
       return true;

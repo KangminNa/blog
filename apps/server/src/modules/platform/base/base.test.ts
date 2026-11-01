@@ -266,6 +266,46 @@ describe('입력 읽기 (M1)', () => {
     );
   });
 
+  test('안 적어도 되는 정수: 없으면 null, 있으면 범위를 본다', () => {
+    class LimitRequest extends BaseRequest {
+      private constructor(readonly limit: number | null) {
+        super();
+      }
+      static from(raw: unknown): LimitRequest {
+        return BaseRequest.read(raw, (f) => new LimitRequest(f.optionalInteger('limit', 1, 10)));
+      }
+    }
+    assert.equal(LimitRequest.from({}).limit, null);
+    assert.equal(LimitRequest.from({ limit: null }).limit, null);
+    assert.equal(LimitRequest.from({ limit: 3 }).limit, 3);
+    assert.throws(() => LimitRequest.from({ limit: 11 }), InvalidRequest);
+  });
+
+  test('객체 목록: 비어도 되고, 틀린 칸은 몇 번째인지 알린다', () => {
+    class RowsRequest extends BaseRequest {
+      private constructor(readonly rows: readonly string[]) {
+        super();
+      }
+      static from(raw: unknown): RowsRequest {
+        return BaseRequest.read(
+          raw,
+          (f) => new RowsRequest(f.nestedList('rows', 2).map((row) => row.text('name', 5))),
+        );
+      }
+    }
+    assert.deepEqual(RowsRequest.from({ rows: [] }).rows, []);
+    assert.deepEqual(RowsRequest.from({ rows: [{ name: 'a' }, { name: 'b' }] }).rows, ['a', 'b']);
+    assert.throws(
+      () => RowsRequest.from({ rows: [{ name: 'a' }, {}] }),
+      (error: InvalidRequest) => [...error.fields.keys()].join() === 'rows.1.name',
+    );
+    assert.throws(
+      () => RowsRequest.from({ rows: [{}, {}, {}] }),
+      (error: InvalidRequest) => [...error.fields.keys()].join() === 'rows',
+    );
+    assert.throws(() => RowsRequest.from({}), InvalidRequest);
+  });
+
   test('보고 고친 버전이 다르면 Conflict', () => {
     const sample = Sample.open();
     sample.assertVersion(1);
