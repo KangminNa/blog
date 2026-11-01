@@ -6,6 +6,136 @@ const line = (value: object) => JSON.stringify(value);
 const assistant = (id: string, usage: object, ...content: object[]) =>
   line({ type: 'assistant', message: { id, content, usage } });
 
+/** 실제 실행에서 받은 줄 (2026-11-01) */
+const RATE_LIMIT_LINE =
+  '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1793536800,"rateLimitType":"five_hour","overageStatus":"rejected","overageDisabledReason":"org_level_disabled","isUsingOverage":false,"unifiedWindows":{"five_hour":{"utilization":0.72,"resetsAt":1793536800},"seven_day":{"utilization":0.19,"resetsAt":1793919600}}}}';
+
+const rateLimit = (info: object) => line({ type: 'rate_limit_event', rate_limit_info: info });
+const planOf = (stream: ClaudeStream) => JSON.parse(JSON.stringify(stream.takePlanUsage()));
+
+describe('구독 사용률 읽기', () => {
+  test('실제 줄의 두 창을 읽는다. 기록은 남기지 않는다', () => {
+    const stream = new ClaudeStream();
+    assert.deepEqual(stream.read(RATE_LIMIT_LINE), []);
+    assert.deepEqual(planOf(stream), [
+      {
+        window: 'five_hour',
+        percent: 72,
+        resets_at: '2026-11-01T12:40:00.000Z',
+        status: 'allowed',
+      },
+      {
+        window: 'seven_day',
+        percent: 19,
+        resets_at: '2026-11-05T23:00:00.000Z',
+        status: 'allowed',
+      },
+    ]);
+  });
+
+  test('꺼낸 뒤에는 비어 있고, 여러 번 오면 가장 최근 값만 남는다', () => {
+    const stream = new ClaudeStream();
+    assert.deepEqual(stream.takePlanUsage(), []);
+    stream.read(RATE_LIMIT_LINE);
+    stream.read(
+      rateLimit({
+        status: 'allowed_warning',
+        unifiedWindows: { five_hour: { utilization: 0.91, resetsAt: 1793536800 } },
+      }),
+    );
+    const plan = planOf(stream);
+    assert.equal(plan.length, 1);
+    assert.equal(plan[0].percent, 91);
+    assert.equal(plan[0].status, 'allowed_warning');
+    assert.deepEqual(stream.takePlanUsage(), []);
+  });
+
+  test('초과 사용은 100을 넘는다', () => {
+    const stream = new ClaudeStream();
+    stream.read(
+      rateLimit({
+        status: 'rejected',
+        unifiedWindows: { five_hour: { utilization: 1.04, resetsAt: 1793536800 } },
+      }),
+    );
+    assert.equal(planOf(stream)[0].percent, 104);
+  });
+
+  test('모르는 창은 넘어간다', () => {
+    const stream = new ClaudeStream();
+    stream.read(
+      rateLimit({
+        status: 'allowed',
+        unifiedWindows: {
+          one_hour: { utilization: 0.5, resetsAt: 1793536800 },
+          five_hour: { utilization: 0.1, resetsAt: 1793536800 },
+        },
+      }),
+    );
+    assert.deepEqual(
+      planOf(stream).map((p: { window: string }) => p.window),
+      ['five_hour'],
+    );
+  });
+
+  test('상태를 모르면 사용률만 보낸다', () => {
+    const stream = new ClaudeStream();
+    for (const status of [undefined, 'allowed_new', 7]) {
+      stream.read(
+        rateLimit({
+          status,
+          unifiedWindows: { five_hour: { utilization: 0.1, resetsAt: 1793536800 } },
+        }),
+      );
+      assert.deepEqual(planOf(stream), [
+        { window: 'five_hour', percent: 10, resets_at: '2026-11-01T12:40:00.000Z' },
+      ]);
+    }
+  });
+
+  test('깨진 줄은 넘어가고 앞의 값을 지킨다', () => {
+    const stream = new ClaudeStream();
+    stream.read(RATE_LIMIT_LINE);
+    const broken: readonly string[] = [
+      line({ type: 'rate_limit_event' }),
+      line({ type: 'rate_limit_event', rate_limit_info: null }),
+      line({ type: 'rate_limit_event', rate_limit_info: [] }),
+      rateLimit({ status: 'allowed' }),
+      rateLimit({ status: 'allowed', resetsAt: 1793536800, rateLimitType: 'five_hour' }),
+      rateLimit({ status: 'allowed', unifiedWindows: 'many' }),
+      rateLimit({ status: 'allowed', unifiedWindows: { five_hour: null } }),
+      rateLimit({ status: 'allowed', unifiedWindows: { five_hour: {} } }),
+      rateLimit({ unifiedWindows: { five_hour: { utilization: 0.5 } } }),
+      rateLimit({ unifiedWindows: { five_hour: { resetsAt: 1793536800 } } }),
+      rateLimit({ unifiedWindows: { five_hour: { utilization: '0.5', resetsAt: 1793536800 } } }),
+      rateLimit({ unifiedWindows: { five_hour: { utilization: 0.5, resetsAt: '내일' } } }),
+      rateLimit({ unifiedWindows: { five_hour: { utilization: -0.5, resetsAt: 1793536800 } } }),
+      rateLimit({ unifiedWindows: { five_hour: { utilization: 11, resetsAt: 1793536800 } } }),
+      rateLimit({ unifiedWindows: { five_hour: { utilization: 0.5, resetsAt: 0 } } }),
+      rateLimit({ unifiedWindows: { five_hour: { utilization: 0.5, resetsAt: 1e20 } } }),
+      '{"type":"rate_limit_event","rate_limit_info":{"status":"all',
+    ];
+    for (const text of broken) assert.deepEqual(stream.read(text), [], text);
+    assert.equal(planOf(stream)[0].percent, 72);
+  });
+
+  test('창 하나가 깨져도 나머지 창은 쓴다', () => {
+    const stream = new ClaudeStream();
+    stream.read(
+      rateLimit({
+        unifiedWindows: {
+          five_hour: { utilization: 'x', resetsAt: 1793536800 },
+          seven_day: { utilization: 0.19, resetsAt: 1793919600 },
+        },
+      }),
+    );
+    assert.deepEqual(
+      planOf(stream).map((p: { window: string }) => p.window),
+      ['seven_day'],
+    );
+  });
+});
+
 describe('Claude 출력 읽기', () => {
   test('읽는 도구는 read, 나머지는 write. 입력 내용은 남기지 않는다', () => {
     const stream = new ClaudeStream();

@@ -18,6 +18,7 @@ export class CairnServer {
       task_id: taskId,
       events: batch.events,
       ...(batch.requestId === null ? {} : { request_id: batch.requestId }),
+      ...(batch.planUsage.length === 0 ? {} : { plan_usage: batch.planUsage }),
     });
     return ProgressState.from(body);
   }

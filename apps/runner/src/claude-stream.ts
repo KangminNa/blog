@@ -1,11 +1,12 @@
 import { Json } from './json';
-import { RunEvent } from './progress';
+import { PlanWindow, RunEvent } from './progress';
 
 // claude -p --output-format stream-json의 줄을 실행 기록으로 바꾼다. 한 줄 = JSON 객체 하나.
 //   system(init)  →  붙은 MCP 서버를 본다
 //   assistant     →  tool_use마다 read·write. 글은 마지막 답으로 기억한다
 //   user          →  실패한 tool_result는 error
 //   result        →  마지막 답과 남은 토큰. 실패면 error
+//   rate_limit_event → 구독 사용률. 기록이 아니라 가장 최근 값만 기억한다
 //
 // 토큰: input + cache_creation + output. cache_read는 값이 매우 싸고 턴마다 다시 세어져 한도에 넣지 않는다.
 // assistant 줄은 내용 블록마다 하나씩 나오고 같은 message.id에 같은 usage를 싣는다. 그래서 id별로 늘어난 만큼만 센다.
@@ -36,6 +37,7 @@ export class ClaudeStream {
   private resultText: string | null = null;
   private failureText: string | null = null;
   private strayServers: readonly string[] = [];
+  private planWindows: readonly PlanWindow[] = [];
 
   /** 마지막 답 */
   get finalText(): string {
@@ -52,6 +54,13 @@ export class ClaudeStream {
     return this.strayServers;
   }
 
+  /** 가장 최근에 본 구독 사용률을 꺼낸다. 새로 본 것이 없으면 비어 있다 */
+  takePlanUsage(): readonly PlanWindow[] {
+    const windows = this.planWindows;
+    this.planWindows = [];
+    return windows;
+  }
+
   /** 한 줄을 읽는다. JSON이 아니거나 모르는 줄은 넘어간다 */
   read(line: string): readonly RunEvent[] {
     const event = Json.parse(line);
@@ -65,6 +74,8 @@ export class ClaudeStream {
         return this.user(event);
       case 'result':
         return this.result(event);
+      case 'rate_limit_event':
+        return this.rateLimit(event);
       default:
         return [];
     }
@@ -127,6 +138,13 @@ export class ClaudeStream {
     }
     this.resultText = text || this.lastText;
     return [new RunEvent(RunEvent.RESULT, this.resultText, this.takeOwed())];
+  }
+
+  /** 쓸 수 있는 창이 하나도 없으면 앞의 값을 지킨다 */
+  private rateLimit(event: Json): readonly RunEvent[] {
+    const windows = PlanWindow.listFrom(event.child('rate_limit_info'));
+    if (windows.length > 0) this.planWindows = windows;
+    return [];
   }
 
   /** assistant 줄의 usage에서 이 메시지가 늘어난 만큼만 센다 */

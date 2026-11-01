@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { CairnServer } from './cairn-server';
+import { ClaudeStream } from './claude-stream';
 import { McpClient, ServerUnreachable } from './mcp-client';
-import { type ProgressBatch, ProgressState, RunEvent, RunResult } from './progress';
+import {
+  type PlanWindow,
+  type ProgressBatch,
+  ProgressState,
+  RunEvent,
+  RunResult,
+} from './progress';
 import { ProgressReporter } from './progress-reporter';
 import { Redactor } from './redactor';
 
@@ -26,6 +33,23 @@ const reporterOn = (server: CairnServer, redactor = new Redactor([])) =>
   new ProgressReporter(server, 'task', redactor, new Date(Date.now() + 60_000));
 
 const read = (body: string, tokens = 0) => new RunEvent(RunEvent.READ, body, tokens);
+
+/** rate_limit_event 한 줄에서 읽은 창들 */
+function plan(percent: number): readonly PlanWindow[] {
+  const stream = new ClaudeStream();
+  stream.read(
+    JSON.stringify({
+      type: 'rate_limit_event',
+      rate_limit_info: {
+        status: 'allowed',
+        unifiedWindows: { five_hour: { utilization: percent / 100, resetsAt: 1793536800 } },
+      },
+    }),
+  );
+  return stream.takePlanUsage();
+}
+
+const percents = (batch: ProgressBatch | undefined) => batch?.planUsage.map((p) => p.percent);
 
 describe('진행 보고', () => {
   test('기록이 없으면 빈 보고를 보낸다. 빈 보고에는 request_id가 없다', async () => {
@@ -109,6 +133,66 @@ describe('진행 보고', () => {
     server.lease = null;
     await reporter.send();
     assert.equal(reporter.leaseOver, false);
+  });
+});
+
+describe('구독 사용률 보내기', () => {
+  test('기록이 없는 빈 보고에도 실린다. request_id는 그대로 없다', async () => {
+    const server = new RecordingServer();
+    const reporter = reporterOn(server);
+    reporter.notePlan(plan(72));
+    assert.equal(reporter.idle, false);
+    await reporter.send();
+    assert.deepEqual(percents(server.batches[0]), [72]);
+    assert.equal(server.batches[0]?.requestId, null);
+    assert.equal(reporter.idle, true);
+  });
+
+  test('한 번만 보내고, 아직 보내지 않았으면 가장 최근 값만 보낸다', async () => {
+    const server = new RecordingServer();
+    const reporter = reporterOn(server);
+    reporter.notePlan(plan(10));
+    reporter.notePlan(plan(20));
+    reporter.notePlan([]);
+    await reporter.send();
+    await reporter.send();
+    assert.deepEqual(percents(server.batches[0]), [20]);
+    assert.deepEqual(percents(server.batches[1]), []);
+  });
+
+  test('응답을 잃은 묶음은 같은 값으로 다시 보내고, 새 값은 다음 묶음으로 간다', async () => {
+    const server = new RecordingServer(1);
+    const reporter = reporterOn(server);
+    reporter.add([read('첫째', 5)]);
+    reporter.notePlan(plan(10));
+    await assert.rejects(reporter.send(), ServerUnreachable);
+    reporter.notePlan(plan(20));
+    await reporter.send();
+    await reporter.send();
+    const [first, again, next] = server.batches;
+    assert.equal(again?.requestId, first?.requestId);
+    assert.deepEqual(percents(again), [10]);
+    assert.deepEqual(percents(next), [20]);
+  });
+
+  test('기록을 나누어 보내도 앞 묶음에 한 번만 실린다', async () => {
+    const server = new RecordingServer();
+    const reporter = reporterOn(server);
+    reporter.add(Array.from({ length: 150 }, (_, i) => read(String(i))));
+    reporter.notePlan(plan(10));
+    while (!reporter.idle) await reporter.send();
+    assert.deepEqual(server.batches.map(percents), [[10], []]);
+  });
+
+  test('서버가 받는 모양으로 나간다', () => {
+    assert.deepEqual(JSON.parse(JSON.stringify(plan(72))), [
+      {
+        window: 'five_hour',
+        percent: 72,
+        resets_at: '2026-11-01T12:40:00.000Z',
+        status: 'allowed',
+      },
+    ]);
   });
 });
 
