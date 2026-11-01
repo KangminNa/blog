@@ -66,6 +66,7 @@
 |---|---|---|---|
 | `upload` | `check_session`, `save_session` | AI 도구 | 있음 |
 | `run` | `next_jobs`, `report_progress`, `submit_result`, `release_job` | 러너 | 3 |
+| `run` | `ai_login { tool }` → `{ token, expires_at }` | 서버 러너 | 4 |
 | 작업 토큰 | `request_approval` | 에이전트 | 3 |
 | `write` | `blog_get_post`, `blog_save_draft`, `basket_get` | 에이전트 | 5 |
 | `read_*` | `search_sessions`, `get_session` | AI 도구, 에이전트 | 1라운드 |
@@ -80,6 +81,8 @@ MCP 입력과 응답은 snake_case다.
 - `request_approval { request_id, action, target_kind, target_id, target_version, note? }`. `request_id`는 작업마다 따로 센다. 동작은 `blog.post.publish`, `sns.post.send`, `task.agent.raise_limit`로 시작한다.
 - `blog_get_post { post_id }`는 `{ post_id, title, body_md, status, version, tags }`, `blog_save_draft { request_id, post_id?, base_version?, title, body_md, tags? }`는 `{ post_id, version, status, url }`를 돌려준다. AI는 임시 글만 쓰고 고친다. `post_id`가 있으면 `base_version`이 꼭 있어야 한다: 사람이 그사이 고친 내용을 AI가 모르고 덮지 않게. `request_id`는 작업 토큰이면 작업마다 따로 센다. `basket_get {}`은 `{ items }`를 돌려준다.
 - `submit_changes { request_id, message, ops: [{ op, target_id?, base_version?, payload }] }`는 vault 소유다. 변경 묶음을 쓰고 `{ change_set_id, ops: [{ seq, verdict, status, reason }] }`로 판정을 바로 돌려준다. `ops`의 대상은 변경마다 다르다: `wiki.create { title, body_md, slug? }`, `wiki.revise { target_id, base_version, title?, body_md }`, `session.assign { target_id, base_version, wiki_id }`, `edge.add`·`edge.remove { src, dst, kind }`, `category.create { name, slug?, color?, description? }`, `category.assign { target_id, base_version, category_id }`. 앞 변경이 만든 것은 `@번호`로 가리킨다 (토큰 하나에 제출 한 번이라 만들고 잇는 일을 한 묶음에 넣는다). 작업은 이벤트가 아니라 러너의 `submit_result`로 끝난다. 끝내는 길이 하나라 둘이 겹치지 않고, 러너가 도중에 죽어도 `change_sets.job_id`가 유일해서 같은 묶음은 한 번만 적용된다.
+- `ai_login`은 콘솔에 넣은 AI 토큰을 러너에게 건넨다. 러너는 메모리에만 두고 AI CLI를 띄울 때 환경 변수로만 넘긴다. `POST /api/ai/claude/test`는 `ai_test` 작업을 만들어 러너가 실행한다 (서버 본체에는 AI가 없다).
+- 결재한 공개의 결과는 `blog.post.published`와 `blog.post.publish_failed`에 `approvalId`, `outcome`을 실어 알린다.
 - 도구 입력 모양을 바꾸면 `skills/`를 함께 고친다.
 
 ---
