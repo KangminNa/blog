@@ -42,8 +42,12 @@
 | 결재 | `GET /api/approvals`, `GET /api/approvals/:id`, `POST /api/approvals/:id/decide { version, decision: approve·revise·reject, note? }` | 3 |
 | 에이전트 | `GET·POST /api/agents`, `PATCH /api/agents/:id`, `POST /api/agents/:id/pause`, `POST /api/agents/:id/resume` | 3 |
 | AI | `GET /api/ai`, `PUT /api/ai/claude/token`, `POST /api/ai/:tool/test`, `POST /api/ai/codex/login` | 3~4 |
-| 소재 | `GET·POST /api/basket/items`, `DELETE /api/basket/items/:id` | 5 |
-| 지식 | `GET /api/wikis`, `GET /api/graph`, `GET /api/graph/public` | 6 |
+| 소재 | `GET·POST /api/basket/items { requestId, kind, refId?, url?, title?, note? }`, `DELETE /api/basket/items/:id` | 5 |
+| 사진 | `POST /api/posts/:id/assets` (이미지 본문 그대로, 10MB 이하), `GET /api/files/:hash` (공개 글의 사진은 누구나, 나머지는 주인만) | 5 |
+| RSS | `/rss.xml` (공개 글 20개, 웹이 서버 API로 만든다) | 5 |
+| 지식 | `GET·POST /api/wikis`(`?q=&category=&cursor=`), `GET·PUT /api/wikis/:id`, `GET·POST /api/categories`, `PATCH·DELETE /api/categories/:id`, `GET /api/graph`, `GET /api/graph/public` | 6 |
+| 변경 묶음 | `GET /api/changes?status=waiting&cursor=`, `POST /api/changes/:id/ops/:seq/decide { version, decision }`, `POST /api/changes/:id/revert { version }` | 6 |
+| 백업 | `GET /api/archive.zip` (주인만, 보관 형식) | 6 |
 | 스케줄 | `GET·POST /api/schedules`, `PATCH /api/schedules/:id`, `POST /api/schedules/:id/run` | 7 |
 
 결재는 작업에 묶이지 않는 경우(한도 변경 등)가 있어 작업 아래에 두지 않는다. 결재 메뉴는 위키 제안도 함께 보여 주되, 데이터는 각 모듈이 따로 가진다.
@@ -61,9 +65,9 @@
 | `upload` | `check_session`, `save_session` | AI 도구 | 있음 |
 | `run` | `next_jobs`, `report_progress`, `submit_result`, `release_job` | 러너 | 3 |
 | 작업 토큰 | `request_approval` | 에이전트 | 3 |
-| `write` | `blog_get_post`, `blog_save_draft` | 에이전트 | 5 |
+| `write` | `blog_get_post`, `blog_save_draft`, `basket_get` | 에이전트 | 5 |
 | `read_*` | `search_sessions`, `get_session` | AI 도구, 에이전트 | 1라운드 |
-| `read_*` | `neighbors` | AI 도구, 에이전트 | 6 |
+| `read_*` | `search_wikis`, `get_wiki`, `neighbors` | AI 도구, 에이전트 | 6 |
 | `tidy` | `submit_changes` | 에이전트 | 6 |
 
 MCP 입력과 응답은 snake_case다.
@@ -72,7 +76,8 @@ MCP 입력과 응답은 snake_case다.
 - `report_progress { task_id, events: [{ kind, body?, tokens? }], request_id? }`는 기록을 모아 남기고 임대를 연장한다. 기록이 없으면 `events`를 비워 부른다 (`heartbeat_jobs`는 두지 않는다). 응답 `{ status, cancelled, paused, lease_until }`의 `cancelled`로 러너가 작업을 멈춘다. `request_id`를 주면 같은 보고의 토큰을 두 번 세지 않는다.
 - `submit_result { task_id, request_id, status: done·failed, result?, error? }`, `release_job { task_id, reason }`. 응답은 `{ task_id, status }`. 돌려준 이유는 실행 기록에 남는다.
 - `request_approval { request_id, action, target_kind, target_id, target_version, note? }`. `request_id`는 작업마다 따로 센다. 동작은 `blog.post.publish`, `sns.post.send`, `task.agent.raise_limit`로 시작한다.
-- `submit_changes`는 vault 소유다. 변경 묶음을 쓰고 판정을 바로 돌려준 뒤 이벤트로 작업을 끝낸다.
+- `blog_get_post { post_id }`는 `{ post_id, title, body_md, status, version, tags }`, `blog_save_draft { request_id, post_id?, base_version?, title, body_md, tags? }`는 `{ post_id, version, status, url }`를 돌려준다. AI는 임시 글만 쓰고 고친다. `basket_get {}`은 `{ items }`를 돌려준다.
+- `submit_changes { request_id, message, ops: [{ op, target_id?, base_version?, payload }] }`는 vault 소유다. 변경 묶음을 쓰고 `{ change_set_id, ops: [{ seq, verdict, status, reason }] }`로 판정을 바로 돌려준다. 작업은 이벤트가 아니라 러너의 `submit_result`로 끝난다. 끝내는 길이 하나라 둘이 겹치지 않고, 러너가 도중에 죽어도 `change_sets.job_id`가 유일해서 같은 묶음은 한 번만 적용된다.
 - 도구 입력 모양을 바꾸면 `skills/`를 함께 고친다.
 
 ---
