@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseQuery, type Row } from '../../platform';
-import { TidyBacklogPageView, TidySessionView, TidySettingsView } from './tidy.view';
+import { TidySessionView, TidySettingsView } from './tidy.view';
 
 // 세션 정리 읽기: 설정(주인), 정리를 맡길 세션. 자동 정리는 일꾼이 SystemActor로 읽는다.
 @Injectable()
@@ -27,19 +27,32 @@ export class TidyQuery extends BaseQuery {
     return row ? TidyQuery.view(row) : null;
   }
 
-  /** 대표 wiki가 없는 세션. 오래된 순(UUIDv7)으로 한 묶음과 전체 수 */
-  async backlog(actor: Actor): Promise<TidyBacklogPageView> {
+  /** 이번에 맡길 세션. 오래된 순(UUIDv7)으로 한 묶음 */
+  async backlog(actor: Actor): Promise<readonly TidySessionView[]> {
     actor.assertOwner();
     const rows = await this.sql`
-      SELECT s.node_id, s.head_title, s.revision_count, s.version, count(*) OVER () AS total
+      SELECT s.node_id, s.head_title, s.revision_count, s.version
       FROM vault.sessions s JOIN vault.nodes n ON n.id = s.node_id
-      WHERE s.space_id = ${actor.spaceId} AND s.wiki_id IS NULL AND n.deleted_at IS NULL
+      WHERE ${this.waiting(actor)}
       ORDER BY s.node_id
       LIMIT ${TidyQuery.BACKLOG_BATCH}`;
-    return new TidyBacklogPageView(
-      rows.map((r) => TidyQuery.view(r)),
-      Number(rows[0]?.total ?? 0),
-    );
+    return rows.map((r) => TidyQuery.view(r));
+  }
+
+  /** 아직 맡기지 않은 세션 수 */
+  async remaining(actor: Actor): Promise<number> {
+    actor.assertOwner();
+    const [row] = await this.sql`
+      SELECT count(*) AS total
+      FROM vault.sessions s JOIN vault.nodes n ON n.id = s.node_id
+      WHERE ${this.waiting(actor)}`;
+    return Number(row?.total ?? 0);
+  }
+
+  /** 대표 wiki가 없고, 지금 판의 정리를 아직 요청하지 않은 세션. 요청한 뒤에 실패한 세션은 새 판이 쌓여야 돌아온다 */
+  private waiting(actor: Actor) {
+    return this.sql`s.space_id = ${actor.spaceId} AND s.wiki_id IS NULL AND n.deleted_at IS NULL
+      AND s.tidy_requested_seq < s.revision_count`;
   }
 
   private static view(r: Row): TidySessionView {

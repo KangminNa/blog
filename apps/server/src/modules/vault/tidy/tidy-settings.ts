@@ -3,7 +3,7 @@ import type { TidySessionView } from './tidy.view';
 
 // 공간 하나의 세션 정리 설정. 행이 없으면 꺼짐이다 (저장마다 주인의 구독 토큰을 쓴다).
 // 정리 일을 요청하는 쪽도 이 객체다: vault는 task를 모르므로 일 요청 이벤트(outbox)로 맡긴다.
-// 같은 판의 요청은 requestId가 같아 몇 번을 보내도 작업은 하나다.
+// 같은 판의 요청은 requestId가 같아 몇 번을 보내도 작업은 하나다. 요청한 판은 TidyService가 세션에 적는다.
 export class TidySettings extends TrackedEntity {
   /** task 모듈이 받는 일 요청. 러너는 kind로 cairn-tidy 스킬을 고른다 */
   private static readonly REQUESTED = 'task.task.requested';

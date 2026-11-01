@@ -224,6 +224,32 @@ describe('쌓인 세션 정리', () => {
     for (const id of ids.slice(20)) assert.equal((await tidyTasks(id)).length, 0);
   });
 
+  test('다시 누르면 다음 묶음으로 넘어가고 남은 수가 맞다', async () => {
+    const ids: unknown[] = [];
+    for (let i = 0; i < 23; i++) ids.push((await save(`next-${i}`, `일 ${i}`)).session_id);
+    await drain();
+
+    assert.deepEqual(ok(await backlog()), { requested: 20, remaining: 3 });
+    assert.deepEqual(ok(await backlog()), { requested: 3, remaining: 0 });
+    assert.deepEqual(ok(await backlog()), { requested: 0, remaining: 0 });
+    await drain();
+    for (const id of ids) assert.equal((await tidyTasks(id)).length, 1);
+  });
+
+  test('요청해도 세션의 version은 그대로고 요청한 판이 적힌다', async () => {
+    const { session_id: id } = await save('version', '한 일');
+    const read = () =>
+      db.sql`SELECT version, tidy_requested_seq FROM vault.sessions WHERE node_id = ${String(id)}`;
+    const [before] = await read();
+    assert.equal(before?.tidy_requested_seq, 0);
+
+    ok(await backlog());
+
+    const [now] = await read();
+    assert.equal(now?.version, before?.version);
+    assert.equal(now?.tidy_requested_seq, 1);
+  });
+
   test('다시 눌러도 작업은 늘지 않는다', async () => {
     const { session_id: id } = await save('twice', '한 일');
     await drain();
@@ -237,9 +263,22 @@ describe('쌓인 세션 정리', () => {
     await turn(true);
     const { session_id: id } = await save('auto', '한 일');
     await drain();
-    ok(await backlog());
+    assert.deepEqual(ok(await backlog()), { requested: 0, remaining: 0 });
     await drain();
     assert.equal((await tidyTasks(id)).length, 1);
+  });
+
+  test('자동 정리는 켜 있을 때만 요청한 판을 적는다', async () => {
+    const { session_id: id } = await save('off-then-on', '첫 판');
+    await drain();
+    assert.deepEqual(ok(await backlog()), { requested: 1, remaining: 0 }, '꺼져 있으면 남아 있다');
+    await drain();
+
+    await turn(true);
+    await save('off-then-on', '둘째 판');
+    await drain();
+    assert.equal((await tidyTasks(id)).length, 2);
+    assert.deepEqual(ok(await backlog()), { requested: 0, remaining: 0 });
   });
 
   test('대표 wiki가 있는 세션은 빠지고 없으면 0이다', async () => {
@@ -271,6 +310,39 @@ describe('가짜 러너', () => {
     );
 
   const nextJobs = async (): Promise<Json[]> => (await tool(runner, 'next_jobs')).jobs as Json[];
+
+  test('실패한 세션은 뒤를 막지 않고, 새 판이 오면 다시 요청한다', async () => {
+    await newAgent(['read_all', 'tidy']);
+    const sources = new Map<unknown, string>();
+    for (let i = 0; i < 21; i++) {
+      const source = `failing-${i}`;
+      sources.set((await save(source, `일 ${i}`)).session_id, source);
+    }
+    await drain();
+
+    assert.deepEqual(ok(await backlog()), { requested: 20, remaining: 1 });
+    await drain();
+    const [job] = await nextJobs();
+    const task = job?.task as Json;
+    const failing = (job?.target as Json | undefined)?.id;
+    await tool(runner, 'submit_result', {
+      task_id: task.id,
+      request_id: randomUUID(),
+      status: 'failed',
+      error: '정리하지 못했어요',
+    });
+    assert.equal(ok(await api.get(`/api/tasks/${task.id}`, owner)).status, 'failed');
+
+    assert.deepEqual(ok(await backlog()), { requested: 1, remaining: 0 }, '다음 세션으로 넘어간다');
+    assert.deepEqual(ok(await backlog()), { requested: 0, remaining: 0 });
+    await drain();
+    assert.equal((await tidyTasks(failing)).length, 0, '같은 판은 다시 요청하지 않는다');
+
+    await save(String(sources.get(failing)), '둘째 판');
+    assert.deepEqual(ok(await backlog()), { requested: 1, remaining: 0 });
+    await drain();
+    assert.equal((await tidyTasks(failing)).length, 1, '새 판이 다시 시도다');
+  });
 
   test('tidy가 없는 에이전트뿐이면 작업은 대기열에 남는다', async () => {
     await newAgent(['read_all']);

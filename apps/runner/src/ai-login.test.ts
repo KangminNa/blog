@@ -91,6 +91,42 @@ describe('AI 토큰 고르기', () => {
   });
 });
 
+describe('일을 빌리기 전에', () => {
+  test('환경 변수가 있으면 서버에 묻지 않는다', async () => {
+    const server = new FakeServer(() => 'console-token');
+    assert.equal(await new AiLogins(server, 'env-token').shortage(), null);
+    assert.deepEqual(server.asked, []);
+  });
+
+  test('콘솔 토큰이 있으면 null, 값은 돌려주지 않는다', async () => {
+    const server = new FakeServer(() => 'console-token');
+    assert.equal(await new AiLogins(server, null).shortage(), null);
+    assert.deepEqual(server.asked, ['claude']);
+  });
+
+  test('없으면 서버가 말한 이유, 빈 답도 없는 것이다', async () => {
+    const refused = new FakeServer(() => {
+      throw new ToolRefused('rule_violation', '만료된 토큰이에요');
+    });
+    assert.equal(await new AiLogins(refused, null).shortage(), '만료된 토큰이에요');
+    assert.ok(await new AiLogins(new FakeServer(() => ''), null).shortage());
+  });
+
+  test('서버에 닿지 못한 것과 사람이 고쳐야 하는 오류는 던진다', async () => {
+    const failing = (error: Error) =>
+      new AiLogins(
+        new FakeServer(() => {
+          throw error;
+        }),
+        null,
+      ).shortage();
+
+    await assert.rejects(failing(new ServerUnreachable('닿지 못했어요')), ServerUnreachable);
+    await assert.rejects(failing(new AccessDenied('기기 토큰이 맞지 않아요')), AccessDenied);
+    await assert.rejects(failing(new ToolRefused('forbidden', '권한 없음')), ToolRefused);
+  });
+});
+
 describe('연결 확인 일', () => {
   test('에이전트도 run_token도 없이 읽고, 도구는 payload에서 찾는다', () => {
     assert.equal(aiTest.isAiTest, true);

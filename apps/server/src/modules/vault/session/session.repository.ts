@@ -62,6 +62,18 @@ export class SessionRepository extends BaseRepository<Session> {
     );
   }
 
+  /**
+   * 이 판까지 정리를 요청했다고 적는다. 이미 이 판이나 더 뒤의 판을 요청했으면 false.
+   * 세션의 내용이 아니라 요청 기록이라 version을 올리지 않는다: 올리면 정리 일이 들고 간 baseVersion이
+   * 어긋나 `session.assign`이 검토로 빠진다.
+   */
+  async noteTidyRequested(id: string, seq: number): Promise<boolean> {
+    const update = await this.sql`
+      UPDATE vault.sessions SET tidy_requested_seq = ${seq}
+      WHERE node_id = ${id} AND tidy_requested_seq < ${seq}`;
+    return update.count > 0;
+  }
+
   async save(session: Session): Promise<void> {
     const revision = session.addedRevision;
     const note = revision?.note;

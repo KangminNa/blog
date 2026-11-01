@@ -549,21 +549,19 @@ describe('콘솔에 넣은 토큰으로 일한다', () => {
     assert.equal(await runner.stop(), 0);
   });
 
-  test('토큰이 없으면 실패로 끝내지 않고 돌려주며 쉬었다가, 넣으면 그 토큰으로 일한다', async () => {
+  test('토큰이 없으면 일을 빌리지 않고 기다렸다가, 넣으면 그 토큰으로 일한다', async () => {
     const agent = await newAgent();
     const spy = new Spy();
     const created = await newTask(agent, spy.mark);
 
-    await until('일을 돌려줌', async () => {
-      const task = await getTask(created.id);
-      return task.status === 'queued' && events(task).length > 0 ? task : null;
-    });
-    await new Promise((done) => setTimeout(done, 2_000));
+    await runner.logged('AI 토큰이 없어 일을 빌리지 않아요');
+    await new Promise((done) => setTimeout(done, 4_000)); // 토큰을 몇 번 더 물어볼 시간
     const held = await getTask(created.id);
     assert.equal(held.status, 'queued', '실패로 끝내지 않는다');
     assert.equal(held.attempts, 0);
-    assert.equal(events(held).length, 1, '빌리고 돌려주기를 되풀이하지 않는다');
-    assert.match(String(events(held)[0]?.body), /^돌려줌: .*AI 메뉴/);
+    assert.deepEqual(events(held), [], '오류 기록이 쌓이지 않는다');
+    assert.equal(runner.logs.split('AI 토큰이 없어').length - 1, 1, '로그는 한 번만');
+    assert.match(runner.logs, /AI 토큰이 없어 일을 빌리지 않아요: .*AI 메뉴/);
 
     const token = `sk-ant-oat01-${randomUUID()}`;
     await saveToken(token);
@@ -572,6 +570,11 @@ describe('콘솔에 넣은 토큰으로 일한다', () => {
     assert.equal((seen.env as Json).CLAUDE_CODE_OAUTH_TOKEN, token);
     const task = await taskIn(created.id, 'done');
     await runner.logged(`${created.id}: 끝났어요`);
+    assert.ok(runner.logs.includes('AI 토큰을 받아 일을 빌려요'));
+    assert.equal(
+      events(task).some((e) => String(e.body).startsWith('돌려줌')),
+      false,
+    );
     const record = `${JSON.stringify(task)}\n${runner.logs}`;
     assert.equal(record.includes(token), false);
     assert.ok(JSON.stringify(task).includes('[지움: 토큰]'), '가짜 CLI가 뱉은 토큰을 지웠다');
@@ -605,6 +608,38 @@ describe('콘솔에 넣은 토큰으로 일한다', () => {
     const record = `${JSON.stringify(task)}\n${JSON.stringify(state)}\n${runner.logs}`;
     assert.equal(record.includes(token), false);
     assert.equal(record.includes('[지움: 토큰]'), true);
+  });
+});
+
+// 콘솔에 토큰을 지우는 길이 없어 만료시킨다. 러너가 꺼진 사이 맡긴 확인이 대기열에 남는 경우다.
+describe('기다리는 연결 확인의 토큰이 사라진다', () => {
+  test('토큰이 없는 동안 대기열에 남고, 돌아오면 다른 일보다 먼저 돈다', async () => {
+    const token = `sk-ant-oat01-${randomUUID()}`;
+    ok(await api.request('PUT', '/api/ai/claude/token', owner, { token }));
+    const test = ok(await api.request('POST', '/api/ai/claude/test', owner));
+    await db.sql`UPDATE task.ai_logins SET expires_at = now() - interval '1 second'`;
+    const other = await newTask(await newAgent(), '');
+
+    const runner = RunnerProcess.start(api.baseUrl, { CLAUDE_CODE_OAUTH_TOKEN: '' });
+    await runner.logged('AI 토큰이 없어 일을 빌리지 않아요: 만료된 토큰');
+    await new Promise((done) => setTimeout(done, 1_500));
+    const held = await getTask(test.taskId);
+    assert.equal(held.status, 'queued');
+    assert.deepEqual(events(held), []);
+    assert.equal((await getTask(other.id)).status, 'queued');
+
+    ok(await api.request('PUT', '/api/ai/claude/token', owner, { token }));
+
+    await taskIn(test.taskId, 'done');
+    await taskIn(other.id, 'done');
+    await runner.logged(`${other.id}: 끝났어요`);
+    const logs = runner.logs;
+    assert.ok(
+      logs.indexOf(`${test.taskId}: 일을 맡았어요`) < logs.indexOf(`${other.id}: 일을 맡았어요`),
+    );
+    runner.signal('SIGTERM');
+    await newTask(await newAgent(), ''); // 긴 폴링을 깨워 바로 끝나게 한다
+    assert.equal(await runner.exited(), 0);
   });
 });
 
