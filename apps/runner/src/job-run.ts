@@ -107,6 +107,7 @@ export class JobRun {
     const wake = new AbortController();
     const child = this.cli.start(this.job, workspace, (line) => {
       this.reporter.add(stream.read(line));
+      this.reporter.notePlan(stream.takePlanUsage());
       if (stream.stray.length > 0) wake.abort();
     });
     void child.exited.then(() => wake.abort());

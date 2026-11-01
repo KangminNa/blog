@@ -12,7 +12,7 @@ const OWNER = 'owner-1';
 const TARGET = '00000000-0000-7000-8000-000000000001';
 
 function agent(actions: readonly string[] = ['blog.post.publish']): Agent {
-  return Agent.open('space', '글쓰기', '', 'claude', ['write'], actions, null, NOW);
+  return Agent.open('space', '글쓰기', '', 'claude', ['write'], actions, null, null, null, NOW);
 }
 
 function runningTask(who: Agent): Task {
@@ -151,7 +151,7 @@ describe('에이전트', () => {
   });
 
   test('한도를 넘기면 한 번만 잡히고, 올리면 두 배가 되어 다시 움직인다', () => {
-    const who = Agent.open('space', '글쓰기', '', 'claude', [], [], 100, NOW);
+    const who = Agent.open('space', '글쓰기', '', 'claude', [], [], 100, null, null, NOW);
     assert.equal(who.overLimit(100), false);
     assert.equal(who.overLimit(101), true);
     who.pause();
@@ -175,6 +175,8 @@ describe('에이전트', () => {
       'claude',
       [],
       [],
+      null,
+      null,
       null,
       Agent.ACTIVE,
       NOW,

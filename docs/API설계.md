@@ -40,7 +40,8 @@
 |---|---|---|
 | 작업 | `GET /api/tasks?status=&cursor=`, `POST /api/tasks { requestId, instruction, agentId? }`, `GET /api/tasks/:id`, `POST /api/tasks/:id/cancel { version }` | 3 |
 | 결재 | `GET /api/approvals`, `GET /api/approvals/:id`, `POST /api/approvals/:id/decide { version, decision: approve·revise·reject, note? }` | 3 |
-| 에이전트 | `GET·POST /api/agents`, `PATCH /api/agents/:id`, `POST /api/agents/:id/pause`, `POST /api/agents/:id/resume` | 3 |
+| 에이전트 | `GET·POST /api/agents`, `PATCH /api/agents/:id`, `POST /api/agents/:id/pause`, `POST /api/agents/:id/resume`. 한도 칸은 `monthlyLimit`, `fiveHourLimit`, `planStopPercent` | 3 |
+| 사용량 | `GET /api/usage` → `{ agents: [{ id, fiveHourTokens, monthTokens, fiveHourLimit, monthlyLimit, planStopPercent, holding }], plan: [{ tool, window, percent, resetsAt, seenAt }] }` (주인만). 확인 전이거나 초기화 시각이 지난 창은 `percent`가 null | 3 |
 | AI | `GET /api/ai`, `PUT /api/ai/claude/token`, `POST /api/ai/:tool/test`, `POST /api/ai/codex/login` | 3~4 |
 | 기기 | `POST /api/devices/runner { requestId, name }` (주인만. `run` 권한만 가진 기기, 토큰은 이 응답에 한 번) | 3 |
 | 소재 | `GET·POST /api/basket/items { requestId, kind, refId?, url?, title?, note? }`, `DELETE /api/basket/items/:id` | 5 |
@@ -74,7 +75,7 @@
 MCP 입력과 응답은 snake_case다.
 
 - `next_jobs { wait_seconds?, limit? }`는 최대 25초 기다리는 긴 폴링이다. 일이 생기면 바로 돌려준다. 응답은 `{ jobs: [{ task, instruction, target, skill, revision_note, agent, run_token }] }`.
-- `report_progress { task_id, events: [{ kind, body?, tokens? }], request_id? }`는 기록을 모아 남기고 임대를 연장한다. 기록이 없으면 `events`를 비워 부른다 (`heartbeat_jobs`는 두지 않는다). 응답 `{ status, cancelled, paused, lease_until }`의 `cancelled`로 러너가 작업을 멈춘다. `request_id`를 주면 같은 보고의 토큰을 두 번 세지 않는다.
+- `report_progress { task_id, events: [{ kind, body?, tokens? }], request_id?, plan_usage? }`는 기록을 모아 남기고 임대를 연장한다. 기록이 없으면 `events`를 비워 부른다 (`heartbeat_jobs`는 두지 않는다). 응답 `{ status, cancelled, paused, lease_until }`의 `cancelled`로 러너가 작업을 멈춘다. `request_id`를 주면 같은 보고의 토큰을 두 번 세지 않는다. `plan_usage: [{ window, percent, resets_at, status? }]`는 러너가 CLI의 `rate_limit_event`에서 읽은 구독 사용률이다. 어느 도구의 값인지는 작업의 에이전트로 정한다.
 - `submit_result { task_id, request_id, status: done·failed, result?, error? }`, `release_job { task_id, reason }`. `result`는 자유 형식이고 러너는 마지막 답을 `{ text }`로 보낸다. 응답은 `{ task_id, status }`. 돌려준 이유는 실행 기록에 남는다.
 - `request_approval { request_id, action, target_kind, target_id, target_version, note? }`. `request_id`는 작업마다 따로 센다. 동작은 `blog.post.publish`, `sns.post.send`, `task.agent.raise_limit`로 시작한다.
 - `blog_get_post { post_id }`는 `{ post_id, title, body_md, status, version, tags }`, `blog_save_draft { request_id, post_id?, base_version?, title, body_md, tags? }`는 `{ post_id, version, status, url }`를 돌려준다. AI는 임시 글만 쓰고 고친다. `post_id`가 있으면 `base_version`이 꼭 있어야 한다: 사람이 그사이 고친 내용을 AI가 모르고 덮지 않게. `request_id`는 작업 토큰이면 작업마다 따로 센다. `basket_get {}`은 `{ items }`를 돌려준다.

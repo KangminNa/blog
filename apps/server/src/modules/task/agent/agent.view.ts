@@ -10,6 +10,8 @@ export class AgentView {
     readonly scopes: readonly string[],
     readonly approvalActions: readonly string[],
     readonly monthlyLimit: number | null,
+    readonly fiveHourLimit: number | null,
+    readonly planStopPercent: number | null,
     /** 이번 달에 쓴 토큰 */
     readonly usedThisMonth: number,
     readonly status: string,
@@ -26,6 +28,8 @@ export class AgentView {
       scopes: this.scopes,
       approvalActions: this.approvalActions,
       monthlyLimit: this.monthlyLimit,
+      fiveHourLimit: this.fiveHourLimit,
+      planStopPercent: this.planStopPercent,
       usedThisMonth: this.usedThisMonth,
       status: this.status,
       version: this.version,

@@ -1,3 +1,5 @@
+import type { UsageAgent } from './types';
+
 // 작업·결재·에이전트의 화면 이름과 표시 형식
 
 export const TASK_STATUS: Record<string, string> = {
@@ -43,6 +45,16 @@ export const EVENT_KINDS: Record<string, string> = {
 };
 
 export const TOOL_LABELS: Record<string, string> = { claude: 'Claude Code', codex: 'Codex' };
+
+/** 구독 사용률의 창 */
+export const WINDOW_LABELS: Record<string, string> = { five_hour: '5시간', seven_day: '7일' };
+
+/** 쉬는 에이전트의 표시. 쉬는지는 서버가 정하고, 여기서는 왜인지만 고른다 */
+export function holdLabel(agent: UsageAgent | undefined): string | null {
+  if (!agent?.holding) return null;
+  const tokensFull = agent.fiveHourLimit !== null && agent.fiveHourTokens >= agent.fiveHourLimit;
+  return `쉬는 중 · ${tokensFull ? '5시간 한도' : '구독 사용률'}`;
+}
 
 /** 시각 (오늘이 아니면 날짜까지) */
 export function when(iso: string): string {

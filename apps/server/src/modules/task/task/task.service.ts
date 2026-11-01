@@ -13,6 +13,8 @@ import type { Agent } from '../agent/agent';
 import { AgentRepository } from '../agent/agent.repository';
 import { Approval } from '../approval/approval';
 import { ApprovalRepository } from '../approval/approval.repository';
+import { PlanUsage } from '../usage/plan-usage';
+import { PlanUsageRepository } from '../usage/plan-usage.repository';
 import { Task } from './task';
 import type {
   CancelTaskInput,
@@ -73,7 +75,7 @@ export class TaskService extends BaseService {
     }
   }
 
-  /** 진행 보고: 기록을 남기고 임대를 늘린다. 쓴 토큰은 에이전트의 한 달 한도에 더한다 */
+  /** 진행 보고: 기록을 남기고 임대를 늘린다. 쓴 토큰은 에이전트의 한 달 한도에 더하고, 러너가 본 구독 사용률을 남긴다 */
   async report(actor: Actor, req: ReportProgressInput): Promise<ProgressView> {
     actor.assertCan(Actor.RUN);
     const spaceId = TaskService.spaceOf(actor);
@@ -92,6 +94,7 @@ export class TaskService extends BaseService {
         for (const e of req.events) task.log(e.kind, e.body, e.tokens, now);
         await tasks.saveLease(task);
         await this.charge(tx, task, req.tokens, now);
+        await this.notePlan(tx, task, req, now);
         await once?.remember({ reported: true });
       }
       return new ProgressView(
@@ -190,11 +193,15 @@ export class TaskService extends BaseService {
       const tasks = new TaskRepository(tx);
       const agents = new AgentRepository(tx);
       await this.expire(tasks, now);
+      // 쉬는지는 작업을 잠그기 전에 따진다: 쉬는 에이전트의 일은 빌렸다가 돌려주지 않고 처음부터 건너뛴다
+      const usage = await agents.usage(spaceId, now);
+      const ready = usage.filter((u) => u.ready).map((u) => u.agent);
+      if (ready.length === 0) return [];
       const jobs: JobView[] = [];
-      for (const task of await tasks.lockNext(spaceId, limit)) {
-        const agent = task.agentId
-          ? await agents.load(spaceId, task.agentId)
-          : await agents.firstActive(spaceId);
+      const ids = ready.map((a) => a.id);
+      for (const task of await tasks.lockNext(spaceId, ids, limit)) {
+        // 담당을 정하지 않은 일은 가장 먼저 만든, 일을 받을 수 있는 에이전트가 맡는다
+        const agent = task.agentId ? ready.find((a) => a.id === task.agentId) : ready[0];
         if (!agent) continue;
         task.lease(runnerId, agent.id, now);
         await tasks.save(task);
@@ -244,6 +251,29 @@ export class TaskService extends BaseService {
     agent.pause();
     await agents.save(agent);
     await new ApprovalRepository(tx).save(Approval.raiseLimit(agent, used, now));
+  }
+
+  /** 구독 사용률을 남긴다. 어느 도구의 값인지는 러너의 말이 아니라 작업의 에이전트로 정한다. 모르는 창은 뺀다 */
+  private async notePlan(tx: Sql, task: Task, req: ReportProgressInput, now: Date): Promise<void> {
+    if (req.planUsage.length === 0 || task.agentId === null) return;
+    const { tool } = await new AgentRepository(tx).load(task.spaceId, task.agentId);
+    const seen = PlanUsage.WINDOWS.flatMap((window) => {
+      const last = req.planUsage.findLast((p) => p.window === window);
+      return last
+        ? [
+            PlanUsage.seen(
+              task.spaceId,
+              tool,
+              window,
+              last.percent,
+              last.resetsAt,
+              last.status,
+              now,
+            ),
+          ]
+        : [];
+    });
+    await new PlanUsageRepository(tx).save(seen);
   }
 
   private async agentPaused(tx: Sql, task: Task): Promise<boolean> {

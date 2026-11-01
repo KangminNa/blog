@@ -1,8 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import { type ApiReply, api } from '../_lib/client-api';
 import { useLiveValue } from '../_lib/use-live';
-import type { AgentList, ApprovalPage, TaskPage } from './types';
+import type { AgentList, ApprovalPage, TaskPage, Usage } from './types';
 
 // 여러 화면이 함께 쓰는 읽기.
 
@@ -12,9 +13,23 @@ export const TASK_LOG_TOPICS = [...TASK_TOPICS, 'task.event.added'];
 export const APPROVAL_TOPICS = ['task.approval.*'];
 /** 실행 기록이 쌓이면 사용량이 바뀐다 */
 export const AGENT_TOPICS = ['task.agent.changed', 'task.event.added'];
+/** 구독 사용률이 오거나 실행 기록이 쌓이면 사용량이 바뀐다 */
+export const USAGE_TOPICS = ['task.usage.changed', 'task.event.added'];
+/** 시간이 지나 창이 끝나는 일에는 신호가 없다. 쉬던 에이전트가 돌아온 것이 보이게 이 간격으로도 읽는다 */
+const USAGE_REREAD_MS = 60_000;
 
 export function useAgents() {
   return useLiveValue('agents', () => api<AgentList>('GET', '/api/agents'), AGENT_TOPICS);
+}
+
+export function useUsage() {
+  const usage = useLiveValue('usage', () => api<Usage>('GET', '/api/usage'), USAGE_TOPICS);
+  const { reload } = usage;
+  useEffect(() => {
+    const timer = setInterval(() => void reload(), USAGE_REREAD_MS);
+    return () => clearInterval(timer);
+  }, [reload]);
+  return usage;
 }
 
 /** 상태 하나의 작업 첫 쪽 (홈과 에이전트의 요약) */

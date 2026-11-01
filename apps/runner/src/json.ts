@@ -34,8 +34,10 @@ export class Json {
     return typeof value === 'number' && Number.isFinite(value) ? value : 0;
   }
 
+  /** 없거나 숫자가 아니면 null */
   optionalNumber(name: string): number | null {
-    return name in this.value && this.value[name] !== null ? this.number(name) : null;
+    const value = this.value[name];
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
   }
 
   flag(name: string): boolean {

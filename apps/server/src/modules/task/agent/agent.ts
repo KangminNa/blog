@@ -7,8 +7,9 @@ import {
   TrackedEntity,
 } from '../../platform';
 
-// 일을 맡는 에이전트. 할 수 있는 일(scopes)과 결재를 올려 할 수 있는 동작(approvalActions), 한 달 토큰 한도를 가진다.
+// 일을 맡는 에이전트. 할 수 있는 일(scopes)과 결재를 올려 할 수 있는 동작(approvalActions), 토큰 한도를 가진다.
 // 이름·역할 같은 단순한 칸은 set으로, 멈춤·다시 시작은 메서드로만 바꾼다.
+// 한 달 한도는 넘기면 멈추고 결재를 받는다. 5시간 한도와 구독 사용률은 닿으면 새 일만 쉬고 시간이 지나면 저절로 돌아온다 (holds).
 export class Agent extends TrackedEntity {
   static readonly ACTIVE = 'active';
   static readonly PAUSED = 'paused';
@@ -23,6 +24,7 @@ export class Agent extends TrackedEntity {
   ];
   private static readonly NAME_MAX = 60;
   private static readonly ROLE_MAX = 2000;
+  private static readonly PLAN_PERCENT_MAX = 100;
   private static readonly ACTION = /^[a-z]+\.[a-z_]+\.[a-z_]+$/;
   /** 이 동작은 서버가 한도를 넘었을 때만 올린다 */
   private static readonly SERVER_ACTION = 'task.agent.raise_limit';
@@ -37,6 +39,8 @@ export class Agent extends TrackedEntity {
     private scopeList: readonly string[],
     private actionList: readonly string[],
     private limitValue: number | null,
+    private fiveHourValue: number | null,
+    private planStopValue: number | null,
     private statusValue: string,
     readonly createdAt: Date,
     readonly isNew: boolean,
@@ -52,6 +56,8 @@ export class Agent extends TrackedEntity {
     scopes: readonly string[],
     approvalActions: readonly string[],
     monthlyLimit: number | null,
+    fiveHourLimit: number | null,
+    planStopPercent: number | null,
     now: Date,
   ): Agent {
     const agent = new Agent(
@@ -64,6 +70,8 @@ export class Agent extends TrackedEntity {
       [],
       [],
       null,
+      null,
+      null,
       Agent.ACTIVE,
       now,
       true,
@@ -74,6 +82,8 @@ export class Agent extends TrackedEntity {
     agent.scopes = scopes;
     agent.approvalActions = approvalActions;
     agent.monthlyLimit = monthlyLimit;
+    agent.fiveHourLimit = fiveHourLimit;
+    agent.planStopPercent = planStopPercent;
     agent.announce();
     return agent;
   }
@@ -88,6 +98,8 @@ export class Agent extends TrackedEntity {
     scopes: readonly string[],
     approvalActions: readonly string[],
     monthlyLimit: number | null,
+    fiveHourLimit: number | null,
+    planStopPercent: number | null,
     status: string,
     createdAt: Date,
   ): Agent {
@@ -101,6 +113,8 @@ export class Agent extends TrackedEntity {
       scopes,
       approvalActions,
       monthlyLimit,
+      fiveHourLimit,
+      planStopPercent,
       status,
       createdAt,
       false,
@@ -175,6 +189,27 @@ export class Agent extends TrackedEntity {
     this.track('monthly_limit', value);
   }
 
+  get fiveHourLimit(): number | null {
+    return this.fiveHourValue;
+  }
+
+  set fiveHourLimit(value: number | null) {
+    if (value !== null && value < 1) throw new RuleViolation('5시간 한도는 1 이상이에요');
+    this.fiveHourValue = value;
+    this.track('five_hour_limit', value);
+  }
+
+  get planStopPercent(): number | null {
+    return this.planStopValue;
+  }
+
+  set planStopPercent(value: number | null) {
+    if (value !== null && (value < 1 || value > Agent.PLAN_PERCENT_MAX))
+      throw new RuleViolation(`구독 사용률은 1~${Agent.PLAN_PERCENT_MAX}%예요`);
+    this.planStopValue = value;
+    this.track('plan_stop_percent', value);
+  }
+
   get status(): string {
     return this.statusValue;
   }
@@ -195,6 +230,18 @@ export class Agent extends TrackedEntity {
   /** 이번 달 사용량이 한도를 넘었는데 아직 움직이고 있는가 (이미 멈췄으면 결재를 또 올리지 않는다) */
   overLimit(usedThisMonth: number): boolean {
     return !this.paused && this.limitValue !== null && usedThisMonth > this.limitValue;
+  }
+
+  /**
+   * 새 일을 받지 않고 쉬는가. 지난 5시간 토큰이나 구독 사용률이 정한 값에 닿으면 쉰다.
+   * 결재도 상태 변경도 없고, 달리는 작업은 끝까지 간다. 시간이 지나 값이 내려가면 저절로 다시 일한다.
+   * planPercent가 null이면 확인 전이라 토큰 한도만 본다.
+   */
+  holds(fiveHourTokens: number, planPercent: number | null): boolean {
+    const tokensFull = this.fiveHourValue !== null && fiveHourTokens >= this.fiveHourValue;
+    const planFull =
+      this.planStopValue !== null && planPercent !== null && planPercent >= this.planStopValue;
+    return tokensFull || planFull;
   }
 
   /** 한도 올리기 결재가 승인됨: 한도를 두 배로 하고 다시 움직인다 */
@@ -223,5 +270,25 @@ export class Agent extends TrackedEntity {
         status: this.statusValue,
       }),
     );
+  }
+}
+
+/** 에이전트 하나의 지금 사용량. 쉬는지는 Agent가 정한다 */
+export class AgentUsage {
+  constructor(
+    readonly agent: Agent,
+    readonly fiveHourTokens: number,
+    readonly monthTokens: number,
+    /** 유효한 창 중 가장 높은 구독 사용률. 확인 전이면 null */
+    readonly planPercent: number | null,
+  ) {}
+
+  get holding(): boolean {
+    return this.agent.holds(this.fiveHourTokens, this.planPercent);
+  }
+
+  /** 새 일을 줄 수 있는가 */
+  get ready(): boolean {
+    return !this.agent.paused && !this.holding;
   }
 }
