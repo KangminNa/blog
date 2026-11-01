@@ -28,7 +28,10 @@ export class ChangeSignal {
 
 // 이벤트를 호출한 쪽의 트랜잭션 안에서 platform.outbox에 남기고 변경 신호를 보낸다.
 // 데이터 변경과 이벤트 기록이 함께 커밋되거나 함께 취소된다.
+// 일꾼을 깨우는 신호는 따로 보낸다: 변경 신호에는 실행 기록도 섞여 있어 일꾼이 헛돌게 된다.
 export class Outbox {
+  static readonly CHANNEL = 'cairn_outbox';
+
   constructor(private readonly tx: Sql) {}
 
   async publish(events: readonly DomainEvent[]): Promise<void> {
@@ -47,6 +50,7 @@ export class Outbox {
         (e, i) => new ChangeSignal(e.spaceId, e.name, Outbox.subjectOf(e, String(saved[i]?.id))),
       ),
     );
+    await this.tx`SELECT pg_notify(${Outbox.CHANNEL}, '')`;
   }
 
   /** 화면이 알아볼 id: 이벤트의 주인공(내용에서 처음 나오는 `…Id` 값), 없으면 outbox 행 번호 */

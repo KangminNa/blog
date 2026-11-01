@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { after, describe, test } from 'node:test';
+import { after, describe, type TestContext, test } from 'node:test';
 import { ArchiveQuery } from '../archive/archive.query';
 import { BaseHandler } from '../base/base-handler';
 import { BaseJob } from '../base/base-job';
 import { Database } from '../base/database';
-import type { DomainEvent } from '../base/event';
+import { DomainEvent } from '../base/event';
+import { ChangeSignal, Outbox } from '../base/outbox';
 import { SecretBox } from '../base/secret-box';
 import { PluginRegistry } from '../plugin/plugin-registry';
 import { CoreWorkers } from './core-workers';
@@ -33,6 +34,8 @@ async function bootWith(root: string, granted: readonly string[]): Promise<Plugi
 
 const API = resolve(__dirname, '../../../plugin-api');
 const SPACE = '00000000-0000-7000-8000-00000000f00d';
+const emptyRegistry = () =>
+  PluginRegistry.boot(mkdtempSync(join(tmpdir(), 'cairn-core-')), db.sql, archive, box);
 
 /** 받은 이벤트를 전역 배열에 적고, ".failed" 이벤트는 실패하는 테스트 플러그인 */
 function makePlugin(uses: readonly string[]): string {
@@ -178,8 +181,6 @@ describe('코어 일꾼', () => {
       this.runs++;
     }
   }
-  const emptyRegistry = () =>
-    PluginRegistry.boot(mkdtempSync(join(tmpdir(), 'cairn-core-')), db.sql, archive, box);
 
   test('코어 Handler가 이벤트를 받고, 실패하면 다시 시도하도록 남긴다', async () => {
     await db.sql`DELETE FROM platform.outbox WHERE space_id = ${SPACE}`;
@@ -243,5 +244,272 @@ describe('코어 일꾼', () => {
     assert.ok(scheduled);
     await worker.runJob(scheduled);
     assert.equal(job.runs, 1);
+  });
+});
+
+describe('신호로 깨우기', () => {
+  const HOUR = 3_600_000; // 주기를 길게 두면 신호로만 처리된다
+  const LIMIT = { timeout: 15_000 };
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  after(() => db.sql`DELETE FROM platform.outbox WHERE space_id = ${SPACE}`);
+
+  /** 조건이 맞을 때까지 기다린다. 시간이 다 되면 실패 */
+  async function until(done: () => boolean, ms = 5000): Promise<void> {
+    const deadline = Date.now() + ms;
+    while (!done()) {
+      assert.ok(Date.now() < deadline, '기다린 일이 일어나지 않았어요');
+      await sleep(5);
+    }
+  }
+
+  /** 끝낸 바퀴를 세고, 한 바퀴를 일부러 실패시킬 수 있는 일꾼 */
+  class WatchedWorker extends OutboxWorker {
+    ticks = 0;
+    failNext = false;
+
+    override async tick(): Promise<number> {
+      try {
+        if (this.failNext) {
+          this.failNext = false;
+          throw new Error('일부러 실패');
+        }
+        return await super.tick();
+      } finally {
+        this.ticks++;
+      }
+    }
+  }
+
+  /** 듣기를 세고, 일부러 실패시킬 수 있는 DB */
+  class ProbeDatabase extends Database {
+    listens = 0;
+    unlistens = 0;
+    broken = false;
+
+    override async listen(
+      channel: string,
+      onMessage: (payload: string) => void,
+      onReady?: () => void,
+    ): Promise<() => Promise<void>> {
+      this.listens++;
+      if (this.broken) throw new Error('듣기 실패');
+      const unlisten = await super.listen(channel, onMessage, onReady);
+      return () => {
+        this.unlistens++;
+        return unlisten();
+      };
+    }
+  }
+
+  /** 받은 이벤트를 적고, hold가 풀릴 때까지 붙들고 있는 받는 쪽 */
+  class Inbox extends BaseHandler {
+    readonly names: string[] = [];
+    hold: Promise<void> = Promise.resolve();
+
+    async handle(event: DomainEvent): Promise<void> {
+      this.names.push(event.name);
+      await this.hold;
+    }
+  }
+
+  async function boot(t: TestContext, database: Database = db) {
+    await db.sql`DELETE FROM platform.outbox WHERE processed_at IS NULL`;
+    const core = new CoreWorkers();
+    const inbox = new Inbox();
+    core.on('probe.wake.*', inbox);
+    const worker = new WatchedWorker(database, await emptyRegistry(), core);
+    t.after(() => worker.onApplicationShutdown());
+    return { worker, inbox };
+  }
+
+  const publish = (...names: readonly string[]) =>
+    db.transaction((tx) =>
+      new Outbox(tx).publish(names.map((name) => new DomainEvent(name, 1, SPACE, {}))),
+    );
+
+  /** 이 채널에 온 신호를 적는다. 일꾼에게도 같이 도착한 것을 확인할 때 쓴다 */
+  async function heard(t: TestContext, channel: string): Promise<string[]> {
+    const payloads: string[] = [];
+    t.after(
+      await db.listen(channel, (payload) => {
+        payloads.push(payload);
+      }),
+    );
+    return payloads;
+  }
+
+  test('커밋하면 주기를 기다리지 않고 신호로 처리한다', LIMIT, async (t) => {
+    const { worker, inbox } = await boot(t);
+    worker.start(HOUR);
+    await until(() => worker.ticks > 0);
+
+    await publish('probe.wake.saved');
+    await until(() => inbox.names.length === 1);
+    assert.deepEqual(inbox.names, ['probe.wake.saved']);
+  });
+
+  test('처리하는 중에 온 신호를 놓치지 않는다', LIMIT, async (t) => {
+    const { worker, inbox } = await boot(t);
+    const signals = await heard(t, Outbox.CHANNEL);
+    let release = () => {};
+    inbox.hold = new Promise((resolve) => {
+      release = resolve;
+    });
+    worker.start(HOUR);
+    await until(() => worker.ticks > 0);
+
+    await publish('probe.wake.first');
+    await until(() => inbox.names.length === 1);
+    await publish('probe.wake.second');
+    await until(() => signals.length === 2);
+    assert.deepEqual(inbox.names, ['probe.wake.first'], '첫 바퀴가 아직 돌고 있다');
+
+    release();
+    await until(() => inbox.names.length === 2);
+    assert.deepEqual(inbox.names, ['probe.wake.first', 'probe.wake.second']);
+  });
+
+  test('신호 한 번으로 51개를 모두 처리한다', LIMIT, async (t) => {
+    const { worker, inbox } = await boot(t);
+    worker.start(HOUR);
+    await until(() => worker.ticks > 0);
+    const before = worker.ticks;
+
+    await publish(...Array.from({ length: 51 }, () => 'probe.wake.many'));
+    await until(() => worker.ticks === before + 2);
+    assert.equal(inbox.names.length, 51);
+  });
+
+  test('듣기에 실패해도 주기로 처리한다', LIMIT, async (t) => {
+    const probe = new ProbeDatabase();
+    probe.broken = true;
+    t.after(() => probe.onApplicationShutdown());
+    const { worker, inbox } = await boot(t, probe);
+    await publish('probe.wake.saved');
+
+    worker.start(20);
+    await until(() => inbox.names.length === 1);
+    assert.equal(probe.listens, 1);
+  });
+
+  test('되돌린 트랜잭션은 일꾼을 깨우지 않는다', LIMIT, async (t) => {
+    const { worker, inbox } = await boot(t);
+    worker.start(HOUR);
+    await until(() => worker.ticks > 0);
+    const before = worker.ticks;
+
+    await assert.rejects(
+      db.transaction(async (tx) => {
+        await new Outbox(tx).publish([new DomainEvent('probe.wake.undone', 1, SPACE, {})]);
+        throw new Error('되돌리기');
+      }),
+      /되돌리기/,
+    );
+    await sleep(200);
+    assert.equal(worker.ticks, before);
+
+    await publish('probe.wake.saved');
+    await until(() => inbox.names.length === 1);
+    assert.deepEqual(inbox.names, ['probe.wake.saved'], '듣고 있었다');
+  });
+
+  test('필수 주제에 받는 쪽이 없으면 듣기 전에 바로 실패한다', LIMIT, async (t) => {
+    const probe = new ProbeDatabase();
+    t.after(() => probe.onApplicationShutdown());
+    const core = new CoreWorkers();
+    core.expect('task.approval.granted');
+    const worker = new OutboxWorker(probe, await emptyRegistry(), core);
+
+    assert.throws(() => worker.start(), /task\.approval\.granted/);
+    assert.equal(probe.listens, 0);
+  });
+
+  test('내려갈 때 듣기와 타이머를 멈추고 걸리지 않는다', LIMIT, async (t) => {
+    const probe = new ProbeDatabase();
+    t.after(() => probe.onApplicationShutdown());
+    const { worker } = await boot(t, probe);
+    const timers = () => process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length;
+    const timersBefore = timers();
+    worker.start(20);
+    await until(() => worker.ticks > 1);
+
+    // Nest는 같은 모듈의 훅을 함께 부른다: 듣기를 멈추는 동안 DB도 닫힌다
+    await Promise.all([probe.onApplicationShutdown(), worker.onApplicationShutdown()]);
+    assert.equal(probe.unlistens, 1);
+    await until(() => timers() <= timersBefore); // 일꾼의 타이머가 남으면 프로세스가 끝나지 않는다
+
+    await sleep(50); // 내려가기 전에 돌던 바퀴가 끝나기를 기다린다
+    const ticks = worker.ticks;
+    await publish('probe.wake.late');
+    await sleep(200);
+    assert.equal(worker.ticks, ticks);
+  });
+
+  test('듣기를 마치기 전에 내려가도 걸리지 않고 깨지 않는다', LIMIT, async (t) => {
+    const probe = new ProbeDatabase();
+    t.after(() => probe.onApplicationShutdown());
+    const { worker } = await boot(t, probe);
+    worker.start(HOUR);
+
+    await worker.onApplicationShutdown();
+    assert.equal(probe.unlistens, 1);
+    assert.equal(worker.ticks, 0);
+  });
+
+  test('한 바퀴가 실패해도 다음 신호로 다시 돈다', LIMIT, async (t) => {
+    const { worker, inbox } = await boot(t);
+    worker.failNext = true;
+    worker.start(HOUR);
+    await until(() => worker.ticks > 0);
+
+    await publish('probe.wake.saved');
+    await until(() => inbox.names.length === 1);
+  });
+
+  test('연결이 끊기면 다시 듣고 한 번만 깨우며, 내려간 뒤에는 깨지 않는다', LIMIT, async (t) => {
+    const probe = new ProbeDatabase();
+    t.after(() => probe.onApplicationShutdown());
+    const { worker, inbox } = await boot(t, probe);
+    worker.start(HOUR);
+    await until(() => worker.ticks > 0);
+    const before = worker.ticks;
+
+    const killed = await db.sql`
+      SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+       WHERE datname = current_database() AND query ILIKE 'listen%'`;
+    assert.equal(killed.length, 1);
+    await until(() => worker.ticks > before);
+    await sleep(100);
+    assert.equal(worker.ticks, before + 1);
+
+    await publish('probe.wake.saved');
+    await until(() => worker.ticks === before + 2);
+    assert.deepEqual(inbox.names, ['probe.wake.saved']);
+
+    // 다시 연결한 뒤에는 라이브러리의 unlisten이 듣기를 빼지 못한다. 그래도 일꾼은 깨지 않아야 한다
+    await worker.onApplicationShutdown();
+    const ticks = worker.ticks;
+    await publish('probe.wake.late');
+    await sleep(200);
+    assert.equal(worker.ticks, ticks);
+  });
+
+  test('publish 한 번에 빈 신호 하나만 보내고, 변경 신호로는 깨지 않는다', LIMIT, async (t) => {
+    const { worker } = await boot(t);
+    const signals = await heard(t, Outbox.CHANNEL);
+    const changes = await heard(t, ChangeSignal.CHANNEL);
+    worker.start(HOUR);
+    await until(() => worker.ticks > 0);
+
+    await publish('probe.wake.one', 'probe.wake.two', 'probe.wake.three');
+    await until(() => changes.length === 3 && signals.length === 1);
+    assert.deepEqual(signals, ['']);
+
+    await until(() => worker.ticks > 1);
+    const before = worker.ticks;
+    await db.transaction((tx) => ChangeSignal.send(tx, [new ChangeSignal(SPACE, 'log', 'x')]));
+    await until(() => changes.length === 4);
+    await sleep(100);
+    assert.equal(worker.ticks, before);
   });
 });
