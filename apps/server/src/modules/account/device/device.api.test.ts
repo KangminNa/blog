@@ -386,6 +386,7 @@ describe('MCP', () => {
         'get_session',
         'search_wikis',
         'get_wiki',
+        'neighbors',
       ],
       '기본 권한(올리기 + 공개 읽기)으로 보이는 도구',
     );
@@ -399,6 +400,7 @@ describe('MCP', () => {
       ['get_session', true, false],
       ['search_wikis', true, false],
       ['get_wiki', true, false],
+      ['neighbors', true, false],
     ]);
     const instructions = String(
       (init.json().result as { instructions?: string }).instructions ?? '',

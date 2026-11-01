@@ -50,6 +50,7 @@
 | 지식 | `GET·POST /api/wikis`(`?q=&category=&cursor=`), `GET·PUT /api/wikis/:id`, `GET·POST /api/categories`, `PATCH·DELETE /api/categories/:id`, `GET /api/graph`, `GET /api/graph/public` | 6 |
 | 변경 묶음 | `GET /api/changes?status=waiting&cursor=`, `POST /api/changes/:id/ops/:seq/decide { version, decision: approve·decline }`, `POST /api/changes/:id/revert { version }` | 6 |
 | 백업 | `GET /api/archive.zip` (주인만, 보관 형식) | 6 |
+| 세션 정리 | `GET·PUT /api/tidy/settings { autoTidy, version }`, `POST /api/tidy/backlog` → `{ requested, remaining }` (주인만. 기본은 꺼짐. 대표 wiki가 없는 세션을 오래된 순으로 20개씩 요청) | 6 |
 | 스케줄 | `GET·POST /api/schedules`, `PATCH /api/schedules/:id`, `POST /api/schedules/:id/run` | 7 |
 
 결재는 작업에 묶이지 않는 경우(한도 변경 등)가 있어 작업 아래에 두지 않는다. 결재 메뉴는 위키 제안도 함께 보여 주되, 데이터는 각 모듈이 따로 가진다.
@@ -82,6 +83,7 @@ MCP 입력과 응답은 snake_case다.
 - `blog_get_post { post_id }`는 `{ post_id, title, body_md, status, version, tags }`, `blog_save_draft { request_id, post_id?, base_version?, title, body_md, tags? }`는 `{ post_id, version, status, url }`를 돌려준다. AI는 임시 글만 쓰고 고친다. `post_id`가 있으면 `base_version`이 꼭 있어야 한다: 사람이 그사이 고친 내용을 AI가 모르고 덮지 않게. `request_id`는 작업 토큰이면 작업마다 따로 센다. `basket_get {}`은 `{ items }`를 돌려준다.
 - `submit_changes { request_id, message, ops: [{ op, target_id?, base_version?, payload }] }`는 vault 소유다. 변경 묶음을 쓰고 `{ change_set_id, ops: [{ seq, verdict, status, reason }] }`로 판정을 바로 돌려준다. `ops`의 대상은 변경마다 다르다: `wiki.create { title, body_md, slug? }`, `wiki.revise { target_id, base_version, title?, body_md }`, `session.assign { target_id, base_version, wiki_id }`, `edge.add`·`edge.remove { src, dst, kind }`, `category.create { name, slug?, color?, description? }`, `category.assign { target_id, base_version, category_id }`. 앞 변경이 만든 것은 `@번호`로 가리킨다 (토큰 하나에 제출 한 번이라 만들고 잇는 일을 한 묶음에 넣는다). 작업은 이벤트가 아니라 러너의 `submit_result`로 끝난다. 끝내는 길이 하나라 둘이 겹치지 않고, 러너가 도중에 죽어도 `change_sets.job_id`가 유일해서 같은 묶음은 한 번만 적용된다.
 - `ai_login`은 콘솔에 넣은 AI 토큰을 러너에게 건넨다. 러너는 메모리에만 두고 AI CLI를 띄울 때 환경 변수로만 넘긴다. `POST /api/ai/claude/test`는 `ai_test` 작업을 만들어 러너가 실행한다 (서버 본체에는 AI가 없다). 이 일은 에이전트가 없어 `next_jobs`의 `agent`와 `run_token`이 null이고, 러너 `.env`에 토큰이 있어도 콘솔의 토큰으로 시험한다. 도는 사이 토큰을 바꾸면 옛 토큰의 결과는 버린다. `ai_login`은 기기만 부를 수 있고 만료된 토큰은 주지 않는다.
+- `GET /api/graph`와 `GET /api/graph/public`은 `{ nodes: [{ id, kind, label, parent, visibility?, slug? }], edges: [{ src, dst, kind }] }`를 돌려준다. 공개 글이 가리키는 비공개 wiki는 이름 없는 자리(`private-<해시>`)로만 나오고, 진짜 id는 UUIDv7이라 날짜가 드러나서 내보내지 않는다. `neighbors { node_id }`는 `{ node, neighbors: [{ id, kind, label, relation }] }`.
 - 결재한 공개의 결과는 `blog.post.published`와 `blog.post.publish_failed`에 `approvalId`, `outcome`을 실어 알린다. 없는 글이나 이미 공개한 글도 실패로 끝난다. `sns.post.send`는 아직 실행하는 곳이 없어 화면에서 고를 수 없다.
 - 결재에서 고쳐 달라고 하면 작업이 대기로 돌아가고, 다음 `next_jobs`의 `target`은 결재의 대상이다.
 - 도구 입력 모양을 바꾸면 `skills/`를 함께 고친다.

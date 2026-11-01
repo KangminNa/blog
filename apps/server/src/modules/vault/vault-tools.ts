@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { BaseTool } from '../platform';
 import { SubmitChangesTool } from './change/change.tool';
+import { NeighborsTool } from './graph/graph.tool';
 import { CheckSessionTool } from './session/check-session.tool';
 import { GetSessionTool } from './session/get-session.tool';
 import { SaveSessionTool } from './session/save-session.tool';
@@ -19,6 +20,7 @@ export class VaultTools {
     getSession: GetSessionTool,
     searchWikis: SearchWikisTool,
     getWiki: GetWikiTool,
+    neighbors: NeighborsTool,
     submitChanges: SubmitChangesTool,
   ) {
     this.tools = [
@@ -28,6 +30,7 @@ export class VaultTools {
       getSession,
       searchWikis,
       getWiki,
+      neighbors,
       submitChanges,
     ];
   }

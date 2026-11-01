@@ -152,6 +152,7 @@ export function AgentForm({
       </div>
       <fieldset className="checks">
         <legend>권한</legend>
+        <small>세션 정리는 정리와 전체 읽기 권한이 함께 필요</small>
         {SCOPES.map((s) => (
           <label key={s} className="check">
             <input

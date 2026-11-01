@@ -2,7 +2,7 @@
 
 ## 하는 일
 AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 연결선, AI 정리 결과의 변경 묶음과 검토 규칙(승인함), 대정리, 변경 기록과 되돌리기, 그래프 보기.
-지금은 세션 저장·찾기·읽기, wiki · 카테고리 · 연결선, 변경 묶음(검토·되돌리기), 보관 형식 내보내기까지 있다. 대정리와 그래프 보기는 아직 없다.
+지금은 세션 저장·찾기·읽기, wiki · 카테고리 · 연결선, 변경 묶음(검토·되돌리기), 세션 정리 요청, 그래프 보기, 글 자리 사본, 보관 형식 내보내기까지 있다. 대정리는 아직 없다.
 
 - `session/`: 세션(`Session` + 판 `SessionRevision`), 노트(`SessionNote`: 제목·태그·고정 칸 다섯, 해시, 본문 md),
   2차 민감정보 제거(`SensitivePolicy`), 저장 결과(`SessionReceipt`: saved · unchanged · duplicate).
@@ -17,12 +17,16 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
 - `change/`: 변경 묶음(`ChangeSet`), 변경(`ChangeOp` 하위 클래스 하나 = 변경 종류 하나), 대상(`ChangeTarget`: 네 엔티티의 부모, `snapshot`·`rollBack`),
   판정(`ReviewPolicy` + `ReviewRule` 하위 클래스), 잠금(`TargetRepository`, `TargetBoard`), 쓰기 전부(`ChangeService`: `submit` · `edit` · `decide` · `revert`).
   `api/changes`(승인함, 결정, 되돌리기: 주인만), MCP `submit_changes`(`tidy`)
+- `tidy/`: 세션 정리 설정(`TidySettings`: 공간마다 한 행, 없으면 꺼짐)과 일 요청. `api/tidy/settings`(주인), `api/tidy/backlog`(대표 wiki가 없는 세션을 오래된 순으로 20개까지, 주인).
+  `TidyRequestHandler`(`vault.session.saved`)가 켜져 있으면 `task.task.requested`를 outbox로 남긴다. task를 import하지 않는다
+- `post-mark/`: 글 자리 사본(`PostMark`). `PostMarkHandler`(`blog.post.*`)만 쓴다
+- `graph/`: 그래프 읽기(`GraphQuery`). `api/graph`(주인), `api/graph/public`(방문자), MCP `neighbors`(`read_public`이나 `read_all`)
 - `vault-archive.query.ts`: 보관 형식 파일 (`ArchiveQuery.register`로 등록). `vault-archive.api.ts`: `api/archive.zip`(주인만). platform은 모듈 파일을 모르고, 이 경로의 자리가 다른 곳에 없어 여기 둔다
 
 ## 소유 데이터
 스키마 `vault`: node_kinds, edge_kinds, nodes, sessions, session_revisions, attachments, categories, wikis, wiki_revisions, wiki_aliases,
 edges, project_rules, graph_views, node_layout, graph_snapshots, post_marks, chunks, chunk_embeddings,
-change_sets, change_ops, review_rules, changes, edit_leases
+change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings
 
 ## 데이터 묶음
 - 세션: nodes(세션) + sessions + session_revisions + attachments + edit_leases(세션)
@@ -33,9 +37,10 @@ change_sets, change_ops, review_rules, changes, edit_leases
 - 검토 규칙: review_rules
 - 그래프 보기: graph_views + node_layout + graph_snapshots
 - 글 자리 사본: post_marks (blog 이벤트를 받는 Handler만 쓴다)
+- 정리 설정: tidy_settings
 
 ## 공개 API (`index.ts`)
-`VaultModule`, `VaultTools`(세션·wiki·변경 묶음 도구 목록, mcp 모듈이 모아서 연다), `SessionQuery`·`GetSessionRequest`(blog의 소재가 세션을 확인할 때 읽음)
+`VaultModule`, `VaultTools`(세션·wiki·그래프·변경 묶음 도구 목록, mcp 모듈이 모아서 연다), `SessionQuery`·`GetSessionRequest`(blog의 소재가 세션을 확인할 때 읽음)
 
 ## 내보내는 이벤트 / 받는 이벤트
 | 이벤트 | 내용 (모두 v1) |
@@ -48,8 +53,9 @@ change_sets, change_ops, review_rules, changes, edit_leases
 | `vault.change.submitted` | changeSetId, kind, status |
 | `vault.change.decided` | changeSetId, seq, status |
 | `vault.change.reverted` | changeSetId, revertId |
+| `task.task.requested` | requestId(`tidy:<세션>:<판>`), kind(`tidy_session`), title, targetKind, targetId, baseVersion. task 모듈이 받는 일 요청 |
 
-받는 이벤트: 예정 `blog.post.*` (글 자리 사본 갱신). 세션 저장 뒤 자동 정리(`task.task.requested`)는 `cairn-tidy` 스킬과 함께 더한다
+받는 이벤트: `vault.session.saved` (자동 정리. 꺼져 있으면 아무 일 없이 처리됨), `blog.post.*` (글 자리 사본. `postVersion`이 없는 이벤트는 건너뛴다. 글이 그래프에 나오려면 `mainWikiId`, `refWikiIds`가 실려 와야 한다)
 
 ## 써도 되는 모듈
 platform
@@ -74,7 +80,10 @@ platform
 - 부모를 지워도 자식을 지우지 않는다 (`RESTRICT`·`SET NULL`). 세션은 사람이 직접 지울 때만 휴지통으로
 - AI가 쓴 wiki 본문·제목도 판이 되기 전에 `SensitivePolicy`로 지운다 (`ChangeService.submit`)
 - 보관 파일에 비밀값을 넣지 않는다. 동기화 플러그인은 공간 없는 `SystemActor`로 읽으므로 공간 조건을 그에 맞춘다
-- 글의 자리는 blog 이벤트로 받은 사본(`post_marks`)으로 안다. `post_version`이 더 큰 이벤트만 반영한다
+- 글의 자리는 blog 이벤트로 받은 사본(`post_marks`)으로 안다. `post_version`이 더 큰 이벤트만 반영한다. `status`는 published와 draft뿐이라 링크만 공개(unlisted)는 draft로 적는다. 휴지통의 글은 대표를 비워 그래프에서 뺀다
+- 방문자 그래프는 비공개를 흔적 없이 뺀다. 예외는 공개 글이 가리키는 비공개 wiki 하나: 글 → wiki 연결은 모두에게 보이므로 자리만 남긴다. 이름·주소·날짜가 없고, id는 UUIDv7의 날짜가 드러나지 않게 해시(`private-…`)로 바꾼다 (원칙 4)
+- 방문자 그래프의 주소가 비공개 점을 가리키면 null로 둔다 (공개 세션의 대표가 비공개 wiki인 경우). `api/graph/public`은 주인이 불러도 방문자가 보는 그대로다
+- 자동 정리는 기본이 꺼짐이다 (저장마다 주인의 구독 토큰). 같은 판의 일 요청은 requestId가 같아 작업이 하나다
 - `space_id`, `device_id`, `blob_hash`는 다른 모듈을 가리키는 값이다 (외래키 없음)
 
 ## 하지 말 것

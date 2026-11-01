@@ -3,7 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../app.module';
 import { InstallPolicy } from '../modules/account';
-import { HttpSetup, SecretBox } from '../modules/platform';
+import { Database, HttpSetup, SecretBox } from '../modules/platform';
 
 /** 테스트에서 요청하는 사람: 쿠키 묶음. 방문자는 쿠키가 없다 */
 export class TestUser {
@@ -84,6 +84,13 @@ export class ApiClient {
   /** 서버 안의 객체를 꺼낸다 */
   service<T>(type: new (...args: never[]) => T): T {
     return this.app.get(type);
+  }
+
+  /** 이 주제의 이벤트 중 처리되지 못한 수 (기다리거나 실패한 것). 받는 쪽이 이벤트를 삼키지 않았는지 볼 때 */
+  async unprocessed(topic: string): Promise<number> {
+    const [row] = await this.service(Database).sql`
+      SELECT count(*) AS n FROM platform.outbox WHERE topic = ${topic} AND processed_at IS NULL`;
+    return Number(row?.n);
   }
 
   installCode(): string {

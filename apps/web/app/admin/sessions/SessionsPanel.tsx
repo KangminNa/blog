@@ -9,6 +9,7 @@ import type {
   SessionRevision,
   SessionSummary,
 } from '../../_lib/types';
+import { TidyPanel } from './TidyPanel';
 
 const KIND_LABELS: Record<string, string> = { origin: '원본', human: '사람', merge: '합침' };
 /** 판 번호는 최근 몇 개만 펼쳐 둔다 (판이 많으면 노트가 밀려 내려가므로) */
@@ -71,6 +72,7 @@ export function SessionsPanel({ initialId }: { initialId: string | null }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <TidyPanel />
       {projects.length > 1 && (
         <fieldset className="row" style={{ border: 0, margin: 0, padding: 0 }}>
           <legend className="sr">프로젝트</legend>

@@ -9,7 +9,7 @@ import { Database } from '../../platform';
 // 저장한 세션은 AI 도구가 search_sessions · get_session으로 다시 읽는다. read_public은 공개 세션만 본다.
 
 /** read_public이나 read_all로 열리는 도구들 */
-const READ_TOOLS = ['search_sessions', 'get_session', 'search_wikis', 'get_wiki'];
+const READ_TOOLS = ['search_sessions', 'get_session', 'search_wikis', 'get_wiki', 'neighbors'];
 
 let api: ApiClient;
 let owner: TestUser;

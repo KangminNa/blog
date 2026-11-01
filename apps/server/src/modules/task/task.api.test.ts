@@ -473,7 +473,7 @@ describe('가짜 러너', () => {
 
 describe('일 요청 이벤트', () => {
   test('task.task.requested가 outbox를 거쳐 대기 중인 작업이 된다. 두 번 와도 하나', async () => {
-    const agent = await newAgent();
+    const agent = await newAgent({ scopes: ['read_all', 'tidy'] });
     const requestId = `tidy:${randomUUID()}`;
     const targetId = randomUUID();
     const event = new DomainEvent('task.task.requested', 1, await spaceId(), {
@@ -508,6 +508,66 @@ describe('일 요청 이벤트', () => {
     const job = await take();
     const after = await getTask(task.id);
     assert.equal(after.agentId, job.agent.id);
+  });
+});
+
+describe('일의 종류와 권한', () => {
+  /** tidy 권한을 가진 에이전트를 모두 쉬게 한다. 이 테스트의 에이전트만 일을 맡게 */
+  beforeEach(async () => {
+    await db.sql`UPDATE task.agents SET status = 'paused' WHERE 'tidy' = ANY(scopes)`;
+  });
+
+  const next = async (): Promise<Json[]> => {
+    const { ok: done, body } = await tool(runner, 'next_jobs');
+    assert.equal(done, true, JSON.stringify(body));
+    return body.jobs as Json[];
+  };
+
+  test('tidy_session은 tidy가 없는 에이전트에게 가지 않고 대기열에 남아 뒤의 일을 막지 않는다', async () => {
+    await newAgent({ scopes: ['read_public', 'write'] });
+    const tidy = await newTask(null, { kind: 'tidy_session', instruction: '정리해 주세요' });
+    const other = await newTask(null);
+
+    const [job, ...rest] = await next();
+    assert.equal(rest.length, 0);
+    assert.equal((job?.task as Json | undefined)?.id, other.id, '뒤의 일은 그대로 빌려 간다');
+    assert.equal((await getTask(tidy.id)).status, 'queued', '빌렸다가 돌려주지 않는다');
+    assert.equal((await getTask(tidy.id)).attempts, 0);
+    assert.equal((await next()).length, 0);
+  });
+
+  test('담당이 tidy가 없는 에이전트로 정해져 있어도 빌려 주지 않는다', async () => {
+    const plain = await newAgent({ scopes: ['read_public'] });
+    const task = await newTask(plain, { kind: 'tidy_session', instruction: '정리해 주세요' });
+    assert.equal((await next()).length, 0);
+    assert.equal((await getTask(task.id)).status, 'queued');
+  });
+
+  test('tidy가 있는 에이전트가 생기면 먼저 만든 에이전트를 건너뛰고 그 에이전트가 맡는다', async () => {
+    await newAgent({ scopes: ['read_public'] });
+    const task = await newTask(null, { kind: 'tidy_session', instruction: '정리해 주세요' });
+    assert.equal((await next()).length, 0);
+
+    const able = await newAgent({ scopes: ['read_all', 'tidy'] });
+    const [job] = await next();
+    assert.equal((job?.task as Json | undefined)?.id, task.id);
+    assert.equal((job?.agent as Json | undefined)?.id, able.id);
+    assert.equal((await getTask(task.id)).agentId, able.id);
+  });
+
+  test('tidy만 있고 전체 읽기가 없으면 맡지 않는다: 세션은 기본이 비공개다', async () => {
+    await newAgent({ scopes: ['tidy'] });
+    const task = await newTask(null, { kind: 'tidy_session', instruction: '정리해 주세요' });
+    assert.equal((await next()).length, 0);
+    assert.equal((await getTask(task.id)).status, 'queued');
+  });
+
+  test('tidy가 있어도 멈춘 에이전트는 맡지 않는다', async () => {
+    const able = await newAgent({ scopes: ['read_all', 'tidy'] });
+    ok(await api.request('POST', `/api/agents/${able.id}/pause`, owner, { version: able.version }));
+    const task = await newTask(null, { kind: 'tidy_session', instruction: '정리해 주세요' });
+    assert.equal((await next()).length, 0);
+    assert.equal((await getTask(task.id)).status, 'queued');
   });
 });
 
@@ -785,6 +845,7 @@ describe('작업 토큰', () => {
       'get_session',
       'search_wikis',
       'get_wiki',
+      'neighbors',
       'request_approval',
     ]);
     assert.equal((await tool(reader.run_token, 'save_session')).body.scope, 'upload');
