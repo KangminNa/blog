@@ -4,12 +4,25 @@ import type { ApiError } from './types';
 export type ApiReply<T> = { ok: true; data: T } | { ok: false; status: number; error: ApiError };
 
 export async function api<T>(method: string, path: string, body?: object): Promise<ApiReply<T>> {
+  return send<T>(path, {
+    method,
+    headers: body ? { 'content-type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+/** 파일을 본문 그대로 올린다. 형식은 서버가 파일의 앞부분으로 정한다 */
+export async function uploadFile<T>(path: string, file: File): Promise<ApiReply<T>> {
+  return send<T>(path, {
+    method: 'POST',
+    headers: { 'content-type': file.type || 'image/png' },
+    body: file,
+  });
+}
+
+async function send<T>(path: string, init: RequestInit): Promise<ApiReply<T>> {
   try {
-    const res = await fetch(path, {
-      method,
-      headers: body ? { 'content-type': 'application/json' } : {},
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    const res = await fetch(path, init);
     const json = (await res.json().catch(() => ({}))) as T & ApiError;
     if (res.ok) return { ok: true, data: json };
     return {
@@ -41,6 +54,9 @@ const FIELD_LABELS: Record<string, string> = {
   description: '소개',
   siteUrl: '사이트 주소',
   scopes: '권한',
+  url: '주소',
+  note: '메모',
+  title: '제목',
 };
 
 /** 오류를 사람이 읽는 한 줄로 (필드 오류는 칸 이름과 함께) */

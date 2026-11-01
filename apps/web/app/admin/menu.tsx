@@ -33,11 +33,18 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M2.8 14c.8-2.8 2.7-4 5.2-4s4.4 1.2 5.2 4" />
     </>
   ),
+  basket: <path d="M2.2 6h11.6l-1 7.2H3.2zM5.2 6 7 2.4M10.8 6 9 2.4" />,
 };
 
 export const MENU = [
   { label: '지식', items: [{ href: '/admin/sessions', name: '세션', icon: 'session' }] },
-  { label: '블로그', items: [{ href: '/admin/posts', name: '글', icon: 'post' }] },
+  {
+    label: '블로그',
+    items: [
+      { href: '/admin/posts', name: '글', icon: 'post' },
+      { href: '/admin/basket', name: '소재', icon: 'basket' },
+    ],
+  },
   {
     label: '연결',
     items: [
