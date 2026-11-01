@@ -1,0 +1,4 @@
+# 운영용 마이그레이션 이미지: 마이그레이션 파일을 이미지에 담아 소스를 마운트하지 않는다
+FROM ghcr.io/amacneil/dbmate:2.36.0
+COPY migrations /db/migrations
+USER nobody

@@ -16,13 +16,13 @@ export class PluginRepository extends BaseRepository<PluginState> {
   }
 
   async all(): Promise<readonly PluginState[]> {
-    const plugins = await this.sql`SELECT * FROM platform.plugins ORDER BY name`;
-    const settings = await this.sql`SELECT * FROM platform.plugin_settings`;
-    return plugins.map((p) =>
-      this.withSettings(
-        p,
-        settings.filter((s) => s.plugin === p.name),
-      ),
+    return this.withAllSettings(await this.sql`SELECT * FROM platform.plugins ORDER BY name`);
+  }
+
+  /** 트랜잭션 안에서 전부 잠그고 읽는다. 끝날 때까지 설정이 바뀌지 않는다 */
+  async lockAll(): Promise<readonly PluginState[]> {
+    return this.withAllSettings(
+      await this.sql`SELECT * FROM platform.plugins ORDER BY name FOR UPDATE`,
     );
   }
 
@@ -60,6 +60,16 @@ export class PluginRepository extends BaseRepository<PluginState> {
     }
     state.markSavedAll();
     await this.publishEvents(state);
+  }
+
+  private async withAllSettings(plugins: readonly Row[]): Promise<readonly PluginState[]> {
+    const settings = await this.sql`SELECT * FROM platform.plugin_settings`;
+    return plugins.map((p) =>
+      this.withSettings(
+        p,
+        settings.filter((s) => s.plugin === p.name),
+      ),
+    );
   }
 
   private withSettings(plugin: Row, settings: readonly Row[]): PluginState {

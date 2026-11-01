@@ -24,11 +24,12 @@
     "test": "node scripts/test.mjs",
     "slot": "node scripts/slot.mjs",
     "db:check": "node scripts/check-boundaries.mjs --db",
-    "plugin": "docker compose exec -T server pnpm --silent --filter @cairn/server cli plugin",
-    "install-code": "docker compose exec -T server pnpm --silent --filter @cairn/server cli install-code",
-    "owner": "docker compose exec -T server pnpm --silent --filter @cairn/server cli owner",
+    "plugin": "docker compose exec -T server cairn-admin plugin",
+    "install-code": "docker compose exec -T server cairn-admin install-code",
+    "owner": "docker compose exec -T server cairn-admin owner",
     "cairn": "pnpm --silent --filter @cairn/cli cairn",
-    "secret:new": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\""
+    "secret:new": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\"",
+    "secret:rotate": "docker compose exec -T server cairn-admin secret rotate"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15"

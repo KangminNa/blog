@@ -95,6 +95,31 @@ export class PluginState extends BaseEntity {
     this.touched();
   }
 
+  /**
+   * 서버 키를 바꾼 뒤: 옛 키로 잠긴 비밀값을 지금 키로 다시 잠근다. 다시 잠근 수를 돌려준다.
+   * 값의 내용은 그대로라 이벤트를 남기지 않는다. 풀리지 않는 값이 있으면 오류 (값을 버리지 않는다).
+   */
+  resealSecrets(box: SecretBox): number {
+    let count = 0;
+    for (const [key, setting] of this.stored) {
+      if (!setting.sealed) continue;
+      const resealed = this.resealed(key, setting.sealed, box);
+      if (!resealed) continue;
+      this.stored.set(key, new StoredSetting(null, resealed));
+      this.changed.add(key);
+      count += 1;
+    }
+    return count;
+  }
+
+  private resealed(key: string, sealed: SealedSecret, box: SecretBox): SealedSecret | null {
+    try {
+      return box.reseal(sealed);
+    } catch (error) {
+      throw new Error(`플러그인 ${this.name}의 ${key}: ${(error as Error).message}`);
+    }
+  }
+
   /** 지금 동작해야 하는가: 켜져 있고, 새 버전이 허락받지 않은 확장 지점을 쓰지 않음 */
   isActiveFor(manifest: PluginManifest): boolean {
     return this.enabledFlag && manifest.needsGrant(this.granted).length === 0;

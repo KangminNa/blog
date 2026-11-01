@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after, describe, test } from 'node:test';
+import { after, beforeEach, describe, test } from 'node:test';
+import { ApiClient } from '../../../testing/api-client';
 import { ArchiveQuery } from '../archive/archive.query';
 import { OwnerActor, VisitorActor } from '../base/actor';
 import { Database } from '../base/database';
 import { Forbidden, RuleViolation } from '../base/errors';
-import { SecretBox } from '../base/secret-box';
+import { SealedSecret, SecretBox } from '../base/secret-box';
+import { SecretRotation } from '../base/secret-rotation';
+import { PluginRepository } from './plugin.repository';
 import { PluginService } from './plugin.service';
 import { PluginManifest } from './plugin-manifest';
 import { PluginRegistry } from './plugin-registry';
@@ -148,5 +151,150 @@ describe('PluginService (DB)', () => {
       'archive:read',
     ]);
     assert.equal(upgraded.state('test-grow')?.isActiveFor(m), false);
+  });
+});
+
+describe('PluginRegistry: 운영 이미지', () => {
+  test('컴파일한 .js가 .ts 옆에 있으면 .js를 불러 서버와 같은 BasePlugin으로 등록한다', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'cairn-plugins-'));
+    const dir = makePlugin(root, 'test-compiled', {
+      name: 'test-compiled',
+      version: '0.1.0',
+      cairn: '>=0.1',
+      server: 'server/plugin.ts',
+      uses: ['action:hello'],
+    });
+    mkdirSync(join(dir, 'server'));
+    writeFileSync(join(dir, 'server', 'plugin.ts'), 'throw new Error("소스를 읽었어요");');
+    writeFileSync(
+      join(dir, 'server', 'plugin.js'),
+      `const { BasePlugin } = require(${JSON.stringify(join(__dirname, '../../../plugin-api'))});
+       class Compiled extends BasePlugin { register(cairn) { cairn.addAction('hello', {}); } }
+       exports.default = Compiled;`,
+    );
+    const registry = await PluginRegistry.boot(root, db.sql, archive, box);
+    await new PluginService(db, registry, box).enable(owner, 'test-compiled');
+    assert.equal(registry.problem('test-compiled'), null);
+    assert.ok(registry.action('test-compiled', 'hello'));
+  });
+});
+
+describe('서버 키 교체 (DB)', () => {
+  const oldKey = SecretBox.newKey();
+  const newKey = SecretBox.newKey();
+  const oldBox = SecretBox.fromEnv({ CAIRN_SECRET_KEY: oldKey });
+  const rotating = SecretBox.fromEnv({ CAIRN_SECRET_KEY: newKey, CAIRN_SECRET_KEY_OLD: oldKey });
+  const finished = SecretBox.fromEnv({ CAIRN_SECRET_KEY: newKey });
+
+  /** 설정 하나의 저장된 모습 */
+  async function storedSetting(plugin: string, key: string) {
+    const [row] = await db.sql`
+      SELECT value, secret_ciphertext, secret_nonce FROM platform.plugin_settings
+      WHERE plugin = ${plugin} AND key = ${key}`;
+    assert.ok(row, `${plugin}.${key}가 저장돼 있어야 해요`);
+    return row;
+  }
+
+  const sealedOf = async (plugin: string) => {
+    const row = await storedSetting(plugin, 'token');
+    return new SealedSecret(row.secret_ciphertext, row.secret_nonce);
+  };
+
+  /** plugins 폴더 하나와, 그 폴더를 읽는 서비스 */
+  async function serviceFor(root: string, withBox: SecretBox): Promise<PluginService> {
+    const registry = await PluginRegistry.boot(root, db.sql, archive, withBox);
+    return new PluginService(db, registry, withBox);
+  }
+
+  // 교체는 DB의 모든 플러그인을 보므로, 앞선 테스트가 다른 키로 남긴 값을 비운다
+  beforeEach(async () => {
+    await db.sql`DELETE FROM platform.plugins`;
+  });
+
+  test('켜진·꺼진·폴더가 없어진 플러그인의 비밀값을 모두 바꾸고, 두 번 돌려도 그대로다', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'cairn-plugins-'));
+    for (const name of ['test-on', 'test-off', 'test-gone'])
+      makePlugin(root, name, sample(name), ['web/Box.tsx']);
+    const before = await serviceFor(root, oldBox);
+    await before.enable(owner, 'test-on');
+    await before.set(owner, 'test-on', 'repoId', 'R_1');
+    await before.set(owner, 'test-on', 'token', 'ghp_on');
+    await before.set(owner, 'test-off', 'token', 'ghp_off');
+    await before.set(owner, 'test-gone', 'token', 'ghp_gone');
+    const original = await sealedOf('test-on');
+
+    const later = mkdtempSync(join(tmpdir(), 'cairn-plugins-'));
+    for (const name of ['test-on', 'test-off'])
+      makePlugin(later, name, sample(name), ['web/Box.tsx']);
+    const service = await serviceFor(later, rotating);
+
+    assert.equal(await service.resealSecrets(owner), 3);
+    const first = await sealedOf('test-on');
+    assert.notDeepEqual(first.ciphertext, original.ciphertext);
+    assert.equal((await storedSetting('test-on', 'repoId')).value, 'R_1', '일반 값은 그대로');
+    assert.equal(finished.open(first), 'ghp_on');
+    assert.equal(finished.open(await sealedOf('test-off')), 'ghp_off');
+    assert.equal(finished.open(await sealedOf('test-gone')), 'ghp_gone');
+    await assert.rejects(service.resealSecrets(new VisitorActor()), Forbidden);
+
+    assert.equal(await service.resealSecrets(owner), 0, '두 번째는 할 일이 없다');
+    assert.deepEqual((await sealedOf('test-on')).ciphertext, first.ciphertext);
+
+    // 옛 키를 지운 뒤에도 켜진 플러그인이 값을 읽고, 다시 돌리면 확인이 된다
+    const afterwards = await serviceFor(later, finished);
+    assert.equal(await afterwards.resealSecrets(owner), 0);
+  });
+
+  test('풀리지 않는 값이 하나라도 있으면 아무것도 바꾸지 않고, 그 값을 다시 넣으면 이어서 된다', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'cairn-plugins-'));
+    for (const name of ['test-a', 'test-b']) makePlugin(root, name, sample(name), ['web/Box.tsx']);
+    await (await serviceFor(root, oldBox)).set(owner, 'test-a', 'token', 'ghp_a');
+    const stranger = SecretBox.fromEnv({ CAIRN_SECRET_KEY: SecretBox.newKey() });
+    await (await serviceFor(root, stranger)).set(owner, 'test-b', 'token', 'ghp_lost');
+    const original = await sealedOf('test-a');
+
+    const service = await serviceFor(root, rotating);
+    await assert.rejects(service.resealSecrets(owner), /플러그인 test-b의 token: .*풀 수 없어요/);
+    assert.deepEqual((await sealedOf('test-a')).ciphertext, original.ciphertext, '되돌렸다');
+    assert.equal(oldBox.open(await sealedOf('test-a')), 'ghp_a');
+
+    await service.set(owner, 'test-b', 'token', 'ghp_new');
+    assert.equal(await service.resealSecrets(owner), 1);
+    assert.equal(finished.open(await sealedOf('test-a')), 'ghp_a');
+    assert.equal(finished.open(await sealedOf('test-b')), 'ghp_new');
+  });
+
+  test('다른 곳에서 값을 바꾸는 동안 돌리면 끝나기를 기다려, 새 값을 옛 값으로 덮지 않는다', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'cairn-plugins-'));
+    const dir = makePlugin(root, 'test-race', sample('test-race'), ['web/Box.tsx']);
+    await (await serviceFor(root, oldBox)).set(owner, 'test-race', 'token', 'ghp_before');
+    const service = await serviceFor(root, rotating);
+    const token = PluginManifest.read(dir).setting('token');
+    assert.ok(token);
+
+    // 값을 바꾸는 트랜잭션 안에서 교체를 시작한다. 잠금이 없으면 교체가 바뀌기 전의 값을 읽어 커밋 뒤에 덮어쓴다
+    const [rotation] = await db.transaction(async (tx) => {
+      const plugins = new PluginRepository(tx);
+      const state = await plugins.lock('test-race');
+      assert.ok(state);
+      const started = service.resealSecrets(owner);
+      await new Promise((done) => setTimeout(done, 100));
+      state.set(token, 'ghp_after', rotating);
+      await plugins.save(state, 'owner:u');
+      return [started];
+    });
+
+    assert.equal(await rotation, 0, '새 값은 이미 지금 키로 잠겨 있다');
+    assert.equal(finished.open(await sealedOf('test-race')), 'ghp_after');
+  });
+
+  test('서버가 뜨면 플러그인 설정이 SecretRotation에 등록돼 있다', async () => {
+    const api = await ApiClient.start();
+    try {
+      const counts = await api.service(SecretRotation).run(owner);
+      assert.equal(counts.get('플러그인 설정'), 0);
+    } finally {
+      await api.close();
+    }
   });
 });

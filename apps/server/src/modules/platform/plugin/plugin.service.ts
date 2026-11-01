@@ -55,6 +55,25 @@ export class PluginService extends BaseService {
     });
   }
 
+  /**
+   * 서버 키를 바꾼 뒤 비밀값을 지금 키로 다시 잠근다 (SecretRotation에 등록). 다시 잠근 값의 수를 돌려준다.
+   * 꺼진 플러그인과 폴더가 없어진 플러그인의 값도 DB에 있으면 함께 바꾼다. 풀리지 않는 값이 있으면 하나도 바뀌지 않는다.
+   */
+  async resealSecrets(actor: Actor): Promise<number> {
+    actor.assertCan(Actor.WRITE);
+    return this.transaction(async (tx) => {
+      const plugins = new PluginRepository(tx);
+      let count = 0;
+      for (const state of await plugins.lockAll()) {
+        const resealed = state.resealSecrets(this.box);
+        if (resealed === 0) continue;
+        await plugins.save(state, `${actor.kind}:${actor.id ?? ''}`);
+        count += resealed;
+      }
+      return count;
+    });
+  }
+
   /** 관리 동작 (예: 연결 확인). 외부를 부를 수 있어 트랜잭션 밖에서 돈다 */
   async runAction(actor: Actor, name: string, action: string): Promise<ActionResult> {
     actor.assertCan(Actor.WRITE);

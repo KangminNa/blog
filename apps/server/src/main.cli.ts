@@ -8,6 +8,7 @@ import {
   PluginManifest,
   PluginRegistry,
   PluginService,
+  SecretRotation,
   SystemActor,
 } from './modules/platform';
 
@@ -20,6 +21,9 @@ import {
 //   pnpm plugin disable <플러그인>                끄기
 //   pnpm plugin set <플러그인> <설정> [값]         값 넣기. 값을 빼면 표준 입력에서 읽음 (비밀값용)
 //   pnpm plugin <플러그인> <동작>                  관리 동작 (예: sync-github check)
+//   pnpm secret:rotate                           저장된 비밀값을 지금 서버 키로 다시 암호화 (순서는 .env.example)
+//
+// 컨테이너 안에서는 개발·운영 모두 cairn-admin <명령>으로 부른다 (Dockerfile).
 const owner = new OwnerActor('local', 'cli');
 
 async function main() {
@@ -32,6 +36,8 @@ async function main() {
       return await resetPassword(app.get(OwnerService));
     if (command === 'plugin')
       return await plugin(app.get(PluginRegistry), app.get(PluginService), args);
+    if (command === 'secret' && args[0] === 'rotate')
+      return await rotateSecrets(app.get(SecretRotation));
     throw new Error('명령을 알 수 없어요. 쓰는 법은 apps/server/src/main.cli.ts 맨 위에');
   } finally {
     await app.close();
@@ -56,6 +62,12 @@ async function resetPassword(owners: OwnerService): Promise<void> {
   );
   const owner = await owners.resetPassword(new SystemActor(), plain);
   console.log(`✔ ${owner.login}의 비밀번호를 다시 정했어요. 모든 로그인이 끝났어요`);
+}
+
+async function rotateSecrets(rotation: SecretRotation): Promise<void> {
+  const counts = await rotation.run(owner);
+  for (const [name, count] of counts) console.log(`✔ ${name}: ${count}개를 다시 암호화했어요`);
+  console.log('모든 비밀값이 지금 서버 키로 풀려요. CAIRN_SECRET_KEY_OLD를 지워도 돼요');
 }
 
 async function plugin(
