@@ -2,11 +2,13 @@
 
 ## 하는 일
 AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 연결선, AI 정리 결과의 변경 묶음과 검토 규칙(승인함), 대정리, 변경 기록과 되돌리기, 그래프 보기.
-지금은 M1 C 세션 저장까지 있다.
+지금은 세션 저장과 AI 도구의 세션 찾기·읽기까지 있다.
 
 - `session/`: 세션(`Session` + 판 `SessionRevision`), 노트(`SessionNote`: 제목·태그·고정 칸 다섯, 해시, 본문 md),
   2차 민감정보 제거(`SensitivePolicy`), 저장 결과(`SessionReceipt`: saved · unchanged · duplicate).
   MCP 도구 `check_session`(`CheckSessionTool`: 올리기 전 검사, 저장하지 않음. request_id·대화 id·같은 대화의 판 수·지울 민감정보)과 `save_session`(`SaveSessionTool`),
+  `search_sessions`(`SearchSessionsTool`: 제목·지금 판 본문의 키워드 찾기, pg_bigm `LIKE likequery()`라 대소문자 구분. 순서와 커서는 바뀌지 않는 세션 id)와
+  `get_session`(`GetSessionTool`: 지금 판 하나). 두 읽기 도구는 `read_public`이나 `read_all` 중 하나로 열리고(`BaseTool.orScope`), 볼 수 없는 세션은 없는 세션과 똑같이 답한다.
   관리 화면 API `api/sessions`(목록·상세·지난 판, 비공개까지 볼 수 있는 요청자만)
 
 ## 소유 데이터
@@ -25,7 +27,7 @@ change_sets, change_ops, review_rules, changes, edit_leases
 - 글 자리 사본: post_marks (blog 이벤트를 받는 Handler만 쓴다)
 
 ## 공개 API (`index.ts`)
-`VaultModule`, `CheckSessionTool` · `SaveSessionTool`(mcp 모듈이 모아서 연다). 예정: 세션 Query(blog의 재료 패널·글감 상자가 읽음)
+`VaultModule`, `VaultTools`(세션 도구 목록, mcp 모듈이 모아서 연다). 예정: 세션 Query(blog의 재료 패널·글감 상자가 읽음)
 
 ## 내보내는 이벤트 / 받는 이벤트
 `vault.session.saved`(v1: sessionId, revisionId, seq, deviceId, project, created) / 예정: `blog.post.*` (글 자리 사본 갱신)
