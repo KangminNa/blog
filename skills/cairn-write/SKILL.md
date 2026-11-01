@@ -1,5 +1,6 @@
 ---
 name: cairn-write
+cairn-where: runner
 description: Cairn 블로그의 초안을 쓰고 주인에게 공개 결재를 올린다. 러너가 draft_post 작업을 맡겼을 때 쓴다. 소재와 저장된 세션에서 읽은 내용만으로 초안을 저장한다. 사람이 직접 부르는 스킬이 아니다.
 ---
 
@@ -92,7 +93,7 @@ note: <주인에게 남길 말>
 
 이전 실행의 기억은 없다. 글을 다시 찾아 지금 내용을 읽고 고친다.
 
-1. 글을 찾는다. 프롬프트의 대상이 글이면 그 id를 쓴다. 대상이 없으면 `blog_save_draft`를 `request_id: first-draft`, `title`과 `body_md`에 작업 제목을 넣어 부른다. 같은 `request_id`라 아무것도 저장되지 않고 처음 저장한 글의 `post_id`가 돌아온다.
+1. 글을 찾는다. 주인이 고쳐 달라고 한 일은 프롬프트의 대상이 그 글이다. 그 id를 쓴다. 대상이 없으면 `blog_save_draft`를 `request_id: first-draft`, `title`과 `body_md`에 작업 제목을 넣어 부른다. 같은 `request_id`라 아무것도 저장되지 않고 처음 저장한 글의 `post_id`가 돌아온다.
 2. `blog_get_post`로 지금 제목, 본문, `status`, `version`을 읽는다. 주인이 그사이 손본 내용이 있으면 그대로 두고 그 위에서 고친다.
 3. `status`가 `draft`가 아니거나 `not_found`가 오면 고칠 수 없다. 이유를 답하고 끝낸다.
 4. 주인의 말대로 고친다. 자료가 더 필요하면 2장처럼 읽고, 3장의 규칙은 그대로다.

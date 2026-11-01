@@ -61,9 +61,9 @@ export class Task extends TrackedEntity {
     readonly instruction: string,
     private payloadValue: Readonly<Record<string, unknown>>,
     private resultValue: Readonly<Record<string, unknown>> | null,
-    readonly targetKind: string | null,
-    readonly targetId: string | null,
-    readonly baseVersion: number | null,
+    private targetKindValue: string | null,
+    private targetIdValue: string | null,
+    private baseVersionValue: number | null,
     private statusValue: string,
     readonly priority: number,
     private leaseEnd: Date | null,
@@ -169,6 +169,18 @@ export class Task extends TrackedEntity {
     return this.agent;
   }
 
+  get targetKind(): string | null {
+    return this.targetKindValue;
+  }
+
+  get targetId(): string | null {
+    return this.targetIdValue;
+  }
+
+  get baseVersion(): number | null {
+    return this.baseVersionValue;
+  }
+
   get payload(): Readonly<Record<string, unknown>> {
     return this.payloadValue;
   }
@@ -261,14 +273,28 @@ export class Task extends TrackedEntity {
     this.holdLease(null, null);
   }
 
-  /** 결재에서 고쳐 달라고 함: waiting → queued. 에이전트가 말을 받아 다시 하므로 시도 횟수는 새로 센다 */
-  returnForRevision(note: string | null): void {
+  /**
+   * 결재에서 고쳐 달라고 함: waiting → queued. 에이전트가 말을 받아 다시 하므로 시도 횟수는 새로 센다.
+   * 다음 실행은 앞 실행을 기억하지 못하므로 결재의 대상을 작업의 대상으로 넘긴다.
+   */
+  returnForRevision(
+    note: string | null,
+    targetKind: string,
+    targetId: string,
+    targetVersion: number,
+  ): void {
     this.move([Task.WAITING], Task.QUEUED);
     this.holdLease(null, null);
     this.tries = 0;
     this.track('attempts', 0);
     this.payloadValue = { ...this.payloadValue, revisionNote: note };
     this.track('payload', this.payloadValue);
+    this.targetKindValue = targetKind;
+    this.track('target_kind', targetKind);
+    this.targetIdValue = targetId;
+    this.track('target_id', targetId);
+    this.baseVersionValue = targetVersion;
+    this.track('base_version', targetVersion);
   }
 
   /** 러너가 끝을 알린다. 살아 있는 임대로만 */

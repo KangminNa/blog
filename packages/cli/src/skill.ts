@@ -33,7 +33,12 @@ export class SkillPackage {
     return new SkillPackage(dir.split(/[/\\]/).pop() ?? '', files);
   }
 
-  /** 이 명령에 함께 든 스킬 전부. 저장소에서는 <저장소>/skills, 배포한 패키지에서는 <패키지>/skills */
+  /** 러너의 작업에서만 쓰는 스킬인가. 앞부분에 `cairn-where: runner`가 있다. 작업 토큰이 있어야 도는 스킬이라 사람의 AI 도구에 넣지 않는다 */
+  get runnerOnly(): boolean {
+    return /^cairn-where: runner$/m.test(this.files.get('SKILL.md') ?? '');
+  }
+
+  /** 이 명령에 함께 든, 사람의 AI 도구에 넣을 스킬. 저장소에서는 <저장소>/skills, 배포한 패키지에서는 <패키지>/skills */
   static bundled(): SkillPackage[] {
     const dir = [join(__dirname, '../skills'), join(__dirname, '../../../skills')].find((d) =>
       existsSync(d),
@@ -42,7 +47,8 @@ export class SkillPackage {
     return readdirSync(dir)
       .filter((name) => existsSync(join(dir, name, 'SKILL.md')))
       .sort()
-      .map((name) => SkillPackage.load(join(dir, name)));
+      .map((name) => SkillPackage.load(join(dir, name)))
+      .filter((skill) => !skill.runnerOnly);
   }
 
   /** 스킬 폴더에 넣을 파일 (agents/ 빼고) */

@@ -368,9 +368,9 @@ describe('결재한 공개', () => {
     assert.equal((await getPost(first.postId)).status, 'draft');
     assert.equal((await getTask(first.task.id)).status, 'queued');
 
-    // 대상이 없는 작업이다. 스킬은 첫 저장의 request_id로 같은 글을 찾는다
+    // 다음 실행은 앞 실행을 기억하지 못하므로 결재의 대상이 작업의 대상이 된다
     const job = await take(first.task.id);
-    assert.equal(job.target, null);
+    assert.equal(job.target?.id, first.postId);
     assert.equal(job.revision_note, '제목을 바꿔 주세요');
     const found = await call(job.run_token, 'blog_save_draft', {
       request_id: 'first-draft',
