@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import { after, beforeEach, describe, test } from 'node:test';
 import { ApiClient } from '../../../testing/api-client';
 import { ArchiveQuery } from '../archive/archive.query';
+import { ArchiveRestoreService } from '../archive/archive-restore.service';
 import { OwnerActor, VisitorActor } from '../base/actor';
+import { BlobStore } from '../base/blob-store';
 import { Database } from '../base/database';
 import { Forbidden, RuleViolation } from '../base/errors';
 import { SealedSecret, SecretBox } from '../base/secret-box';
@@ -19,6 +21,7 @@ import { PluginRegistry } from './plugin-registry';
 
 const db = new Database();
 const archive = new ArchiveQuery(db);
+const restore = new ArchiveRestoreService(db, archive, new BlobStore(db));
 const box = SecretBox.fromEnv({ CAIRN_SECRET_KEY: SecretBox.newKey() });
 const owner = new OwnerActor('s', 'u');
 after(async () => {
@@ -103,7 +106,7 @@ describe('PluginService (DB)', () => {
   test('켜기·설정·끄기가 DB에 남고, 비밀값은 암호화돼 저장된다', async () => {
     const root = mkdtempSync(join(tmpdir(), 'cairn-plugins-'));
     makePlugin(root, 'test-giscus', sample('test-giscus'), ['web/Box.tsx']);
-    const registry = await PluginRegistry.boot(root, db.sql, archive, box);
+    const registry = await PluginRegistry.boot(root, db.sql, archive, box, restore);
     const plugins = new PluginService(db, registry, box);
 
     await assert.rejects(plugins.enable(new VisitorActor(), 'test-giscus'), Forbidden);
@@ -133,7 +136,7 @@ describe('PluginService (DB)', () => {
     const root = mkdtempSync(join(tmpdir(), 'cairn-plugins-'));
     const v1 = { name: 'test-grow', version: '0.1.0', cairn: '>=0.1' };
     makePlugin(root, 'test-grow', v1);
-    const first = await PluginRegistry.boot(root, db.sql, archive, box);
+    const first = await PluginRegistry.boot(root, db.sql, archive, box, restore);
     await new PluginService(db, first, box).enable(owner, 'test-grow');
 
     mkdirSync(join(root, 'test-grow', 'server'), { recursive: true });
@@ -144,7 +147,7 @@ describe('PluginService (DB)', () => {
       server: 'server/plugin.ts',
       uses: ['archive:read'],
     });
-    const upgraded = await PluginRegistry.boot(root, db.sql, archive, box);
+    const upgraded = await PluginRegistry.boot(root, db.sql, archive, box, restore);
     const m = upgraded.manifest('test-grow');
     assert.ok(m);
     assert.deepEqual(m.needsGrant(new Set(upgraded.state('test-grow')?.grantedUses)), [
@@ -172,7 +175,7 @@ describe('PluginRegistry: 운영 이미지', () => {
        class Compiled extends BasePlugin { register(cairn) { cairn.addAction('hello', {}); } }
        exports.default = Compiled;`,
     );
-    const registry = await PluginRegistry.boot(root, db.sql, archive, box);
+    const registry = await PluginRegistry.boot(root, db.sql, archive, box, restore);
     await new PluginService(db, registry, box).enable(owner, 'test-compiled');
     assert.equal(registry.problem('test-compiled'), null);
     assert.ok(registry.action('test-compiled', 'hello'));
@@ -202,7 +205,7 @@ describe('서버 키 교체 (DB)', () => {
 
   /** plugins 폴더 하나와, 그 폴더를 읽는 서비스 */
   async function serviceFor(root: string, withBox: SecretBox): Promise<PluginService> {
-    const registry = await PluginRegistry.boot(root, db.sql, archive, withBox);
+    const registry = await PluginRegistry.boot(root, db.sql, archive, withBox, restore);
     return new PluginService(db, registry, withBox);
   }
 

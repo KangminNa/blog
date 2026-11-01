@@ -4,6 +4,7 @@ export {
   ActionResult,
   Actor,
   ArchiveFile,
+  type ArchiveRestoreService,
   BaseAction,
   BaseGateway,
   BaseHandler,

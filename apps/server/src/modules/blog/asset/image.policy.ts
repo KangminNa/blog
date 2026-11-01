@@ -2,6 +2,13 @@
 // PNG · JPEG · WebP · GIF만 받는다. SVG는 스크립트를 담을 수 있어서 받지 않는다.
 // biome-ignore lint/complexity/noStaticOnlyClass: 상태 없는 판단 한 곳. 입력 검사와 테스트가 함께 쓴다
 export class ImagePolicy {
+  /** 받는 형식의 확장자 (보관 파일 이름) */
+  static readonly EXTENSIONS: Readonly<Record<string, string>> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+  };
   private static readonly PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   private static readonly JPEG = Buffer.from([0xff, 0xd8, 0xff]);
 

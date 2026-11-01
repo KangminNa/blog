@@ -23,6 +23,7 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
 - `post-mark/`: 글 자리 사본(`PostMark`). `PostMarkHandler`(`blog.post.*`)만 쓴다
 - `graph/`: 그래프 읽기(`GraphQuery`). `api/graph`(주인), `api/graph/public`(방문자), MCP `neighbors`(`read_public`이나 `read_all`)
 - `vault-archive.query.ts`: 보관 형식 파일 (`ArchiveQuery.register`로 등록). `vault-archive.api.ts`: `api/archive.zip`(주인만). platform은 모듈 파일을 모르고, 이 경로의 자리가 다른 곳에 없어 여기 둔다
+- `restore/`: 복원의 vault 몫(`VaultRestore`, `ArchiveQuery.registerRestore`로 등록). 파일을 읽는 `RestoredCategory` · `RestoredWiki` · `RestoredSession` · `RestoredEdge` · `RestoredPin` · `RestoredPostMark`, 새 행만 넣는 `VaultRestoreRepository`
 
 ## 소유 데이터
 스키마 `vault`: node_kinds, edge_kinds, nodes, sessions, session_revisions, attachments, categories, wikis, wiki_revisions, wiki_aliases,
@@ -37,7 +38,7 @@ change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings
 - 변경 묶음: change_sets + change_ops (+ 실제로 바뀐 행 changes). 승인함은 검토를 기다리는 change_ops
 - 검토 규칙: review_rules
 - 그래프 보기: graph_views + node_layout + graph_snapshots
-- 글 자리 사본: post_marks (blog 이벤트를 받는 Handler만 쓴다)
+- 글 자리 사본: post_marks (blog 이벤트를 받는 Handler와 복원만 쓴다)
 - 정리 설정: tidy_settings
 
 ## 공개 API (`index.ts`)
@@ -87,6 +88,10 @@ platform
 - 자동 정리는 기본이 꺼짐이다 (저장마다 주인의 구독 토큰). 같은 판의 일 요청은 requestId가 같아 작업이 하나다
 - `tidy_requested_seq`는 판이 지금 판보다 뒤처졌을 때만 쌓인 세션 정리가 고른다. 요청이 실패해도 그대로라, 새 판이 쌓이는 것이 다시 시도다. `session.assign`이 version으로 지키므로 이 값을 적어도 세션 `version`은 올리지 않는다
 - `space_id`, `device_id`, `blob_hash`는 다른 모듈을 가리키는 값이다 (외래키 없음)
+- 복원은 변경 묶음을 거치지 않고 이벤트도 남기지 않는 유일한 쓰기다 (빈 곳에 id를 지켜 넣는 일이라 되돌릴 대상이 없고, 정리 요청이 생기면 안 된다). 칸·해시·찾기용 글은 `SessionNote`·`WikiBody`로 다시 만든다
+- 복원한 세션의 `device_id`는 고정 값(`RestoredSession.NO_DEVICE`), `source_session_id`는 세션 id다. 기기가 복원 뒤 저장하는 세션은 새 세션이 되고, 복원 전의 대화를 다시 저장해도 새 세션이 된다 (보관 파일에 기기와 대화 id가 없다)
+- 복원은 `post_marks`를 보관 형식의 글 파일 앞부분에서 바로 채운다: blog를 읽지 않고, 이벤트를 남기지 않는다
+- 사람이 정한 표시도 보관 파일에 있다: wiki의 `cairn_origin`·`cairn_pinned`, 세션의 `cairn_pinned`, 카테고리의 `origin`·`pinned`. 없는 옛 백업은 사람의 것으로 본다
 
 ## 하지 말 것
 - blog import (vault는 blog를 모른다)

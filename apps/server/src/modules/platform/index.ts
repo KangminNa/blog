@@ -2,6 +2,9 @@
 
 export { ArchiveQuery } from './archive/archive.query';
 export { ArchiveFile } from './archive/archive-file';
+export { ArchiveBlob, ArchivePart, ArchiveReport } from './archive/archive-part';
+export { ArchiveRecord } from './archive/archive-record';
+export { ArchiveRestoreService } from './archive/archive-restore.service';
 export {
   Actor,
   AgentActor,
@@ -48,6 +51,7 @@ export { SealedSecret, SecretBox } from './base/secret-box';
 export { SecretRotation } from './base/secret-rotation';
 export { TrackedEntity } from './base/tracked-entity';
 export { ZipFile } from './base/zip-file';
+export { ZipLimits, ZipReader } from './base/zip-reader';
 export { Cookies } from './http/cookies';
 export { CurrentActor } from './http/current-actor';
 export { HttpSetup } from './http/http-setup';

@@ -1,5 +1,6 @@
 import type { ArchiveQuery } from '../archive/archive.query';
 import type { ArchiveFile } from '../archive/archive-file';
+import type { ArchiveRestoreService } from '../archive/archive-restore.service';
 import { SystemActor } from '../base/actor';
 import type { BaseAction } from '../base/base-action';
 import type { BaseHandler } from '../base/base-handler';
@@ -54,6 +55,7 @@ export class PluginContext {
     private readonly manifest: PluginManifest,
     private readonly values: ReadonlyMap<string, string>,
     private readonly archive: ArchiveQuery,
+    private readonly restore: ArchiveRestoreService,
   ) {}
 
   /** 자기 설정 값 전부 (비밀값은 풀어서, 비어 있으면 기본값). 다른 플러그인의 설정은 볼 수 없다 */
@@ -85,10 +87,19 @@ export class PluginContext {
     this.logins.push(new LoginMethod(this.manifest.name, name, login));
   }
 
-  /** 보관 형식 파일을 읽는 함수. 서버 자신의 자격으로 읽으므로 목록 파일에 archive:read가 있어야 한다 */
+  /**
+   * 보관 형식 파일을 읽는 함수. 서버 자신의 자격으로 읽으므로 목록 파일에 archive:read가 있어야 한다.
+   * 복원과 겹치지 않게 읽어서, 동기화가 절반만 복원된 모습을 보고 원격 파일을 지우는 일이 없다.
+   */
   archiveReader(): () => Promise<readonly ArchiveFile[]> {
     this.require('archive:read');
-    return () => this.archive.files(new SystemActor());
+    return () => this.restore.steadyRead(() => this.archive.files(new SystemActor()));
+  }
+
+  /** 보관 파일을 빈 Cairn에 들여오는 창구. 부른 사람이 주인이어야 한다. 목록 파일에 archive:restore가 있어야 한다 */
+  archiveRestorer(): ArchiveRestoreService {
+    this.require('archive:restore');
+    return this.restore;
   }
 
   private require(use: string): void {
