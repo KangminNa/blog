@@ -72,7 +72,7 @@ export class OAuthClient extends BaseEntity {
     if (OAuthClient.appOf(redirectUri) && !hostedApps)
       throw new OAuthError(
         error,
-        'ChatGPT·Claude 앱 연결이 꺼진 블로그예요. 관리 화면 기기 시트에서 켜 주세요',
+        'ChatGPT·Claude 앱 연결이 꺼진 블로그예요. 관리 화면 기기 화면에서 켜 주세요',
       );
   }
 

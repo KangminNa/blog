@@ -1,16 +1,12 @@
-import { CairnMark } from '../_ui/CairnMark';
-
-// 블로그(밝은 읽기 화면)의 머리. 블로그 이름은 글 목록으로, 그래프는 첫 화면으로.
-export function BlogHeader({ name }: { name: string }) {
+// 공개 화면의 머리. 이름은 글 목록으로, 오른쪽은 주인이면 콘솔, 아니면 로그인.
+export function BlogHeader({ name, owner }: { name: string; owner: boolean }) {
   return (
     <header className="blog-top">
-      <a className="blog-brand" href="/posts">
-        <CairnMark />
-        {name || 'cairn'}
+      <a className="blog-brand" href="/">
+        {name || 'Cairn'}
       </a>
       <nav aria-label="블로그 메뉴">
-        <a href="/posts">글</a>
-        <a href="/">그래프</a>
+        <a href={owner ? '/admin' : '/login'}>{owner ? '콘솔' : '로그인'}</a>
       </nav>
     </header>
   );

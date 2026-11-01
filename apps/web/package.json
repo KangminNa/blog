@@ -2,7 +2,7 @@
   "name": "@cairn/web",
   "version": "0.0.0",
   "private": true,
-  "description": "Cairn 웹 (Next.js): 그래프, 블로그, 관리 모드",
+  "description": "Cairn 웹 (Next.js): 블로그, 콘솔",
   "scripts": {
     "dev": "node ../../scripts/sync-plugins.mjs && next dev -H 0.0.0.0 -p 3000",
     "build": "node ../../scripts/sync-plugins.mjs && next build",

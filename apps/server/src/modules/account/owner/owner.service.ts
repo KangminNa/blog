@@ -152,7 +152,7 @@ export class OwnerService extends BaseService {
       if (!owner)
         throw new Forbidden(
           'owner',
-          '연결하지 않은 계정이에요. 비밀번호로 로그인한 뒤 계정 시트에서 먼저 연결해 주세요',
+          '연결하지 않은 계정이에요. 비밀번호로 로그인한 뒤 계정 화면에서 먼저 연결해 주세요',
         );
       const session = owner.startSession(ip, userAgent, new Date());
       await owners.save(owner);

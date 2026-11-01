@@ -12,7 +12,7 @@ export default async function LoginPage({
   searchParams: Promise<{ return?: string; error?: string }>;
 }) {
   const { return: back, error } = await searchParams;
-  const safe = back?.startsWith('/') && !back.startsWith('//') ? back : '/';
+  const safe = back?.startsWith('/') && !back.startsWith('//') ? back : '/admin';
   const methods = (await serverGet<{ methods: LoginMethod[] }>('/api/auth/methods'))?.methods ?? [];
   return <LoginForm returnTo={safe} methods={methods} initialError={error ?? null} />;
 }

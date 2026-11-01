@@ -4,7 +4,7 @@ import { ApiClient, type ApiResult, TestUser } from '../../../testing/api-client
 import { FakeGithub } from '../../../testing/fake-github';
 
 // 외부 로그인 (확장 지점 login:<이름>, 플러그인 login-github). 가짜 GitHub로 끝까지 돌린다.
-//   연결 전에는 GitHub로 로그인되지 않는다 → 주인이 계정 시트에서 연결 → 그 계정으로만 로그인 → 끊으면 다시 안 됨.
+//   연결 전에는 GitHub로 로그인되지 않는다 → 주인이 계정 화면에서 연결 → 그 계정으로만 로그인 → 끊으면 다시 안 됨.
 
 let api: ApiClient;
 let github: FakeGithub;
@@ -85,7 +85,7 @@ describe('계정 연결', () => {
     assert.equal((await api.get('/api/auth/links/github/start')).status, 403);
   });
 
-  test('주인이 연결하면 계정 시트에 GitHub login 이름이 보인다', async () => {
+  test('주인이 연결하면 계정 화면에 GitHub login 이름이 보인다', async () => {
     const res = await roundTrip('/api/auth/links/github/start?return=/', OWNER_GITHUB, owner);
     assert.equal(res.status, 302);
     assert.equal(res.location, '/');

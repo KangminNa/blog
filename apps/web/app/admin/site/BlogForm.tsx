@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { api, describe } from '../_lib/client-api';
-import type { SpaceInfo } from '../_lib/types';
+import { api, describe } from '../../_lib/client-api';
+import type { SpaceInfo } from '../../_lib/types';
 
-// 블로그 이름·소개·사이트 주소. 설치 마법사의 3단계와 관리 모드의 "블로그" 시트가 함께 쓴다.
+// 사이트 이름·소개·주소. 설치 마법사의 3단계와 콘솔의 사이트 메뉴가 함께 쓴다.
 // version을 함께 보내서, 다른 곳에서 먼저 바꿨으면 덮지 않고 알린다.
 export function BlogForm({
   space,
@@ -65,14 +65,14 @@ export function BlogForm({
   return (
     <form onSubmit={save} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <label className="field">
-        <span>블로그 이름</span>
+        <span>이름</span>
         <input
           className="input"
           value={name}
           maxLength={80}
           required
           onChange={(e) => setName(e.target.value)}
-          placeholder="예: 작업 기록"
+          placeholder="예: 개발 기록"
         />
       </label>
       <label className="field">

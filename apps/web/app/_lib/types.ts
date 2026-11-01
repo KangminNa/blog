@@ -53,7 +53,7 @@ export type ActionResult = { ok: boolean; message: string; details: string[] };
 /** 서버의 오류 모양: { code, message, fields? } */
 export type ApiError = { code: string; message: string; fields?: Record<string, string> };
 
-/** 기기 하나 (관리 화면의 기기 시트) */
+/** 기기 하나 (콘솔의 기기 메뉴) */
 export type Device = {
   id: string;
   name: string;
@@ -77,14 +77,14 @@ export type Consent = {
 
 /** 기기 권한의 화면 이름 */
 export const SCOPE_LABELS: Record<string, string> = {
-  upload: '세션 올리기',
-  read_public: '공개된 것 읽기',
-  read_all: '비공개까지 읽기',
-  tidy: '정리하기',
-  write: '글 초안 쓰기',
+  upload: '세션 저장',
+  read_public: '공개 읽기',
+  read_all: '전체 읽기',
+  tidy: '정리',
+  write: '초안 작성',
 };
 
-/** 세션 목록의 한 줄 (관리 화면의 세션 시트). 기기는 id만: 이름은 기기 목록과 맞춘다 */
+/** 세션 목록의 한 줄 (콘솔의 세션 메뉴). 기기는 id만: 이름은 기기 목록과 맞춘다 */
 export type SessionSummary = {
   id: string;
   title: string;
@@ -129,13 +129,13 @@ export type SessionDetail = SessionSummary & {
   }[];
 };
 
-/** 글의 공개 범위: 임시(나만) · 공개(목록에 보임) · 링크만(주소로만) */
+/** 글의 공개 범위: 초안(나만) · 공개(목록에 보임) · 링크 공개(주소로만) */
 export type PostStatus = 'draft' | 'published' | 'unlisted';
 
 export const POST_STATUS_LABELS: Record<PostStatus, string> = {
-  draft: '임시',
+  draft: '초안',
   published: '공개',
-  unlisted: '링크만',
+  unlisted: '링크 공개',
 };
 
 /** 글 목록의 한 줄 (방문자가 보는 것) */
@@ -170,7 +170,7 @@ export type PostList<T extends PostSummary = PostSummary> = {
 export type PostPage = PostSummary & {
   body: string;
   align: 'left' | 'center';
-  /** 목록에 보이는 글인가 (링크만·임시 글이면 false) */
+  /** 목록에 보이는 글인가 (링크 공개·초안이면 false) */
   listed: boolean;
   status?: PostStatus;
 };

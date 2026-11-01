@@ -1,8 +1,8 @@
 import { notFound, redirect } from 'next/navigation';
 import '../../../_blog/blog.css';
-import { PostEditor } from '../../../_admin/PostEditor';
 import { serverGet } from '../../../_lib/server-api';
 import type { EditablePost, Owner } from '../../../_lib/types';
+import { PostEditor } from '../PostEditor';
 
 // 글 편집기 (/admin/posts/new: 새 글, /admin/posts/<id>: 고쳐 쓰기). 주인만.
 export const dynamic = 'force-dynamic';

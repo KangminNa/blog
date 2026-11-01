@@ -3,7 +3,7 @@ import { after, before, describe, test } from 'node:test';
 import { inflateRawSync } from 'node:zlib';
 import { ApiClient, type TestUser } from '../../testing/api-client';
 
-// 관리 화면 기기 시트의 "스킬 받기": ChatGPT·Claude 앱에 올릴 스킬 zip.
+// 관리 화면 기기 화면의 "스킬 받기": ChatGPT·Claude 앱에 올릴 스킬 zip.
 
 let api: ApiClient;
 let owner: TestUser;

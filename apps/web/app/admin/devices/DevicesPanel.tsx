@@ -1,13 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, describe } from '../_lib/client-api';
-import { type Device, SCOPE_LABELS, type SpaceInfo } from '../_lib/types';
+import { api, describe } from '../../_lib/client-api';
+import { type Device, SCOPE_LABELS, type SpaceInfo } from '../../_lib/types';
 import { ConnectGuide } from './ConnectGuide';
 
 const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write'];
 
-// 기기 시트: 연결하는 법(도구별), 연결된 기기의 권한 바꾸기·끊기, 예비 기기 토큰.
+// 기기: 연결하는 법(도구별), 연결된 기기의 권한 바꾸기·끊기, 예비 기기 토큰.
 // 설치 마법사의 마지막 단계도 이 목록을 보며 첫 기기가 붙기를 기다린다.
 export function DevicesPanel({
   siteUrl,
@@ -85,7 +85,7 @@ export function DevicesPanel({
       {devices === null ? (
         <p className="label-mono">불러오는 중…</p>
       ) : live.length === 0 ? (
-        <p className="label-mono">아직 연결한 기기 없음</p>
+        <p className="label-mono">연결한 기기 없음</p>
       ) : (
         live.map((d) => (
           <section key={d.id} className="plugin" aria-label={d.name}>

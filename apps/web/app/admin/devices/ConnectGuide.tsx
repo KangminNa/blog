@@ -1,10 +1,10 @@
 'use client';
 
 import { type ReactNode, useEffect, useState } from 'react';
-import { api, describe } from '../_lib/client-api';
-import type { SpaceInfo } from '../_lib/types';
+import { api, describe } from '../../_lib/client-api';
+import type { SpaceInfo } from '../../_lib/types';
 
-// 기기 시트 맨 위의 "연결하는 법". 도구마다 길이 다르다.
+// 기기 화면 맨 위의 "연결하는 법". 도구마다 길이 다르다.
 //   이 컴퓨터의 도구(Claude Code · Codex): cairn connect가 스킬·검토자를 넣고 MCP 등록·로그인까지 한다
 //   앱(Claude 앱 · ChatGPT): 회사 서버가 블로그로 들어오므로 "앱 연결 허용"을 켜고, 공개 https 주소가 있어야 한다.
 //     스킬은 블로그가 내주는 zip(스크립트 없이 SKILL.md와 규칙만)을 사용자가 직접 올린다
@@ -220,7 +220,7 @@ function AppSteps({
       {!isPublicHttps(siteUrl) && (
         <p className="warn">
           앱은 {name} 회사 서버에서 이 블로그로 들어와요. 공개 https 주소가 필요해요 · 지금{' '}
-          <code>{siteUrl ?? '주소 없음'}</code> (블로그 시트에서 바꾸기, 터널은 README)
+          <code>{siteUrl ?? '주소 없음'}</code> (사이트 메뉴에서 바꾸기, 터널은 README)
         </p>
       )}
       <ol>

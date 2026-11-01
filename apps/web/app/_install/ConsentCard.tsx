@@ -35,11 +35,10 @@ export function ConsentCard({
 
   return (
     <>
-      <div className="stage" aria-hidden="true" />
       <header className="top">
-        <a className="brand" href="/" aria-label="그래프 홈">
+        <a className="brand" href="/" aria-label="홈">
           <CairnMark />
-          cairn
+          Cairn
         </a>
       </header>
       <main className="center">
@@ -72,7 +71,7 @@ export function ConsentCard({
                   onChange={(e) => setName(e.target.value)}
                   placeholder="예: macbook-home"
                 />
-                <small>관리 화면의 기기 목록에 이 이름으로 보여요. 권한 바꾸기도 거기서 해요</small>
+                <small>콘솔의 기기 목록에 이 이름으로 보여요. 권한 바꾸기도 거기서 해요</small>
               </label>
               {error && <p className="error">{error}</p>}
               <button
@@ -97,8 +96,8 @@ export function ConsentCard({
             <>
               <h1>연결할 수 없어요</h1>
               <p className="error">{error}</p>
-              <a className="cta" href="/">
-                <span>그래프로</span>
+              <a className="cta" href="/admin">
+                <span>콘솔로</span>
                 <span className="arr">→</span>
               </a>
             </>

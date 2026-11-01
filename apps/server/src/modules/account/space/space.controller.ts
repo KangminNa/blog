@@ -5,7 +5,7 @@ import { HostedAppsRequest, RenameSpaceRequest } from './space.request';
 import { SpaceResponse } from './space.response';
 import { SpaceService } from './space.service';
 
-// 블로그 이름·소개·앱 연결 허용. 읽기는 누구나, 쓰기는 주인 (설치 마법사의 블로그 이름 단계, 관리 화면 설정·기기 시트)
+// 블로그 이름·소개·앱 연결 허용. 읽기는 누구나, 쓰기는 주인 (설치 마법사의 블로그 이름 단계, 관리 화면 설정·기기 화면)
 @Controller('api/space')
 export class SpaceController {
   constructor(

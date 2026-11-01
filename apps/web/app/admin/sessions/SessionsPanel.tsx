@@ -1,14 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, describe } from '../_lib/client-api';
+import { api, describe } from '../../_lib/client-api';
 import type {
   Device,
   SessionDetail,
   SessionPage,
   SessionRevision,
   SessionSummary,
-} from '../_lib/types';
+} from '../../_lib/types';
 
 const KIND_LABELS: Record<string, string> = { origin: '원본', human: '사람', merge: '합침' };
 /** 판 번호는 최근 몇 개만 펼쳐 둔다 (판이 많으면 노트가 밀려 내려가므로) */
@@ -20,8 +20,7 @@ function when(iso: string | null): string {
     : '';
 }
 
-// 세션 시트: AI 도구가 저장한 세션 목록(최근 저장 순, 프로젝트로 거르기) → 세션 하나(지금 판의 칸, 판 기록, 지난 판).
-// AI 도구의 save_session 응답 링크(?sheet=sessions&session=<id>)로 들어오면 그 세션을 바로 연다.
+// 세션: AI 도구가 저장한 세션 목록(최근 저장 순, 프로젝트로 거르기) → 세션 하나(지금 판의 칸, 판 기록, 지난 판).
 export function SessionsPanel({ initialId }: { initialId: string | null }) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
@@ -101,9 +100,9 @@ export function SessionsPanel({ initialId }: { initialId: string | null }) {
         <p className="label-mono">불러오는 중…</p>
       ) : sessions.length === 0 ? (
         <div className="result">
-          <b>아직 저장한 세션 없음</b>
+          <b>저장한 세션 없음</b>
           <p className="label-mono" style={{ margin: '6px 0 0' }}>
-            기기 시트에서 AI 도구를 연결하고, 작업을 마칠 때 저장을 부탁하면 여기에 쌓여요
+            기기 메뉴에서 AI 도구를 연결하고, 작업을 마칠 때 저장을 요청하면 여기에 표시돼요
           </p>
         </div>
       ) : (

@@ -30,7 +30,7 @@ export class SkillQuery extends BaseQuery {
   private static readonly NAME = /^[a-z0-9-]{1,40}$/;
   private static readonly SKIP = new Set(['scripts', 'agents']);
 
-  /** 주인만 (관리 화면 기기 시트의 "스킬 받기") */
+  /** 주인만 (관리 화면 기기 화면의 "스킬 받기") */
   appPackage(actor: Actor, name: string): SkillPackageView {
     actor.assertCan(Actor.WRITE);
     const dir = join(SkillQuery.root(), name);

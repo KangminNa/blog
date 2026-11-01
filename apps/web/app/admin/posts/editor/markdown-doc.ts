@@ -1,4 +1,4 @@
-import { renderMarkdown } from '../../_lib/markdown';
+import { renderMarkdown } from '../../../_lib/markdown';
 
 // 편집기 문서 ↔ 글 본문 md. 저장은 md 그대로 (백업·옵시디언·AI 도구가 읽는 모양, 기획서 2026-10-24).
 //   불러오기: md → HTML(방문자 화면과 같은 변환) → 편집기. 가운데 블록은 문단마다 가운데 정렬로 푼다

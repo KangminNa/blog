@@ -1,17 +1,17 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { BlogForm } from '../_admin/BlogForm';
-import { DevicesPanel } from '../_admin/DevicesPanel';
-import { PluginsPanel } from '../_admin/PluginsPanel';
 import { api, describe } from '../_lib/client-api';
 import type { Device, InstallStatus, Owner, SpaceInfo } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
 import { useToast } from '../_ui/useToast';
+import { DevicesPanel } from '../admin/devices/DevicesPanel';
+import { PluginsPanel } from '../admin/plugins/PluginsPanel';
+import { BlogForm } from '../admin/site/BlogForm';
 
 // 설치 마법사 5단계. 앞의 둘(설치 코드 → 주인 계정)은 아직 주인이 없을 때,
-// 뒤의 셋(블로그 정보 → 플러그인 → 첫 기기)은 주인으로 로그인한 뒤.
-const STEPS = ['설치 코드', '관리자 계정', '블로그 정보', '플러그인', '첫 기기'] as const;
+// 뒤의 셋(사이트 정보 → 플러그인 → 첫 기기)은 주인으로 로그인한 뒤.
+const STEPS = ['설치 코드', '관리자 계정', '사이트 정보', '플러그인', '첫 기기'] as const;
 type Step = 0 | 1 | 2 | 3 | 4;
 
 /** 이전 단계로 갈 수 있는 곳. 주인 계정을 만든 뒤에는 그 앞(설치 코드·계정)으로 돌아가지 않는다 */
@@ -42,11 +42,10 @@ export function InstallWizard({
 
   return (
     <>
-      <div className="stage" aria-hidden="true" />
       <header className="top">
-        <a className="brand" href="/" aria-label="그래프 홈">
+        <a className="brand" href="/" aria-label="홈">
           <CairnMark />
-          cairn
+          Cairn
         </a>
       </header>
       <main className="center">
@@ -70,7 +69,7 @@ export function InstallWizard({
               )}
               {step === 2 && (
                 <>
-                  <h1>블로그 정보</h1>
+                  <h1>사이트 정보</h1>
                   {login && <p>{login}(으)로 로그인했어요.</p>}
                   <BlogForm
                     space={{ ...info, installed: true }}
@@ -85,7 +84,7 @@ export function InstallWizard({
               {step === 3 && (
                 <>
                   <h1>플러그인</h1>
-                  <p>필요한 것만 켜요. 나중에 관리 화면에서 언제든 바꿀 수 있어요.</p>
+                  <p>필요한 것만 켜요. 나중에 콘솔에서 언제든 바꿀 수 있어요.</p>
                   <PluginsPanel onMessage={showToast} />
                   <button className="cta" type="button" onClick={() => setStep(4)}>
                     <span>다음</span>
@@ -273,10 +272,10 @@ function DeviceStep({
           : '쓰는 AI 도구를 골라 안내대로 연결해요. 블로그 승인 화면에서 연결을 누르면 끝나요.'}
       </p>
       <DevicesPanel siteUrl={siteUrl} onMessage={onMessage} onChange={watch} />
-      <a className={connected ? 'cta' : 'ghost wide'} href="/">
+      <a className={connected ? 'cta' : 'ghost wide'} href="/admin">
         {connected ? (
           <>
-            <span>그래프로</span>
+            <span>콘솔로</span>
             <span className="arr">→</span>
           </>
         ) : (
@@ -292,7 +291,7 @@ function NotOwner() {
     <>
       <CairnMark size={64} stack />
       <h1>이미 설치된 블로그예요</h1>
-      <p>로그인하면 남은 설정(블로그 정보, 플러그인)을 이어서 할 수 있어요.</p>
+      <p>로그인하면 남은 설정(사이트 정보, 플러그인)을 이어서 할 수 있어요.</p>
       <a className="cta" href="/login?return=/install">
         <span>로그인</span>
         <span className="arr">→</span>

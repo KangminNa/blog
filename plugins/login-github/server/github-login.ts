@@ -2,7 +2,7 @@ import { BaseLogin, LoginIdentity, RuleViolation } from '../../../apps/server/sr
 import type { GithubLoginGateway } from './github-login.gateway';
 
 // GitHub로 로그인. 누구인지(GitHub 숫자 id와 login 이름)만 코어에 알려준다.
-// 주인인지는 코어가 정한다: 주인이 계정 시트에서 먼저 연결해 둔 GitHub 계정만 로그인된다.
+// 주인인지는 코어가 정한다: 주인이 계정 화면에서 먼저 연결해 둔 GitHub 계정만 로그인된다.
 export class GithubLogin extends BaseLogin {
   readonly label = 'GitHub로 로그인';
 

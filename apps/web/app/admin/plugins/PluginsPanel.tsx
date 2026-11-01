@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useId, useState } from 'react';
-import { api, describe } from '../_lib/client-api';
-import type { ActionResult, Plugin, PluginSetting } from '../_lib/types';
+import { api, describe } from '../../_lib/client-api';
+import type { ActionResult, Plugin, PluginSetting } from '../../_lib/types';
 
-// 플러그인 켜기·설정·관리 동작. 설치 마법사의 5단계와 관리 모드의 "플러그인" 시트가 함께 쓴다.
+// 플러그인 켜기·설정·관리 동작. 설치 마법사의 5단계와 콘솔의 플러그인 메뉴가 함께 쓴다.
 // 켜기 전에 플러그인이 쓰는 권한을 보여주고, 켜는 순간 그 권한을 허락한 것으로 기록된다.
 export function PluginsPanel({ onMessage }: { onMessage: (text: string) => void }) {
   const [plugins, setPlugins] = useState<Plugin[] | null>(null);

@@ -130,7 +130,7 @@ describe('save_session (AI 도구)', () => {
     assert.equal(first.ok, true, JSON.stringify(first.body));
     assert.equal(first.body.status, 'saved');
     assert.equal(first.body.revision, 1);
-    assert.equal(first.body.url, `${site}/?sheet=sessions&session=${first.body.session_id}`);
+    assert.equal(first.body.url, `${site}/admin/sessions?session=${first.body.session_id}`);
 
     const again = await save(laptop, args);
     assert.deepEqual(again.body, { ...first.body, status: 'duplicate' });

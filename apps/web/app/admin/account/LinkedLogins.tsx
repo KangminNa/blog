@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, describe } from '../_lib/client-api';
-import type { LoginLink, LoginMethod } from '../_lib/types';
+import { api, describe } from '../../_lib/client-api';
+import type { LoginLink, LoginMethod } from '../../_lib/types';
 
-// 계정 시트의 "연결된 로그인": 켜진 로그인 플러그인마다 연결하거나 끊는다.
+// 계정 화면의 "연결된 로그인": 켜진 로그인 플러그인마다 연결하거나 끊는다.
 // 연결해 둔 외부 계정으로만 로그인되므로, 플러그인이 아무 계정이나 주인으로 만들 수 없다.
 export function LinkedLogins({ onMessage }: { onMessage: (text: string) => void }) {
   const [methods, setMethods] = useState<LoginMethod[] | null>(null);
@@ -54,7 +54,7 @@ export function LinkedLogins({ onMessage }: { onMessage: (text: string) => void 
               ) : (
                 <a
                   className="ghost"
-                  href={`/api/auth/links/${m.method}/start?return=${encodeURIComponent('/?sheet=account')}`}
+                  href={`/api/auth/links/${m.method}/start?return=${encodeURIComponent('/admin/account')}`}
                 >
                   연결하기
                 </a>

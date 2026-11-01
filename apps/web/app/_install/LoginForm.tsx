@@ -5,7 +5,7 @@ import { api, describe } from '../_lib/client-api';
 import type { LoginMethod } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
 
-// 로그인 카드. 그래프 무대 위 가운데. 켜진 로그인 플러그인(GitHub 등)의 버튼이 아래에 붙는다.
+// 로그인 카드. 켜진 로그인 플러그인(GitHub 등)의 버튼이 아래에 붙는다.
 export function LoginForm({
   returnTo,
   methods,
@@ -32,11 +32,10 @@ export function LoginForm({
 
   return (
     <>
-      <div className="stage" aria-hidden="true" />
       <header className="top">
-        <a className="brand" href="/" aria-label="그래프 홈">
+        <a className="brand" href="/" aria-label="홈">
           <CairnMark />
-          cairn
+          Cairn
         </a>
       </header>
       <main className="center">

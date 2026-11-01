@@ -1,21 +1,21 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, describe } from '../_lib/client-api';
+import { api, describe } from '../../_lib/client-api';
 import {
   type AdminPostSummary,
   POST_STATUS_LABELS,
   type PostCounts,
   type PostList,
-} from '../_lib/types';
+} from '../../_lib/types';
 
 type Filter = 'all' | 'draft' | 'published' | 'unlisted' | 'trash';
 
 const TABS: readonly [Filter, string][] = [
   ['all', '전체'],
-  ['draft', '임시'],
+  ['draft', '초안'],
   ['published', '공개'],
-  ['unlisted', '링크만'],
+  ['unlisted', '링크 공개'],
   ['trash', '휴지통'],
 ];
 
@@ -24,7 +24,7 @@ function countOf(counts: PostCounts | undefined, tab: Filter): number | null {
   return tab === 'all' ? counts.draft + counts.published + counts.unlisted : counts[tab];
 }
 
-// 글 시트: 공개 범위별 글 목록, 새 글, 휴지통에서 되살리기. 글을 누르면 편집기(/admin/posts/[id])로.
+// 글: 공개 범위별 글 목록, 새 글, 휴지통에서 되살리기. 글을 누르면 편집기(/admin/posts/[id])로.
 export function PostsPanel({ onMessage }: { onMessage: (text: string) => void }) {
   const [tab, setTab] = useState<Filter>('all');
   const [list, setList] = useState<PostList<AdminPostSummary> | null>(null);
@@ -84,7 +84,7 @@ export function PostsPanel({ onMessage }: { onMessage: (text: string) => void })
       {list === null ? (
         <p className="label-mono">불러오는 중…</p>
       ) : list.posts.length === 0 ? (
-        <p className="label-mono">{tab === 'trash' ? '휴지통이 비었어요' : '아직 글 없음'}</p>
+        <p className="label-mono">{tab === 'trash' ? '휴지통이 비었어요' : '글 없음'}</p>
       ) : (
         <ul className="list">
           {list.posts.map((p) => (

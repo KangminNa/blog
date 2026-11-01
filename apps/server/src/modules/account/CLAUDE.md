@@ -9,7 +9,7 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
 - `owner/`: 주인 (`Owner` + `WebSession` + `LoginLink`), 비밀번호 규칙(`PasswordPolicy`), `api/auth`(로그인·로그아웃·비밀번호 바꾸기)
   외부 로그인(`ExternalLoginQuery`·`ExternalLoginController`): 로그인 플러그인(`login:<이름>`)의 경로·확인값·쿠키, 계정 연결·끊기
 - `device/`: 기기(`Device` + `DeviceCredential`), OAuth 클라이언트(`OAuthClient`), 승인 코드(`AuthorizationCode`), 승인 요청 규칙(`AuthorizationPolicy`).
-  `OAuthController`(`/.well-known/*`, `/oauth/*`: 표준 경로라 /api 아래가 아님), `DeviceController`(`api/connect` 승인 화면, `api/devices` 기기 시트)
+  `OAuthController`(`/.well-known/*`, `/oauth/*`: 표준 경로라 /api 아래가 아님), `DeviceController`(`api/connect` 승인 화면, `api/devices` 기기 화면)
 - `guard/`: `ActorGuard` (모든 요청: Bearer 토큰 → `DeviceActor`, 로그인 쿠키 → `OwnerActor`. 로그인 쿠키로 오는 쓰기 요청은 출처가 사이트 주소일 때만, 아니면 403 `origin`)
 
 ## 소유 데이터

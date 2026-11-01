@@ -28,7 +28,7 @@ export class SaveSessionResponse extends BaseResponse {
       session_id: this.receipt.sessionId,
       revision: this.receipt.seq,
       warnings: this.receipt.warnings,
-      url: `${this.site}/?sheet=sessions&session=${this.receipt.sessionId}`,
+      url: `${this.site}/admin/sessions?session=${this.receipt.sessionId}`,
     };
   }
 }

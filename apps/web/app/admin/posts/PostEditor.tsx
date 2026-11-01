@@ -5,10 +5,10 @@ import { Placeholder } from '@tiptap/extensions';
 import { type Editor, EditorContent, useEditor, useEditorState } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { postPath } from '../_blog/format';
-import { api, describe } from '../_lib/client-api';
-import { type EditablePost, POST_STATUS_LABELS, type PostStatus } from '../_lib/types';
-import { useToast } from '../_ui/useToast';
+import { postPath } from '../../_blog/format';
+import { api, describe } from '../../_lib/client-api';
+import { type EditablePost, POST_STATUS_LABELS, type PostStatus } from '../../_lib/types';
+import { useToast } from '../../_ui/useToast';
 import { BigQuote } from './editor/big-quote';
 import { docToMarkdown, markdownToEditorHtml } from './editor/markdown-doc';
 
@@ -16,15 +16,15 @@ import { docToMarkdown, markdownToEditorHtml } from './editor/markdown-doc';
 type Settings = { tags: string; slug: string; align: 'left' | 'center' };
 
 const STATUSES: readonly [PostStatus, string][] = [
-  ['published', '목록에 보여요'],
-  ['unlisted', '주소를 아는 사람만 봐요'],
-  ['draft', '나만 봐요'],
+  ['published', '목록에 표시'],
+  ['unlisted', '주소를 아는 사람만'],
+  ['draft', '나만'],
 ];
 
 const STATUS_DONE: Record<PostStatus, string> = {
-  draft: '임시 글로 돌렸어요',
+  draft: '초안으로 돌렸어요',
   published: '글을 공개했어요',
-  unlisted: '링크만 공개로 바꿨어요',
+  unlisted: '링크 공개로 바꿨어요',
 };
 
 const EXTENSIONS = [
@@ -34,7 +34,7 @@ const EXTENSIONS = [
     link: { openOnClick: false, autolink: true, defaultProtocol: 'https' },
   }),
   TextAlign.configure({ types: ['heading', 'paragraph'], alignments: ['left', 'center'] }),
-  Placeholder.configure({ placeholder: '여기에 글을 써요' }),
+  Placeholder.configure({ placeholder: '내용을 입력하세요' }),
   BigQuote,
 ];
 
@@ -72,7 +72,7 @@ function toolState({ editor }: { editor: Editor | null }) {
   };
 }
 
-// 글 편집기: 쓰는 화면이 곧 보이는 화면 (Tiptap). 방문자가 볼 밝은 종이 위에 바로 쓴다.
+// 글 편집기: 쓰는 화면이 곧 보이는 화면 (Tiptap). 방문자가 볼 모양 그대로 쓴다.
 // 저장은 md 그대로 (editor/markdown-doc.ts). 제목·본문이 바뀌었으면 새 판이 쌓인다.
 // 공개 범위·태그·주소·전체 가운데 정렬은 "발행" 창에서 고른다. 주소는 비우면 제목에서 만든다.
 // 다른 탭에서 먼저 고쳤으면 서버가 409로 막고, 덮어쓰지 않고 다시 불러오라고 알린다.
@@ -182,7 +182,7 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
     if (!window.confirm('휴지통으로 옮길까요? 30일 동안 되살릴 수 있어요')) return;
     const reply = await api('DELETE', `/api/posts/${post.id}`, { version: post.version });
     if (!reply.ok) return setError(describe(reply.error));
-    window.location.href = '/?sheet=posts';
+    window.location.href = '/admin/posts';
   }
 
   async function recover() {
@@ -251,7 +251,7 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
   return (
     <div className="editor">
       <header className="editor-top">
-        <a className="ghost" href="/?sheet=posts">
+        <a className="ghost" href="/admin/posts">
           ← 글 목록
         </a>
         <span className="editor-state" aria-live="polite">
@@ -413,7 +413,7 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
         </button>
       </div>
 
-      <article className="editor-paper blog">
+      <article className="editor-paper">
         <input
           className="paper-title"
           value={title}

@@ -10,7 +10,7 @@ import {
 } from './device.response';
 import { DeviceService } from './device.service';
 
-// 승인 화면(/connect)과 관리 화면의 기기 시트가 부르는 API. 모두 로그인한 주인만.
+// 승인 화면(/connect)과 관리 화면의 기기 화면가 부르는 API. 모두 로그인한 주인만.
 @Controller('api')
 export class DeviceController {
   constructor(

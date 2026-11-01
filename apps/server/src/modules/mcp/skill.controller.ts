@@ -2,7 +2,7 @@ import { Controller, Get, Param, StreamableFile } from '@nestjs/common';
 import { type Actor, CurrentActor, NotFound } from '../platform';
 import { SkillQuery } from './skill.query';
 
-// 관리 화면 기기 시트의 "스킬 받기": ChatGPT·Claude 앱에 올릴 스킬 zip (주인만)
+// 관리 화면 기기 화면의 "스킬 받기": ChatGPT·Claude 앱에 올릴 스킬 zip (주인만)
 @Controller('api/skills')
 export class SkillController {
   constructor(private readonly skills: SkillQuery) {}

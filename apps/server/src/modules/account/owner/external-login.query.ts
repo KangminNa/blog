@@ -21,7 +21,7 @@ export class LoginMethodView {
   ) {}
 }
 
-/** 주인에게 연결된 외부 계정 하나 (계정 시트) */
+/** 주인에게 연결된 외부 계정 하나 (계정 화면) */
 export class LoginLinkView {
   constructor(
     readonly method: string,

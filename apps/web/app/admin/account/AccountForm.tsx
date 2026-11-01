@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { api, describe } from '../_lib/client-api';
+import { api, describe } from '../../_lib/client-api';
 
 // 비밀번호 바꾸기. 바꾸면 지금 로그인만 남고 다른 기기의 로그인은 끝난다.
 export function AccountForm({ onChanged }: { onChanged: () => void }) {

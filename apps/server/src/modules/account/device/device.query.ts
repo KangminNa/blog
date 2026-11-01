@@ -7,7 +7,7 @@ import type { AuthorizeRequest, ConsentRequest } from './device.request';
 import { OAuthClient } from './oauth-client';
 import { OAuthClientRepository } from './oauth-client.repository';
 
-/** 기기 하나 (관리 화면의 기기 시트) */
+/** 기기 하나 (관리 화면의 기기 화면) */
 export class DeviceView {
   constructor(
     readonly id: string,

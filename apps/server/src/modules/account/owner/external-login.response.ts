@@ -16,7 +16,7 @@ export class LoginMethodsResponse extends BaseResponse {
   }
 }
 
-/** 주인에게 연결된 외부 계정들 (계정 시트) */
+/** 주인에게 연결된 외부 계정들 (계정 화면) */
 export class LoginLinksResponse extends BaseResponse {
   private constructor(private readonly links: readonly LoginLinkView[]) {
     super();
