@@ -1,0 +1,94 @@
+'use client';
+
+import Link from 'next/link';
+import { type FormEvent, useId, useRef, useState } from 'react';
+import { api, describe } from '../_lib/client-api';
+import type { Agent, Task } from './types';
+
+// 작업 입력 (홈, 작업). 담당을 고르지 않으면 활성 에이전트가 맡는다.
+export function AskForm({
+  agents,
+  onCreated,
+}: {
+  /** 아직 읽지 못했으면 null */
+  agents: readonly Agent[] | null;
+  onCreated: (task: Task) => void;
+}) {
+  const id = useId();
+  const [instruction, setInstruction] = useState('');
+  const [agentId, setAgentId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const sending = useRef(false);
+  // 같은 내용을 다시 보내면 같은 requestId: 응답을 놓쳐 다시 눌러도 작업은 하나다
+  const requestId = useRef<string | null>(null);
+
+  function edit(apply: () => void) {
+    requestId.current = null;
+    setError(null);
+    apply();
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (sending.current) return;
+    sending.current = true;
+    setBusy(true);
+    requestId.current ??= crypto.randomUUID();
+    const reply = await api<Task>('POST', '/api/tasks', {
+      requestId: requestId.current,
+      instruction: instruction.trim(),
+      ...(agentId ? { agentId } : {}),
+    });
+    sending.current = false;
+    setBusy(false);
+    if (!reply.ok) return setError(describe(reply.error));
+    requestId.current = null;
+    setInstruction('');
+    setAgentId('');
+    onCreated(reply.data);
+  }
+
+  const none = agents !== null && agents.length === 0;
+
+  return (
+    <form className="ask" onSubmit={submit}>
+      <label htmlFor={`${id}-text`}>작업 내용</label>
+      <textarea
+        id={`${id}-text`}
+        rows={2}
+        value={instruction}
+        placeholder="작업 내용을 입력하세요"
+        onChange={(e) => edit(() => setInstruction(e.target.value))}
+      />
+      <div className="ask-row">
+        <label htmlFor={`${id}-who`}>담당</label>
+        <select
+          id={`${id}-who`}
+          className="input"
+          value={agentId}
+          onChange={(e) => edit(() => setAgentId(e.target.value))}
+        >
+          <option value="">자동 배정</option>
+          {agents?.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.status === 'paused' ? `${a.name} (중지)` : a.name}
+            </option>
+          ))}
+        </select>
+        <span className="note">발행·전송·삭제는 결재 후 실행</span>
+        <span className="spacer" />
+        <button type="submit" className="cta small" disabled={busy || !instruction.trim()}>
+          실행
+        </button>
+      </div>
+      {none && (
+        <p className="note">
+          에이전트 없음. 작업은 에이전트가 생길 때까지 대기{' · '}
+          <Link href="/admin/agents?new=1">에이전트 추가</Link>
+        </p>
+      )}
+      {error && <p className="error">{error}</p>}
+    </form>
+  );
+}

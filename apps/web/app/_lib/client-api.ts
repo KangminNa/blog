@@ -41,6 +41,11 @@ const FIELD_LABELS: Record<string, string> = {
   description: '소개',
   siteUrl: '사이트 주소',
   scopes: '권한',
+  role: '역할',
+  tool: 'AI 도구',
+  monthlyLimit: '월 한도',
+  instruction: '작업 내용',
+  note: '메모',
 };
 
 /** 오류를 사람이 읽는 한 줄로 (필드 오류는 칸 이름과 함께) */

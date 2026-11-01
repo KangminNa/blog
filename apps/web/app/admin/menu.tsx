@@ -2,6 +2,21 @@ import type { ReactNode } from 'react';
 
 // 콘솔 왼쪽 메뉴. 메뉴 하나 = app/admin/<주소>/ 폴더 하나 + 여기 한 줄. 기능이 생길 때 더한다.
 const ICONS: Record<string, ReactNode> = {
+  home: <path d="M2.5 7.2 8 2.6l5.5 4.6M4 6.4v7h8v-7" />,
+  task: (
+    <>
+      <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+      <path d="m5.2 8 2 2 3.6-4" />
+    </>
+  ),
+  stamp: <path d="M6 2.5h4v3.2c0 1.2 2.8 1.6 2.8 4H3.2c0-2.4 2.8-2.8 2.8-4zM3 12.8h10" />,
+  people: (
+    <>
+      <circle cx="5.6" cy="5.4" r="2.2" />
+      <path d="M1.8 13c.5-2.3 1.9-3.4 3.8-3.4s3.3 1.1 3.8 3.4" />
+      <path d="M10.2 3.5a2.2 2.2 0 0 1 0 4M11 9.8c1.7.3 2.8 1.3 3.2 3.2" />
+    </>
+  ),
   session: (
     <>
       <rect x="2" y="3" width="12" height="10" rx="2" />
@@ -35,7 +50,19 @@ const ICONS: Record<string, ReactNode> = {
   ),
 };
 
+export const HOME_HREF = '/admin';
+export const APPROVALS_HREF = '/admin/approvals';
+
 export const MENU = [
+  { label: '', items: [{ href: HOME_HREF, name: '홈', icon: 'home' }] },
+  {
+    label: '운영',
+    items: [
+      { href: '/admin/tasks', name: '작업', icon: 'task' },
+      { href: APPROVALS_HREF, name: '결재', icon: 'stamp' },
+      { href: '/admin/agents', name: '에이전트', icon: 'people' },
+    ],
+  },
   { label: '지식', items: [{ href: '/admin/sessions', name: '세션', icon: 'session' }] },
   { label: '블로그', items: [{ href: '/admin/posts', name: '글', icon: 'post' }] },
   {
