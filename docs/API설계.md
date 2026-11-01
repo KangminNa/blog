@@ -52,7 +52,7 @@
 
 결재는 작업에 묶이지 않는 경우(한도 변경 등)가 있어 작업 아래에 두지 않는다. 결재 메뉴는 위키 제안도 함께 보여 주되, 데이터는 각 모듈이 따로 가진다.
 
-`POST /api/tasks`의 제목은 지시의 첫 줄, 종류는 `general`이 기본이다. 일 요청 이벤트는 `kind`, `title`, `target*`, `baseVersion`, `priority`까지 적는다.
+작업 목록의 `lastEvent`는 마지막 실행 기록의 앞 200자다. `POST /api/tasks`의 제목은 지시의 첫 줄, 종류는 `general`이 기본이다. 일 요청 이벤트는 `kind`, `title`, `target*`, `baseVersion`, `priority`까지 적는다.
 
 작업 상태: `queued → running → waiting → running → done`, 실패는 `failed`, 취소는 `cancelled`. 결재 상태: `pending → approved · rejected · revision_requested · cancelled`.
 
@@ -103,7 +103,7 @@ AI가 세션이나 메일 속 지시문에 속아도 이 권한을 넘을 수 �
 | 내용 | 변경 신호만 보낸다 (`{ topic, id }`). 화면은 REST로 다시 읽는다 |
 | 머리글 | `Content-Type: text/event-stream`, `Cache-Control: no-store, no-transform` |
 | 유지 | 25초마다 빈 주석을 보낸다 |
-| 재연결 | 브라우저 기본 재연결 후 화면이 다시 읽는다. 놓친 신호는 되돌리지 않는다 |
+| 재연결 | 브라우저 기본 재연결 후 화면이 다시 읽는다. 놓친 신호는 되돌리지 않는다. 서버가 오류로 답해 브라우저가 포기하면 `use-live`가 3초 뒤 다시 연다 |
 | 서버 | Postgres `LISTEN/NOTIFY`를 `platform/stream`이 받아 전달. 내용은 항상 테이블에 있다 |
 
 `no-transform`이 없으면 Next의 압축 때문에 스트림이 끝날 때 한꺼번에 도착한다 (Next 16.4.2의 `next start`, `next dev` rewrite에서 시험, 2026-10-31).
