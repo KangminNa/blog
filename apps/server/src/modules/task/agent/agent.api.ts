@@ -41,6 +41,8 @@ export class AgentResponse extends BaseResponse {
       scopes: a.scopes,
       approvalActions: a.approvalActions,
       monthlyLimit: a.monthlyLimit,
+      fiveHourLimit: a.fiveHourLimit,
+      planStopPercent: a.planStopPercent,
       status: a.status,
       version: a.version,
       createdAt: a.createdAt.toISOString(),

@@ -1,5 +1,7 @@
 import { BaseRepository, type Row } from '../../platform';
-import { Agent } from './agent';
+import { PlanUsage } from '../usage/plan-usage';
+import { PlanUsageRepository } from '../usage/plan-usage.repository';
+import { Agent, AgentUsage } from './agent';
 
 // task.agents ↔ Agent. 고칠 때는 엔티티가 기억한 바뀐 열만 저장한다.
 export class AgentRepository extends BaseRepository<Agent> {
@@ -14,6 +16,8 @@ export class AgentRepository extends BaseRepository<Agent> {
       (row.scopes as string[] | null) ?? [],
       (row.approval_actions as string[] | null) ?? [],
       row.monthly_limit === null ? null : Number(row.monthly_limit),
+      row.five_hour_limit === null ? null : Number(row.five_hour_limit),
+      row.plan_stop_percent === null ? null : Number(row.plan_stop_percent),
       String(row.status),
       new Date(row.created_at),
     );
@@ -36,13 +40,39 @@ export class AgentRepository extends BaseRepository<Agent> {
     );
   }
 
-  /** 담당을 정하지 않은 일을 맡을 에이전트: 가장 먼저 만든 움직이는 에이전트 */
-  async firstActive(spaceId: string): Promise<Agent | null> {
-    return this.maybeOne(
-      await this.sql`
-      SELECT * FROM task.agents WHERE space_id = ${spaceId} AND status = ${Agent.ACTIVE}
-      ORDER BY id LIMIT 1`,
-    );
+  /**
+   * 공간의 모든 에이전트와 지금 사용량. 만든 순서대로. 잠그지 않는다.
+   * 일을 빌릴 때와 홈의 사용량이 같은 값을 보게 한 곳에서 읽는다.
+   */
+  async usage(spaceId: string, now: Date): Promise<readonly AgentUsage[]> {
+    const plan = await new PlanUsageRepository(this.sql).list(spaceId);
+    const rows = await this.sql`
+      SELECT a.*,
+        coalesce(u.five_hour, 0)::bigint AS five_hour_tokens,
+        coalesce(u.month, 0)::bigint AS month_tokens
+      FROM task.agents a
+      LEFT JOIN LATERAL (
+        SELECT
+          sum(e.tokens) FILTER (WHERE e.at > ${now}::timestamptz - interval '5 hours') AS five_hour,
+          sum(e.tokens) FILTER (WHERE e.at >= date_trunc('month', ${now}::timestamptz)) AS month
+        FROM task.task_events e JOIN task.tasks t ON t.id = e.task_id
+        WHERE t.agent_id = a.id AND e.tokens > 0
+          AND e.at >= least(
+            ${now}::timestamptz - interval '5 hours',
+            date_trunc('month', ${now}::timestamptz)
+          )
+      ) u ON true
+      WHERE a.space_id = ${spaceId}
+      ORDER BY a.id`;
+    return rows.map((row) => {
+      const agent = this.toEntity(row);
+      return new AgentUsage(
+        agent,
+        Number(row.five_hour_tokens),
+        Number(row.month_tokens),
+        PlanUsage.highest(plan, agent.tool, now),
+      );
+    });
   }
 
   /** 이번 달에 쓴 토큰. 원본은 실행 기록이다 */
@@ -58,10 +88,10 @@ export class AgentRepository extends BaseRepository<Agent> {
     if (agent.isNew) {
       await this.sql`
         INSERT INTO task.agents (id, space_id, name, role, tool, scopes, approval_actions, monthly_limit,
-          status, created_at)
+          five_hour_limit, plan_stop_percent, status, created_at)
         VALUES (${agent.id}, ${agent.spaceId}, ${agent.name}, ${agent.role}, ${agent.tool},
           ${agent.scopes as string[]}, ${agent.approvalActions as string[]}, ${agent.monthlyLimit},
-          ${agent.status}, ${agent.createdAt})`;
+          ${agent.fiveHourLimit}, ${agent.planStopPercent}, ${agent.status}, ${agent.createdAt})`;
     } else if (agent.changed) {
       const result = await this.sql`
         UPDATE task.agents SET ${this.sql(agent.changes)}, version = version + 1

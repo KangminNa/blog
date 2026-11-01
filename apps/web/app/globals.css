@@ -1413,6 +1413,38 @@ a.chip {
   background: var(--fg);
 }
 
+/* 홈의 사용량. 막대마다 글자 값이 함께 있다 */
+.usage-agents {
+  margin: 0;
+  list-style: none;
+}
+
+.usage-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.usage-agent + .usage-agent {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.usage-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+
+.usage-head b {
+  min-width: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
 .checks {
   display: flex;
   flex-wrap: wrap;

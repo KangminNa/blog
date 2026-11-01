@@ -1,4 +1,5 @@
 import { BaseRequest, type RequestFields } from '../../platform';
+import { PlanUsage } from '../usage/plan-usage';
 
 // 작업 입력의 모양. REST(콘솔)는 camelCase, MCP(러너)는 다른 도구처럼 snake_case로 받는다.
 
@@ -158,17 +159,43 @@ export class ReportedEvent extends BaseRequest {
   }
 }
 
+/** report_progress의 구독 사용률 창 하나. 어느 창을 저장할지는 도메인이 정한다 (PlanUsage) */
+export class ReportedPlanUsage extends BaseRequest {
+  private constructor(
+    readonly window: string,
+    readonly percent: number,
+    readonly resetsAt: Date,
+    readonly status: string | null,
+  ) {
+    super();
+  }
+
+  static from(f: RequestFields): ReportedPlanUsage {
+    const resetsAt = f.optionalDate('resets_at');
+    if (resetsAt === null) f.reject('resets_at', 'ISO 8601 날짜여야 해요');
+    return new ReportedPlanUsage(
+      f.text('window', 40),
+      f.integer('percent', 0, PlanUsage.PERCENT_MAX),
+      resetsAt ?? new Date(0),
+      f.optionalText('status', 40),
+    );
+  }
+}
+
 /**
  * report_progress. 기록을 모아 보내고, 남길 기록이 없으면 events를 비워 임대만 늘린다.
  * request_id를 주면 같은 보고가 두 번 와도 토큰을 두 번 세지 않는다.
+ * plan_usage는 러너가 본 구독 사용률이다. 없어도 된다.
  */
 export class ReportProgressInput extends BaseRequest {
   static readonly EVENTS_MAX = 100;
+  static readonly PLAN_USAGE_MAX = 10;
 
   private constructor(
     readonly taskId: string,
     readonly requestId: string | null,
     readonly events: readonly ReportedEvent[],
+    readonly planUsage: readonly ReportedPlanUsage[],
   ) {
     super();
   }
@@ -185,8 +212,17 @@ export class ReportProgressInput extends BaseRequest {
           f.uuid('task_id'),
           f.optionalText('request_id', 200),
           f.nestedList('events', ReportProgressInput.EVENTS_MAX).map((e) => ReportedEvent.from(e)),
+          ReportProgressInput.planUsageOf(raw, f),
         ),
     );
+  }
+
+  private static planUsageOf(raw: unknown, f: RequestFields): readonly ReportedPlanUsage[] {
+    const value = (raw as Record<string, unknown> | null | undefined)?.plan_usage;
+    if (value === undefined || value === null) return [];
+    return f
+      .nestedList('plan_usage', ReportProgressInput.PLAN_USAGE_MAX)
+      .map((p) => ReportedPlanUsage.from(p));
   }
 }
 

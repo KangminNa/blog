@@ -305,6 +305,33 @@ describe('러너가 일을 처리한다', () => {
     assert.equal(JSON.stringify(task).includes('본문은 기록에 남기지 않는다'), false);
   });
 
+  test('금방 끝난 실행의 구독 사용률도 서버에 닿고, 닿은 에이전트의 일은 쉬었다가 다시 돈다', async () => {
+    await newTask(await newAgent(), '').then((created) => taskIn(created.id, 'done'));
+    const usage = ok(await api.get('/api/usage', owner)) as { agents: Json[]; plan: Json[] };
+    const percent = (window: string) =>
+      usage.plan.find((p) => p.tool === 'claude' && p.window === window)?.percent;
+    assert.equal(percent('five_hour'), 72);
+    assert.equal(percent('seven_day'), 19);
+
+    const held = await newAgent({ planStopPercent: 50 });
+    const waiting = await newTask(held, '');
+    // 뒤에 넣은 일이 끝나도 앞의 일은 대기열에 남는다
+    const other = await newTask(await newAgent(), '');
+    await taskIn(other.id, 'done');
+    assert.equal((await getTask(waiting.id)).status, 'queued');
+    assert.equal((await getTask(waiting.id)).attempts, 0);
+    const after = ok(await api.get('/api/usage', owner)) as { agents: Json[] };
+    assert.equal(after.agents.find((a) => a.id === held.id)?.holding, true);
+
+    ok(
+      await api.request('PATCH', `/api/agents/${held.id}`, owner, {
+        version: held.version,
+        planStopPercent: 90,
+      }),
+    );
+    await taskIn(waiting.id, 'done');
+  });
+
   test('지시와 역할이 AI CLI에게 가고, 사용자의 것은 아무것도 가지 않는다', async () => {
     const agent = await newAgent();
     const spy = new Spy();

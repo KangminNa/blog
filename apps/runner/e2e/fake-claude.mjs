@@ -60,6 +60,25 @@ if (spy) {
   );
 }
 
+// 실제 실행에서 받은 줄 그대로 (2026-11-01). 초기화 시각만 지금 기준으로 둔다: 고정하면 시각이 지난 뒤 테스트가 깨진다
+const inHours = (hours) => Math.floor(Date.now() / 1000) + hours * 3600;
+const rateLimit = () =>
+  say({
+    type: 'rate_limit_event',
+    rate_limit_info: {
+      status: 'allowed',
+      resetsAt: inHours(3),
+      rateLimitType: 'five_hour',
+      overageStatus: 'rejected',
+      overageDisabledReason: 'org_level_disabled',
+      isUsingOverage: false,
+      unifiedWindows: {
+        five_hour: { utilization: 0.72, resetsAt: inHours(3) },
+        seven_day: { utilization: 0.19, resetsAt: inHours(100) },
+      },
+    },
+  });
+
 const servers = [{ name: 'cairn', status: 'connected' }];
 if (has('stray')) servers.push({ name: 'claude.ai Gmail', status: 'connected' });
 say({
@@ -81,6 +100,7 @@ const first = {
   cache_read_input_tokens: 500,
   output_tokens: 20,
 };
+rateLimit();
 assistant('msg_1', first, { type: 'text', text: '자료부터 읽을게요' });
 assistant('msg_1', first, {
   type: 'tool_use',

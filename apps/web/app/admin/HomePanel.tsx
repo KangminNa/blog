@@ -4,16 +4,17 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { AskForm } from '../_task/AskForm';
-import { actionLabel, when } from '../_task/labels';
-import { countOf, useAgents, usePendingApprovals, useTasksIn } from '../_task/live';
+import { actionLabel, holdLabel, when } from '../_task/labels';
+import { countOf, useAgents, usePendingApprovals, useTasksIn, useUsage } from '../_task/live';
 import { AgentUsage, ApprovalPill, TaskPill } from '../_task/parts';
 import type { Agent, Task } from '../_task/types';
+import { UsageBlock } from '../_task/UsageBlock';
 import { useNotify } from './AdminShell';
 
 /** 홈에 펼쳐 두는 줄 수. 나머지는 각 메뉴에서 본다 */
 const SHOWN = 4;
 
-// 홈: 작업 입력, 그리고 지금 봐야 할 것 (결재 대기, 실행 중, 에이전트).
+// 홈: 작업 입력, 그리고 지금 봐야 할 것 (결재 대기, 실행 중, 사용량, 에이전트).
 export function HomePanel() {
   const router = useRouter();
   const notify = useNotify();
@@ -21,6 +22,7 @@ export function HomePanel() {
   const running = useTasksIn('running');
   const queued = useTasksIn('queued');
   const agents = useAgents();
+  const usage = useUsage();
   const [today, setToday] = useState('');
 
   // 서버와 브라우저의 시간대가 다를 수 있어 브라우저에서 정한다
@@ -40,7 +42,7 @@ export function HomePanel() {
   const live = [...(running.data?.tasks ?? []), ...(queued.data?.tasks ?? [])];
   // 에이전트가 하나도 없을 때는 입력란과 아래 칸이 알려 준다. 여기는 모두 중지된 경우
   const stuck = agentList?.length && active.length === 0 && queued.data?.tasks.length;
-  const error = approvals.error ?? running.error ?? queued.error ?? agents.error;
+  const error = approvals.error ?? running.error ?? queued.error ?? agents.error ?? usage.error;
 
   return (
     <section className="console-inner wide" aria-label="홈">
@@ -124,6 +126,7 @@ export function HomePanel() {
           )}
         </section>
       </div>
+      <UsageBlock usage={usage.data} agents={agentList} />
       <section aria-labelledby="home-agents">
         <div className="sec-title">
           <h2 id="home-agents">에이전트</h2>
@@ -142,7 +145,11 @@ export function HomePanel() {
         ) : (
           <ul className="list">
             {agentList.map((a) => (
-              <AgentRow key={a.id} agent={a} />
+              <AgentRow
+                key={a.id}
+                agent={a}
+                hold={holdLabel(usage.data?.agents.find((u) => u.id === a.id))}
+              />
             ))}
           </ul>
         )}
@@ -167,7 +174,7 @@ function TaskRow({ task, agent }: { task: Task; agent: string | undefined }) {
   );
 }
 
-function AgentRow({ agent }: { agent: Agent }) {
+function AgentRow({ agent, hold }: { agent: Agent; hold: string | null }) {
   return (
     <li>
       <Link className="item" href="/admin/agents">
@@ -175,7 +182,11 @@ function AgentRow({ agent }: { agent: Agent }) {
           <b>{agent.name}</b>
           <AgentUsage agent={agent} />
         </div>
-        {agent.status === 'paused' && <span className="pill off">중지</span>}
+        {agent.status === 'paused' ? (
+          <span className="pill off">중지</span>
+        ) : (
+          hold && <span className="pill strong">{hold}</span>
+        )}
       </Link>
     </li>
   );

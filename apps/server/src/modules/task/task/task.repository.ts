@@ -1,5 +1,4 @@
 import { BaseRepository, ChangeSignal, type Row } from '../../platform';
-import { Agent } from '../agent/agent';
 import { Task } from './task';
 
 // task.tasks + task_events ↔ Task. 고칠 때는 엔티티가 기억한 바뀐 열만 저장한다.
@@ -61,15 +60,22 @@ export class TaskRepository extends BaseRepository<Task> {
     );
   }
 
-  /** 빌려 줄 작업을 잠근다. 다른 러너가 잡은 행은 건너뛰고, 멈춘 에이전트의 일은 빼고, 우선순위 → 오래된 순 */
-  async lockNext(spaceId: string, limit: number): Promise<readonly Task[]> {
+  /**
+   * 빌려 줄 작업을 잠근다. 다른 러너가 잡은 행은 건너뛰고, 담당이 없거나 일을 받을 수 있는 에이전트(agentIds)의 일만,
+   * 우선순위 → 오래된 순. 멈췄거나 쉬는 에이전트의 일은 대기열에 남아 뒤의 일을 막지 않는다.
+   */
+  async lockNext(
+    spaceId: string,
+    agentIds: readonly string[],
+    limit: number,
+  ): Promise<readonly Task[]> {
     const rows = await this.sql`
-      SELECT t.* FROM task.tasks t LEFT JOIN task.agents a ON a.id = t.agent_id
-      WHERE t.space_id = ${spaceId} AND t.status = ${Task.QUEUED}
-        AND (t.agent_id IS NULL OR a.status = ${Agent.ACTIVE})
-      ORDER BY t.priority DESC, t.id
+      SELECT * FROM task.tasks
+      WHERE space_id = ${spaceId} AND status = ${Task.QUEUED}
+        AND (agent_id IS NULL OR agent_id = ANY(${agentIds as string[]}::uuid[]))
+      ORDER BY priority DESC, id
       LIMIT ${limit}
-      FOR UPDATE OF t SKIP LOCKED`;
+      FOR UPDATE SKIP LOCKED`;
     return rows.map((r) => this.toEntity(r));
   }
 

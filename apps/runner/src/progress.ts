@@ -42,17 +42,72 @@ export class Clip {
 }
 
 /**
+ * 구독 창 하나의 사용률 (report_progress의 plan_usage 항목). 원본은 Claude CLI의 rate_limit_event다.
+ * CLI의 출력은 공개된 약속이 아니다. 서버가 거절하면 실행이 끝나므로 서버가 받을 값만 만들고 나머지는 조용히 뺀다.
+ */
+export class PlanWindow {
+  /** 서버의 PlanUsage.WINDOWS. 앞으로 늘어나는 창은 넘어간다 */
+  private static readonly NAMES = ['five_hour', 'seven_day'];
+  /** 서버의 PlanUsage.STATUSES. 모르는 상태여도 사용률은 보낸다 */
+  private static readonly STATUSES = ['allowed', 'allowed_warning', 'rejected'];
+  /** 서버의 PlanUsage.PERCENT_MAX. 초과 사용이면 100을 넘는다 */
+  private static readonly PERCENT_MAX = 1000;
+
+  private constructor(
+    readonly window: string,
+    readonly percent: number,
+    readonly resetsAt: Date,
+    readonly status: string | null,
+  ) {}
+
+  /** rate_limit_info 한 칸을 읽는다. status는 이벤트의 값이라 창마다 같다 */
+  static listFrom(info: Json): readonly PlanWindow[] {
+    const known = PlanWindow.STATUSES.includes(info.text('status'));
+    const status = known ? info.text('status') : null;
+    const windows = info.child('unifiedWindows');
+    return PlanWindow.NAMES.flatMap((name) => {
+      const window = PlanWindow.from(name, windows.child(name), status);
+      return window ? [window] : [];
+    });
+  }
+
+  private static from(name: string, raw: Json, status: string | null): PlanWindow | null {
+    const utilization = raw.optionalNumber('utilization');
+    const seconds = raw.optionalNumber('resetsAt');
+    if (utilization === null || seconds === null) return null;
+    const percent = Math.round(utilization * 100);
+    const resetsAt = new Date(seconds * 1000);
+    const usable =
+      percent >= 0 &&
+      percent <= PlanWindow.PERCENT_MAX &&
+      seconds > 0 &&
+      !Number.isNaN(resetsAt.getTime());
+    return usable ? new PlanWindow(name, percent, resetsAt, status) : null;
+  }
+
+  toJSON(): object {
+    return {
+      window: this.window,
+      percent: this.percent,
+      resets_at: this.resetsAt.toISOString(),
+      ...(this.status === null ? {} : { status: this.status }),
+    };
+  }
+}
+
+/**
  * 한 번의 보고. requestId는 묶음을 만들 때 정하고 다시 보낼 때 그대로 쓴다.
- * 보내고 응답만 잃었을 수 있어서, 같은 id여야 서버가 토큰을 두 번 세지 않는다. 빈 보고에는 없다.
+ * 보내고 응답만 잃었을 수 있어서, 같은 id여야 서버가 토큰을 두 번 세지 않는다. 기록이 없는 보고에는 없다.
  */
 export class ProgressBatch {
   private constructor(
     readonly requestId: string | null,
     readonly events: readonly RunEvent[],
+    readonly planUsage: readonly PlanWindow[],
   ) {}
 
-  static of(events: readonly RunEvent[]): ProgressBatch {
-    return new ProgressBatch(events.length === 0 ? null : randomUUID(), events);
+  static of(events: readonly RunEvent[], planUsage: readonly PlanWindow[]): ProgressBatch {
+    return new ProgressBatch(events.length === 0 ? null : randomUUID(), events, planUsage);
   }
 }
 

@@ -21,6 +21,8 @@ import {
 } from './task/task.tool';
 import { TaskRequestedHandler } from './task/task-requested.handler';
 import { TaskTools } from './task-tools';
+import { UsageController } from './usage/usage.api';
+import { UsageQuery } from './usage/usage.query';
 
 // 에이전트가 일하고 주인이 결재하는 구조: 에이전트, 작업(실행 기록), 결재. platform에만 의존한다.
 // 결재 뒤 실행은 대상을 가진 모듈이 이벤트로 한다. 그래서 task.approval.granted는 아직 expect하지 않는다:
@@ -33,6 +35,7 @@ import { TaskTools } from './task-tools';
     TaskService,
     ApprovalQuery,
     ApprovalService,
+    UsageQuery,
     NextJobsTool,
     ReportProgressTool,
     SubmitResultTool,
@@ -43,7 +46,7 @@ import { TaskTools } from './task-tools';
     ApprovalResultHandler,
     LeaseJob,
   ],
-  controllers: [AgentController, TaskController, ApprovalController],
+  controllers: [AgentController, TaskController, ApprovalController, UsageController],
   exports: [TaskTools, TaskQuery],
 })
 export class TaskModule implements OnModuleInit {

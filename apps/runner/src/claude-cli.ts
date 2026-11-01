@@ -8,8 +8,9 @@ import type { JobWorkspace } from './job-workspace';
 // 격리: 설정·홈은 빈 임시 폴더, MCP는 --strict-mcp-config로 넘긴 cairn 하나, claude.ai 연결은 끈다.
 // --bare는 쓰지 않는다: CLAUDE_CODE_OAUTH_TOKEN을 읽지 않는다.
 // 권한: 셸을 주지 않는다. 내장 도구는 파일 도구만, 쓰기는 acceptEdits라 work 폴더 안에서만, MCP는 cairn만 묻지 않고 허락한다.
-// 읽기는 작업 폴더 밖도 기본으로 열려 있어서 주인의 홈을 settings.json으로 막는다 (ClaudeCli.settings).
-// -p는 물을 사람이 없어서 그 밖의 것은 거절된다. 주인의 컴퓨터에서 돌아가므로 AI가 지시문에 속아도 이 안에 머문다.
+// -p는 물을 사람이 없어서 그 밖의 것은 거절된다. 작업 폴더 밖 읽기도 그렇다: Claude가 허락을 묻고, 답할 사람이 없어 거절된다.
+// 그래도 주인의 홈은 settings.json의 deny로 막는다 (ClaudeCli.settings): 거절이 더 확실하고 권한 모드가 바뀌어도 남는다.
+// 주인의 컴퓨터에서 돌아가므로 AI가 지시문에 속아도 이 안에 머문다.
 export class ClaudeCli {
   static readonly TOOL = 'claude';
   private static readonly FILE_TOOLS = ['Read', 'Write', 'Edit'];
@@ -52,6 +53,7 @@ export class ClaudeCli {
 
   /**
    * config/settings.json의 내용. 지시문에 속아도 ~/.ssh나 러너의 .env를 읽어 초안에 옮기지 못하게 주인의 홈을 막는다.
+   * 작업 폴더 밖 읽기는 물어도 답할 사람이 없어 어차피 거절되지만, deny는 묻지도 않고 권한 모드가 바뀌어도 남는다.
    * HOME은 빈 임시 폴더로 바꾸므로 `~`가 아니라 절대 경로로 적는다. 앞의 //가 절대 경로라는 표시다.
    */
   static settings(ownerHome: string | undefined): string {
