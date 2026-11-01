@@ -26,12 +26,15 @@ export class Database implements OnApplicationShutdown {
   /**
    * 채널을 듣는다 (Postgres LISTEN). 라이브러리가 듣기 전용 연결을 하나 따로 쓰고, 끊기면 다시 듣는다.
    * 끊긴 동안의 신호는 사라진다: 신호는 깨우기용이고 내용은 늘 테이블에 있다. 돌려준 함수로 그만 듣는다.
+   * 단 다시 연결한 뒤에는 이 함수가 듣기를 빼지 못한다 (라이브러리가 받는 쪽을 새로 등록한다). 연결을 닫으면 끝난다.
+   * onReady는 처음 들을 때와 다시 연결해 들을 때마다 불린다. 놓친 신호를 메우려면 여기서 테이블을 다시 본다.
    */
   async listen(
     channel: string,
     onMessage: (payload: string) => void,
+    onReady?: () => void,
   ): Promise<() => Promise<void>> {
-    const { unlisten } = await this.sql.listen(channel, onMessage);
+    const { unlisten } = await this.sql.listen(channel, onMessage, onReady);
     return unlisten;
   }
 
