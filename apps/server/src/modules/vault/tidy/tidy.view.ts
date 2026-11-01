@@ -23,14 +23,6 @@ export class TidySessionView {
   ) {}
 }
 
-/** 대표 wiki가 없는 세션: 이번에 맡길 것과 전체 수 */
-export class TidyBacklogPageView {
-  constructor(
-    readonly sessions: readonly TidySessionView[],
-    readonly total: number,
-  ) {}
-}
-
 /** 쌓인 세션 정리를 요청한 결과 */
 export class TidyBacklogView {
   constructor(

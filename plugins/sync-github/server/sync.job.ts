@@ -2,7 +2,7 @@ import { ActionResult, type ArchiveFile, BaseJob } from '../../../apps/server/sr
 import type { GithubGateway } from './github.gateway';
 
 // 보관 형식 파일을 GitHub 브랜치에 맞춘다. 바뀐 파일만 올리고, 바뀐 게 없으면 커밋하지 않는다.
-// 저장소가 공개면 vault(비공개가 기본인 세션·wiki)는 보내지 않는다.
+// 저장소가 공개면 비공개 파일(vault 전부, 임시 글, 공개 글에 쓰이지 않는 사진)은 보내지 않는다.
 export class SyncJob extends BaseJob {
   readonly name = 'sync';
 
@@ -41,7 +41,7 @@ export class SyncJob extends BaseJob {
       files,
       `cairn: 동기화 (${files.length}개 파일)`,
     );
-    const notes = skipped > 0 ? [`저장소가 공개라 vault 파일 ${skipped}개는 보내지 않았어요`] : [];
+    const notes = skipped > 0 ? [`저장소가 공개라 비공개 파일 ${skipped}개는 보내지 않았어요`] : [];
     if (!result.didCommit) return ActionResult.done('바뀐 것이 없어요', notes);
     return ActionResult.done(
       `커밋 ${result.sha?.slice(0, 7)}: ${result.changed}개 올림, ${result.removed}개 지움`,

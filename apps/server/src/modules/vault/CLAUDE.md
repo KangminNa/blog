@@ -17,9 +17,16 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
 - `change/`: 변경 묶음(`ChangeSet`), 변경(`ChangeOp` 하위 클래스 하나 = 변경 종류 하나), 대상(`ChangeTarget`: 네 엔티티의 부모, `snapshot`·`rollBack`),
   판정(`ReviewPolicy` + `ReviewRule` 하위 클래스), 잠금(`TargetRepository`, `TargetBoard`), 쓰기 전부(`ChangeService`: `submit` · `edit` · `decide` · `revert`).
   `api/changes`(승인함, 결정, 되돌리기: 주인만), MCP `submit_changes`(`tidy`)
+<<<<<<< HEAD
 - `tidy/`: 세션 정리 설정(`TidySettings`: 공간마다 한 행, 없으면 꺼짐)과 일 요청. `api/tidy/settings`(주인), `api/tidy/backlog`(대표 wiki가 없는 세션을 오래된 순으로 20개까지, 주인).
   `TidyRequestHandler`(`vault.session.saved`)가 켜져 있으면 `task.task.requested`를 outbox로 남긴다. task를 import하지 않는다
 - `post-mark/`: 글 자리 사본(`PostMark`). `PostMarkHandler`(`blog.post.*`)만 쓴다. `PostWikiQuery`: 글이 가리킬 wiki를 볼 수 있는지 blog가 묻는 읽기
+=======
+- `tidy/`: 세션 정리 설정(`TidySettings`: 공간마다 한 행, 없으면 꺼짐)과 일 요청. `api/tidy/settings`(주인), `api/tidy/backlog`(대표 wiki가 없고 지금 판을 아직 요청하지 않은 세션을 오래된 순으로 20개까지, 주인).
+  `TidyRequestHandler`(`vault.session.saved`)가 켜져 있으면 `task.task.requested`를 outbox로 남긴다. task를 import하지 않는다.
+  요청한 판은 같은 트랜잭션에서 `sessions.tidy_requested_seq`에 적는다
+- `post-mark/`: 글 자리 사본(`PostMark`). `PostMarkHandler`(`blog.post.*`)만 쓴다
+>>>>>>> main
 - `graph/`: 그래프 읽기(`GraphQuery`). `api/graph`(주인), `api/graph/public`(방문자), MCP `neighbors`(`read_public`이나 `read_all`)
 - `vault-archive.query.ts`: 보관 형식 파일 (`ArchiveQuery.register`로 등록). `vault-archive.api.ts`: `api/archive.zip`(주인만). platform은 모듈 파일을 모르고, 이 경로의 자리가 다른 곳에 없어 여기 둔다
 
@@ -62,7 +69,7 @@ platform
 
 ## 지켜야 할 것
 - 판(session_revisions · wiki_revisions)은 추가만 한다. 트리거가 UPDATE·DELETE를 막는다
-- 그래프를 바꾸는 쓰기는 모두 `ChangeService`를 거쳐 변경 묶음으로 남긴다 (관리 화면 편집 포함). 이 Service만 여러 데이터 묶음의 Repository를 쓴다 (객체설계 4장 예외)
+- 그래프를 바꾸는 쓰기는 모두 `ChangeService`를 거쳐 변경 묶음으로 남긴다 (관리 화면 편집 포함). 이 Service만 여러 데이터 묶음의 Repository를 쓴다 (객체설계 4장 예외). `TidyService`가 세션 Repository로 부르는 `noteTidyRequested` 하나는 요청 기록이라 그래프를 바꾸지 않는다
 - AI 변경의 바로 합치기·검토·거부는 `ReviewPolicy` 한 곳에서만 판단한다. 규칙을 늘릴 때는 `ReviewRule` 하위 클래스 하나
 - 민감정보는 첫 저장 전에 지운다 (판은 고칠 수 없으므로). 새 종류는 `SensitivePolicy.RULES`에 한 줄, 테스트에 한 줄
 - 세션 저장은 변경 묶음이 아니라 판으로만 남는다. 같은 대화의 저장은 대화 자리를 잠가 하나씩 처리한다 (`SessionRepository.lockBySource`)
@@ -84,6 +91,7 @@ platform
 - 방문자 그래프는 비공개를 흔적 없이 뺀다. 예외는 공개 글이 가리키는 비공개 wiki 하나: 글 → wiki 연결은 모두에게 보이므로 자리만 남긴다. 이름·주소·날짜가 없고, id는 UUIDv7의 날짜가 드러나지 않게 해시(`private-…`)로 바꾼다 (원칙 4)
 - 방문자 그래프의 주소가 비공개 점을 가리키면 null로 둔다 (공개 세션의 대표가 비공개 wiki인 경우). `api/graph/public`은 주인이 불러도 방문자가 보는 그대로다
 - 자동 정리는 기본이 꺼짐이다 (저장마다 주인의 구독 토큰). 같은 판의 일 요청은 requestId가 같아 작업이 하나다
+- `tidy_requested_seq`는 판이 지금 판보다 뒤처졌을 때만 쌓인 세션 정리가 고른다. 요청이 실패해도 그대로라, 새 판이 쌓이는 것이 다시 시도다. `session.assign`이 version으로 지키므로 이 값을 적어도 세션 `version`은 올리지 않는다
 - `space_id`, `device_id`, `blob_hash`는 다른 모듈을 가리키는 값이다 (외래키 없음)
 
 ## 하지 말 것
