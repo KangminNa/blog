@@ -16,5 +16,5 @@
 
 ## 그림
 
-- `characters/char_0~5.png`: 캐릭터. JIK-A-4의 Metro City(CC0)를 바탕으로 한 upstream 그림을 그대로 복사했다
+- `characters/char_0~5.png`: 캐릭터. upstream이 JIK-A-4의 Metro City를 바탕으로 다듬은 그림을 그대로 복사했다. 원본은 제작자 페이지(jik-a-4.itch.io/metrocity-free-topdown-character-pack)에 CC0 1.0으로 표시돼 있다 (2026-11-01 확인). upstream은 그림만의 라이선스를 따로 적지 않았고 저장소 전체가 MIT다
 - 가구·바닥·벽 그림은 라이선스가 불분명해서 (upstream 이슈 #355) 복사하지 않았다. 이 플러그인의 `web/room.ts`가 코드로 직접 그린다

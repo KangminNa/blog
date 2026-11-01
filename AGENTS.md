@@ -16,7 +16,7 @@ apps/web/      Next.js (App Router). app/(blog)/ 공개 화면, app/admin/<메�
 apps/runner/   러너. 서버에서 일을 빌려 AI CLI로 처리한다. MCP로만 서버와 이야기하고 DB에 닿지 않는다
 db/            DB 이미지(Postgres 17 + pgvector + pg_bigm)와 SQL 마이그레이션(dbmate)
 packages/cli/  연결 명령 cairn connect · status (스킬 넣기 + MCP 등록 + 로그인). 배포 전에는 pnpm cairn
-plugins/       플러그인 (comments-giscus · sync-github · login-github). 규칙은 plugins/CLAUDE.md, 객체설계 12장
+plugins/       플러그인 (comments-giscus · sync-github · login-github · office). 규칙은 plugins/CLAUDE.md, 객체설계 12장
 scripts/       모듈 경계 검사, 플러그인 화면 맞추기
 skills/        AI 도구와 러너의 스킬 (cairn-save, 러너 전용 cairn-write). 도구 입력 모양을 바꾸면 스킬도 함께 고친다
                앱(ChatGPT·Claude)용 zip은 서버가 여기서 만든다(api/skills). 스크립트 테스트는 packages/cli
