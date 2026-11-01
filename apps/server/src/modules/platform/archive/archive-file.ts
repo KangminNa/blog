@@ -11,6 +11,7 @@ export class ArchiveFile {
   private constructor(
     readonly path: string,
     readonly body: Buffer,
+    private readonly kept = false,
   ) {
     if (!ArchiveFile.PATH.test(path) || path.includes('..')) {
       throw new Error(`보관 형식 밖의 경로예요: ${path}`);
@@ -56,9 +57,14 @@ export class ArchiveFile {
     return plain ? value : JSON.stringify(value);
   }
 
-  /** vault 파일인가 (private 저장소에만 보낸다) */
+  /** 공개 저장소로 보내면 안 되는 파일로 표시한다 (임시 글, 공개 글에 쓰이지 않는 사진). 공개 여부는 파일을 만드는 모듈이 안다 */
+  keptPrivate(): ArchiveFile {
+    return new ArchiveFile(this.path, this.body, true);
+  }
+
+  /** private 저장소에만 보낼 파일인가: vault 전부와 공개되지 않은 글·사진 */
   isPrivateArea(): boolean {
-    return this.path.startsWith('vault/');
+    return this.kept || this.path.startsWith('vault/');
   }
 
   /** git이 이 내용에 붙이는 이름 (blob sha1). 원격과 같은지 비교해 바뀐 파일만 보낸다 */

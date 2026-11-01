@@ -9,6 +9,7 @@ import {
   Database,
   NotFound,
 } from '../../platform';
+import { Post } from './post';
 
 // 글의 보관 파일 (docs/보관형식.md): blog/posts/<연도>/<주소>.md와 사진 assets/<sha256>.<확장자>.
 // 현재 판만, 휴지통 글과 휴지통 글에만 붙은 사진은 빼고.
@@ -58,7 +59,7 @@ export class PostArchiveQuery extends BaseQuery implements OnModuleInit {
       const year = new Date(r.published_at ?? r.first_at).getUTCFullYear();
       const tags = (r.tags as string[] | null) ?? [];
       const refs = (r.refs as string[] | null) ?? [];
-      return ArchiveFile.markdown(
+      const file = ArchiveFile.markdown(
         `blog/posts/${year}/${r.slug}.md`,
         {
           cairn_format: ArchiveQuery.FORMAT,
@@ -75,21 +76,23 @@ export class PostArchiveQuery extends BaseQuery implements OnModuleInit {
         },
         String(r.body_md),
       );
+      return r.status === Post.PUBLISHED ? file : file.keptPrivate();
     });
   }
 
-  /** 남은 글이 쓰는 사진. 이름이 내용의 해시라 여러 글에 붙어도 한 번만 */
+  /** 남은 글이 쓰는 사진. 이름이 내용의 해시라 여러 글에 붙어도 한 번만. 공개 글에 쓰인 것만 공개 저장소로 나간다 */
   private async photos(actor: Actor): Promise<ArchiveFile[]> {
     const rows = await this.sql`
-      SELECT DISTINCT a.blob_hash
+      SELECT a.blob_hash, bool_or(p.status = ${Post.PUBLISHED}) AS open
       FROM blog.assets a JOIN blog.posts p ON p.id = a.post_id
       WHERE p.deleted_at IS NULL
         ${actor.spaceId === null ? this.sql`` : this.sql`AND p.space_id = ${actor.spaceId}`}
+      GROUP BY a.blob_hash
       ORDER BY a.blob_hash`;
     const files: ArchiveFile[] = [];
     for (const row of rows) {
       const file = await this.photo(String(row.blob_hash));
-      if (file) files.push(file);
+      if (file) files.push(row.open === true ? file : file.keptPrivate());
     }
     return files;
   }

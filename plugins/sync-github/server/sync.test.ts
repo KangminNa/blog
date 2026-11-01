@@ -7,7 +7,7 @@ import { GithubGateway } from './github.gateway';
 import { SyncJob } from './sync.job';
 
 // 가짜 GitHub로 동기화의 약속을 확인한다: 바뀐 것만 커밋, 없어진 파일은 지움, 다른 파일은 안 건드림,
-// 공개 저장소에는 vault를 보내지 않음, 사진은 어디에도 보내지 않음, 받아 온 파일이 보낸 파일과 같음.
+// 공개 저장소에는 비공개 파일을 보내지 않음, private 저장소에는 사진까지 전부, 받아 온 파일이 보낸 파일과 같음.
 
 let fake: FakeGithub;
 let api: string;
@@ -41,8 +41,7 @@ describe('sync-github', () => {
     archive = [cairnJson, session, post, photo];
     const first = await job().syncOnce();
     assert.equal(first.ok, true, first.message);
-    const sent = [cairnJson, session, post].map((f) => f.path).sort();
-    assert.deepEqual([...fake.filesAt('main').keys()].sort(), sent, '사진은 보내지 않는다');
+    assert.deepEqual([...fake.filesAt('main').keys()].sort(), archive.map((f) => f.path).sort());
     const commits = fake.commits.size;
     const second = await job().syncOnce();
     assert.equal(second.message, '바뀐 것이 없어요');
@@ -69,18 +68,20 @@ describe('sync-github', () => {
     assert.equal(byPath.has('README.md'), false);
   });
 
-  test('공개 저장소에는 vault도 사진도 가지 않는다', async () => {
+  test('공개 저장소에는 vault, 임시 글, 공개되지 않은 사진이 가지 않는다', async () => {
     const open = new FakeGithub();
     open.isPrivate = false;
     const url = await open.start();
-    archive = [cairnJson, session, post, photo];
+    const draft = ArchiveFile.text('blog/posts/2026/draft.md', '임시 글\n').keptPrivate();
+    const draftPhoto = ArchiveFile.bytes('assets/aa11.png', Buffer.from([1, 2, 3])).keptPrivate();
+    archive = [cairnJson, session, post, draft, photo, draftPhoto];
     const gh = new GithubGateway('me/cairn-site', 't0ken', url);
     const result = await new SyncJob(gh, 'main', async () => archive, []).syncOnce();
     await open.stop();
     assert.equal(result.ok, true, result.message);
-    const sent = [cairnJson, post].map((f) => f.path).sort();
+    const sent = [cairnJson, post, photo].map((f) => f.path).sort();
     assert.deepEqual([...open.filesAt('main').keys()].sort(), sent);
-    assert.deepEqual(result.details, ['저장소가 공개라 vault 파일 1개는 보내지 않았어요']);
+    assert.deepEqual(result.details, ['저장소가 공개라 비공개 파일 3개는 보내지 않았어요']);
   });
 
   test('공개 저장소에 vault가 이미 있으면 멈추고, 없으면 vault만 빼고 보낸다', async () => {

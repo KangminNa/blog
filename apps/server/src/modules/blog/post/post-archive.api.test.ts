@@ -165,6 +165,31 @@ describe('백업 zip의 사진', () => {
     );
   });
 
+  test('공개 글과 그 사진만 공개 저장소로 나갈 수 있다', async () => {
+    const draft = await newPost();
+    const open = await newPost();
+    const draftOnly = Buffer.concat([PNG, Buffer.from(randomUUID())]);
+    const shown = Buffer.concat([PNG, Buffer.from(randomUUID())]);
+    await upload(draft, draftOnly);
+    await upload(open, shown);
+    const { version } = open;
+    const res = await api.request('POST', `/api/posts/${open.id}/status`, owner, {
+      status: 'published',
+      version,
+    });
+    assert.equal(res.status, 200, res.text);
+
+    const files = await api.service(ArchiveQuery).files(new SystemActor());
+    const privateOf = (bytes: Buffer) =>
+      files.find((f) => f.path.startsWith('assets/') && f.body.equals(bytes))?.isPrivateArea();
+    const postOf = (slug: unknown) =>
+      files.find((f) => f.path.endsWith(`/${slug}.md`))?.isPrivateArea();
+    assert.equal(privateOf(draftOnly), true);
+    assert.equal(privateOf(shown), false);
+    assert.equal(postOf(draft.slug), true);
+    assert.equal(postOf(open.slug), false);
+  });
+
   test('동기화 플러그인의 길(공간 없는 SystemActor)로도 사진이 나온다', async () => {
     const bytes = photo();
     await upload(await newPost(), bytes);
