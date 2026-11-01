@@ -28,6 +28,8 @@ export class AgentQuery extends BaseQuery {
       (r.scopes as string[] | null) ?? [],
       (r.approval_actions as string[] | null) ?? [],
       r.monthly_limit === null ? null : Number(r.monthly_limit),
+      r.five_hour_limit === null ? null : Number(r.five_hour_limit),
+      r.plan_stop_percent === null ? null : Number(r.plan_stop_percent),
       Number(r.used),
       String(r.status),
       Number(r.version),

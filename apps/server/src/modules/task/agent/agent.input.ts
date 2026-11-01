@@ -4,6 +4,7 @@ import { BaseRequest } from '../../platform';
 
 const VERSION_MAX = 2_147_483_647;
 const LIMIT_MAX = Number.MAX_SAFE_INTEGER;
+const PLAN_PERCENT_MAX = 100;
 
 /** POST /api/agents. 같은 requestId는 처음 만든 에이전트를 돌려준다 */
 export class CreateAgentInput extends BaseRequest {
@@ -15,6 +16,8 @@ export class CreateAgentInput extends BaseRequest {
     readonly scopes: readonly string[],
     readonly approvalActions: readonly string[],
     readonly monthlyLimit: number | null,
+    readonly fiveHourLimit: number | null,
+    readonly planStopPercent: number | null,
   ) {
     super();
   }
@@ -31,12 +34,14 @@ export class CreateAgentInput extends BaseRequest {
           f.optionalTextList('scopes', 20, 40) ?? [],
           f.optionalTextList('approvalActions', 20, 100) ?? [],
           f.optionalInteger('monthlyLimit', 1, LIMIT_MAX),
+          f.optionalInteger('fiveHourLimit', 1, LIMIT_MAX),
+          f.optionalInteger('planStopPercent', 1, PLAN_PERCENT_MAX),
         ),
     );
   }
 }
 
-/** PATCH /api/agents/:id. 보내지 않은 칸은 그대로, monthlyLimit에 null을 보내면 한도를 없앤다 */
+/** PATCH /api/agents/:id. 보내지 않은 칸은 그대로, 한도에 null을 보내면 한도를 없앤다 */
 export class UpdateAgentInput extends BaseRequest {
   private constructor(
     readonly id: string,
@@ -47,6 +52,8 @@ export class UpdateAgentInput extends BaseRequest {
     readonly scopes: readonly string[] | null,
     readonly approvalActions: readonly string[] | null,
     readonly monthlyLimit: number | null | undefined,
+    readonly fiveHourLimit: number | null | undefined,
+    readonly planStopPercent: number | null | undefined,
   ) {
     super();
   }
@@ -65,6 +72,10 @@ export class UpdateAgentInput extends BaseRequest {
           f.optionalTextList('scopes', 20, 40),
           f.optionalTextList('approvalActions', 20, 100),
           'monthlyLimit' in body ? f.optionalInteger('monthlyLimit', 1, LIMIT_MAX) : undefined,
+          'fiveHourLimit' in body ? f.optionalInteger('fiveHourLimit', 1, LIMIT_MAX) : undefined,
+          'planStopPercent' in body
+            ? f.optionalInteger('planStopPercent', 1, PLAN_PERCENT_MAX)
+            : undefined,
         ),
     );
   }

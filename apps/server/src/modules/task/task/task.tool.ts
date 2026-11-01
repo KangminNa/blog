@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseResponse, BaseTool } from '../../platform';
+import { PlanUsage } from '../usage/plan-usage';
 import type { Task } from './task';
 import {
   NextJobsInput,
@@ -102,6 +103,7 @@ export class ReportProgressTool extends BaseTool {
   override readonly idempotent = true;
   readonly description = [
     '실행 기록을 모아 남기고 임대를 늘린다. 임대가 끝나기 전에 부르고, 남길 기록이 없으면 events를 비워 부른다.',
+    'AI CLI가 알려 준 구독 사용률이 있으면 plan_usage로 함께 보낸다. 어느 도구의 값인지는 서버가 작업의 에이전트로 정한다.',
     '답의 cancelled가 true면 작업을 멈춘다. paused가 true면 에이전트가 멈춘 것이니 release_job으로 돌려줄 수 있다.',
     'status가 waiting이면 결재를 기다리는 중이니 이 실행을 끝낸다. submit_result는 부르지 않는다.',
   ].join(' ');
@@ -129,6 +131,31 @@ export class ReportProgressTool extends BaseTool {
             tokens: { type: 'integer', minimum: 0, description: '이번에 쓴 토큰 수' },
           },
           required: ['kind'],
+        },
+      },
+      plan_usage: {
+        type: 'array',
+        maxItems: ReportProgressInput.PLAN_USAGE_MAX,
+        description:
+          '구독 사용률 창들. 없어도 된다. five_hour · seven_day만 저장하고 모르는 창은 넘어간다',
+        items: {
+          type: 'object',
+          properties: {
+            window: { type: 'string', maxLength: 40, description: '창 이름' },
+            percent: {
+              type: 'integer',
+              minimum: 0,
+              maximum: PlanUsage.PERCENT_MAX,
+              description: '사용률. 초과 사용이면 100을 넘는다',
+            },
+            resets_at: { type: 'string', format: 'date-time', description: '초기화 시각' },
+            status: {
+              type: 'string',
+              enum: PlanUsage.STATUSES,
+              description: 'AI CLI가 알려 준 상태',
+            },
+          },
+          required: ['window', 'percent', 'resets_at'],
         },
       },
     },

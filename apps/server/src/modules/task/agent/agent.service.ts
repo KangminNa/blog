@@ -26,6 +26,8 @@ export class AgentService extends BaseService {
         req.scopes,
         req.approvalActions,
         req.monthlyLimit,
+        req.fiveHourLimit,
+        req.planStopPercent,
         new Date(),
       );
       await agents.save(agent);
@@ -42,6 +44,8 @@ export class AgentService extends BaseService {
       if (req.scopes !== null) agent.scopes = req.scopes;
       if (req.approvalActions !== null) agent.approvalActions = req.approvalActions;
       if (req.monthlyLimit !== undefined) agent.monthlyLimit = req.monthlyLimit;
+      if (req.fiveHourLimit !== undefined) agent.fiveHourLimit = req.fiveHourLimit;
+      if (req.planStopPercent !== undefined) agent.planStopPercent = req.planStopPercent;
     });
   }
 
