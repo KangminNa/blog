@@ -97,7 +97,10 @@ export class TaskPageView {
   }
 }
 
-/** 러너가 빌려 간 일 하나 (next_jobs). MCP 도구의 모양이라 snake_case. run_token은 여기서 한 번만 나간다 */
+/**
+ * 러너가 빌려 간 일 하나 (next_jobs). MCP 도구의 모양이라 snake_case. run_token은 여기서 한 번만 나간다.
+ * 연결 확인(task.kind가 ai_test)에는 에이전트도 run_token도 없다. 어느 도구인지는 task.payload.tool에 있다.
+ */
 export class JobView {
   constructor(
     readonly taskId: string,
@@ -110,12 +113,12 @@ export class JobView {
     readonly baseVersion: number | null,
     readonly skill: string | null,
     readonly revisionNote: string | null,
-    readonly agentId: string,
-    readonly agentName: string,
-    readonly agentRole: string,
-    readonly agentTool: string,
+    readonly agentId: string | null,
+    readonly agentName: string | null,
+    readonly agentRole: string | null,
+    readonly agentTool: string | null,
     readonly leaseUntil: Date | null,
-    readonly runToken: string,
+    readonly runToken: string | null,
   ) {}
 
   toJSON() {
@@ -134,12 +137,15 @@ export class JobView {
           : { kind: this.targetKind, id: this.targetId, version: this.baseVersion },
       skill: this.skill,
       revision_note: this.revisionNote,
-      agent: {
-        id: this.agentId,
-        name: this.agentName,
-        role: this.agentRole,
-        tool: this.agentTool,
-      },
+      agent:
+        this.agentId === null
+          ? null
+          : {
+              id: this.agentId,
+              name: this.agentName,
+              role: this.agentRole,
+              tool: this.agentTool,
+            },
       run_token: this.runToken,
     };
   }

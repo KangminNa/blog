@@ -1,8 +1,12 @@
 import { Module, type OnModuleInit } from '@nestjs/common';
-import { CoreWorkers } from '../platform';
+import { CoreWorkers, SecretRotation } from '../platform';
 import { AgentController } from './agent/agent.api';
 import { AgentQuery } from './agent/agent.query';
 import { AgentService } from './agent/agent.service';
+import { AiLoginController } from './ai/ai-login.api';
+import { AiLoginQuery } from './ai/ai-login.query';
+import { AiLoginService } from './ai/ai-login.service';
+import { AiLoginTool } from './ai/ai-login.tool';
 import { ApprovalController } from './approval/approval.api';
 import { ApprovalQuery } from './approval/approval.query';
 import { ApprovalService } from './approval/approval.service';
@@ -36,6 +40,9 @@ import { UsageQuery } from './usage/usage.query';
     ApprovalQuery,
     ApprovalService,
     UsageQuery,
+    AiLoginQuery,
+    AiLoginService,
+    AiLoginTool,
     NextJobsTool,
     ReportProgressTool,
     SubmitResultTool,
@@ -46,7 +53,13 @@ import { UsageQuery } from './usage/usage.query';
     ApprovalResultHandler,
     LeaseJob,
   ],
-  controllers: [AgentController, TaskController, ApprovalController, UsageController],
+  controllers: [
+    AgentController,
+    TaskController,
+    ApprovalController,
+    UsageController,
+    AiLoginController,
+  ],
   exports: [TaskTools, TaskQuery],
 })
 export class TaskModule implements OnModuleInit {
@@ -57,11 +70,14 @@ export class TaskModule implements OnModuleInit {
     private readonly requested: TaskRequestedHandler,
     private readonly results: ApprovalResultHandler,
     private readonly leases: LeaseJob,
+    private readonly rotation: SecretRotation,
+    private readonly logins: AiLoginService,
   ) {}
 
   onModuleInit(): void {
     this.workers.on(Task.REQUESTED, this.requested);
     this.workers.on('*', this.results);
     this.workers.every(this.leases, TaskModule.LEASE_CHECK_MS);
+    this.rotation.register('task.ai_logins', (actor) => this.logins.resealSecrets(actor));
   }
 }

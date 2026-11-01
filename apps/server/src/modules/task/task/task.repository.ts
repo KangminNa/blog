@@ -63,6 +63,7 @@ export class TaskRepository extends BaseRepository<Task> {
   /**
    * 빌려 줄 작업을 잠근다. 다른 러너가 잡은 행은 건너뛰고, 담당이 없거나 일을 받을 수 있는 에이전트(agentIds)의 일만,
    * 우선순위 → 오래된 순. 멈췄거나 쉬는 에이전트의 일은 대기열에 남아 뒤의 일을 막지 않는다.
+   * 연결 확인은 에이전트가 필요 없어 일을 받을 에이전트가 없어도 빌려 준다.
    */
   async lockNext(
     spaceId: string,
@@ -72,11 +73,24 @@ export class TaskRepository extends BaseRepository<Task> {
     const rows = await this.sql`
       SELECT * FROM task.tasks
       WHERE space_id = ${spaceId} AND status = ${Task.QUEUED}
-        AND (agent_id IS NULL OR agent_id = ANY(${agentIds as string[]}::uuid[]))
+        AND (kind = ${Task.AI_TEST}
+          OR agent_id = ANY(${agentIds as string[]}::uuid[])
+          OR (agent_id IS NULL AND ${agentIds.length > 0}))
       ORDER BY priority DESC, id
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED`;
     return rows.map((r) => this.toEntity(r));
+  }
+
+  /** 도구의 끝나지 않은 연결 확인 */
+  async findPendingAiTest(spaceId: string, tool: string): Promise<Task | null> {
+    return this.maybeOne(
+      await this.sql`
+        SELECT * FROM task.tasks
+        WHERE space_id = ${spaceId} AND kind = ${Task.AI_TEST} AND payload->>'tool' = ${tool}
+          AND status IN (${Task.QUEUED}, ${Task.RUNNING})
+        LIMIT 1`,
+    );
   }
 
   /** 임대가 끝난 작업을 잠근다 */

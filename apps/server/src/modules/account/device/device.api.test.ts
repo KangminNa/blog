@@ -438,7 +438,13 @@ describe('러너 추가', () => {
 
     const tools = await api.mcp(runner.token, 'tools/list');
     const names = (tools.json().result as { tools: { name: string }[] }).tools.map((t) => t.name);
-    assert.deepEqual(names, ['next_jobs', 'report_progress', 'submit_result', 'release_job']);
+    assert.deepEqual(names, [
+      'next_jobs',
+      'report_progress',
+      'submit_result',
+      'release_job',
+      'ai_login',
+    ]);
 
     const again = await add(owner, { requestId, name: '맥 러너' });
     assert.equal(again.json().id, runner.id);

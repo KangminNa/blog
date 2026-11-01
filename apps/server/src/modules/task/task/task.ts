@@ -44,6 +44,11 @@ export class Task extends TrackedEntity {
    * 실제 만료는 임대다: mcp 모듈이 호출마다 임대가 살아 있는지 묻는다.
    */
   static readonly RUN_TOKEN_SECONDS = 24 * 60 * 60;
+  /** AI 로그인 연결 확인. 에이전트도 작업 토큰도 없이 러너가 돌린다 */
+  static readonly AI_TEST = 'ai_test';
+  /** 연결 확인은 쌓인 일보다 먼저 돈다 */
+  private static readonly AI_TEST_PRIORITY = 1000;
+  private static readonly AI_TEST_PROMPT = 'ok라고만 답하세요.';
   private static readonly SKILLS: Readonly<Record<string, string>> = {
     draft_post: 'cairn-write',
     tidy_session: 'cairn-tidy',
@@ -116,6 +121,24 @@ export class Task extends TrackedEntity {
     );
     task.announce();
     return task;
+  }
+
+  /** AI 로그인의 연결 확인. 어느 판의 로그인을 보는지 함께 적어 둔다 */
+  static aiTest(spaceId: string, tool: string, loginVersion: number, now: Date): Task {
+    return Task.open(
+      spaceId,
+      null,
+      Task.AI_TEST,
+      'AI 연결 확인',
+      Task.AI_TEST_PROMPT,
+      { tool, loginVersion },
+      null,
+      null,
+      null,
+      Task.AI_TEST_PRIORITY,
+      BaseEntity.newId(),
+      now,
+    );
   }
 
   static restore(
@@ -201,6 +224,21 @@ export class Task extends TrackedEntity {
     return this.statusValue === Task.CANCELLED;
   }
 
+  get isAiTest(): boolean {
+    return this.kind === Task.AI_TEST;
+  }
+
+  /** 결과를 내고 끝났는가. 취소는 결과가 없어서 뺀다 */
+  get ended(): boolean {
+    return this.statusValue === Task.DONE || this.statusValue === Task.FAILED;
+  }
+
+  /** 실패한 이유 */
+  get failure(): string | null {
+    const error = this.resultValue?.error;
+    return typeof error === 'string' ? error : null;
+  }
+
   /** 러너가 쓸 스킬. 없으면 지시만으로 일한다 */
   get skill(): string | null {
     return Task.SKILLS[this.kind] ?? null;
@@ -217,10 +255,10 @@ export class Task extends TrackedEntity {
     return this.logged;
   }
 
-  /** 러너가 빌려 간다: queued → running. 담당이 없던 일은 agentId가 맡는다 */
-  lease(runnerId: string, agentId: string, now: Date): void {
+  /** 러너가 빌려 간다: queued → running. 담당이 없던 일은 agentId가 맡는다. 연결 확인은 담당 없이 돈다 */
+  lease(runnerId: string, agentId: string | null, now: Date): void {
     this.move([Task.QUEUED], Task.RUNNING);
-    if (this.agent === null) {
+    if (this.agent === null && agentId !== null) {
       this.agent = agentId;
       this.track('agent_id', agentId);
     }
