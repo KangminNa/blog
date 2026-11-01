@@ -22,6 +22,7 @@
     "check": "pnpm lint && pnpm typecheck && pnpm boundaries",
     "boundaries": "node scripts/check-boundaries.mjs",
     "test": "node scripts/test.mjs",
+    "slot": "node scripts/slot.mjs",
     "db:check": "node scripts/check-boundaries.mjs --db",
     "plugin": "docker compose exec -T server pnpm --silent --filter @cairn/server cli plugin",
     "install-code": "docker compose exec -T server pnpm --silent --filter @cairn/server cli install-code",

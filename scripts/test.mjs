@@ -4,11 +4,19 @@
 //
 //   pnpm test                   전부
 //   pnpm test -- --test-name-pattern=플러그인   이름으로 골라서
+//   pnpm slot 2 test            슬롯 2에서 (작업 트리는 슬롯으로만)
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
+
+// 작업 트리에서는 .git이 파일이다. 슬롯 없이 돌리면 본 저장소의 개발 환경과 DB를 함께 쓰게 된다
+if (statSync(join(root, '.git')).isFile() && !process.env.CAIRN_SLOT) {
+  console.error('작업 트리에서는 pnpm slot <번호> test로 돌려 주세요');
+  process.exit(1);
+}
+
 const password = process.env.DB_PASSWORD ?? fromEnvFile('DB_PASSWORD') ?? 'cairn';
 const testDb = `postgres://cairn:${password}@cairn-db:5432/cairn_test?sslmode=disable`;
 const extra = process.argv.slice(2).filter((a) => a !== '--');

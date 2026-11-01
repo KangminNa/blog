@@ -5,6 +5,7 @@
 # 서로 부르는 이름은 cairn-db · cairn-server · cairn-web (cairn- 이 붙은 별명).
 # 다른 프로젝트와 같이 쓰는 네트워크(프록시용)에 붙여도 db · server 같은 흔한 이름과 섞이지 않게.
 # 프록시 네트워크에 붙이는 설정은 서버에만 두는 docker-compose.override.yml로 한다 (README "설치")
+# 병렬 작업은 pnpm slot <번호> …으로 프로젝트·포트·이미지 태그를 나눈다 (scripts/slot.mjs)
 name: cairn
 
 x-db-url: &db-url postgres://cairn:${DB_PASSWORD:-cairn}@cairn-db:5432/cairn?sslmode=disable
@@ -12,7 +13,7 @@ x-db-url: &db-url postgres://cairn:${DB_PASSWORD:-cairn}@cairn-db:5432/cairn?ssl
 services:
   db:
     build: ./db
-    image: cairn-db:dev
+    image: cairn-db:${CAIRN_IMAGE_TAG:-dev}
     networks:
       default:
         aliases: [cairn-db]
@@ -45,7 +46,7 @@ services:
     build:
       context: .
       target: dev
-    image: cairn-app:dev
+    image: cairn-app:${CAIRN_IMAGE_TAG:-dev}
     networks:
       default:
         aliases: [cairn-server]
@@ -68,7 +69,7 @@ services:
         condition: service_completed_successfully
 
   worker:
-    image: cairn-app:dev          # 일꾼: 이벤트 넘기기와 플러그인 반복 작업. 하나만 띄운다
+    image: cairn-app:${CAIRN_IMAGE_TAG:-dev}          # 일꾼: 이벤트 넘기기와 플러그인 반복 작업. 하나만 띄운다
     pull_policy: never
     command: ["pnpm", "--filter", "@cairn/server", "worker"]
     env_file:
@@ -86,7 +87,7 @@ services:
         condition: service_started
 
   web:
-    image: cairn-app:dev          # server가 빌드한 같은 이미지를 씀
+    image: cairn-app:${CAIRN_IMAGE_TAG:-dev}          # server가 빌드한 같은 이미지를 씀
     networks:
       default:
         aliases: [cairn-web]
