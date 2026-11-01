@@ -1521,6 +1521,60 @@ a.chip {
   margin-right: 10px;
 }
 
+/* 소재 */
+.basket-add {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.basket-add .cta {
+  align-self: flex-end;
+}
+
+.basket-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 14px;
+}
+
+.basket-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.basket-main a,
+.basket-main b {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.basket-main small {
+  font-size: 12.5px;
+  color: var(--faint);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pill {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* 세션 노트 */
 .note-title {
   margin: 0;
@@ -1773,6 +1827,10 @@ a.chip {
 
   .console-link {
     min-height: 44px;
+  }
+
+  .basket-row .ghost {
+    height: 44px;
   }
 
   /* 손가락으로 누르는 곳은 44px, 입력은 16px (더 작으면 iOS가 화면을 확대한다) */

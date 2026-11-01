@@ -22,6 +22,6 @@ import { VaultTools } from './vault-tools';
     VaultTools,
   ],
   controllers: [SessionController],
-  exports: [VaultTools],
+  exports: [VaultTools, SessionQuery],
 })
 export class VaultModule {}

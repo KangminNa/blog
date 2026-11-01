@@ -27,7 +27,7 @@ change_sets, change_ops, review_rules, changes, edit_leases
 - 글 자리 사본: post_marks (blog 이벤트를 받는 Handler만 쓴다)
 
 ## 공개 API (`index.ts`)
-`VaultModule`, `VaultTools`(세션 도구 목록, mcp 모듈이 모아서 연다). 예정: 세션 Query(blog의 재료 패널·글감 상자가 읽음)
+`VaultModule`, `VaultTools`(세션 도구 목록, mcp 모듈이 모아서 연다), `SessionQuery`·`GetSessionRequest`(blog의 소재가 세션을 확인할 때 읽음)
 
 ## 내보내는 이벤트 / 받는 이벤트
 `vault.session.saved`(v1: sessionId, revisionId, seq, deviceId, project, created) / 예정: `blog.post.*` (글 자리 사본 갱신)

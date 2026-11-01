@@ -76,7 +76,7 @@ MCP 입력과 응답은 snake_case다.
 - `report_progress { task_id, events: [{ kind, body?, tokens? }], request_id? }`는 기록을 모아 남기고 임대를 연장한다. 기록이 없으면 `events`를 비워 부른다 (`heartbeat_jobs`는 두지 않는다). 응답 `{ status, cancelled, paused, lease_until }`의 `cancelled`로 러너가 작업을 멈춘다. `request_id`를 주면 같은 보고의 토큰을 두 번 세지 않는다.
 - `submit_result { task_id, request_id, status: done·failed, result?, error? }`, `release_job { task_id, reason }`. 응답은 `{ task_id, status }`. 돌려준 이유는 실행 기록에 남는다.
 - `request_approval { request_id, action, target_kind, target_id, target_version, note? }`. `request_id`는 작업마다 따로 센다. 동작은 `blog.post.publish`, `sns.post.send`, `task.agent.raise_limit`로 시작한다.
-- `blog_get_post { post_id }`는 `{ post_id, title, body_md, status, version, tags }`, `blog_save_draft { request_id, post_id?, base_version?, title, body_md, tags? }`는 `{ post_id, version, status, url }`를 돌려준다. AI는 임시 글만 쓰고 고친다. `basket_get {}`은 `{ items }`를 돌려준다.
+- `blog_get_post { post_id }`는 `{ post_id, title, body_md, status, version, tags }`, `blog_save_draft { request_id, post_id?, base_version?, title, body_md, tags? }`는 `{ post_id, version, status, url }`를 돌려준다. AI는 임시 글만 쓰고 고친다. `post_id`가 있으면 `base_version`이 꼭 있어야 한다: 사람이 그사이 고친 내용을 AI가 모르고 덮지 않게. `request_id`는 작업 토큰이면 작업마다 따로 센다. `basket_get {}`은 `{ items }`를 돌려준다.
 - `submit_changes { request_id, message, ops: [{ op, target_id?, base_version?, payload }] }`는 vault 소유다. 변경 묶음을 쓰고 `{ change_set_id, ops: [{ seq, verdict, status, reason }] }`로 판정을 바로 돌려준다. 작업은 이벤트가 아니라 러너의 `submit_result`로 끝난다. 끝내는 길이 하나라 둘이 겹치지 않고, 러너가 도중에 죽어도 `change_sets.job_id`가 유일해서 같은 묶음은 한 번만 적용된다.
 - 도구 입력 모양을 바꾸면 `skills/`를 함께 고친다.
 
