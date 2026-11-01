@@ -184,6 +184,22 @@ export class ConsentRequest extends BaseRequest {
 }
 
 /** 기기 이름·권한 바꾸기. version은 화면이 불러올 때 받은 값 */
+export class AddRunnerRequest extends BaseRequest {
+  private constructor(
+    readonly requestId: string,
+    readonly name: string,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): AddRunnerRequest {
+    return BaseRequest.read(
+      raw,
+      (f) => new AddRunnerRequest(f.text('requestId', 200), f.text('name', 60)),
+    );
+  }
+}
+
 export class UpdateDeviceRequest extends BaseRequest {
   private constructor(
     readonly name: string | null,

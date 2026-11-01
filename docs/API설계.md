@@ -42,6 +42,7 @@
 | 결재 | `GET /api/approvals`, `GET /api/approvals/:id`, `POST /api/approvals/:id/decide { version, decision: approve·revise·reject, note? }` | 3 |
 | 에이전트 | `GET·POST /api/agents`, `PATCH /api/agents/:id`, `POST /api/agents/:id/pause`, `POST /api/agents/:id/resume` | 3 |
 | AI | `GET /api/ai`, `PUT /api/ai/claude/token`, `POST /api/ai/:tool/test`, `POST /api/ai/codex/login` | 3~4 |
+| 기기 | `POST /api/devices/runner { requestId, name }` (주인만. `run` 권한만 가진 기기, 토큰은 이 응답에 한 번) | 3 |
 | 소재 | `GET·POST /api/basket/items { requestId, kind, refId?, url?, title?, note? }`, `DELETE /api/basket/items/:id` | 5 |
 | 사진 | `POST /api/posts/:id/assets` (이미지 본문 그대로, 10MB 이하), `GET /api/files/:hash` (공개 글의 사진은 누구나, 나머지는 주인만) | 5 |
 | RSS | `/rss.xml` (공개 글 20개, 웹이 서버 API로 만든다) | 5 |

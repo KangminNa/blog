@@ -63,6 +63,9 @@ export class Device extends BaseEntity {
     Actor.RUN,
   ];
 
+  /** 러너의 도구 이름 (기기 목록에 보인다) */
+  private static readonly RUNNER_CLIENT = '러너';
+
   private readonly issued: DeviceCredential[] = [];
   private readonly retired: string[] = [];
 
@@ -111,6 +114,33 @@ export class Device extends BaseEntity {
         deviceId: device.id,
         name: device.name,
         client: clientName,
+      }),
+    );
+    return device;
+  }
+
+  /** 러너: OAuth 없이 콘솔에서 만든다. 일을 빌리는 권한만 갖고, 토큰은 만들 때 한 번만 보인다 */
+  static forRunner(spaceId: string, userId: string, name: string, now: Date): Device {
+    const device = new Device(
+      BaseEntity.newId(),
+      1,
+      spaceId,
+      userId,
+      Device.checkName(name),
+      [Actor.RUN],
+      null,
+      Device.RUNNER_CLIENT,
+      now,
+      null,
+      null,
+      true,
+    );
+    device.issueDeviceToken(now);
+    device.record(
+      new DomainEvent('account.device.connected', 1, spaceId, {
+        deviceId: device.id,
+        name: device.name,
+        client: Device.RUNNER_CLIENT,
       }),
     );
     return device;

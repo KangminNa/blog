@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { ApiClient, TestUser } from '../../../testing/api-client';
 import { Database } from '../../platform';
@@ -421,6 +421,46 @@ describe('MCP', () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
     });
     assert.equal(res.status, 200, await res.text());
+  });
+});
+
+describe('러너 추가', () => {
+  const add = (user: typeof owner, body: object) =>
+    api.request('POST', '/api/devices/runner', user, body);
+
+  test('주인이 만들면 run 권한만 가진 기기와 토큰을 한 번 준다', async () => {
+    const requestId = randomUUID();
+    const res = await add(owner, { requestId, name: '맥 러너' });
+    assert.equal(res.status, 201, res.text);
+    const runner = res.json() as { id: string; scopes: string[]; token: string };
+    assert.deepEqual(runner.scopes, ['run']);
+    assert.match(runner.token, /^cairn_dt_/);
+
+    const tools = await api.mcp(runner.token, 'tools/list');
+    const names = (tools.json().result as { tools: { name: string }[] }).tools.map((t) => t.name);
+    assert.deepEqual(names, ['next_jobs', 'report_progress', 'submit_result', 'release_job']);
+
+    const again = await add(owner, { requestId, name: '맥 러너' });
+    assert.equal(again.json().id, runner.id);
+    assert.equal(again.json().token, undefined);
+  });
+
+  test('같은 이름은 409, 이름이 없으면 400, 주인이 아니면 403', async () => {
+    const name = `러너-${randomUUID().slice(0, 8)}`;
+    assert.equal((await add(owner, { requestId: randomUUID(), name })).status, 201);
+    assert.equal((await add(owner, { requestId: randomUUID(), name })).status, 409);
+    assert.equal((await add(owner, { requestId: randomUUID() })).status, 400);
+    assert.equal((await add(TestUser.visitor, { requestId: randomUUID(), name })).status, 403);
+  });
+
+  test('끊으면 토큰도 바로 막힌다', async () => {
+    const name = `러너-${randomUUID().slice(0, 8)}`;
+    const runner = (await add(owner, { requestId: randomUUID(), name })).json() as {
+      id: string;
+      token: string;
+    };
+    await api.request('POST', `/api/devices/${runner.id}/revoke`, owner);
+    assert.equal((await api.mcp(runner.token, 'tools/list')).status, 401);
   });
 });
 

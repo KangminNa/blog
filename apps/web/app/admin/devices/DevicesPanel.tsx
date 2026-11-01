@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
 import { type Device, SCOPE_LABELS, type SpaceInfo } from '../../_lib/types';
 import { ConnectGuide } from './ConnectGuide';
@@ -11,18 +11,23 @@ const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write', 'run'];
 // 설치 마법사의 마지막 단계도 이 목록을 보며 첫 기기가 붙기를 기다린다.
 export function DevicesPanel({
   siteUrl,
+  runners = false,
   onMessage,
   onChange,
   onSpaceChange,
 }: {
   siteUrl: string | null;
+  /** 러너 추가를 보여 준다 (콘솔). 설치 마법사는 첫 기기를 기다리므로 보이지 않는다 */
+  runners?: boolean;
   onMessage: (text: string) => void;
   onChange?: (devices: Device[]) => void;
   onSpaceChange?: (space: SpaceInfo) => void;
 }) {
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [spare, setSpare] = useState<{ name: string; token: string } | null>(null);
+  const [spare, setSpare] = useState<{ name: string; token: string; runner?: boolean } | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     const reply = await api<{ devices: Device[] }>('GET', '/api/devices');
@@ -68,11 +73,22 @@ export function DevicesPanel({
     if (result?.token) setSpare({ name: device.name, token: result.token });
   }
 
+  async function addRunner(name: string, requestId: string): Promise<boolean> {
+    const result = (await call('/api/devices/runner', 'POST', { requestId, name })) as
+      | (Device & { token?: string })
+      | null;
+    if (!result) return false;
+    if (result.token) setSpare({ name: result.name, token: result.token, runner: true });
+    onMessage(`${result.name} 추가함`);
+    return true;
+  }
+
   const live = devices?.filter((d) => !d.revokedAt) ?? [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <ConnectGuide siteUrl={siteUrl} onMessage={onMessage} onSpaceChange={onSpaceChange} />
+      {runners && <AddRunner add={addRunner} />}
       {error && <p className="error">{error}</p>}
       {spare && (
         <div className="result" role="status">
@@ -80,6 +96,7 @@ export function DevicesPanel({
           <div className="copy" style={{ marginTop: 8 }}>
             <code>{spare.token}</code>
           </div>
+          {spare.runner && <p className="note">러너의 CAIRN_RUNNER_TOKEN에 넣어요</p>}
         </div>
       )}
       {devices === null ? (
@@ -124,5 +141,44 @@ export function DevicesPanel({
         ))
       )}
     </div>
+  );
+}
+
+/** 러너: 일을 빌리는 권한만 가진 기기. 이름이 같으면 서버가 거절한다 */
+function AddRunner({ add }: { add: (name: string, requestId: string) => Promise<boolean> }) {
+  const id = useId();
+  const [name, setName] = useState('러너');
+  const [busy, setBusy] = useState(false);
+  // 응답을 놓쳐 다시 눌러도 러너는 하나다. 이름을 바꾸면 다른 요청이다
+  const requestId = useRef<string | null>(null);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    requestId.current ??= crypto.randomUUID();
+    const added = await add(name.trim(), requestId.current);
+    setBusy(false);
+    if (added) requestId.current = null;
+  }
+
+  return (
+    <form className="row" onSubmit={submit}>
+      <label className="sr" htmlFor={`${id}-name`}>
+        러너 이름
+      </label>
+      <input
+        id={`${id}-name`}
+        className="input"
+        value={name}
+        maxLength={60}
+        onChange={(e) => {
+          requestId.current = null;
+          setName(e.target.value);
+        }}
+      />
+      <button type="submit" className="ghost" disabled={busy || !name.trim()}>
+        러너 추가
+      </button>
+    </form>
   );
 }

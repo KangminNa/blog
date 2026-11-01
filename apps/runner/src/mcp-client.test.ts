@@ -33,6 +33,11 @@ beforeEach(() => {
   seen = null;
 });
 
+const refused = (status: number, value: object) => (_req: IncomingMessage, res: ServerResponse) => {
+  res.writeHead(status, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(value));
+};
+
 const json = (value: object) => (_req: IncomingMessage, res: ServerResponse) => {
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify(value));
@@ -93,6 +98,16 @@ describe('MCP 부르기', () => {
       answer = next;
       await assert.rejects(client().call('next_jobs', {}), ServerUnreachable);
     }
+  });
+
+  test('서버가 이유를 적어 거절하면 그 이유를 보여 주고 다시 보낼 수 있다', async () => {
+    answer = refused(422, { code: 'rule_violation', message: '사이트 주소부터 정해 주세요' });
+    await assert.rejects(
+      client().call('next_jobs', {}),
+      (error: Error) =>
+        error instanceof ServerUnreachable &&
+        error.message === '서버가 422로 답했어요: 사이트 주소부터 정해 주세요',
+    );
   });
 
   test('연결이 끊기면 다시 보내도 되는 실패', async () => {

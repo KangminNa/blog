@@ -37,7 +37,7 @@ export class McpClient {
     const res = await this.post(tool, args, waitMs, stop);
     if (res.status === 401 || res.status === 403)
       throw new AccessDenied('기기 토큰이 맞지 않아요. 관리 화면 → 기기에서 확인해 주세요');
-    if (!res.ok) throw new ServerUnreachable(`서버가 ${res.status}로 답했어요`);
+    if (!res.ok) throw new ServerUnreachable(await McpClient.failureOf(res));
     const body = Json.parse(await this.read(res));
     if (body === null) throw new ServerUnreachable('서버의 답을 읽지 못했어요');
     const failure = body.child('error');
@@ -82,6 +82,15 @@ export class McpClient {
     } catch (error) {
       throw new ServerUnreachable(`답을 받다가 끊겼어요: ${(error as Error).message}`);
     }
+  }
+
+  /** 서버가 이유를 적어 보냈으면 함께 보여 준다 (예: 사이트 주소를 아직 정하지 않음). 고치면 러너는 그대로 이어 간다 */
+  private static async failureOf(res: Response): Promise<string> {
+    const body = await res.text().catch(() => '');
+    const reason = Json.parse(body)?.optionalText('message');
+    return reason
+      ? `서버가 ${res.status}로 답했어요: ${reason}`
+      : `서버가 ${res.status}로 답했어요`;
   }
 
   /** 도구 오류는 첫 글의 JSON에 담겨 온다 (DomainError.toJSON) */

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { type Actor, CurrentActor, SecretBox } from '../../platform';
 import { DeviceQuery } from './device.query';
-import { ConsentRequest, UpdateDeviceRequest } from './device.request';
+import { AddRunnerRequest, ConsentRequest, UpdateDeviceRequest } from './device.request';
 import {
   ConsentResponse,
   ConsentResultResponse,
@@ -48,6 +48,12 @@ export class DeviceController {
   @Get('devices')
   async list(@CurrentActor() actor: Actor): Promise<DeviceListResponse> {
     return DeviceListResponse.of(await this.devices.list(actor));
+  }
+
+  /** 러너 추가: { requestId, name }. run 권한만 가진 기기. 토큰 원문은 이번 응답에만 */
+  @Post('devices/runner')
+  async addRunner(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<DeviceResponse> {
+    return DeviceResponse.of(await this.service.addRunner(actor, AddRunnerRequest.from(body)));
   }
 
   /** 이름·권한 바꾸기: { name?, scopes?, version } */

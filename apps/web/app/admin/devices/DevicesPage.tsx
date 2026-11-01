@@ -10,7 +10,7 @@ export function DevicesPage({ siteUrl }: { siteUrl: string | null }) {
       <header className="page-head">
         <h1>기기</h1>
       </header>
-      <DevicesPanel siteUrl={siteUrl} onMessage={notify} />
+      <DevicesPanel runners siteUrl={siteUrl} onMessage={notify} />
     </section>
   );
 }

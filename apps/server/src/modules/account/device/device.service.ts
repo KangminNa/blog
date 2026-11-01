@@ -4,6 +4,7 @@ import {
   AttemptLimiter,
   BaseService,
   Database,
+  Idempotency,
   NotFound,
   RuleViolation,
   TooManyRequests,
@@ -13,6 +14,7 @@ import { AuthorizationCode } from './authorization-code';
 import { Device, DeviceCredential } from './device';
 import { DeviceRepository } from './device.repository';
 import {
+  type AddRunnerRequest,
   type ConsentRequest,
   type RegisterClientRequest,
   type RevokeTokenRequest,
@@ -29,6 +31,7 @@ import { OAuthError } from './oauth-error';
 export class DeviceService extends BaseService {
   /** 스스로 등록은 한 곳(IP)에서 1시간에 20번까지 */
   private readonly registrations = new AttemptLimiter(20, 3_600_000);
+  private static readonly ADD_RUNNER = 'add_runner';
   /** 하루가 지나도록 토큰을 한 번도 받지 않은 등록은 새 등록이 들어올 때 지운다 */
   private static readonly UNUSED_MS = 86_400_000;
 
@@ -127,6 +130,27 @@ export class DeviceService extends BaseService {
   /** 예비 기기 토큰: OAuth를 못 쓰는 도구용. 원문은 이번 응답에만 */
   async issueDeviceToken(actor: Actor, id: string): Promise<Device> {
     return this.change(actor, id, (device) => device.issueDeviceToken(new Date()));
+  }
+
+  /**
+   * 러너 추가: run 권한만 가진 기기와 토큰을 콘솔에서 바로 만든다. 원문은 이번 응답에만.
+   * 같은 requestId가 다시 오면 처음 만든 기기를 돌려준다 (토큰은 다시 볼 수 없어 예비 토큰을 새로 만든다).
+   */
+  async addRunner(actor: Actor, req: AddRunnerRequest): Promise<Device> {
+    actor.assertOwner();
+    const { spaceId, id: userId } = actor;
+    if (!spaceId || !userId) throw new RuleViolation('로그인해 주세요');
+    return this.transaction(async (tx) => {
+      const devices = new DeviceRepository(tx);
+      const once = new Idempotency(tx, userId, req.requestId, DeviceService.ADD_RUNNER);
+      const before = await once.previous();
+      const first = before ? await devices.lock(String(before.deviceId)) : null;
+      if (first) return first;
+      const device = Device.forRunner(spaceId, userId, req.name, new Date());
+      await devices.save(device);
+      await once.remember({ deviceId: device.id });
+      return device;
+    });
   }
 
   private async redeem(req: TokenRequest): Promise<Device> {

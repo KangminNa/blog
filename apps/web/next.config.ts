@@ -15,6 +15,21 @@ function devOrigins(): string[] {
   }
 }
 
+// 개발 서버는 정해 둔 주소가 아니면 화면 스크립트를 막아서, 127.0.0.1로 열면 버튼이 눌리지 않는다.
+// 사이트 주소의 쓰기 확인도 한 주소만 받으므로 다른 이름으로 열지 않게 정해 둔 주소로 보낸다.
+function localHostRedirect() {
+  const home = process.env.CAIRN_WEB_URL;
+  if (process.env.NODE_ENV !== 'development' || !home?.includes('//localhost')) return [];
+  return [
+    {
+      source: '/:path*',
+      has: [{ type: 'host' as const, value: '127.0.0.1' }],
+      destination: `${home}/:path*`,
+      permanent: false,
+    },
+  ];
+}
+
 // 모든 화면에 붙이는 보안 머리글.
 //   frame-ancestors · X-Frame-Options: 다른 사이트가 우리 화면을 겹쳐 놓고 누르게 하지 못하게
 //   form-action: 폼은 이 사이트로만 (화면의 폼은 모두 fetch로 보낸다)
@@ -38,6 +53,9 @@ const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   allowedDevOrigins: devOrigins(),
+  async redirects() {
+    return localHostRedirect();
+  },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
