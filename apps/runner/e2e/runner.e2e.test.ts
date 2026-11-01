@@ -1,0 +1,581 @@
+import assert from 'node:assert/strict';
+import { type ChildProcess, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { after, before, beforeEach, describe, test } from 'node:test';
+import { Database } from '../../server/src/modules/platform';
+import { ApiClient, type ApiResult, type TestUser } from '../../server/src/testing/api-client';
+
+// 러너 전체: 실제 서버, 실제 러너 프로세스, 표준 입출력만 흉내 낸 가짜 AI CLI (fake-claude.mjs).
+// 진짜 claude는 쓰지 않는다. 주인은 REST로, 러너는 MCP로만 들어온다.
+//
+// 러너 하나를 띄워 두고 계속 쓴다. 테스트마다 러너를 끄고 켜면 안 된다: 끊긴 next_jobs도 서버는 시간이 다 될 때까지 찾아서
+// 다음 테스트의 일을 사라진 러너에게 빌려 준다 (stop의 설명). 멈추는 동작은 맨 뒤에서 따로 본다.
+
+type Json = Record<string, unknown>;
+
+const FAKE_CLI = resolve(__dirname, 'fake-claude.mjs');
+const RUNNER_MAIN = resolve(__dirname, '../src/main.ts');
+const OAUTH_TOKEN = `claude-${randomUUID()}`;
+/** 가짜 CLI의 assistant 줄이 낸 420에 result의 합계가 7을 더한다 */
+const FAKE_TOKENS = 427;
+
+let api: ApiClient;
+let owner: TestUser;
+let db: Database;
+/** run 권한을 준 기기의 토큰 */
+let deviceToken: string;
+let spyDir: string;
+/** 이 프로세스의 러너들. 테스트가 실패해도 끝에서 끈다 */
+const started = new Set<RunnerProcess>();
+
+/** 실행 중인 러너 프로세스 하나. 로그를 모은다 */
+class RunnerProcess {
+  private output = '';
+  private readonly ended: Promise<number | null>;
+
+  constructor(private readonly child: ChildProcess) {
+    const collect = (chunk: Buffer) => {
+      this.output += chunk.toString('utf8');
+    };
+    child.stdout?.on('data', collect);
+    child.stderr?.on('data', collect);
+    this.ended = new Promise((done) => child.once('exit', (code) => done(code)));
+    started.add(this);
+  }
+
+  /** 서버의 cwd 기준으로 swc를 찾으므로 apps/server에서 띄운다 */
+  static start(url: string, env: Json = {}): RunnerProcess {
+    return new RunnerProcess(
+      spawn(process.execPath, ['-r', '@swc-node/register', RUNNER_MAIN], {
+        env: {
+          PATH: process.env.PATH,
+          // swc가 쓰는 캐시 자리. AI CLI는 빈 홈을 받아야 한다
+          HOME: process.env.HOME,
+          // AI CLI에게 가면 안 되는 값
+          DATABASE_URL: process.env.DATABASE_URL,
+          CAIRN_RUNNER_URL: url,
+          CAIRN_RUNNER_TOKEN: deviceToken,
+          CAIRN_RUNNER_CLI: FAKE_CLI,
+          CLAUDE_CODE_OAUTH_TOKEN: OAUTH_TOKEN,
+          ...env,
+        } as NodeJS.ProcessEnv,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }),
+    );
+  }
+
+  get logs(): string {
+    return this.output;
+  }
+
+  logged(text: string): Promise<boolean> {
+    return until(`로그: ${text}`, () => (this.output.includes(text) ? true : null));
+  }
+
+  exited(): Promise<number | null> {
+    return this.ended;
+  }
+
+  signal(signal: NodeJS.Signals): void {
+    this.child.kill(signal);
+  }
+
+  stop(signal: NodeJS.Signals = 'SIGTERM'): Promise<number | null> {
+    this.signal(signal);
+    return this.ended;
+  }
+}
+
+/** 러너와 서버 사이의 앞단. 평소에는 그대로 넘기고, 알려 준 도구의 응답을 한 번씩 잃어버린다 */
+class LossyProxy {
+  readonly lost = new Set<string>();
+  private armed: readonly string[] = [];
+  private server: Server | null = null;
+
+  constructor(private readonly target: string) {}
+
+  async start(): Promise<string> {
+    const server = createServer((req, res) => void this.forward(req, res));
+    this.server = server;
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  }
+
+  /** 요청은 서버까지 보내고 응답만 끊는다. 러너는 보내지 못한 줄 안다 */
+  loseNext(tools: readonly string[]): void {
+    this.armed = tools;
+  }
+
+  close(): void {
+    this.server?.close();
+    this.server?.closeAllConnections();
+  }
+
+  private async forward(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    const body = Buffer.concat(chunks).toString('utf8');
+    const answer = await fetch(`${this.target}${req.url}`, {
+      method: req.method,
+      headers: req.headers as Record<string, string>,
+      body,
+    });
+    const text = await answer.text();
+    if (this.losing(body)) {
+      req.socket.destroy();
+      return;
+    }
+    res.writeHead(answer.status, { 'content-type': 'application/json' });
+    res.end(text);
+  }
+
+  /** 빈 보고는 토큰이 없어 볼 것이 없다. 기록이 든 보고만 잃는다 */
+  private losing(body: string): boolean {
+    const { method, params } = JSON.parse(body) as {
+      method: string;
+      params: { name: string; arguments: Json };
+    };
+    if (method !== 'tools/call' || !this.armed.includes(params.name)) return false;
+    if (params.name === 'report_progress' && !params.arguments.request_id) return false;
+    this.armed = this.armed.filter((tool) => tool !== params.name);
+    this.lost.add(params.name);
+    return true;
+  }
+}
+
+function ok(res: ApiResult, status = 200): Json {
+  assert.equal(res.status, status, res.text);
+  return res.json();
+}
+
+const newAgent = async (more: Json = {}): Promise<Json> =>
+  ok(
+    await api.request('POST', '/api/agents', owner, {
+      requestId: randomUUID(),
+      name: '글쓰기',
+      role: '블로그 글을 쓴다',
+      tool: 'claude',
+      scopes: ['read_public', 'write'],
+      approvalActions: ['blog.post.publish'],
+      ...more,
+    }),
+    201,
+  );
+
+/** 지시문의 표시로 가짜 CLI가 할 일을 정한다 */
+const newTask = async (agent: Json, marks: string, more: Json = {}): Promise<Json> =>
+  ok(
+    await api.request('POST', '/api/tasks', owner, {
+      requestId: randomUUID(),
+      agentId: agent.id,
+      instruction: `글을 써 주세요 ${marks}`,
+      ...more,
+    }),
+    201,
+  );
+
+const getTask = async (id: unknown): Promise<Json> => ok(await api.get(`/api/tasks/${id}`, owner));
+
+const cancelTask = async (task: Json): Promise<void> => {
+  const { version } = await getTask(task.id);
+  ok(await api.request('POST', `/api/tasks/${task.id}/cancel`, owner, { version }));
+};
+
+async function until<T>(what: string, read: () => Promise<T | null> | T | null): Promise<T> {
+  const deadline = Date.now() + 20_000;
+  for (;;) {
+    const value = await read();
+    if (value !== null) return value;
+    const logs = [...started].map((r) => r.logs.slice(-1500)).join('\n---\n');
+    assert.ok(Date.now() < deadline, `기다렸지만 오지 않음: ${what}\n${logs}`);
+    await new Promise((done) => setTimeout(done, 50));
+  }
+}
+
+const taskIn = (id: unknown, status: string): Promise<Json> =>
+  until(`작업이 ${status}`, async () => {
+    const task = await getTask(id);
+    return task.status === status ? task : null;
+  });
+
+/** 가짜 CLI가 적은 것 */
+class Spy {
+  readonly path = join(spyDir, `${randomUUID()}.json`);
+
+  get mark(): string {
+    return `[fake:spy=${this.path}]`;
+  }
+
+  async seen(): Promise<Json> {
+    return until('가짜 CLI가 뜸', () => {
+      if (!existsSync(this.path)) return null;
+      try {
+        return JSON.parse(readFileSync(this.path, 'utf8')) as Json;
+      } catch {
+        return null; // 쓰는 중
+      }
+    });
+  }
+}
+
+const alive = (pid: unknown): boolean => {
+  try {
+    process.kill(Number(pid), 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const gone = (pid: unknown): Promise<boolean> =>
+  until('AI CLI가 꺼짐', () => (alive(pid) ? null : true));
+
+const events = (task: Json): Json[] => task.events as Json[];
+const kinds = (task: Json): unknown[] => events(task).map((e) => e.kind);
+const tokens = (task: Json): number => events(task).reduce((sum, e) => sum + Number(e.tokens), 0);
+
+before(async () => {
+  chmodSync(FAKE_CLI, 0o755);
+  spyDir = mkdtempSync(join(tmpdir(), 'cairn-e2e-'));
+  api = await ApiClient.start();
+  owner = await api.signIn();
+  db = api.service(Database);
+  const { version } = (await api.get('/api/space')).json() as { version: number };
+  await api.request('PUT', '/api/space', owner, { name: '러너', siteUrl: api.baseUrl, version });
+  await api.connectDevice(owner, 'e2e-runner');
+  const { devices } = ok(await api.get('/api/devices', owner)) as {
+    devices: { id: string; name: string; scopes: string[]; version: number }[];
+  };
+  const device = devices.find((d) => d.name === 'e2e-runner');
+  ok(
+    await api.request('PATCH', `/api/devices/${device?.id}`, owner, {
+      scopes: [...(device?.scopes ?? []), 'run'],
+      version: device?.version,
+    }),
+  );
+  const spare = ok(await api.request('POST', `/api/devices/${device?.id}/token`, owner));
+  deviceToken = String(spare.token);
+});
+
+beforeEach(async () => {
+  await db.sql`
+    UPDATE task.tasks SET status = 'cancelled', lease_until = NULL
+    WHERE status IN ('queued', 'running', 'waiting')`;
+});
+
+after(async () => {
+  for (const runner of started) runner.signal('SIGKILL');
+  await api.close();
+  rmSync(spyDir, { recursive: true, force: true });
+});
+
+describe('러너가 일을 처리한다', () => {
+  let proxy: LossyProxy;
+  let proxyUrl: string;
+  let runner: RunnerProcess;
+
+  before(async () => {
+    proxy = new LossyProxy(api.baseUrl);
+    proxyUrl = await proxy.start();
+    runner = RunnerProcess.start(proxyUrl);
+    await runner.logged('러너를 시작했어요');
+  });
+
+  after(async () => {
+    assert.equal(await runner.stop(), 0);
+    proxy.close();
+  });
+
+  test('작업을 만들면 러너가 맡아 기록을 남기고 done으로 끝낸다', async () => {
+    const agent = await newAgent();
+    const created = await newTask(agent, '');
+
+    const task = await taskIn(created.id, 'done');
+
+    assert.deepEqual(task.result, { text: '초안을 저장했어요' });
+    assert.deepEqual(kinds(task), ['read', 'write', 'error', 'result', 'result']);
+    assert.equal(events(task)[0]?.body, 'Read notes.md');
+    assert.equal(events(task)[1]?.body, 'blog_save_draft');
+    assert.equal(tokens(task), FAKE_TOKENS);
+    assert.equal(JSON.stringify(task).includes('본문은 기록에 남기지 않는다'), false);
+  });
+
+  test('지시와 역할이 AI CLI에게 가고, 사용자의 것은 아무것도 가지 않는다', async () => {
+    const agent = await newAgent();
+    const spy = new Spy();
+    const created = await newTask(agent, spy.mark);
+    const seen = await spy.seen();
+    await taskIn(created.id, 'done');
+    await runner.logged(`${created.id}: 끝났어요`);
+
+    const env = seen.env as Record<string, string>;
+    assert.ok(String(seen.prompt).includes('블로그 글을 쓴다'));
+    assert.ok(String(seen.prompt).includes('글을 써 주세요'));
+    assert.equal(env.CLAUDE_CODE_OAUTH_TOKEN, OAUTH_TOKEN);
+    assert.equal(env.ENABLE_CLAUDEAI_MCP_SERVERS, 'false');
+    assert.equal(Object.values(env).includes(deviceToken), false);
+    assert.equal(env.CAIRN_RUNNER_TOKEN, undefined);
+    assert.equal(env.DATABASE_URL, undefined);
+    assert.notEqual(env.HOME, process.env.HOME);
+    assert.deepEqual(seen.cwdEntries, []);
+    assert.deepEqual(seen.configEntries, ['settings.json']);
+    assert.equal(seen.mcpConfigMode, 0o600);
+    assert.equal(seen.mcpUrl, `${proxyUrl}/mcp`);
+    assert.notEqual(seen.runToken, deviceToken);
+
+    const args = seen.argv as string[];
+    for (const flag of ['-p', '--verbose', '--strict-mcp-config']) assert.ok(args.includes(flag));
+    assert.equal(args.includes('--bare'), false);
+    assert.equal(args[args.indexOf('--output-format') + 1], 'stream-json');
+    assert.equal(args[args.indexOf('--tools') + 1], 'Read,Write,Edit');
+
+    await until('자리가 지워짐', () =>
+      [seen.cwd, env.CLAUDE_CONFIG_DIR, env.HOME, seen.mcpConfigPath].some((p) =>
+        existsSync(String(p)),
+      )
+        ? null
+        : true,
+    );
+  });
+
+  test('로그와 기록에 토큰이 남지 않는다', async () => {
+    const agent = await newAgent();
+    const spy = new Spy();
+    const created = await newTask(agent, spy.mark);
+    const seen = await spy.seen();
+    const task = await taskIn(created.id, 'done');
+    await runner.logged(`${created.id}: 끝났어요`);
+
+    const record = `${JSON.stringify(task)}\n${runner.logs}`;
+    for (const token of [OAUTH_TOKEN, deviceToken, String(seen.runToken)])
+      assert.equal(record.includes(token), false);
+    assert.ok(JSON.stringify(task).includes('[지움: 토큰]'));
+  });
+
+  test('스킬이 아직 없으면 지시만으로 하고 로그에 남긴다', async () => {
+    const agent = await newAgent();
+    const created = await newTask(agent, '', { kind: 'draft_post', title: '초안' });
+    await taskIn(created.id, 'done');
+    await runner.logged('스킬 cairn-write이 없어 지시만으로 해요');
+  });
+
+  test('0이 아닌 코드로 끝나면 failed와 짧은 이유', async () => {
+    const agent = await newAgent();
+    const created = await newTask(agent, '[fake:fail]');
+    const task = await taskIn(created.id, 'failed');
+    const error = String((task.result as Json).error);
+    assert.ok(error.includes('코드 3'), error);
+    assert.ok(error.includes('모델에 닿지 못했어요'), error);
+  });
+
+  test('코드가 0이어도 결과가 실패면 failed', async () => {
+    const agent = await newAgent();
+    const created = await newTask(agent, '[fake:error-result]');
+    const task = await taskIn(created.id, 'failed');
+    assert.ok(String((task.result as Json).error).includes('턴 수를 넘겼어요'));
+  });
+
+  test('허락하지 않은 MCP 서버가 보이면 끄고 failed', async () => {
+    const agent = await newAgent();
+    const spy = new Spy();
+    const created = await newTask(agent, `${spy.mark} [fake:stray]`);
+    const seen = await spy.seen();
+    const task = await taskIn(created.id, 'failed');
+    assert.ok(String((task.result as Json).error).includes('claude.ai Gmail'));
+    await gone(seen.pid);
+  });
+
+  test('응답을 잃으면 같은 request_id로 다시 보내 토큰과 결과가 한 번만 남는다', async () => {
+    const agent = await newAgent();
+    proxy.loseNext(['report_progress', 'submit_result']);
+    const created = await newTask(agent, '');
+    await taskIn(created.id, 'done');
+
+    // 러너는 일 하나가 끝나야 다음을 받는다. 다음 일이 끝나면 앞의 제출을 다시 보내고 답까지 받은 것이다
+    const next = await newTask(agent, '');
+    await taskIn(next.id, 'done');
+
+    assert.deepEqual([...proxy.lost].sort(), ['report_progress', 'submit_result']);
+    const task = await getTask(created.id);
+    assert.equal(tokens(task), FAKE_TOKENS);
+    assert.deepEqual(kinds(task), ['read', 'write', 'error', 'result', 'result']);
+  });
+
+  test('주인이 취소하면 AI CLI를 끄고 제출하지 않으며 다음 일을 받는다', async () => {
+    const agent = await newAgent();
+    const spy = new Spy();
+    const created = await newTask(agent, `${spy.mark} [fake:hang]`);
+    const seen = await spy.seen();
+    await taskIn(created.id, 'running');
+    assert.equal(alive(seen.pid), true);
+
+    await cancelTask(created);
+
+    await gone(seen.pid);
+    await runner.logged(`${created.id}: 주인이 취소했어요`);
+    const task = await getTask(created.id);
+    assert.equal(task.status, 'cancelled');
+    assert.equal(task.result, null);
+    await until('자리가 지워짐', () => (existsSync(String(seen.cwd)) ? null : true));
+
+    const next = await newTask(agent, '');
+    await taskIn(next.id, 'done');
+  });
+
+  test('SIGTERM을 듣지 않는 AI CLI는 SIGKILL로 끈다', async () => {
+    const agent = await newAgent();
+    const spy = new Spy();
+    const created = await newTask(agent, `${spy.mark} [fake:stubborn]`);
+    const seen = await spy.seen();
+    await until('진행 기록', async () =>
+      kinds(await getTask(created.id)).length > 0 ? true : null,
+    );
+    await cancelTask(created);
+    await gone(seen.pid);
+    await runner.logged(`${created.id}: 주인이 취소했어요`);
+  });
+
+  test('결재를 올리면 AI CLI를 끄고 waiting으로 남긴다', async () => {
+    const agent = await newAgent();
+    const spy = new Spy();
+    const created = await newTask(agent, `${spy.mark} [fake:approval] [fake:hang]`);
+    const seen = await spy.seen();
+
+    await taskIn(created.id, 'waiting');
+    await gone(seen.pid);
+    await runner.logged(`${created.id}: 결재를 기다려요`);
+    const task = await getTask(created.id);
+    assert.equal(task.status, 'waiting');
+    assert.equal(task.result, null);
+    const { approvals } = ok(await api.get('/api/approvals', owner)) as { approvals: Json[] };
+    assert.equal(approvals.filter((a) => a.taskId === created.id).length, 1);
+  });
+
+  test('결재를 올리고 바로 끝난 실행도 done으로 보내지 않는다', async () => {
+    const agent = await newAgent();
+    const created = await newTask(agent, '[fake:approval]');
+    await runner.logged(`${created.id}: 결재를 기다려요`);
+    const task = await getTask(created.id);
+    assert.equal(task.status, 'waiting');
+    assert.equal(kinds(task).filter((k) => k === 'result').length, 1);
+    assert.equal(task.result, null);
+  });
+
+  test('에이전트가 멈추면 AI CLI를 끄고 일을 돌려준다', async () => {
+    const agent = await newAgent();
+    const spy = new Spy();
+    const created = await newTask(agent, `${spy.mark} [fake:hang]`);
+    const seen = await spy.seen();
+    await taskIn(created.id, 'running');
+
+    ok(
+      await api.request('POST', `/api/agents/${agent.id}/pause`, owner, {
+        version: agent.version,
+      }),
+    );
+
+    const task = await taskIn(created.id, 'queued');
+    await gone(seen.pid);
+    const bodies = events(task).map((e) => e.body);
+    assert.ok(bodies.includes('돌려줌: 에이전트가 멈췄어요'), JSON.stringify(bodies));
+  });
+});
+
+describe('러너를 멈춘다', () => {
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    test(`${signal}이면 AI CLI를 끄고 일을 돌려준 뒤 0으로 끝난다`, async () => {
+      const agent = await newAgent();
+      const runner = RunnerProcess.start(api.baseUrl);
+      const spy = new Spy();
+      const created = await newTask(agent, `${spy.mark} [fake:hang]`);
+      const seen = await spy.seen();
+      await taskIn(created.id, 'running');
+
+      assert.equal(await runner.stop(signal), 0);
+
+      await gone(seen.pid);
+      const task = await getTask(created.id);
+      assert.equal(task.status, 'queued');
+      assert.ok(events(task).some((e) => e.body === '돌려줌: 러너가 멈춰요'));
+      assert.equal(existsSync(String(seen.cwd)), false);
+    });
+  }
+
+  test('일을 기다리다 멈추면 그사이 온 일을 돌려준다', async () => {
+    const agent = await newAgent();
+    const runner = RunnerProcess.start(api.baseUrl);
+    await runner.logged('러너를 시작했어요');
+    await new Promise((done) => setTimeout(done, 300)); // next_jobs가 서버에 닿기를 기다린다
+    runner.signal('SIGTERM');
+    await runner.logged('기다리는 요청이 끝나면 멈춰요');
+
+    const created = await newTask(agent, '');
+
+    assert.equal(await runner.exited(), 0);
+    const task = await getTask(created.id);
+    assert.equal(task.status, 'queued');
+    assert.ok(events(task).some((e) => e.body === '돌려줌: 러너가 멈춰요'));
+  });
+
+  test('AI CLI를 실행하지 못하면 일을 돌려주고 멈춘다', async () => {
+    const agent = await newAgent();
+    const created = await newTask(agent, '');
+    const broken = RunnerProcess.start(api.baseUrl, { CAIRN_RUNNER_CLI: '/없는/claude' });
+    assert.equal(await broken.exited(), 1);
+    assert.ok(broken.logs.includes('AI CLI를 실행하지 못했어요'), broken.logs);
+    const task = await getTask(created.id);
+    assert.equal(task.status, 'queued');
+    assert.equal(task.attempts, 0);
+  });
+
+  test('지원하지 않는 도구의 에이전트 일은 실패로 끝내고 계속 돈다', async () => {
+    const agent = await newAgent({ tool: 'codex' });
+    const created = await newTask(agent, '');
+    const runner = RunnerProcess.start(api.baseUrl);
+    const task = await taskIn(created.id, 'failed');
+    assert.ok(String((task.result as Json).error).includes('codex'));
+
+    const next = await newTask(await newAgent(), '');
+    await taskIn(next.id, 'done');
+    await runner.logged(`${next.id}: 끝났어요`);
+    runner.signal('SIGTERM');
+    await newTask(await newAgent(), ''); // 긴 폴링을 깨워 바로 끝나게 한다
+    assert.equal(await runner.exited(), 0);
+  });
+
+  test('기기 토큰이 틀리면 바로 멈춘다', async () => {
+    const denied = RunnerProcess.start(api.baseUrl, { CAIRN_RUNNER_TOKEN: 'cairn_wrong' });
+    assert.equal(await denied.exited(), 1);
+    assert.ok(denied.logs.includes('기기 토큰이 맞지 않아요'), denied.logs);
+  });
+
+  test('run 권한이 없는 기기는 바로 멈춘다', async () => {
+    const laptop = await api.connectDevice(owner, 'e2e-laptop');
+    const denied = RunnerProcess.start(api.baseUrl, { CAIRN_RUNNER_TOKEN: laptop });
+    assert.equal(await denied.exited(), 1);
+    assert.ok(denied.logs.includes("'run' 권한"), denied.logs);
+  });
+
+  test('설정이 빠지면 짧은 문구로 멈춘다', async () => {
+    const blank = RunnerProcess.start(api.baseUrl, { CLAUDE_CODE_OAUTH_TOKEN: '' });
+    assert.equal(await blank.exited(), 1);
+    assert.ok(blank.logs.includes('러너 설정이 빠졌어요: CLAUDE_CODE_OAUTH_TOKEN'), blank.logs);
+  });
+
+  // 끊긴 긴 폴링이 서버에 남으므로 일을 쓰는 테스트는 이 앞에 둔다
+  test('두 번째 신호는 기다리지 않고 바로 끝낸다', async () => {
+    const runner = RunnerProcess.start(api.baseUrl);
+    await runner.logged('러너를 시작했어요');
+    await new Promise((done) => setTimeout(done, 300));
+    runner.signal('SIGTERM');
+    await runner.logged('기다리는 요청이 끝나면 멈춰요');
+    const signalled = Date.now();
+    assert.equal(await runner.stop(), 0);
+    assert.ok(Date.now() - signalled < 3000);
+  });
+});
