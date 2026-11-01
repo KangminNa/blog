@@ -6,6 +6,7 @@
 //   pnpm slot 2 dev:down       슬롯 2 내리기
 //   pnpm slot 2 db:reset       슬롯 2의 DB만 지우고 다시 만들기
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 const [slot, script, ...args] = process.argv.slice(2);
 if (!/^[1-9]$/.test(slot ?? '') || !script) {
@@ -23,6 +24,10 @@ const env = {
   SERVER_PORT: String(4000 + n * 100),
   WEB_PORT: String(webPort),
   CAIRN_WEB_URL: `http://localhost:${webPort}`,
+  // 작업 트리에는 .env가 없다. 슬롯 DB에만 쓰는 값이라 비밀이 아니다
+  CAIRN_SECRET_KEY:
+    process.env.CAIRN_SECRET_KEY ??
+    createHash('sha256').update(`cairn-slot-${slot}`).digest('base64'),
 };
 const result = spawnSync('pnpm', ['--silent', script, ...args], { stdio: 'inherit', env });
 process.exit(result.status ?? 1);

@@ -140,10 +140,22 @@ function open(mark: DocMark): string {
   return mark.type === 'link' ? '[' : (DELIMITER[mark.type] ?? '');
 }
 
+/** 링크·사진의 주소. 빈칸이나 괄호가 있으면 <>로 감싼다 */
+function destination(href: string): string {
+  return /[\s()<>]/.test(href) ? `<${href.replace(/[<>]/g, encodeURIComponent)}>` : href;
+}
+
 function close(mark: DocMark): string {
   if (mark.type !== 'link') return DELIMITER[mark.type] ?? '';
-  const href = String(mark.attrs?.href ?? '');
-  return /[\s()<>]/.test(href) ? `](<${href.replace(/[<>]/g, encodeURIComponent)}>)` : `](${href})`;
+  return `](${destination(String(mark.attrs?.href ?? ''))})`;
+}
+
+/** 사진 마디 → md: ![설명](주소 "제목") */
+function image(node: DocNode): string {
+  const alt = String(node.attrs?.alt ?? '').replace(/[\\[\]]/g, '\\$&');
+  const title = typeof node.attrs?.title === 'string' ? node.attrs.title : '';
+  const caption = title ? ` "${title.replace(/["\\]/g, '\\$&')}"` : '';
+  return `![${alt}](${destination(String(node.attrs?.src ?? ''))}${caption})`;
 }
 
 /** 글자 마디들 → md. 표시(굵게 등)가 바뀌는 곳에서만 열고 닫고, 빈칸은 표시 바깥으로 뺀다 */
@@ -159,6 +171,11 @@ function inline(nodes: DocNode[] = []): string {
   for (const node of nodes) {
     if (node.type === 'hardBreak') {
       out += '\n';
+      continue;
+    }
+    if (node.type === 'image') {
+      closeFrom(0);
+      out += image(node);
       continue;
     }
     const text = node.text ?? '';

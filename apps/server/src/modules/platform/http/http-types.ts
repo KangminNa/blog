@@ -11,8 +11,9 @@ export type HttpRequest = {
   actor?: unknown;
 };
 
-/** 나가는 HTTP 응답 (쿠키, 다른 주소로 보내기) */
+/** 나가는 HTTP 응답 (머리글, 쿠키, 다른 주소로 보내기) */
 export type HttpResponse = {
+  setHeader(name: string, value: string): void;
   cookie(name: string, value: string, options: object): void;
   clearCookie(name: string, options: object): void;
   redirect(status: number, url: string): void;

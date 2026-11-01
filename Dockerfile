@@ -21,10 +21,13 @@ RUN pnpm install --frozen-lockfile
 
 # 개발: 소스 전체 + 감시 모드 실행 (compose에서 src를 마운트해 바로 반영)
 # cairn-admin: 서버 명령줄 (pnpm plugin · install-code · owner · secret:rotate가 개발·운영 모두 이 이름으로 부른다)
+# /data/blobs: 사진 볼륨 자리. 빈 볼륨은 이미지의 폴더 소유자를 물려받는다.
+# 개발 compose로 만든 볼륨을 운영 compose가 이어 써도 node 사용자가 쓸 수 있게 여기서도 node로 둔다
 FROM deps AS dev
 COPY . .
 RUN printf '#!/bin/sh\nexec pnpm --silent --filter @cairn/server cli "$@"\n' > /usr/local/bin/cairn-admin \
-    && chmod +x /usr/local/bin/cairn-admin
+    && chmod +x /usr/local/bin/cairn-admin \
+    && mkdir -p /data/blobs && chown node:node /data/blobs
 
 # 운영 서버 빌드: 서버와 플러그인 서버 코드를 tsc로 컴파일하고, 실행에 필요한 패키지만 모은다
 FROM deps AS server-build
@@ -35,6 +38,7 @@ RUN pnpm --filter @cairn/server build \
 
 # 운영 서버·일꾼: 저장소와 같은 모양으로 둔다 (/app/apps/server · /app/plugins · /app/skills).
 # 플러그인은 목록 파일이 가리키는 .ts 옆에 컴파일한 .js를 얹는다. 실행 중에 TS를 읽지 않는다
+# 코드는 root 소유로 두고, 쓸 수 있는 곳은 사진 볼륨(/data/blobs) 하나뿐이다
 FROM node:24-bookworm-slim AS server
 ENV NODE_ENV=production
 WORKDIR /app/apps/server
@@ -43,14 +47,17 @@ COPY plugins /app/plugins
 COPY skills /app/skills
 COPY --from=server-build /repo/apps/server/dist /app
 RUN printf '#!/bin/sh\nexec node /app/apps/server/src/main.cli.js "$@"\n' > /usr/local/bin/cairn-admin \
-    && chmod +x /usr/local/bin/cairn-admin
+    && chmod +x /usr/local/bin/cairn-admin \
+    && mkdir -p /data/blobs && chown node:node /data/blobs
 USER node
 CMD ["node", "src/main.api.js"]
 
 # 운영 웹 빌드. rewrites는 빌드할 때 결과에 박히므로 서버 주소(compose의 별명)를 여기서 준다
+# 서버 소스는 next build의 타입 검사가 *.view.ts를 읽으라고 넣는다 (import type이라 결과에는 들어가지 않는다)
 FROM deps AS web-build
 ENV API_URL=http://cairn-server:4000
 COPY apps/web apps/web
+COPY apps/server/src apps/server/src
 COPY plugins plugins
 COPY scripts/sync-plugins.mjs scripts/
 RUN pnpm --filter @cairn/web build

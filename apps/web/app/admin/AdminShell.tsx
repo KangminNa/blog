@@ -3,10 +3,16 @@
 import { usePathname } from 'next/navigation';
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
 import { api } from '../_lib/client-api';
+import { countOf, usePendingApprovals } from '../_task/live';
 import { CairnMark } from '../_ui/CairnMark';
 import { ThemeToggle } from '../_ui/ThemeToggle';
 import { useToast } from '../_ui/useToast';
-import { MENU, MenuIcon } from './menu';
+import { APPROVALS_HREF, HOME_HREF, MENU, MenuIcon } from './menu';
+
+/** 지금 메뉴인가. 홈(/admin)은 모든 메뉴의 앞부분이라 정확히 같을 때만 */
+function isCurrent(pathname: string, href: string): boolean {
+  return href === HOME_HREF ? pathname === href : pathname.startsWith(href);
+}
 
 const NotifyContext = createContext<(text: string) => void>(() => {});
 
@@ -29,6 +35,10 @@ export function AdminShell({
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [toast, showToast] = useToast();
+  const pending = usePendingApprovals();
+  const pendingCount = pending.data?.approvals.length
+    ? countOf(pending.data.approvals, pending.data.next)
+    : null;
 
   useEffect(() => {
     if (!open) return;
@@ -59,17 +69,24 @@ export function AdminShell({
             {siteName || 'Cairn'}
           </a>
           {MENU.map((group) => (
-            <nav key={group.label} aria-label={group.label}>
-              <div className="console-label">{group.label}</div>
+            <nav key={group.label} aria-label={group.label || '홈'}>
+              {group.label && <div className="console-label">{group.label}</div>}
               {group.items.map((item) => (
                 <a
                   key={item.href}
                   className="console-link"
                   href={item.href}
-                  aria-current={pathname.startsWith(item.href) ? 'page' : undefined}
+                  aria-current={isCurrent(pathname, item.href) ? 'page' : undefined}
                 >
                   <MenuIcon name={item.icon} />
                   {item.name}
+                  {item.href === APPROVALS_HREF && pendingCount && (
+                    <span className="console-count">
+                      <span className="sr">대기 </span>
+                      {pendingCount}
+                      <span className="sr">건</span>
+                    </span>
+                  )}
                 </a>
               ))}
             </nav>

@@ -391,6 +391,18 @@ describe('가짜 러너', () => {
     assert.equal(((await getTask(task.id)).events as Json[]).length, 2);
   });
 
+  test('목록의 lastEvent는 내용이 있는 마지막 기록이다', async () => {
+    const task = await newTask(await newAgent());
+    await take();
+    await tool(runner, 'report_progress', {
+      task_id: task.id,
+      events: [{ kind: 'read', body: '세션 읽기' }, { kind: 'read' }],
+    });
+    const page = ok(await api.get('/api/tasks?status=running', owner)) as { tasks: Json[] };
+    assert.equal(page.tasks.find((t) => t.id === task.id)?.lastEvent, '세션 읽기');
+    assert.equal((await getTask(task.id)).lastEvent, null);
+  });
+
   test('처리하지 못한 일은 돌려줄 수 있다', async () => {
     const task = await newTask(await newAgent());
     await take();
@@ -766,7 +778,13 @@ describe('작업 토큰', () => {
     await newTask(await newAgent({ scopes: ['read_public'] }));
     const reader = await take();
     const names = await toolNames(reader.run_token);
-    assert.deepEqual(names, ['search_sessions', 'get_session', 'request_approval']);
+    assert.deepEqual(names, [
+      'search_sessions',
+      'get_session',
+      'search_wikis',
+      'get_wiki',
+      'request_approval',
+    ]);
     assert.equal((await tool(reader.run_token, 'save_session')).body.scope, 'upload');
     assert.equal((await tool(reader.run_token, 'next_jobs')).body.scope, 'run');
 
@@ -845,6 +863,24 @@ describe('한 달 한도', () => {
 });
 
 describe('에이전트', () => {
+  test('역할은 비울 수 있고, 보내지 않으면 그대로다', async () => {
+    const agent = await newAgent({ role: '초안을 쓴다' });
+    const kept = ok(
+      await api.request('PATCH', `/api/agents/${agent.id}`, owner, {
+        version: agent.version,
+        name: '새 이름',
+      }),
+    );
+    assert.equal(kept.role, '초안을 쓴다');
+    const cleared = ok(
+      await api.request('PATCH', `/api/agents/${agent.id}`, owner, {
+        version: kept.version,
+        role: '',
+      }),
+    );
+    assert.equal(cleared.role, '');
+  });
+
   test('고치고, 멈추고, 다시 시작한다', async () => {
     const agent = await newAgent({ role: '초안을 쓴다', monthlyLimit: 500 });
     const patched = ok(

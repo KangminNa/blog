@@ -43,7 +43,8 @@ export class ChangeService extends BaseService {
   async submit(actor: Actor, req: SubmitChangesInput): Promise<ChangeSet> {
     actor.assertCan(Actor.TIDY);
     const spaceId = ChangeService.spaceOf(actor);
-    for (const op of req.ops) op.clean((text) => this.sensitive.scrub('wiki', text)[0]);
+    const scrub = (text: string) => this.sensitive.scrub('wiki', text)[0];
+    for (const op of req.ops) op.clean(scrub);
     const jobId = actor instanceof AgentActor ? actor.taskId : null;
     return this.transaction(async (tx) => {
       const sets = new ChangeRepository(tx);
@@ -59,7 +60,7 @@ export class ChangeService extends BaseService {
         ChangeWork.actorTypeOf(actor),
         actor.id,
         jobId,
-        req.message,
+        scrub(req.message),
         req.ops,
         now,
       );

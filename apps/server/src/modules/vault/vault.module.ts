@@ -49,6 +49,6 @@ import { GetWikiTool, SearchWikisTool } from './wiki/wiki.tool';
     ChangeController,
     ArchiveController,
   ],
-  exports: [VaultTools],
+  exports: [VaultTools, SessionQuery],
 })
 export class VaultModule {}

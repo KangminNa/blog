@@ -146,7 +146,7 @@ export class ListPostsRequest extends BaseRequest {
   }
 }
 
-/** 글 하나 (GET /api/posts/:id) */
+/** 글 하나 (GET /api/posts/:id, MCP `blog_get_post`) */
 export class ReadPostRequest extends BaseRequest {
   private constructor(readonly id: string) {
     super();
@@ -154,6 +154,44 @@ export class ReadPostRequest extends BaseRequest {
 
   static from(id: string): ReadPostRequest {
     return BaseRequest.read({ id }, (f) => new ReadPostRequest(f.uuid('id')));
+  }
+
+  static fromTool(raw: unknown): ReadPostRequest {
+    return BaseRequest.read(raw, (f) => new ReadPostRequest(f.uuid('post_id')));
+  }
+}
+
+/**
+ * AI 도구의 초안 저장 (MCP `blog_save_draft`). post_id가 없으면 새 초안, 있으면 그 초안을 고친다.
+ * 고칠 때는 base_version이 꼭 있어야 한다: 없으면 사람이 그사이 고친 내용을 AI가 모르고 덮을 수 있다.
+ */
+export class SaveDraftRequest extends BaseRequest {
+  private static readonly REQUEST_ID_MAX = 200;
+
+  private constructor(
+    readonly requestId: string,
+    readonly postId: string | null,
+    readonly baseVersion: number | null,
+    readonly title: string,
+    readonly body: string,
+    /** 없으면 고칠 때 지금 태그 그대로 */
+    readonly tags: readonly string[] | null,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): SaveDraftRequest {
+    return BaseRequest.read(raw, (f) => {
+      const editing = f.optionalText('post_id', 36) !== null;
+      return new SaveDraftRequest(
+        f.text('request_id', SaveDraftRequest.REQUEST_ID_MAX),
+        editing ? f.uuid('post_id') : null,
+        editing ? f.integer('base_version', 1, 2_147_483_647) : null,
+        f.text('title', PostContent.TITLE_MAX),
+        f.text('body_md', PostContent.BODY_MAX),
+        f.optionalTextList('tags', Post.TAGS_MAX, Post.TAG_MAX),
+      );
+    });
   }
 }
 

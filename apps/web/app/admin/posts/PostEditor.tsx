@@ -1,12 +1,14 @@
 'use client';
 
+import Image from '@tiptap/extension-image';
 import TextAlign from '@tiptap/extension-text-align';
 import { Placeholder } from '@tiptap/extensions';
 import { type Editor, EditorContent, useEditor, useEditorState } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { AssetView } from '../../../../server/src/modules/blog/asset/asset.view';
 import { postPath } from '../../_blog/format';
-import { api, describe } from '../../_lib/client-api';
+import { api, describe, uploadFile } from '../../_lib/client-api';
 import { type EditablePost, POST_STATUS_LABELS, type PostStatus } from '../../_lib/types';
 import { useToast } from '../../_ui/useToast';
 import { BigQuote } from './editor/big-quote';
@@ -14,6 +16,14 @@ import { docToMarkdown, markdownToEditorHtml } from './editor/markdown-doc';
 
 /** 글 설정 (발행 창에서 고르는 것) */
 type Settings = { tags: string; slug: string; align: 'left' | 'center' };
+
+/** 올린 사진 (서버의 asset.view.ts) */
+type Asset = ReturnType<AssetView['toJSON']>;
+
+/** 서버의 이미지 본문 한도와 같다 (HttpSetup.IMAGE_LIMIT) */
+const PHOTO_MAX = 10 * 1024 * 1024;
+const PHOTO_TOO_BIG = '10MB 이하 사진만 올릴 수 있어요';
+const PHOTO_TYPES = 'image/png,image/jpeg,image/webp,image/gif';
 
 const STATUSES: readonly [PostStatus, string][] = [
   ['published', '목록에 표시'],
@@ -35,6 +45,8 @@ const EXTENSIONS = [
   }),
   TextAlign.configure({ types: ['heading', 'paragraph'], alignments: ['left', 'center'] }),
   Placeholder.configure({ placeholder: '내용을 입력하세요' }),
+  // 문단 안의 사진: 가운데 정렬이 그대로 먹고, md의 ![…](…) 한 줄이 문단으로 돌아온다
+  Image.configure({ inline: true }),
   BigQuote,
 ];
 
@@ -88,7 +100,9 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
   const [conflict, setConflict] = useState(false);
   const [panel, setPanel] = useState(false);
   const [choice, setChoice] = useState<PostStatus>('published');
+  const [uploading, setUploading] = useState(false);
   const [toast, showToast] = useToast();
+  const photoInput = useRef<HTMLInputElement>(null);
   const requestId = useRef('');
   if (!requestId.current) requestId.current = crypto.randomUUID();
 
@@ -193,6 +207,21 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
     if (!reply.ok) return setError(describe(reply.error));
     setPost(reply.data);
     showToast('되살렸어요');
+  }
+
+  /** 사진은 글에 붙으므로 새 글이면 먼저 저장한다. 본문에는 커서 자리에 넣고, 저장은 평소처럼 */
+  async function addPhoto(file: File) {
+    if (file.size > PHOTO_MAX) return setError(PHOTO_TOO_BIG);
+    const target = post ?? (await save());
+    if (!target) return;
+    setUploading(true);
+    setError(null);
+    const reply = await uploadFile<Asset>(`/api/posts/${target.id}/assets`, file);
+    setUploading(false);
+    if (!reply.ok) return setError(reply.status === 413 ? PHOTO_TOO_BIG : describe(reply.error));
+    const alt = file.name.replace(/\.[^.]+$/, '');
+    editor?.chain().focus().setImage({ src: reply.data.url, alt }).run();
+    showToast('사진을 넣었어요');
   }
 
   function addLink() {
@@ -382,6 +411,28 @@ export function PostEditor({ initial }: { initial: EditablePost | null }) {
         {tool('기울임', '기울임 (⌘I)', tools?.italic, () => chain()?.toggleItalic().run())}
         {tool('취소선', '취소선', tools?.strike, () => chain()?.toggleStrike().run())}
         {tool('링크', '링크 넣기·빼기', tools?.link, addLink)}
+        <button
+          type="button"
+          title="사진 넣기 (PNG · JPEG · WebP · GIF, 10MB 이하)"
+          disabled={!editor || trashed || uploading}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => photoInput.current?.click()}
+        >
+          {uploading ? '올리는 중' : '사진'}
+        </button>
+        <input
+          ref={photoInput}
+          type="file"
+          className="sr"
+          accept={PHOTO_TYPES}
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) void addPhoto(file);
+          }}
+        />
         <span className="tool-gap" />
         {tool('가운데', '이 문단 가운데 정렬', tools?.center, () =>
           tools?.center ? chain()?.unsetTextAlign().run() : chain()?.setTextAlign('center').run(),
