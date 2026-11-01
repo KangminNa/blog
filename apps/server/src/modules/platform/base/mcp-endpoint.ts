@@ -30,7 +30,7 @@ export class McpEndpoint {
       { name: this.name, version: this.version },
       { capabilities: { tools: {} }, instructions: this.instructions },
     );
-    const visible = this.tools.filter((t) => actor.can(t.scope));
+    const visible = this.tools.filter((t) => t.allows(actor));
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: visible.map((t) => ({
         name: t.name,
@@ -48,7 +48,7 @@ export class McpEndpoint {
       const tool = this.tools.find((t) => t.name === request.params.name);
       try {
         if (!tool) throw new Forbidden('tool', `${request.params.name} 도구가 없어요`);
-        actor.assertCan(tool.scope);
+        if (!tool.allows(actor)) throw new Forbidden(tool.scope);
         const result = (await tool.handle(actor, request.params.arguments ?? {}, site)).toJSON();
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result) }],

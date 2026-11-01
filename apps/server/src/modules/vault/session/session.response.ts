@@ -3,6 +3,8 @@ import type { SessionReceipt } from './session';
 import type {
   SessionCheckView,
   SessionDetailView,
+  SessionHitPageView,
+  SessionNoteView,
   SessionPageView,
   SessionRevisionView,
   SessionSummaryView,
@@ -56,6 +58,61 @@ export class SessionCheckResponse extends BaseResponse {
       warnings: v.redactions,
       site: this.site,
       limits: { section_max: SessionNote.SECTION_MAX, quotes_max: SessionNote.QUOTES_MAX },
+    };
+  }
+}
+
+/** search_sessions 결과 (AI에게). 어떤 세션을 읽을지 고를 만큼만 짧게 */
+export class SessionSearchResponse extends BaseResponse {
+  private constructor(private readonly page: SessionHitPageView) {
+    super();
+  }
+
+  static of(page: SessionHitPageView): SessionSearchResponse {
+    return new SessionSearchResponse(page);
+  }
+
+  toJSON(): object {
+    return {
+      sessions: this.page.hits.map((h) => ({
+        session_id: h.id,
+        title: h.title,
+        project: h.project,
+        tool: h.tool,
+        date: h.lastRevisionAt,
+        excerpt: h.excerpt.replace(/\s+/g, ' ').trim(),
+      })),
+      next: this.page.next,
+    };
+  }
+}
+
+/** get_session 결과 (AI에게). 칸은 save_session의 입력과 같은 이름으로, 내용이 있는 칸만 */
+export class SessionNoteResponse extends BaseResponse {
+  private constructor(private readonly view: SessionNoteView) {
+    super();
+  }
+
+  static of(view: SessionNoteView): SessionNoteResponse {
+    return new SessionNoteResponse(view);
+  }
+
+  toJSON(): object {
+    const { summary, head } = this.view;
+    return {
+      session_id: summary.id,
+      title: head.note.title,
+      project: summary.project,
+      tool: summary.tool,
+      started_at: summary.startedAt,
+      last_revision_at: summary.lastRevisionAt,
+      revision: head.seq,
+      tags: head.note.tags,
+      sections: Object.fromEntries(
+        SessionNote.SECTIONS.map(([name]) => [name, head.note.section(name)]).filter(
+          ([, text]) => text,
+        ),
+      ),
     };
   }
 }

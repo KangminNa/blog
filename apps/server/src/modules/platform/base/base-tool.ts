@@ -13,6 +13,8 @@ export abstract class BaseTool {
   abstract readonly description: string;
   /** 필요한 권한 (Actor 상수). 이 권한이 없는 기기에게는 목록에도 보이지 않는다 */
   abstract readonly scope: string;
+  /** scope 대신 이 도구를 열어 주는 권한. 둘 중 하나만 있으면 된다 (예: 공개 읽기 또는 전체 읽기) */
+  readonly orScope: string | null = null;
   /** 입력 모양 (JSON Schema). AI가 보고 인자를 만든다. 검사는 Request가 한다 */
   abstract readonly inputSchema: Readonly<Record<string, unknown>>;
   /**
@@ -24,6 +26,11 @@ export abstract class BaseTool {
   readonly destructive: boolean = false;
   /** 같은 입력을 다시 보내도 결과가 같은가 (idempotentHint) */
   readonly idempotent: boolean = false;
+
+  /** 이 요청자가 쓸 수 있는 도구인가. 권한은 actor.can으로만 묻는다 (Actor 종류를 보지 않는다) */
+  allows(actor: Actor): boolean {
+    return actor.can(this.scope) || (this.orScope !== null && actor.can(this.orScope));
+  }
 
   abstract handle(actor: Actor, raw: unknown, site: string): Promise<BaseResponse>;
 }
