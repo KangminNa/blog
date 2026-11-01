@@ -3,7 +3,7 @@ import { Database } from '../base/database';
 import { ChangeSignal } from '../base/outbox';
 
 // 변경 신호를 이 프로세스 안에서 나눠 준다. Postgres LISTEN 연결 하나를 듣고 받는 쪽(SSE, 긴 폴링)에 넘긴다.
-// 듣기는 첫 받는 쪽이 생길 때 시작한다: 일꾼·명령줄은 듣지 않아 연결을 쓰지 않는다.
+// 듣기는 첫 받는 쪽이 생길 때 시작한다: 일꾼·명령줄은 이 채널을 듣지 않는다 (일꾼은 Outbox.CHANNEL을 따로 듣는다).
 // 서버가 내려갈 때는 받는 쪽을 먼저 끝낸다 (열린 SSE가 있으면 HTTP 서버가 닫히지 않는다).
 // 신호를 놓쳐도 내용은 테이블에 있으므로, 받는 쪽은 신호를 깨우기로만 쓴다.
 @Injectable()

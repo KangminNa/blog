@@ -124,6 +124,6 @@ Redis 없이 Postgres로 한다.
 | AI 작업 | `task.tasks` | 러너 (`FOR UPDATE SKIP LOCKED`) | 임대 만료 후 재시도, 3회 실패 시 실패 표시 |
 | 스케줄 | `task.schedules` | 일꾼이 작업 생성 | `requestId`로 중복 방지 |
 
-`NOTIFY`는 깨우기 신호로만 쓴다. 신호를 놓쳐도 다음 조회에서 찾는다.
+`NOTIFY`는 깨우기 신호로만 쓴다. 신호를 놓쳐도 다음 조회에서 찾는다. 일꾼은 `cairn_outbox`를 듣고 30초마다 한 번 더 확인한다. 콘솔과 러너의 긴 폴링은 `cairn_changes`를 쓴다. 실행 기록 신호에 일꾼이 깨지 않게 채널을 나눴다.
 
 **Redis를 다시 볼 조건**: API 서버 여러 대, 실시간 메시지 초당 수천 건, 러너 수십 대 동시 실행. 그때도 `platform/base`의 클래스만 바꾼다.

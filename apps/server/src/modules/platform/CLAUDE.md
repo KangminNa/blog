@@ -15,7 +15,7 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 ## 공개 API (`index.ts`)
 - 기반 클래스: `BaseService` · `BaseQuery` · `BaseRepository` · `BaseEntity` · `TrackedEntity` · `BaseRequest`(+`RequestFields`) · `BaseResponse` · `BaseGateway` · `BaseTool`
 - `Database`, `Sql`·`Row`(라이브러리 타입 별칭), `Actor`와 `OwnerActor`·`DeviceActor`·`AgentActor`·`ApprovedActor`·`SystemActor`·`VisitorActor`
-- 같은 트랜잭션에 들어가는 것: `Outbox`(이벤트와 변경 신호), `ChangeSignal`(내용 없는 신호), `Idempotency`(같은 request_id는 한 번만)
+- 같은 트랜잭션에 들어가는 것: `Outbox`(이벤트, 변경 신호, 일꾼 깨우기), `ChangeSignal`(내용 없는 신호), `Idempotency`(같은 request_id는 한 번만)
 - `ChangeStream`: Postgres LISTEN 연결 하나로 변경 신호를 나눠 준다. SSE와 긴 폴링이 쓴다. 신호는 깨우기용이고 내용은 늘 테이블에 있다
 - `SecretRotation`: 서버 키 교체. 비밀값을 가진 모듈이 `register`로 다시 잠그는 방법을 등록
 - `CoreWorkers`: 코어 모듈의 이벤트 받기·반복 작업 등록 (`on`, `every`, `expect`)
