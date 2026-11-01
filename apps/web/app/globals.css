@@ -956,6 +956,83 @@ textarea.input {
   align-items: start;
 }
 
+/* 작업 보드. 상태는 채움·테두리로만 구분한다 */
+.board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.col-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+
+.col-head:hover {
+  color: var(--fg);
+}
+
+.t-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.t-card:hover {
+  background: var(--hover);
+}
+
+.t-card.wait {
+  border-color: var(--fg);
+}
+
+.t-card b {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.t-card small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.t-who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .split {
   display: grid;
   grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
@@ -1369,6 +1446,10 @@ a.chip {
 }
 
 @media (max-width: 1040px) {
+  .board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .split {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1653,6 +1734,10 @@ a.chip {
 }
 
 @media (max-width: 760px) {
+  .board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .console-menu {
     display: grid;
   }

@@ -113,6 +113,9 @@ export function TaskDetailPanel({ id }: { id: string }) {
             취소
           </button>
         )}
+        <Link className="ghost" href="/admin/tasks?ask=1">
+          후속 작업
+        </Link>
       </div>
     </>
   );

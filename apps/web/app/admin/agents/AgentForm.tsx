@@ -42,7 +42,7 @@ export function AgentForm({
   const [scopes, setScopes] = useState<readonly string[]>(agent?.scopes ?? []);
   const [actions, setActions] = useState<readonly string[]>(agent?.approvalActions ?? []);
   const [limit, setLimit] = useState(agent?.monthlyLimit?.toString() ?? '');
-  const [problems, setProblems] = useState<{ role?: string; limit?: string }>({});
+  const [problems, setProblems] = useState<{ limit?: string }>({});
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
@@ -57,12 +57,7 @@ export function AgentForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     const monthlyLimit = limitOf(limit);
-    // 서버는 빈 역할을 "보내지 않은 칸"으로 읽어 그대로 둔다. 지운 줄 알게 두지 않고 여기서 막는다
-    const clearedRole = agent !== null && agent.role !== '' && role.trim() === '';
-    const found = {
-      ...(clearedRole ? { role: '역할은 비울 수 없어요' } : {}),
-      ...(monthlyLimit === undefined ? { limit: '1 이상의 정수를 입력해 주세요' } : {}),
-    };
+    const found = monthlyLimit === undefined ? { limit: '1 이상의 정수를 입력해 주세요' } : {};
     setProblems(found);
     setProblem(null);
     if (Object.keys(found).length > 0 || sending.current) return;
@@ -115,10 +110,8 @@ export function AgentForm({
           rows={2}
           value={role}
           maxLength={2000}
-          aria-invalid={problems.role !== undefined}
           onChange={(e) => change(() => setRole(e.target.value))}
         />
-        {problems.role && <p className="error">{problems.role}</p>}
       </div>
       <div className="field">
         <label htmlFor={`${id}-tool`}>AI 도구</label>

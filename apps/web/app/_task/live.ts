@@ -7,6 +7,8 @@ import type { AgentList, ApprovalPage, TaskPage } from './types';
 // 여러 화면이 함께 쓰는 읽기.
 
 export const TASK_TOPICS = ['task.task.changed'];
+/** 작업 줄의 마지막 기록까지 따라간다 */
+export const TASK_LOG_TOPICS = [...TASK_TOPICS, 'task.event.added'];
 export const APPROVAL_TOPICS = ['task.approval.*'];
 /** 실행 기록이 쌓이면 사용량이 바뀐다 */
 export const AGENT_TOPICS = ['task.agent.changed', 'task.event.added'];
@@ -20,7 +22,7 @@ export function useTasksIn(status: string) {
   return useLiveValue(
     `tasks:${status}`,
     () => api<TaskPage>('GET', `/api/tasks?status=${status}`),
-    TASK_TOPICS,
+    TASK_LOG_TOPICS,
   );
 }
 

@@ -158,7 +158,7 @@ function TaskRow({ task, agent }: { task: Task; agent: string | undefined }) {
         <div className="item-main">
           <b>{task.title}</b>
           <small>
-            {agent ?? '자동 배정'} · {when(task.createdAt)}
+            {agent ?? '자동 배정'} · {task.lastEvent ?? when(task.createdAt)}
           </small>
         </div>
         <TaskPill status={task.status} />

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { type FormEvent, useId, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { api, describe } from '../_lib/client-api';
 import type { Agent, Task } from './types';
 
@@ -9,12 +9,16 @@ import type { Agent, Task } from './types';
 export function AskForm({
   agents,
   onCreated,
+  focus = false,
 }: {
   /** 아직 읽지 못했으면 null */
   agents: readonly Agent[] | null;
   onCreated: (task: Task) => void;
+  /** 후속 작업으로 들어오면 바로 입력한다 */
+  focus?: boolean;
 }) {
   const id = useId();
+  const box = useRef<HTMLTextAreaElement>(null);
   const [instruction, setInstruction] = useState('');
   const [agentId, setAgentId] = useState('');
   const [busy, setBusy] = useState(false);
@@ -49,12 +53,17 @@ export function AskForm({
     onCreated(reply.data);
   }
 
+  useEffect(() => {
+    if (focus) box.current?.focus();
+  }, [focus]);
+
   const none = agents !== null && agents.length === 0;
 
   return (
     <form className="ask" onSubmit={submit}>
       <label htmlFor={`${id}-text`}>작업 내용</label>
       <textarea
+        ref={box}
         id={`${id}-text`}
         rows={2}
         value={instruction}
