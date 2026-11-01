@@ -2,7 +2,7 @@
 
 **내 서버 하나에서 도는 Personal AI OS. 흩어진 AI 세션을 모아 지식으로 키우고, 에이전트에게 작업을 맡겨 결재하고, 결과를 블로그로 내보내는 self-hosted 오픈소스.**
 
-> 상태: **콘솔 구조까지 구현.** 설치·로그인, 기기 연결(Claude Code · Codex · Claude 앱 · ChatGPT), 세션 저장, 블로그 글 쓰기(초안·공개·링크 공개), 관리 콘솔이 동작합니다. 작업과 결재, 그래프는 만드는 중입니다. 서버에는 아래 "운영 환경으로 올리기"대로 운영 이미지를 씁니다.
+> 상태: **첫 완성 범위 구현.** 설치·로그인, 기기 연결(Claude Code · Codex · Claude 앱 · ChatGPT), 세션 저장, 블로그, 작업과 결재, 러너, 위키와 그래프, GitHub 백업과 복원이 동작합니다. 스케줄·알림과 외부 연동은 다음 단계입니다. 서버에는 아래 "운영 환경으로 올리기"대로 운영 이미지를 씁니다.
 
 ---
 
@@ -96,26 +96,25 @@ Cairn은 이 세션들을 한곳에 모읍니다. 세션 하나가 돌 하나라
 
 ## 저장소 구조
 
-지금 단계(M0)에 있는 것만 둡니다. 나머지 폴더는 필요해지는 단계에서 추가합니다 (최종 구조는 [MVP 기획서](docs/MVP-기획서.md) 참고).
-
 ```
 cairn/
 ├── apps/
-│   ├── server/        NestJS. 지금은 /health 하나
+│   ├── server/        NestJS API와 일꾼
 │   │   ├── modules.json            모듈 지도 (의존 방향, 소유 스키마)
-│   │   └── src/modules/            platform(기반 클래스·DB·상태 확인) · account · vault · blog · mcp
-│   │                               모듈마다 CLAUDE.md에 규칙
-│   └── web/           Next.js. 지금은 서버·DB 연결 상태 화면 하나
+│   │   └── src/modules/            platform · account · vault · blog · task · mcp. 모듈마다 CLAUDE.md에 규칙
+│   ├── web/           Next.js. 블로그와 관리 콘솔
+│   └── runner/        러너. 서버에서 일을 빌려 AI CLI로 처리
 ├── db/
 │   ├── Dockerfile     Postgres 17 + pgvector + pg_bigm
 │   └── migrations/    SQL 마이그레이션 (dbmate)
-├── docs/              기획서, MVP 기획서, 테이블 설계, 객체 설계
-├── Dockerfile         앱 이미지 (server, web 공용)
-├── docker-compose.yml db → migrate → server → web
+├── docs/              기획서, MVP 기획서, 테이블 설계, 객체 설계, API 설계, 보관 형식
+├── Dockerfile         앱 이미지 (개발, 운영 서버, 운영 웹, 러너)
+├── docker-compose.yml        개발 구성
+├── docker-compose.prod.yml   운영 구성
 ├── packages/cli/      연결 명령 (cairn connect · status)
-├── plugins/           플러그인 (comments-giscus: 글 아래 giscus 댓글 · sync-github: GitHub에 이력·백업 · login-github: GitHub로 로그인)
-├── scripts/           모듈 경계 검사, 플러그인 화면 맞추기
-├── skills/            AI 도구에 넣는 스킬 (cairn-save)
+├── plugins/           플러그인 (comments-giscus · sync-github · login-github · office)
+├── scripts/           모듈 경계 검사, 슬롯, 테스트, 플러그인 화면 맞추기
+├── skills/            AI 도구와 러너의 스킬 (cairn-save · cairn-recall · cairn-write · cairn-tidy)
 └── AGENTS.md          AI 도구 작업 규칙 (CLAUDE.md가 가져옴)
 ```
 
