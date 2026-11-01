@@ -13,6 +13,7 @@ DB는 [docs/테이블설계.md](docs/테이블설계.md), 서버 코드 구조�
 apps/server/   NestJS. src/modules/<모듈>/ (platform · account · vault · blog · task · mcp), 지도는 modules.json
                모듈마다 CLAUDE.md에 그 모듈의 규칙이 있다
 apps/web/      Next.js (App Router). app/(blog)/ 공개 화면, app/admin/<메뉴>/ 콘솔, app/_task/ 작업·결재·에이전트 공용
+apps/runner/   러너. 서버에서 일을 빌려 AI CLI로 처리한다. MCP로만 서버와 이야기하고 DB에 닿지 않는다
 db/            DB 이미지(Postgres 17 + pgvector + pg_bigm)와 SQL 마이그레이션(dbmate)
 packages/cli/  연결 명령 cairn connect · status (스킬 넣기 + MCP 등록 + 로그인). 배포 전에는 pnpm cairn
 plugins/       플러그인 (comments-giscus · sync-github · login-github). 규칙은 plugins/CLAUDE.md, 객체설계 12장
@@ -28,13 +29,14 @@ docs/          기획 문서 (기획서 · MVP 기획서 · 테이블 설계 · 
 |---|---|
 | `pnpm dev` | Docker Compose로 db → migrate → server(:4000) · worker(일꾼) → web(:3000) |
 | `pnpm check` | Biome 린트 + 타입 검사 + 모듈 경계 검사. 작업을 끝내기 전에 반드시 통과시킨다 |
-| `pnpm test` | 테스트 전용 DB(`cairn_test`)를 새로 만들어 단위 + API 테스트. 개발 DB는 건드리지 않는다. `-- --test-name-pattern=<이름>`으로 골라서 |
+| `pnpm test` | 테스트 전용 DB(`cairn_test`)를 새로 만들어 단위 + API 테스트, 러너 통합 테스트까지. 개발 DB는 건드리지 않는다. `-- --test-name-pattern=<이름>`으로 골라서 |
 | `pnpm slot <1~9> <스크립트>` | 슬롯별 compose 프로젝트·포트·이미지로 실행 (`test`, `dev`, `db:reset` 등). 작업 트리에서 병렬로 일할 때 쓴다 |
 | `pnpm db:check` | DB의 모듈 경계 (모듈 사이 외래키, 주인 없는 스키마) |
 | `pnpm install-code` | 설치 코드 (아직 주인이 없을 때). 서버 시작 로그에도 나온다 |
 | `pnpm owner reset-password` | 주인 비밀번호 다시 정하기 (표준 입력으로). 모든 로그인이 끝난다 |
 | `pnpm plugin …` | 플러그인 상태·켜기·끄기·설정·동작 (`plugins/CLAUDE.md`). 관리 화면 전까지 쓰는 길 |
 | `pnpm cairn connect <블로그 주소>` | 이 컴퓨터의 Claude Code(`--tool codex`면 Codex)를 블로그에 연결 (스킬·검토자 넣기 · MCP 등록 · 브라우저 로그인 · 연결 확인). `pnpm cairn status`로 상태 |
+| `pnpm runner start` | 이 컴퓨터에서 러너 실행. 설정은 `apps/runner/.env` (`.env.example` 참고) |
 | `pnpm secret:new` | 서버 키(`CAIRN_SECRET_KEY`) 만들기. 비밀값 암호화에 씀 |
 | `pnpm secret:rotate` | 서버 키를 바꾼 뒤 저장된 비밀값을 새 키로 다시 암호화 (순서는 `.env.example`) |
 | `pnpm format` | Biome 포맷·자동 수정 |

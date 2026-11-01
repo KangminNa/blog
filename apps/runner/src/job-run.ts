@@ -78,6 +78,7 @@ export class JobRun {
       if (unfit) return await this.conclude(unfit);
       workspace = await JobWorkspace.open(
         ClaudeCli.mcpConfig(this.config.mcpUrl, this.job.runToken),
+        ClaudeCli.settings(process.env.HOME),
         this.job.skill,
         this.config.skillsDir,
       );

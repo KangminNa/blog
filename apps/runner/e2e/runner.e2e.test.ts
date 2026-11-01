@@ -323,7 +323,7 @@ describe('러너가 일을 처리한다', () => {
     assert.equal(env.DATABASE_URL, undefined);
     assert.notEqual(env.HOME, process.env.HOME);
     assert.deepEqual(seen.cwdEntries, []);
-    assert.deepEqual(seen.configEntries, []);
+    assert.deepEqual(seen.configEntries, ['settings.json']);
     assert.equal(seen.mcpConfigMode, 0o600);
     assert.equal(seen.mcpUrl, `${proxyUrl}/mcp`);
     assert.notEqual(seen.runToken, deviceToken);

@@ -8,6 +8,7 @@ import type { JobWorkspace } from './job-workspace';
 // 격리: 설정·홈은 빈 임시 폴더, MCP는 --strict-mcp-config로 넘긴 cairn 하나, claude.ai 연결은 끈다.
 // --bare는 쓰지 않는다: CLAUDE_CODE_OAUTH_TOKEN을 읽지 않는다.
 // 권한: 셸을 주지 않는다. 내장 도구는 파일 도구만, 쓰기는 acceptEdits라 work 폴더 안에서만, MCP는 cairn만 묻지 않고 허락한다.
+// 읽기는 작업 폴더 밖도 기본으로 열려 있어서 주인의 홈을 settings.json으로 막는다 (ClaudeCli.settings).
 // -p는 물을 사람이 없어서 그 밖의 것은 거절된다. 주인의 컴퓨터에서 돌아가므로 AI가 지시문에 속아도 이 안에 머문다.
 export class ClaudeCli {
   static readonly TOOL = 'claude';
@@ -47,6 +48,16 @@ export class ClaudeCli {
         },
       },
     });
+  }
+
+  /**
+   * config/settings.json의 내용. 지시문에 속아도 ~/.ssh나 러너의 .env를 읽어 초안에 옮기지 못하게 주인의 홈을 막는다.
+   * HOME은 빈 임시 폴더로 바꾸므로 `~`가 아니라 절대 경로로 적는다. 앞의 //가 절대 경로라는 표시다.
+   */
+  static settings(ownerHome: string | undefined): string {
+    const home = ownerHome?.replace(/\/+$/, '');
+    const deny = home ? ClaudeCli.FILE_TOOLS.map((tool) => `${tool}(/${home}/**)`) : [];
+    return JSON.stringify({ permissions: { deny } });
   }
 
   args(workspace: JobWorkspace): readonly string[] {

@@ -35,7 +35,7 @@ after(() => {
 });
 
 const open = (skill: string | null = null) =>
-  JobWorkspace.open('{"mcpServers":{}}', skill, skillsDir);
+  JobWorkspace.open('{"mcpServers":{}}', '{"permissions":{}}', skill, skillsDir);
 
 describe('일의 자리', () => {
   test('빈 폴더들과 600 권한의 MCP 설정을 만들고 지운다', async () => {
@@ -76,6 +76,13 @@ describe('AI CLI 부르기', () => {
   const cli = new ClaudeCli('claude', 'oauth-token');
 
   test('MCP 설정에 작업 토큰과 cairn 서버 하나만 적는다', () => {
+    const settings = JSON.parse(ClaudeCli.settings('/Users/owner/'));
+    assert.deepEqual(settings.permissions.deny, [
+      'Read(//Users/owner/**)',
+      'Write(//Users/owner/**)',
+      'Edit(//Users/owner/**)',
+    ]);
+    assert.deepEqual(JSON.parse(ClaudeCli.settings(undefined)).permissions.deny, []);
     const config = JSON.parse(ClaudeCli.mcpConfig('https://blog/mcp', 'run-token'));
     assert.deepEqual(config, {
       mcpServers: {
