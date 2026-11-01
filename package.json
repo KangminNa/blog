@@ -28,6 +28,7 @@
     "install-code": "docker compose exec -T server cairn-admin install-code",
     "owner": "docker compose exec -T server cairn-admin owner",
     "cairn": "pnpm --silent --filter @cairn/cli cairn",
+    "runner": "pnpm --silent --filter @cairn/runner",
     "secret:new": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\"",
     "secret:rotate": "docker compose exec -T server cairn-admin secret rotate"
   },

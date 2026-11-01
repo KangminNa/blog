@@ -1,0 +1,19 @@
+{
+  "name": "@cairn/runner",
+  "version": "0.0.0",
+  "private": true,
+  "description": "서버에서 일을 빌려 AI CLI로 처리하는 러너. MCP로만 서버와 이야기하고 DB에 닿지 않는다",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env -r @swc-node/register src/main.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",
+    "test": "node --test -r @swc-node/register \"src/**/*.test.ts\"",
+    "test:e2e": "node e2e/run.mjs"
+  },
+  "devDependencies": {
+    "@swc-node/register": "1.12.1",
+    "@swc/core": "1.16.13",
+    "@types/node": "24.19.1",
+    "typescript": "5.9.3"
+  }
+}
