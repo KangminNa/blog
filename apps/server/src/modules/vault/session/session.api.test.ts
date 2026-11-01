@@ -8,6 +8,9 @@ import { Database } from '../../platform';
 // M1 끝 기준: 같은 세션을 50번 동시에 저장하면 판 50개, 유실 0.
 // 저장한 세션은 AI 도구가 search_sessions · get_session으로 다시 읽는다. read_public은 공개 세션만 본다.
 
+/** read_public이나 read_all로 열리는 도구들 */
+const READ_TOOLS = ['search_sessions', 'get_session', 'search_wikis', 'get_wiki'];
+
 let api: ApiClient;
 let owner: TestUser;
 let site: string;
@@ -273,7 +276,7 @@ describe('save_session (AI 도구)', () => {
       version: device?.version,
     });
     assert.equal(changed.status, 200, changed.text);
-    assert.deepEqual(await toolNames(token), ['search_sessions', 'get_session']);
+    assert.deepEqual(await toolNames(token), READ_TOOLS);
     const res = await save(token, note('conv-denied', '일'));
     assert.deepEqual([res.ok, res.body.code, res.body.scope], [false, 'forbidden', 'upload']);
   });
@@ -386,8 +389,8 @@ describe('세션 읽기 도구 (search_sessions · get_session)', () => {
 
   describe('권한', () => {
     test('read_public이나 read_all 하나만 있어도 보이고, 둘 다 없으면 목록에 없고 불러도 forbidden', async () => {
-      assert.deepEqual(await toolNames(publicReader), ['search_sessions', 'get_session']);
-      assert.deepEqual(await toolNames(allReader), ['search_sessions', 'get_session']);
+      assert.deepEqual(await toolNames(publicReader), READ_TOOLS);
+      assert.deepEqual(await toolNames(allReader), READ_TOOLS);
       assert.deepEqual(await toolNames(uploadOnly), ['check_session', 'save_session']);
       const denied = await Promise.all([
         read(uploadOnly, 'search_sessions', { query: '세션' }),
