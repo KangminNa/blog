@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, AgentActor, BaseService, Idempotency } from '../../platform';
+import { Actor, AgentActor, BaseService, Database, Idempotency } from '../../platform';
+import { PostWikiQuery } from '../../vault';
 import { Post } from './post';
 import { PostRepository } from './post.repository';
 import type {
@@ -15,17 +16,26 @@ import { SlugPolicy } from './slug.policy';
 // 글 쓰기: 새 글, 고쳐 쓰기(새 판), 공개 범위, 휴지통·되살리기. 관리 화면의 편집기가 부른다.
 // 결재한 공개는 일꾼이 publishApproved로 부른다.
 // AI 도구의 초안은 saveDraft 하나로 온다. 무엇을 할 수 있는지는 Post가 정한다: 공개된 글은 주인만 고친다.
+// 이을 wiki는 트랜잭션을 열기 전에 vault Query로 확인한다 (vault와 한 트랜잭션에 묶지 않는다).
 @Injectable()
 export class PostService extends BaseService {
   private static readonly CREATE = 'create_post';
   private static readonly DRAFT = 'blog_save_draft';
   private static readonly PUBLISH = 'publish_approved';
 
+  constructor(
+    db: Database,
+    private readonly wikis: PostWikiQuery,
+  ) {
+    super(db);
+  }
+
   /** 같은 requestId가 다시 오면 처음 만든 글을 그대로 돌려준다 (두 번 눌러도 글은 하나) */
   async create(actor: Actor, req: CreatePostRequest): Promise<Post> {
     actor.assertCan(Actor.WRITE);
     const spaceId = Post.spaceOf(actor);
     const content = PostContent.write(req.title, req.body);
+    await this.wikis.assertVisible(actor, req.wikiIds);
     return this.transaction(async (tx) => {
       const posts = new PostRepository(tx);
       const once = new Idempotency(tx, actor.id ?? spaceId, req.requestId, PostService.CREATE);
@@ -34,25 +44,30 @@ export class PostService extends BaseService {
       const wanted = SlugPolicy.wanted(req.slug, content.title);
       const taken = await posts.takenSlugs(spaceId, wanted, null);
       const slug = SlugPolicy.pick(wanted, taken, req.slug !== null);
-      const post = Post.open(actor, slug, content, req.tags, req.align, req.requestId, new Date());
+      const now = new Date();
+      const post = Post.open(actor, slug, content, req.tags, req.align, req.requestId, now);
+      post.linkWikis(req.mainWikiId, req.refWikiIds, actor, now);
       await posts.save(post);
       await once.remember({ postId: post.id });
       return post;
     });
   }
 
-  /** 고쳐 쓰기: 제목·본문이 바뀌었으면 새 판. 주소를 보내지 않으면 지금 주소 그대로 */
+  /** 고쳐 쓰기: 제목·본문이 바뀌었으면 새 판. 주소·wiki 연결을 보내지 않으면 지금 그대로 */
   async save(actor: Actor, req: SavePostRequest): Promise<Post> {
     actor.assertCan(Actor.WRITE);
     const spaceId = Post.spaceOf(actor);
     const content = PostContent.write(req.title, req.body);
+    await this.wikis.assertVisible(actor, req.wikiIds);
     return this.transaction(async (tx) => {
       const posts = new PostRepository(tx);
       const post = await posts.lock(spaceId, req.id);
       post.assertVersion(req.version);
       const wanted = SlugPolicy.check(req.slug ?? post.slug);
       const slug = SlugPolicy.pick(wanted, await posts.takenSlugs(spaceId, wanted, post.id), true);
-      post.edit(content, slug, req.tags, req.align, actor, new Date());
+      const now = new Date();
+      post.edit(content, slug, req.tags, req.align, actor, now);
+      post.linkWikis(req.mainWikiId, req.refWikiIds, actor, now);
       await posts.save(post);
       return post;
     });
@@ -68,6 +83,7 @@ export class PostService extends BaseService {
     const spaceId = Post.spaceOf(actor);
     const content = PostContent.write(req.title, req.body);
     const scope = actor instanceof AgentActor ? actor.taskId : (actor.id ?? spaceId);
+    await this.wikis.assertVisible(actor, req.wikiIds);
     return this.transaction(async (tx) => {
       const posts = new PostRepository(tx);
       const once = new Idempotency(tx, scope, req.requestId, PostService.DRAFT);
@@ -84,6 +100,7 @@ export class PostService extends BaseService {
         post.assertVersion(req.baseVersion ?? 0);
         post.edit(content, post.slug, req.tags ?? post.tags, post.align, actor, now);
       }
+      post.linkWikis(req.mainWikiId, req.refWikiIds, actor, now);
       await posts.save(post);
       await once.remember({ postId: post.id });
       return post;

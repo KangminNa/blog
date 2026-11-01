@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseQuery, NotFound, type Row } from '../../platform';
+import { Actor, BaseQuery, Database, NotFound, type Row } from '../../platform';
+import { PostWikiQuery } from '../../vault';
 import { Post } from './post';
 import { ListPostsRequest, type PostSlugRequest, type ReadPostRequest } from './post.request';
 
@@ -40,13 +41,18 @@ export class PostPageView {
   ) {}
 }
 
-/** 글 하나: 목록 정보 + 본문. owner면 공개 범위·버전까지 보여준다 */
+/**
+ * 글 하나: 목록 정보 + 본문. owner면 공개 범위·버전까지 보여준다.
+ * wiki 연결에는 이 요청자가 볼 수 있는 wiki만 담는다: 진짜 id는 UUIDv7이라 비공개 wiki가 만들어진 때가 드러난다.
+ */
 export class PostView {
   constructor(
     readonly summary: PostSummaryView,
     readonly body: string,
     readonly align: string,
     readonly owner: boolean,
+    readonly mainWikiId: string | null,
+    readonly refWikiIds: readonly string[],
   ) {}
 }
 
@@ -56,6 +62,13 @@ export class PostView {
 @Injectable()
 export class PostQuery extends BaseQuery {
   private static readonly PAGE = 20;
+
+  constructor(
+    db: Database,
+    private readonly wikis: PostWikiQuery,
+  ) {
+    super(db);
+  }
 
   async list(actor: Actor, req: ListPostsRequest): Promise<PostPageView> {
     const all = actor.canSeePrivate();
@@ -108,7 +121,9 @@ export class PostQuery extends BaseQuery {
       ${this.selectOne()}
       WHERE ${this.inSpace(actor)} AND p.id = ${req.id} AND p.deleted_at IS NULL`;
     if (!row) throw new NotFound('글을 찾을 수 없어요');
-    return this.view(row, actor.canSeePrivate());
+    const all = actor.canSeePrivate();
+    const seen = all ? null : await this.wikis.visible(actor, PostQuery.linksOf(row));
+    return this.view(row, all, seen);
   }
 
   private async counts(actor: Actor): Promise<PostCountsView> {
@@ -141,12 +156,32 @@ export class PostQuery extends BaseQuery {
   private selectOne() {
     return this.sql`
       SELECT p.*, r.body_md AS head_body,
-             (SELECT count(*) FROM blog.post_revisions x WHERE x.post_id = p.id)::int AS revision_count
+             (SELECT count(*) FROM blog.post_revisions x WHERE x.post_id = p.id)::int AS revision_count,
+             (SELECT array_agg(x.wiki_id ORDER BY x.wiki_id)
+              FROM blog.post_wiki_refs x WHERE x.post_id = p.id) AS ref_wiki_ids
       FROM blog.posts p LEFT JOIN blog.post_revisions r ON r.id = p.head_revision_id`;
   }
 
-  private view(r: Row, owner: boolean): PostView {
-    return new PostView(this.summary(r), String(r.head_body ?? ''), String(r.align), owner);
+  /** seen: 비공개를 볼 수 없는 요청자에게 보여도 되는 wiki. 없으면 연결을 담지 않는다 */
+  private view(r: Row, owner: boolean, seen: ReadonlySet<string> | null = null): PostView {
+    const shown = (id: string) => owner || (seen?.has(id) ?? false);
+    const main = r.main_wiki_id === null ? null : String(r.main_wiki_id);
+    return new PostView(
+      this.summary(r),
+      String(r.head_body ?? ''),
+      String(r.align),
+      owner,
+      main !== null && shown(main) ? main : null,
+      PostQuery.refsOf(r).filter(shown),
+    );
+  }
+
+  private static refsOf(r: Row): readonly string[] {
+    return (r.ref_wiki_ids as string[] | null) ?? [];
+  }
+
+  private static linksOf(r: Row): readonly string[] {
+    return [...(r.main_wiki_id === null ? [] : [String(r.main_wiki_id)]), ...PostQuery.refsOf(r)];
   }
 
   private summary(r: Row): PostSummaryView {

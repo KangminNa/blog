@@ -19,7 +19,7 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
   `api/changes`(승인함, 결정, 되돌리기: 주인만), MCP `submit_changes`(`tidy`)
 - `tidy/`: 세션 정리 설정(`TidySettings`: 공간마다 한 행, 없으면 꺼짐)과 일 요청. `api/tidy/settings`(주인), `api/tidy/backlog`(대표 wiki가 없는 세션을 오래된 순으로 20개까지, 주인).
   `TidyRequestHandler`(`vault.session.saved`)가 켜져 있으면 `task.task.requested`를 outbox로 남긴다. task를 import하지 않는다
-- `post-mark/`: 글 자리 사본(`PostMark`). `PostMarkHandler`(`blog.post.*`)만 쓴다
+- `post-mark/`: 글 자리 사본(`PostMark`). `PostMarkHandler`(`blog.post.*`)만 쓴다. `PostWikiQuery`: 글이 가리킬 wiki를 볼 수 있는지 blog가 묻는 읽기
 - `graph/`: 그래프 읽기(`GraphQuery`). `api/graph`(주인), `api/graph/public`(방문자), MCP `neighbors`(`read_public`이나 `read_all`)
 - `vault-archive.query.ts`: 보관 형식 파일 (`ArchiveQuery.register`로 등록). `vault-archive.api.ts`: `api/archive.zip`(주인만). platform은 모듈 파일을 모르고, 이 경로의 자리가 다른 곳에 없어 여기 둔다
 
@@ -40,7 +40,7 @@ change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings
 - 정리 설정: tidy_settings
 
 ## 공개 API (`index.ts`)
-`VaultModule`, `VaultTools`(세션·wiki·그래프·변경 묶음 도구 목록, mcp 모듈이 모아서 연다), `SessionQuery`·`GetSessionRequest`(blog의 소재가 세션을 확인할 때 읽음)
+`VaultModule`, `VaultTools`(세션·wiki·그래프·변경 묶음 도구 목록, mcp 모듈이 모아서 연다), `SessionQuery`·`GetSessionRequest`(blog의 소재가 세션을 확인할 때 읽음), `PostWikiQuery`(blog가 글에 이을 wiki를 확인할 때 읽음)
 
 ## 내보내는 이벤트 / 받는 이벤트
 | 이벤트 | 내용 (모두 v1) |
@@ -55,7 +55,7 @@ change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings
 | `vault.change.reverted` | changeSetId, revertId |
 | `task.task.requested` | requestId(`tidy:<세션>:<판>`), kind(`tidy_session`), title, targetKind, targetId, baseVersion. task 모듈이 받는 일 요청 |
 
-받는 이벤트: `vault.session.saved` (자동 정리. 꺼져 있으면 아무 일 없이 처리됨), `blog.post.*` (글 자리 사본. `postVersion`이 없는 이벤트는 건너뛴다. 글이 그래프에 나오려면 `mainWikiId`, `refWikiIds`가 실려 와야 한다)
+받는 이벤트: `vault.session.saved` (자동 정리. 꺼져 있으면 아무 일 없이 처리됨), `blog.post.*` (글 자리 사본. `postVersion`이 없는 이벤트는 건너뛴다. 글 이벤트에는 `mainWikiId`, `refWikiIds`가 실려 온다)
 
 ## 써도 되는 모듈
 platform

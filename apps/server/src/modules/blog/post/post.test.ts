@@ -103,6 +103,8 @@ describe('Post', () => {
       null,
       now,
       null,
+      null,
+      [],
     );
     post.edit(PostContent.write('첫 글', '본문'), 'first', ['mcp'], 'left', owner, now);
     assert.equal(post.changed, false);
@@ -139,6 +141,8 @@ describe('Post', () => {
         now,
         now,
         null,
+        null,
+        [],
       );
     for (const status of [Post.PUBLISHED, Post.UNLISTED])
       assert.throws(
@@ -201,6 +205,124 @@ describe('Post', () => {
   });
 });
 
+describe('글 → wiki 연결', () => {
+  const A = '0192d2a0-0000-7000-8000-00000000000a';
+  const B = '0192d2a0-0000-7000-8000-00000000000b';
+  const C = '0192d2a0-0000-7000-8000-00000000000c';
+  const agent = new AgentActor(SPACE, 'a', 't', new Set(['write']));
+  const linked = (status: string, main: string | null = A, refs: readonly string[] = [B]) =>
+    Post.restore(
+      'id',
+      3,
+      SPACE,
+      'first',
+      status,
+      PostContent.restore('첫 글', '본문'),
+      [],
+      'left',
+      'r1',
+      1,
+      now,
+      now,
+      null,
+      main,
+      refs,
+    );
+
+  test('보내지 않은 칸은 그대로, 대표 null과 참고 []는 비우기', () => {
+    const post = linked(Post.DRAFT);
+    post.linkWikis(undefined, undefined, owner, now);
+    assert.equal(post.changed, false);
+    post.linkWikis(undefined, [C], owner, now);
+    assert.equal(post.mainWikiId, A);
+    assert.deepEqual(post.refWikiIds, [C]);
+    post.linkWikis(null, undefined, owner, now);
+    assert.equal(post.mainWikiId, null);
+    assert.deepEqual(post.refWikiIds, [C]);
+    post.linkWikis(undefined, [], owner, now);
+    assert.deepEqual(post.refWikiIds, []);
+  });
+
+  test('겹치는 참고와 대표와 같은 참고는 빠지고, 대표로 옮긴 참고도 빠진다', () => {
+    const post = linked(Post.DRAFT, null, []);
+    post.linkWikis(A, [C, B, B, A], owner, now);
+    assert.deepEqual(post.refWikiIds, [B, C]);
+    post.linkWikis(B, undefined, owner, now);
+    assert.equal(post.mainWikiId, B);
+    assert.deepEqual(post.refWikiIds, [C]);
+  });
+
+  test('같은 연결이면 바뀐 것이 없고, 보낸 순서만 달라도 그렇다', () => {
+    const post = linked(Post.PUBLISHED, A, [B, C]);
+    post.linkWikis(A, [C, B], owner, now);
+    assert.equal(post.changed, false);
+    assert.deepEqual(post.pullEvents(), []);
+  });
+
+  test('연결은 판을 쌓지 않는다. 공개 글이면 연결만 바꿔도 알린다', () => {
+    const post = linked(Post.PUBLISHED);
+    post.linkWikis(B, [], owner, now);
+    assert.equal(post.changed, true);
+    assert.equal(post.addedRevision, null);
+    assert.equal(post.revisionCount, 1);
+    const [event, ...rest] = post.pullEvents();
+    assert.equal(rest.length, 0);
+    assert.equal(event?.name, 'blog.post.updated');
+    assert.equal(event?.data.mainWikiId, B);
+    assert.deepEqual(event?.data.refWikiIds, []);
+    assert.equal(event?.data.postVersion, 4);
+  });
+
+  test('임시 글과 링크만 글은 연결을 바꿔도 알리지 않는다', () => {
+    for (const status of [Post.DRAFT, Post.UNLISTED]) {
+      const post = linked(status);
+      post.linkWikis(B, [], owner, now);
+      assert.deepEqual(post.pullEvents(), []);
+    }
+  });
+
+  test('한 번의 저장에 내용과 연결이 함께 바뀌면 이벤트는 마지막 모습 하나다', () => {
+    const post = linked(Post.PUBLISHED);
+    post.edit(PostContent.write('고친 제목', '본문'), 'moved', [], 'left', owner, now);
+    post.linkWikis(C, [], owner, now);
+    const events = post.pullEvents();
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.data.title, '고친 제목');
+    assert.equal(events[0]?.data.slug, 'moved');
+    assert.equal(events[0]?.data.mainWikiId, C);
+  });
+
+  test('공개·공개 취소·휴지통 이벤트에도 연결이 실린다', () => {
+    const post = linked(Post.DRAFT);
+    post.changeStatus(Post.PUBLISHED, owner, now);
+    post.changeStatus(Post.DRAFT, owner, now);
+    post.trash(owner, now);
+    for (const event of post.pullEvents()) {
+      assert.equal(event.data.mainWikiId, A);
+      assert.deepEqual(event.data.refWikiIds, [B]);
+    }
+  });
+
+  test('AI는 임시 글만 잇고, 공개된 글은 주인만. 휴지통 글은 누구도 못 바꾼다', () => {
+    const draftPost = linked(Post.DRAFT);
+    draftPost.linkWikis(B, [], agent, now);
+    assert.equal(draftPost.mainWikiId, B);
+    for (const status of [Post.PUBLISHED, Post.UNLISTED]) {
+      assert.throws(() => linked(status).linkWikis(B, [], agent, now), Forbidden);
+      assert.throws(() => linked(status).linkWikis(B, [], writer, now), Forbidden);
+      linked(status).linkWikis(B, [], owner, now);
+    }
+    const trashed = linked(Post.DRAFT);
+    trashed.trash(owner, now);
+    assert.throws(() => trashed.linkWikis(B, [], owner, now), /휴지통/);
+  });
+
+  test('결재로 움직이는 요청자는 연결을 바꾸지 못한다', () => {
+    const approved = new ApprovedActor(SPACE, String(owner.id), 'approval', Post.PUBLISH_ACTION);
+    assert.throws(() => linked(Post.DRAFT).linkWikis(B, [], approved, now), Forbidden);
+  });
+});
+
 describe('결재한 공개', () => {
   const APPROVAL = '0192d2a0-0000-7000-8000-0000000000b1';
   const approved = new ApprovedActor(SPACE, String(owner.id), APPROVAL, Post.PUBLISH_ACTION);
@@ -220,6 +342,8 @@ describe('결재한 공개', () => {
       publishedAt,
       now,
       deletedAt,
+      null,
+      [],
     );
 
   test('결재한 버전 그대로면 공개하고, 원래 내용에 결재 결과를 더해 돌려준다', () => {
@@ -236,6 +360,8 @@ describe('결재한 공개', () => {
       title: '첫 글',
       status: Post.PUBLISHED,
       postVersion: 4,
+      mainWikiId: null,
+      refWikiIds: [],
       approvalId: APPROVAL,
       outcome: 'done',
     });
@@ -308,6 +434,8 @@ describe('결재한 공개', () => {
       'title',
       'status',
       'postVersion',
+      'mainWikiId',
+      'refWikiIds',
     ]);
   });
 
