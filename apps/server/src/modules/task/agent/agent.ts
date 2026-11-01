@@ -1,5 +1,11 @@
-import { Actor, BaseEntity, DomainEvent, Forbidden, RuleViolation } from '../../platform';
-import { TrackedEntity } from '../tracked-entity';
+import {
+  Actor,
+  BaseEntity,
+  DomainEvent,
+  Forbidden,
+  RuleViolation,
+  TrackedEntity,
+} from '../../platform';
 
 // 일을 맡는 에이전트. 할 수 있는 일(scopes)과 결재를 올려 할 수 있는 동작(approvalActions), 한 달 토큰 한도를 가진다.
 // 이름·역할 같은 단순한 칸은 set으로, 멈춤·다시 시작은 메서드로만 바꾼다.

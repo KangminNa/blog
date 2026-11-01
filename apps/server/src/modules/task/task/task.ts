@@ -1,5 +1,4 @@
-import { AgentActor, BaseEntity, DomainEvent, RuleViolation } from '../../platform';
-import { TrackedEntity } from '../tracked-entity';
+import { AgentActor, BaseEntity, DomainEvent, RuleViolation, TrackedEntity } from '../../platform';
 
 /** 실행 기록 한 줄 (추가만). 작업과 함께 저장한다 */
 export class TaskLogEntry {

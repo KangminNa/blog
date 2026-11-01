@@ -11,7 +11,7 @@
   `api/approvals`, MCP `request_approval`
 
 파일 구조는 새 규칙의 시범이다 (객체설계 6장): `<이름>.ts` · `.view.ts` · `.input.ts` · `.service.ts` · `.query.ts` · `.api.ts` · `.tool.ts` · `.repository.ts`.
-엔티티는 `TrackedEntity`로 바뀐 열을 기억하고 Repository는 그 열만 저장한다.
+엔티티는 `TrackedEntity`(platform)로 바뀐 열을 기억하고 Repository는 그 열만 저장한다.
 도구 모양은 docs/API설계.md 4장이 원본이다. `report_progress`는 기록을 모아 받고, 러너가 쓰므로 바꾸면 `apps/runner`도 함께 고친다.
 
 ## 소유 데이터
