@@ -1,0 +1,9 @@
+{
+  "name": "office",
+  "version": "0.1.0",
+  "cairn": ">=0.1",
+  "description": "에이전트마다 자리가 있는 픽셀 사무실. 작업 상태와 실행 로그를 캐릭터 동작으로 보여 준다",
+  "web": {
+    "task.office": "web/Office.tsx"
+  }
+}
