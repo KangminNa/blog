@@ -1,6 +1,5 @@
 import type { SecretBox } from '../../platform';
-import type { AuthorizeRequest } from './device.request';
-import { ConsentRequest } from './device.request';
+import { type AuthorizeInput, ConsentInput } from './device.input';
 import { OAuthClient } from './oauth-client';
 import { OAuthError } from './oauth-error';
 
@@ -16,7 +15,7 @@ export class AuthorizationPolicy {
   redirectFor(
     siteUrl: string,
     client: OAuthClient | null,
-    req: AuthorizeRequest,
+    req: AuthorizeInput,
     hostedApps: boolean,
   ): string {
     if (!client) throw new OAuthError('invalid_client', '등록되지 않은 클라이언트예요');
@@ -33,9 +32,9 @@ export class AuthorizationPolicy {
         error: 'invalid_request',
         error_description: 'PKCE(code_challenge, S256)가 필요해요',
       });
-    const sealed = ConsentRequest.seal(
+    const sealed = ConsentInput.seal(
       this.box,
-      client.clientId,
+      client.id,
       client.clientName,
       req.redirectUri,
       req.codeChallenge,
@@ -46,7 +45,7 @@ export class AuthorizationPolicy {
   }
 
   /** 주인이 거절했을 때 돌려보낼 주소 */
-  deniedRedirect(consent: ConsentRequest): string {
+  deniedRedirect(consent: ConsentInput): string {
     return AuthorizationPolicy.back(consent.redirectUri, consent.state, consent.issuer, {
       error: 'access_denied',
       error_description: '연결을 거절했어요',
@@ -54,7 +53,7 @@ export class AuthorizationPolicy {
   }
 
   /** 승인했을 때 돌려보낼 주소 (코드와 state) */
-  static approvedRedirect(consent: ConsentRequest, code: string): string {
+  static approvedRedirect(consent: ConsentInput, code: string): string {
     return AuthorizationPolicy.back(consent.redirectUri, consent.state, consent.issuer, { code });
   }
 

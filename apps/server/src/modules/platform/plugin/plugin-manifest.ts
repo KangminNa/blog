@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { PluginSettingView, PluginView } from './plugin.view';
 
 // 플러그인 목록 파일(cairn-plugin.json). 플러그인이 무엇을 쓰는지 여기에 적힌 것만 허락된다.
 // 서버를 시작할 때 들어 있는 플러그인을 모두 읽고 검사한다. 틀리면 시작하지 않는다.
@@ -58,6 +59,20 @@ export class PluginSettingSpec {
     }
     return null;
   }
+
+  /** 관리 화면의 칸. value는 비밀값이면 null */
+  view(value: string | null, isSet: boolean): PluginSettingView {
+    return new PluginSettingView(
+      this.key,
+      this.label,
+      this.type,
+      this.required,
+      this.help,
+      this.options,
+      value,
+      isSet,
+    );
+  }
 }
 
 export class PluginManifest {
@@ -100,6 +115,10 @@ export class PluginManifest {
   /** 켤 때 허락받은 확장 지점 밖의 것을 새로 쓰는가 (버전이 올라 더 달라는 경우) */
   needsGrant(granted: ReadonlySet<string>): readonly string[] {
     return [...this.uses].filter((u) => !granted.has(u));
+  }
+
+  view(): PluginView {
+    return new PluginView(this.name, this.version, this.description, [...this.webSlots.keys()]);
   }
 
   /** 플러그인 폴더에서 cairn-plugin.json을 읽고 검사한다. 문제가 있으면 모두 모아 한 번에 알린다 */

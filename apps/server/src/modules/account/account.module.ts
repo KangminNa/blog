@@ -1,20 +1,20 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { PasswordHasher, SecretBox } from '../platform';
-import { DeviceController } from './device/device.controller';
+import { DeviceController } from './device/device.api';
 import { DeviceQuery } from './device/device.query';
 import { DeviceService } from './device/device.service';
-import { OAuthController } from './device/oauth.controller';
+import { OAuthController } from './device/oauth.api';
 import { ActorGuard } from './guard/actor.guard';
-import { ExternalLoginController } from './owner/external-login.controller';
+import { ExternalLoginController } from './owner/external-login.api';
 import { ExternalLoginQuery } from './owner/external-login.query';
-import { LoginController } from './owner/login.controller';
+import { LoginController } from './owner/login.api';
 import { OwnerQuery } from './owner/owner.query';
 import { OwnerService } from './owner/owner.service';
 import { PasswordPolicy } from './owner/password.policy';
-import { InstallController } from './space/install.controller';
+import { InstallController } from './space/install.api';
 import { InstallPolicy } from './space/install.policy';
-import { SpaceController } from './space/space.controller';
+import { SpaceController } from './space/space.api';
 import { SpaceQuery } from './space/space.query';
 import { SpaceService } from './space/space.service';
 

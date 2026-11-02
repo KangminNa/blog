@@ -1,32 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseResponse, BaseTool } from '../../platform';
+import { Actor, BaseTool } from '../../platform';
 import { SubmitChangesInput } from './change.input';
 import { ChangeService } from './change.service';
+import type { SubmittedChangesView } from './change.view';
 import { ChangeOps } from './change-op';
-import type { ChangeSet } from './change-set';
-
-/** submit_changes의 답: 변경마다 판정을 바로 알려 준다. 검토나 거부가 있어도 호출은 성공이다 */
-export class SubmitChangesResponse extends BaseResponse {
-  private constructor(private readonly set: ChangeSet) {
-    super();
-  }
-
-  static of(set: ChangeSet): SubmitChangesResponse {
-    return new SubmitChangesResponse(set);
-  }
-
-  toJSON(): object {
-    return {
-      change_set_id: this.set.id,
-      ops: this.set.ops.map((op) => ({
-        seq: op.seq,
-        verdict: op.verdict,
-        status: op.status,
-        reason: op.reason,
-      })),
-    };
-  }
-}
 
 // MCP 도구 submit_changes: AI의 정리 결과를 변경 묶음 하나로 낸다. 작업을 끝내지는 않는다 (러너의 submit_result).
 // 설명과 입력 모양은 AI가 읽고 인자를 만드는 글이다. 칸을 바꾸면 이 도구를 쓰는 스킬도 함께 고친다.
@@ -85,7 +62,7 @@ export class SubmitChangesTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<SubmitChangesResponse> {
-    return SubmitChangesResponse.of(await this.changes.submit(actor, SubmitChangesInput.from(raw)));
+  async handle(actor: Actor, raw: unknown): Promise<SubmittedChangesView> {
+    return (await this.changes.submit(actor, SubmitChangesInput.from(raw))).submittedView();
   }
 }

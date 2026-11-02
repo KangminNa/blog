@@ -10,9 +10,9 @@ import {
 } from '../../platform';
 import { InstallPolicy } from './install.policy';
 import { Space } from './space';
+import type { HostedAppsInput, InstallCodeInput, RenameSpaceInput } from './space.input';
 import { SpaceQuery } from './space.query';
 import { SpaceRepository } from './space.repository';
-import type { HostedAppsRequest, InstallCodeRequest, RenameSpaceRequest } from './space.request';
 
 // 공간 쓰기: 설치 코드 확인(공간 만들기), 블로그 이름·소개·사이트 주소 바꾸기, 앱 연결 허용.
 @Injectable()
@@ -29,7 +29,7 @@ export class SpaceService extends BaseService {
   }
 
   /** 설치 코드가 맞으면 공간을 만들고(없을 때) 10분짜리 설치 통행증을 돌려준다. from: 요청한 곳(IP) */
-  async verifyInstallCode(actor: Actor, req: InstallCodeRequest, from: string): Promise<string> {
+  async verifyInstallCode(actor: Actor, req: InstallCodeInput, from: string): Promise<string> {
     this.attempts.hit(from);
     if (!this.install.matches(req.code)) throw new Forbidden('install', '맞지 않는 설치 코드예요');
     if ((await this.spaces.installStatus(actor, null)).installed)
@@ -48,27 +48,25 @@ export class SpaceService extends BaseService {
     return this.install.issuePass(space.id);
   }
 
-  async rename(actor: Actor, req: RenameSpaceRequest): Promise<Space> {
-    actor.assertCan(Actor.WRITE);
-    return this.transaction(async (tx) => {
-      const repo = new SpaceRepository(tx);
-      const space = await repo.lockCurrent();
-      if (!space) throw new NotFound('블로그 공간부터 만들어 주세요 (설치 코드)');
-      space.assertVersion(req.version);
-      space.rename(req.name, req.description, req.siteUrl);
-      await repo.save(space);
-      return space;
-    });
+  rename(actor: Actor, req: RenameSpaceInput): Promise<Space> {
+    return this.change(actor, req.version, (space) =>
+      space.rename(req.name, req.description, req.siteUrl),
+    );
   }
 
-  async setHostedApps(actor: Actor, req: HostedAppsRequest): Promise<Space> {
+  setHostedApps(actor: Actor, req: HostedAppsInput): Promise<Space> {
+    return this.change(actor, req.version, (space) => space.allowHostedApps(req.on));
+  }
+
+  /** 공간은 하나뿐이라 id 없이 잠근다. 나머지 순서는 EntityService.change와 같다 */
+  private change(actor: Actor, version: number, apply: (space: Space) => void): Promise<Space> {
     actor.assertCan(Actor.WRITE);
     return this.transaction(async (tx) => {
       const repo = new SpaceRepository(tx);
       const space = await repo.lockCurrent();
       if (!space) throw new NotFound('블로그 공간부터 만들어 주세요 (설치 코드)');
-      space.assertVersion(req.version);
-      space.allowHostedApps(req.on);
+      space.assertVersion(version);
+      apply(space);
       await repo.save(space);
       return space;
     });

@@ -1,4 +1,7 @@
-import type { AgentListView, AgentView } from '../../../server/src/modules/task/agent/agent.view';
+import type {
+  AgentListItem,
+  AgentListView,
+} from '../../../server/src/modules/task/agent/agent.view';
 import type {
   ApprovalPageView,
   ApprovalView,
@@ -19,7 +22,7 @@ export type TaskDetail = ReturnType<TaskDetailView['toJSON']>;
 export type TaskEvent = TaskDetail['events'][number];
 export type Approval = ReturnType<ApprovalView['toJSON']>;
 export type ApprovalPage = ReturnType<ApprovalPageView['toJSON']>;
-export type Agent = ReturnType<AgentView['toJSON']>;
+export type Agent = ReturnType<AgentListItem['toJSON']>;
 export type AgentList = ReturnType<AgentListView['toJSON']>;
 export type Usage = ReturnType<UsageView['toJSON']>;
 export type UsageAgent = Usage['agents'][number];

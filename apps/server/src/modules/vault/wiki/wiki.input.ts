@@ -7,7 +7,6 @@ import { WikiBody } from './wiki-body';
 // wiki 입력의 모양. 쓰기는 모두 변경 묶음이라 콘솔 입력은 EditInput이 된다.
 // REST(콘솔)는 camelCase, MCP(AI)는 snake_case로 받는다.
 
-const VERSION_MAX = 2_147_483_647;
 const SLUG_MAX = 200;
 const MESSAGE_MAX = 2_000;
 
@@ -44,7 +43,7 @@ export class SaveWikiInput extends BaseRequest {
         new WikiReviseOp(
           1,
           wikiId,
-          f.integer('version', 1, VERSION_MAX),
+          f.version(),
           f.text('title', Wiki.TITLE_MAX),
           WikiBody.parse(body.bodyMd === '' ? '' : f.text('bodyMd', WikiBody.MAX)),
           f.optionalText('visibility', 20),

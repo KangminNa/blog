@@ -1,31 +1,33 @@
-// AI 로그인의 읽기 모양. 웹이 `import type`으로 가져오므로 아무것도 import하지 않는다 (객체설계 6장).
+import type { AiLoginRow, TaskRow } from '../task.tables';
+
+// AI 로그인의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
+// 암호문 칸(secret, nonce)은 어느 View에도 받지 않는다.
 
 /** 콘솔이 보는 도구 하나. 토큰은 담지 않는다 */
 export class AiToolView {
   constructor(
-    readonly tool: string,
+    private readonly tool: string,
     /** 토큰이 있고 만료 전인가 */
-    readonly connected: boolean,
-    readonly expiresAt: Date | null,
-    /** 마지막 연결 확인. null이면 확인 전 */
-    readonly checkedAt: Date | null,
-    readonly lastError: string | null,
+    private readonly connected: boolean,
+    /** 넣어 둔 로그인. 아직 없으면 null. checked_at이 null이면 확인 전 */
+    private readonly row: Pick<AiLoginRow, 'expires_at' | 'checked_at' | 'last_error'> | null,
   ) {}
 
   toJSON() {
+    const r = this.row;
     return {
       tool: this.tool,
       connected: this.connected,
-      expiresAt: this.expiresAt?.toISOString() ?? null,
-      checkedAt: this.checkedAt?.toISOString() ?? null,
-      lastError: this.lastError,
+      expiresAt: r?.expires_at.toISOString() ?? null,
+      checkedAt: r?.checked_at?.toISOString() ?? null,
+      lastError: r?.last_error ?? null,
     };
   }
 }
 
 /** GET /api/ai */
 export class AiToolListView {
-  constructor(readonly tools: readonly AiToolView[]) {}
+  constructor(private readonly tools: readonly AiToolView[]) {}
 
   toJSON() {
     return { tools: this.tools.map((t) => t.toJSON()) };
@@ -34,13 +36,10 @@ export class AiToolListView {
 
 /** 맡긴 연결 확인. 이미 기다리는 확인이 있으면 그 작업이다 */
 export class AiTestView {
-  constructor(
-    readonly taskId: string,
-    readonly status: string,
-  ) {}
+  constructor(private readonly row: Pick<TaskRow, 'id' | 'status'>) {}
 
   toJSON() {
-    return { taskId: this.taskId, status: this.status };
+    return { taskId: this.row.id, status: this.row.status };
   }
 }
 
@@ -48,10 +47,10 @@ export class AiTestView {
 export class AiTokenView {
   constructor(
     readonly token: string,
-    readonly expiresAt: Date,
+    private readonly row: Pick<AiLoginRow, 'expires_at'>,
   ) {}
 
   toJSON() {
-    return { token: this.token, expires_at: this.expiresAt.toISOString() };
+    return { token: this.token, expires_at: this.row.expires_at.toISOString() };
   }
 }

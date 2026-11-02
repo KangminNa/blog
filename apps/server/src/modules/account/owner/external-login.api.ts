@@ -8,13 +8,9 @@ import {
   type HttpResponse,
   SecretBox,
 } from '../../platform';
+import { ExternalCallbackInput, ExternalStartInput } from './external-login.input';
 import { ExternalLoginQuery } from './external-login.query';
-import { ExternalCallbackRequest, ExternalStartRequest } from './external-login.request';
-import {
-  LoginLinksResponse,
-  LoginMethodsResponse,
-  UnlinkedResponse,
-} from './external-login.response';
+import type { LoginLinksView, LoginMethodsView } from './external-login.view';
 import { WebSession } from './owner';
 import { OwnerService } from './owner.service';
 
@@ -34,8 +30,8 @@ export class ExternalLoginController {
   ) {}
 
   @Get('methods')
-  methods(@CurrentActor() actor: Actor): LoginMethodsResponse {
-    return LoginMethodsResponse.of(this.external.methods(actor));
+  methods(@CurrentActor() actor: Actor): LoginMethodsView {
+    return this.external.methods(actor);
   }
 
   @Get('login/:method/start')
@@ -47,7 +43,7 @@ export class ExternalLoginController {
   ): Promise<void> {
     await this.start(
       actor,
-      ExternalStartRequest.from(method, ExternalStartRequest.LOGIN, req.query),
+      ExternalStartInput.from(method, ExternalStartInput.LOGIN, req.query),
       req,
       res,
     );
@@ -62,7 +58,7 @@ export class ExternalLoginController {
   ): Promise<void> {
     await this.start(
       actor,
-      ExternalStartRequest.from(method, ExternalStartRequest.LINK, req.query),
+      ExternalStartInput.from(method, ExternalStartInput.LINK, req.query),
       req,
       res,
     );
@@ -79,13 +75,13 @@ export class ExternalLoginController {
     @Req() req: HttpRequest,
     @Res() res: HttpResponse,
   ): Promise<void> {
-    const request = ExternalCallbackRequest.from(
+    const request = ExternalCallbackInput.from(
       method,
       req.query,
-      Cookies.read(req, ExternalCallbackRequest.COOKIE),
+      Cookies.read(req, ExternalCallbackInput.COOKIE),
       this.box,
     );
-    Cookies.clear(res, ExternalCallbackRequest.COOKIE);
+    Cookies.clear(res, ExternalCallbackInput.COOKIE);
     try {
       const session = await this.owners.finishExternal(
         actor,
@@ -105,33 +101,24 @@ export class ExternalLoginController {
   }
 
   @Get('links')
-  async links(@CurrentActor() actor: Actor): Promise<LoginLinksResponse> {
-    return LoginLinksResponse.of(await this.external.links(actor));
+  links(@CurrentActor() actor: Actor): Promise<LoginLinksView> {
+    return this.external.links(actor);
   }
 
   @Delete('links/:method')
-  async unlink(
-    @CurrentActor() actor: Actor,
-    @Param('method') method: string,
-  ): Promise<UnlinkedResponse> {
+  async unlink(@CurrentActor() actor: Actor, @Param('method') method: string): Promise<object> {
     await this.owners.unlink(actor, method);
-    return new UnlinkedResponse();
+    return { unlinked: true };
   }
 
   private async start(
     actor: Actor,
-    request: ExternalStartRequest,
+    request: ExternalStartInput,
     req: HttpRequest,
     res: HttpResponse,
   ): Promise<void> {
     const view = await this.external.start(actor, request);
-    Cookies.set(
-      res,
-      req,
-      ExternalCallbackRequest.COOKIE,
-      view.cookie,
-      ExternalCallbackRequest.SECONDS,
-    );
+    Cookies.set(res, req, ExternalCallbackInput.COOKIE, view.cookie, ExternalCallbackInput.SECONDS);
     res.redirect(302, view.url);
   }
 }

@@ -77,18 +77,20 @@ export class VaultRestore extends ArchivePart {
     const nodes = [...categories, ...wikis, ...sessions].map((n) => n.id);
     VaultRestore.assertUnique(nodes, 'id');
     VaultRestore.assertUnique(
-      categories.map((c) => c.slug),
+      categories.map((c) => c.row.slug),
       '카테고리 주소',
     );
     VaultRestore.assertUnique(
-      wikis.map((w) => w.slug),
+      wikis.map((w) => w.row.slug),
       'wiki 주소',
     );
     const categoryIds = new Set(categories.map((c) => c.id));
-    const missing = wikis.find((w) => w.categoryId !== null && !categoryIds.has(w.categoryId));
+    const missing = wikis.find(
+      ({ row }) => row.category_id !== null && !categoryIds.has(row.category_id),
+    );
     if (missing)
       throw new RuleViolation(
-        `vault/wikis/${missing.slug}.md: 없는 카테고리를 가리켜요: ${missing.categoryId}`,
+        `vault/wikis/${missing.row.slug}.md: 없는 카테고리를 가리켜요: ${missing.row.category_id}`,
       );
 
     const [allEdges, pins] = VaultRestore.readGraph(graph);
@@ -97,7 +99,7 @@ export class VaultRestore extends ArchivePart {
       '선 id',
     );
     const known = new Set(nodes);
-    const edges = allEdges.filter((e) => known.has(e.src) && known.has(e.dst));
+    const edges = allEdges.filter((e) => known.has(e.row.src) && known.has(e.row.dst));
     const wikiIds = new Set(wikis.map((w) => w.id));
     const orphans = sessions.filter((s) => s.wikiId !== null && !wikiIds.has(s.wikiId));
     const findings = [
@@ -164,8 +166,9 @@ export class VaultRestore extends ArchivePart {
     }
     for (const edge of this.edges) await repository.saveEdge(spaceId, edge);
     for (const mark of this.marks) {
-      const live = mark.mainWikiId !== null && wikiIds.has(mark.mainWikiId);
-      await repository.savePostMark(spaceId, mark, live ? mark.mainWikiId : null);
+      const main = mark.row.main_wiki_id;
+      const live = main !== null && wikiIds.has(main);
+      await repository.savePostMark(spaceId, mark, live ? main : null);
     }
     const placed = await repository.savePins(spaceId, this.pins);
     return placed < this.pins.length

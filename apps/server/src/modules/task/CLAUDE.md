@@ -2,10 +2,10 @@
 
 ## 하는 일
 에이전트가 일하고 주인이 결재하는 구조. 러너가 일을 빌려 가고, 위험한 동작은 결재를 거치고, 결과가 오면 작업을 끝낸다.
-설계는 docs/객체설계.md 13장, API는 docs/API설계.md, 표는 docs/테이블설계.md 5.5장.
+설계는 docs/객체설계.md 13장, API는 docs/API설계.md, 표는 docs/테이블설계.md 6장.
 
 - `agent/`: 에이전트 (`Agent`). 권한, 결재로 맡길 동작, 토큰 한도(한 달 · 5시간), 구독 사용률 멈춤값. `api/agents`
-- `task/`: 작업 (`Task` + `TaskLogEntry`). `queued → running → waiting → running → done`, `failed`, `cancelled`.
+- `task/`: 작업 (`Task` + 실행 기록). `queued → running → waiting → running → done`, `failed`, `cancelled`.
   `api/tasks`, MCP `next_jobs` · `report_progress` · `submit_result` · `release_job`
 - `approval/`: 결재 (`Approval`). `pending → approved · rejected · revision_requested · cancelled`.
   `api/approvals`, MCP `request_approval`
@@ -13,7 +13,7 @@
 - `ai/`: AI 도구의 로그인 (`AiLogin`). 콘솔에 넣은 토큰을 서버 키로 잠가 두고 서버 러너에게 건넨다. `api/ai`, MCP `ai_login`
 
 파일 구조는 새 규칙의 시범이다 (객체설계 6장): `<이름>.ts` · `.view.ts` · `.input.ts` · `.service.ts` · `.query.ts` · `.api.ts` · `.tool.ts` · `.repository.ts`.
-엔티티는 `TrackedEntity`(platform)로 바뀐 열을 기억하고 Repository는 그 열만 저장한다.
+엔티티는 `TableEntity`(platform)로 바뀐 칸을 기억하고 Repository는 그 칸만 저장한다. id·version이 없는 `plan_usage`만 `BaseEntity`와 `BaseRepository`다.
 도구 모양은 docs/API설계.md 4장이 원본이다. `report_progress`는 기록을 모아 받고, 러너가 쓰므로 바꾸면 `apps/runner`도 함께 고친다.
 
 ## 소유 데이터
@@ -48,7 +48,7 @@ platform
 
 ## 지켜야 할 것
 - 상태는 set으로 바꾸지 않는다. 메서드마다 어느 상태에서 올 수 있는지 적는다 (`Task.move(from, to)`): 상태 쌍만 보면 `lease()`가 결재 대기를 가로챌 수 있다
-- `.view.ts`는 아무것도 import하지 않는다 (`pnpm check`가 막는다). 웹이 `import type`으로 가져온다
+- `.view.ts`는 표 인터페이스의 타입만 import한다 (`pnpm check`가 막는다). 웹이 `import type`으로 가져온다
 - 주인의 일은 `actor.assertOwner()`로 묻는다. `assertCan(WRITE)`로 물으면 write 권한을 가진 기기가 결재할 수 있다
 - 작업 토큰은 저장하지 않는다 (`AgentActor.seal`). `RUN_TOKEN_SECONDS`는 상한이고 실제 끝은 임대다: AI CLI는 받은 토큰을 바꿔 끼울 수 없어 임대가 늘어도 끊기면 안 되고, 끝은 호출마다 `TaskQuery.isLive`가 본다
 - 작업 토큰은 `/mcp`에서만 Actor가 된다 (`ActorGuard`). REST에서 쓰면 호출마다 하는 작업 확인을 건너뛴다

@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseTool } from '../../platform';
-import { SearchSessionsRequest } from './read-session.request';
+import { SearchSessionsInput } from './session.input';
 import { SessionQuery } from './session.query';
-import { SessionSearchResponse } from './session.response';
+import type { SessionHitPageView } from './session.view';
 
 // MCP 도구 search_sessions: 저장된 세션 노트를 키워드로 찾는다. 요청자가 볼 수 있는 세션만 나온다.
 // 설명과 입력 모양은 AI가 읽고 인자를 만드는 글이다. 칸을 바꾸면 이 도구를 쓰는 스킬도 함께 고친다.
@@ -24,7 +24,7 @@ export class SearchSessionsTool extends BaseTool {
     properties: {
       query: {
         type: 'string',
-        maxLength: SearchSessionsRequest.QUERY_MAX,
+        maxLength: SearchSessionsInput.QUERY_MAX,
         description: '찾을 말. 에러 메시지나 코드 이름처럼 본문에 그대로 있을 말이 잘 찾아진다',
       },
       project: { type: 'string', maxLength: 100, description: '이 프로젝트의 세션만' },
@@ -42,8 +42,8 @@ export class SearchSessionsTool extends BaseTool {
       limit: {
         type: 'integer',
         minimum: 1,
-        maximum: SearchSessionsRequest.LIMIT_MAX,
-        default: SearchSessionsRequest.LIMIT_DEFAULT,
+        maximum: SearchSessionsInput.LIMIT_MAX,
+        default: SearchSessionsInput.LIMIT_DEFAULT,
         description: '한 쪽에 받을 세션 수',
       },
       cursor: { type: 'string', maxLength: 100, description: '앞 응답의 next 값 그대로' },
@@ -55,9 +55,7 @@ export class SearchSessionsTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<SessionSearchResponse> {
-    return SessionSearchResponse.of(
-      await this.sessions.search(actor, SearchSessionsRequest.from(raw)),
-    );
+  handle(actor: Actor, raw: unknown): Promise<SessionHitPageView> {
+    return this.sessions.search(actor, SearchSessionsInput.from(raw));
   }
 }

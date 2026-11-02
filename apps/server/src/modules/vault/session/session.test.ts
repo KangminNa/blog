@@ -130,17 +130,17 @@ describe('Session', () => {
 
   test('새 내용이면 판이 쌓이고, 이미 있는 내용이면 판을 만들지 않는다. 새 세션은 늘 비공개', () => {
     const session = Session.open(device, 'claude-code', 'conv-1', 'cairn', null);
-    assert.equal(session.visibility, Session.PRIVATE);
+    assert.equal(session.unsaved.visibility, Session.PRIVATE);
     const now = new Date('2026-10-10T10:00:00Z');
     const first = session.receive(note('하나'), device, now);
     assert.deepEqual([first.status, first.seq], [SessionReceipt.SAVED, 1]);
-    const firstId = session.headRevisionId;
+    const firstId = session.unsaved.head_revision_id;
     const second = session.receive(note('둘'), device, now);
     assert.deepEqual([second.status, second.seq], [SessionReceipt.SAVED, 2]);
-    assert.deepEqual(session.addedRevision?.parentIds, [firstId]);
+    assert.deepEqual(session.addedRevision?.parent_ids, [firstId]);
     const again = session.receive(note('하나'), device, now);
     assert.deepEqual([again.status, again.seq], [SessionReceipt.UNCHANGED, 1]);
-    assert.equal(session.revisionCount, 2);
+    assert.equal(session.unsaved.revision_count, 2);
     assert.deepEqual(
       session.pullEvents().map((e) => [e.name, e.data.seq]),
       [

@@ -16,9 +16,35 @@ export abstract class BaseRequest {
   }
 }
 
+/** 화면이 본 버전과 함께 오는 동작 (멈추기, 되살리기). id는 주소에서, version은 본문에서 */
+export class VersionInput extends BaseRequest {
+  private constructor(
+    readonly id: string,
+    readonly version: number,
+  ) {
+    super();
+  }
+
+  static from(id: string, raw: unknown): VersionInput {
+    return BaseRequest.read(
+      { ...(raw as object), id },
+      (f) => new VersionInput(f.uuid('id'), f.version()),
+    );
+  }
+}
+
+/**
+ * 표의 칸을 입력에서 읽는 방법. 칸 하나에 한 줄이고, 값의 자료형은 표 인터페이스와 맞아야 한다.
+ * name은 칸 이름의 camelCase(API의 이름)다. undefined를 돌려주면 그 칸은 그대로 둔다.
+ */
+export type ColumnReaders<R> = {
+  readonly [K in keyof R]?: (fields: RequestFields, name: string) => R[K] | undefined;
+};
+
 /** raw(JSON)에서 필드를 꺼낸다. 틀린 필드는 모아 두었다가 한 번에 InvalidRequest로 알린다 */
 export class RequestFields {
   private static readonly UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  private static readonly VERSION_MAX = 2_147_483_647;
   private readonly source: Readonly<Record<string, unknown>>;
 
   constructor(
@@ -69,6 +95,26 @@ export class RequestFields {
       return this.fail(name, '정수여야 해요', min);
     if (value < min || value > max) return this.fail(name, `${min}~${max} 사이여야 해요`, min);
     return value;
+  }
+
+  /** 화면이 본 버전 */
+  version(name = 'version'): number {
+    return this.integer(name, 1, RequestFields.VERSION_MAX);
+  }
+
+  /**
+   * 표의 칸들을 읽는다. 보낸 칸만 담아 돌려주므로 받은 쪽은 칼럼을 몰라도 된다.
+   * required에 적은 칸은 없으면 틀린 필드가 된다.
+   */
+  columns<R>(readers: ColumnReaders<R>, required: readonly (keyof R)[] = []): Partial<R> {
+    const found: Partial<R> = {};
+    for (const column of Object.keys(readers) as (keyof R & string)[]) {
+      const name = column.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+      const value = name in this.source ? readers[column]?.(this, name) : undefined;
+      if (value !== undefined) found[column] = value;
+      else if (required.includes(column)) this.fail(name, '필수 값이에요', null);
+    }
+    return found;
   }
 
   /** 없거나 null이면 null, 있으면 범위 안의 정수 */

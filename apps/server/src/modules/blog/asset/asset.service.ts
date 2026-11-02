@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { type Actor, BaseService, type Blob, BlobStore, Database } from '../../platform';
+import { ReadPostInput } from '../post/post.input';
 import { PostQuery } from '../post/post.query';
-import { ReadPostRequest } from '../post/post.request';
 import { Asset } from './asset';
+import type { UploadAssetInput } from './asset.input';
 import { AssetRepository } from './asset.repository';
 
 // 사진 올리기. 주인만. 파일은 트랜잭션 밖에서 쓰고, 트랜잭션은 "이 글의 사진" 행 하나만 남긴다.
@@ -18,11 +19,11 @@ export class AssetService extends BaseService {
   }
 
   /** mime은 입력 검사가 파일의 앞부분으로 정한 값이다. 없는 글·휴지통 글이면 파일을 쓰기 전에 NotFound */
-  async upload(actor: Actor, postId: string, bytes: Buffer, mime: string): Promise<Blob> {
+  async upload(actor: Actor, req: UploadAssetInput): Promise<Blob> {
     actor.assertOwner();
-    await this.posts.editable(actor, ReadPostRequest.from(postId));
-    const blob = await this.blobs.save(bytes, mime);
-    await this.transaction((tx) => new AssetRepository(tx).save(Asset.open(postId, blob.hash)));
+    await this.posts.editable(actor, ReadPostInput.from(req.postId));
+    const blob = await this.blobs.save(req.bytes, req.mime);
+    await this.transaction((tx) => new AssetRepository(tx).save(Asset.open(req.postId, blob.hash)));
     return blob;
   }
 }

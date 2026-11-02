@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { Category } from '../category/category';
 import { Edge, EdgeKind } from '../edge/edge';
-import { Session } from '../session/session';
+import { type LoadedSession, Session } from '../session/session';
 import { Wiki } from '../wiki/wiki';
 import { WikiBody } from '../wiki/wiki-body';
 import {
@@ -50,24 +50,14 @@ function judge(op: ChangeOp, on: TargetBoard, rules = defaults): Verdict {
 }
 
 function session(wikiId: string | null, pinned: readonly string[] = []): Session {
-  return Session.restore(
-    SESSION_ID,
-    3,
-    SPACE,
-    NODE_A,
-    'claude-code',
-    'conv',
-    null,
-    'private',
-    null,
-    null,
-    1,
-    null,
-    new Map(),
-    wikiId,
-    pinned,
-    false,
-  );
+  return Session.restore({
+    id: SESSION_ID,
+    node_id: SESSION_ID,
+    version: 3,
+    space_id: SPACE,
+    wiki_id: wikiId,
+    pinned_sections: pinned,
+  } as LoadedSession);
 }
 
 const wikiOf = (by: ChangeWork, md: string): Wiki =>
@@ -95,7 +85,7 @@ describe('wiki', () => {
   test('사람이 고친 칸을 건드리면 검토, 다른 칸만 고치면 바로 합친다', () => {
     const wiki = wikiOf(ai, '## 배경\n\nAI\n\n## 결론\n\nAI');
     wiki.revise(wiki.title, WikiBody.parse('## 배경\n\n사람\n\n## 결론\n\nAI'), human);
-    assert.deepEqual(wiki.pinnedSections, ['배경']);
+    assert.deepEqual(wiki.unsaved.pinned_sections, ['배경']);
 
     const touched = revise(wiki, '## 배경\n\n덮어쓰기\n\n## 결론\n\nAI');
     assert.deepEqual([touched.action, touched.rule], [Verdict.REVIEW, 'human_owned']);
@@ -193,7 +183,7 @@ describe('연결', () => {
     assert.deepEqual(op.places(on), [edgePlace]);
     assert.equal(judge(op, on).action, Verdict.MERGE);
     const edge = op.apply(ai) as Edge;
-    assert.deepEqual([edge.src, edge.dst], [NODE_A, NODE_B]);
+    assert.deepEqual([edge.unsaved.src, edge.unsaved.dst], [NODE_A, NODE_B]);
   });
 
   test('사람이 지운 선을 다시 만들면 거부', () => {
@@ -231,14 +221,14 @@ describe('연결', () => {
 
 describe('카테고리', () => {
   test('category.create는 검토', () => {
-    const op = new CategoryCreateOp(1, null, '새 구역', null, null, null, 0);
+    const op = new CategoryCreateOp(1, null, { name: '새 구역', sort: 0 });
     const verdict = judge(op, board());
     assert.deepEqual([verdict.action, verdict.rule], [Verdict.REVIEW, 'structure']);
   });
 
   test('category.assign은 검토', () => {
     const wiki = wikiOf(ai, '본문');
-    const category = Category.open(human, '구역', null, null, null, 0);
+    const category = Category.open(human, { name: '구역', sort: 0 });
     const op = new CategoryAssignOp(1, wiki.id, null, category.id);
     const verdict = judge(
       op,

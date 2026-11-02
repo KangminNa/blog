@@ -9,7 +9,7 @@
 //   3. 외부 라이브러리는 platform/base 안에서만 가져온다 (프레임워크 제외)
 //   4. SQL(sql`…`, tx`…`)은 자기 모듈이 소유한 스키마만 쓴다
 //   5. 플러그인(plugins/<이름>/)은 자기 폴더 안의 파일, react(화면), node:*·apps/server/src/plugin-api(서버)만 가져온다
-//   6. 모듈의 <이름>.view.ts는 아무것도 가져오지 않는다 (웹이 import type으로 가져오는 파일)
+//   6. 모듈의 <이름>.view.ts는 표 인터페이스(<모듈>.tables.ts)의 타입만 가져온다 (웹이 import type으로 가져오는 파일)
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
@@ -44,13 +44,14 @@ function checkCode() {
 }
 
 function checkView(file, text) {
-  // import … · export … from · import('…') · require('…')
+  // import … · export … from · import('…') · require('…'). 표 인터페이스의 타입은 실행할 때 없어져서 된다
+  const rows = text.replace(/import type \{[^}]*\} from '[./]+[a-z-]+\.tables';/g, '');
   const found = /(?:^|\n)\s*(?:import\b|export\s[^;'"]*?\bfrom\s*['"])|\b(?:import|require)\s*\(/;
-  const match = found.exec(text);
+  const match = found.exec(rows);
   if (!match) return;
-  const line = text.slice(0, match.index + match[0].length).split('\n').length;
+  const line = rows.slice(0, match.index + match[0].length).split('\n').length;
   problems.push(
-    `${relative(root, file)}:${line} view 파일은 아무것도 가져올 수 없음 (웹이 import type으로 가져온다)`,
+    `${relative(root, file)}:${line} view 파일은 표 인터페이스만 가져올 수 있음 (웹이 import type으로 가져온다)`,
   );
 }
 

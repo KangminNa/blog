@@ -12,11 +12,11 @@ import {
 } from '../../platform';
 import { InstallPolicy } from '../space/install.policy';
 import { SpaceQuery } from '../space/space.query';
+import type { ExternalCallbackInput } from './external-login.input';
 import { ExternalLoginQuery } from './external-login.query';
-import type { ExternalCallbackRequest } from './external-login.request';
 import { Owner, WebSession } from './owner';
+import type { ChangePasswordInput, CreateOwnerInput, LoginInput } from './owner.input';
 import { OwnerRepository } from './owner.repository';
-import type { ChangePasswordRequest, CreateOwnerRequest, LoginRequest } from './owner.request';
 import { PasswordPolicy } from './password.policy';
 
 // 주인 계정과 로그인: 설치 때 계정 만들기, 아이디·비밀번호 로그인, 로그아웃, 비밀번호 바꾸기·다시 정하기.
@@ -43,7 +43,7 @@ export class OwnerService extends BaseService {
   async create(
     actor: Actor,
     pass: string | null,
-    req: CreateOwnerRequest,
+    req: CreateOwnerInput,
     ip: string,
     userAgent: string,
   ): Promise<WebSession> {
@@ -52,14 +52,15 @@ export class OwnerService extends BaseService {
     const hash = await this.hasher.hash(req.password);
     return this.transaction(async (tx) => {
       const owners = new OwnerRepository(tx);
-      const owner = Owner.create(spaceId, req.login, hash);
-      const session = owner.startSession(ip, userAgent, new Date());
+      const now = new Date();
+      const owner = Owner.create(spaceId, req.login, hash, now);
+      const session = owner.startSession(ip, userAgent, now);
       await owners.save(owner);
       return session;
     });
   }
 
-  async login(req: LoginRequest, ip: string, userAgent: string): Promise<WebSession> {
+  async login(req: LoginInput, ip: string, userAgent: string): Promise<WebSession> {
     this.byPlace.check(ip);
     this.byLogin.check(req.login);
     const found = await new OwnerRepository(this.db.sql).findByLogin(req.login);
@@ -77,7 +78,7 @@ export class OwnerService extends BaseService {
     return this.transaction(async (tx) => {
       const owners = new OwnerRepository(tx);
       const owner = (await owners.findByLogin(req.login)) ?? found;
-      if (rehash) owner.setPassword(rehash, null, true);
+      if (rehash) owner.rehashPassword(rehash);
       const session = owner.startSession(ip, userAgent, new Date());
       await owners.save(owner);
       return session;
@@ -99,7 +100,7 @@ export class OwnerService extends BaseService {
   async changePassword(
     actor: Actor,
     token: string | null,
-    req: ChangePasswordRequest,
+    req: ChangePasswordInput,
   ): Promise<void> {
     if (actor.kind !== 'owner' || !token) throw new Unauthenticated('로그인해 주세요');
     const tokenHash = WebSession.hash(token);
@@ -116,7 +117,7 @@ export class OwnerService extends BaseService {
       const owners = new OwnerRepository(tx);
       const owner = await owners.findBySession(tokenHash);
       if (!owner) throw new Unauthenticated('로그인해 주세요');
-      owner.setPassword(hash, owner.session(tokenHash));
+      owner.setPassword(hash, owner.session(tokenHash), new Date());
       await owners.save(owner);
     });
   }
@@ -128,7 +129,7 @@ export class OwnerService extends BaseService {
    */
   async finishExternal(
     actor: Actor,
-    req: ExternalCallbackRequest,
+    req: ExternalCallbackInput,
     ip: string,
     userAgent: string,
   ): Promise<WebSession | null> {
@@ -183,7 +184,7 @@ export class OwnerService extends BaseService {
     return this.transaction(async (tx) => {
       const owners = new OwnerRepository(tx);
       const owner = (await owners.findOnly()) ?? found;
-      owner.setPassword(hash, null);
+      owner.setPassword(hash, null, new Date());
       await owners.save(owner);
       return owner;
     });

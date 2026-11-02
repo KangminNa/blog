@@ -1,18 +1,14 @@
 import { BaseRequest } from '../../platform';
+import { INT_MAX } from '../task/task.input';
+import type { ApprovalNew } from '../task.tables';
 
 // 결재 입력의 모양. REST(콘솔)는 camelCase, MCP(에이전트)는 다른 도구처럼 snake_case로 받는다.
 
-const VERSION_MAX = 2_147_483_647;
-
-/** request_approval. 요청자·작업은 작업 토큰에서 나온다 */
+/** request_approval. 요청자·작업은 작업 토큰에서 나온다. MCP 입력은 칸 이름 그대로다 */
 export class RequestApprovalInput extends BaseRequest {
   private constructor(
     readonly requestId: string,
-    readonly action: string,
-    readonly targetKind: string,
-    readonly targetId: string,
-    readonly targetVersion: number,
-    readonly note: string | null,
+    readonly fields: Omit<ApprovalNew, 'id' | 'space_id'>,
   ) {
     super();
   }
@@ -21,48 +17,14 @@ export class RequestApprovalInput extends BaseRequest {
     return BaseRequest.read(
       raw,
       (f) =>
-        new RequestApprovalInput(
-          f.text('request_id', 200),
-          f.text('action', 100),
-          f.text('target_kind', 40),
-          f.uuid('target_id'),
-          f.integer('target_version', 0, VERSION_MAX),
-          f.optionalText('note', 8000),
-        ),
+        new RequestApprovalInput(f.text('request_id', 200), {
+          action: f.text('action', 100),
+          target_kind: f.text('target_kind', 40),
+          target_id: f.uuid('target_id'),
+          target_version: f.integer('target_version', 0, INT_MAX),
+          note: f.optionalText('note', 8000),
+        }),
     );
-  }
-}
-
-/** GET /api/approvals */
-export class ListApprovalsInput extends BaseRequest {
-  private constructor(
-    readonly status: string | null,
-    /** 앞 응답의 next */
-    readonly cursor: string | null,
-  ) {
-    super();
-  }
-
-  static from(raw: unknown): ListApprovalsInput {
-    return BaseRequest.read(
-      raw,
-      (f) =>
-        new ListApprovalsInput(
-          f.optionalText('status', 20),
-          (raw as Record<string, unknown>).cursor ? f.uuid('cursor') : null,
-        ),
-    );
-  }
-}
-
-/** 결재 id */
-export class ApprovalIdInput extends BaseRequest {
-  private constructor(readonly id: string) {
-    super();
-  }
-
-  static from(id: string): ApprovalIdInput {
-    return BaseRequest.read({ id }, (f) => new ApprovalIdInput(f.uuid('id')));
   }
 }
 
@@ -83,7 +45,7 @@ export class DecideApprovalInput extends BaseRequest {
       (f) =>
         new DecideApprovalInput(
           f.uuid('id'),
-          f.integer('version', 1, VERSION_MAX),
+          f.version(),
           f.text('decision', 20),
           f.optionalText('note', 8000),
         ),

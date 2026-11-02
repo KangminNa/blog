@@ -1,20 +1,14 @@
 import { Body, Controller, Get, Header, HttpCode, Post, Req, Res } from '@nestjs/common';
 import { type Actor, CurrentActor, type HttpRequest, type HttpResponse } from '../../platform';
+import { AuthorizeInput, RegisterClientInput, RevokeTokenInput, TokenInput } from './device.input';
 import { DeviceQuery } from './device.query';
-import {
-  AuthorizeRequest,
-  RegisterClientRequest,
-  RevokeTokenRequest,
-  TokenRequest,
-} from './device.request';
-import {
-  AuthorizationServerResponse,
-  ClientRegisteredResponse,
-  EmptyResponse,
-  ProtectedResourceResponse,
-  TokenResponse,
-} from './device.response';
 import { DeviceService } from './device.service';
+import type {
+  AuthorizationServerView,
+  OAuthClientView,
+  ProtectedResourceView,
+  TokenView,
+} from './device.view';
 
 // MCP 인증 (OAuth 2.1). AI 도구(Claude Code 등)가 이 순서로 붙는다:
 //   /mcp가 401 → 안내 문서 두 개 → 스스로 등록 → 브라우저로 승인(주인이 /connect에서 연결) → 코드를 토큰으로 → /mcp
@@ -27,13 +21,13 @@ export class OAuthController {
   ) {}
 
   @Get('.well-known/oauth-authorization-server')
-  async authorizationServer(@CurrentActor() actor: Actor): Promise<AuthorizationServerResponse> {
-    return AuthorizationServerResponse.of(await this.devices.addresses(actor));
+  authorizationServer(@CurrentActor() actor: Actor): Promise<AuthorizationServerView> {
+    return this.devices.authorizationServer(actor);
   }
 
   @Get(['.well-known/oauth-protected-resource', '.well-known/oauth-protected-resource/mcp'])
-  async protectedResource(@CurrentActor() actor: Actor): Promise<ProtectedResourceResponse> {
-    return ProtectedResourceResponse.of(await this.devices.addresses(actor));
+  protectedResource(@CurrentActor() actor: Actor): Promise<ProtectedResourceView> {
+    return this.devices.protectedResource(actor);
   }
 
   @Post('oauth/register')
@@ -41,10 +35,9 @@ export class OAuthController {
     @CurrentActor() actor: Actor,
     @Req() req: HttpRequest,
     @Body() body: unknown,
-  ): Promise<ClientRegisteredResponse> {
-    return ClientRegisteredResponse.of(
-      await this.service.registerClient(actor, RegisterClientRequest.from(body), req.ip ?? ''),
-    );
+  ): Promise<OAuthClientView> {
+    const input = RegisterClientInput.from(body);
+    return (await this.service.registerClient(actor, input, req.ip ?? '')).view();
   }
 
   @Get('oauth/authorize')
@@ -53,23 +46,21 @@ export class OAuthController {
     @Req() req: HttpRequest,
     @Res() res: HttpResponse,
   ): Promise<void> {
-    res.redirect(
-      302,
-      await this.devices.authorizeRedirect(actor, AuthorizeRequest.from(req.query)),
-    );
+    res.redirect(302, await this.devices.authorizeRedirect(actor, AuthorizeInput.from(req.query)));
   }
 
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
   @Post('oauth/token')
-  async token(@Body() body: unknown): Promise<TokenResponse> {
-    return TokenResponse.of(await this.service.token(TokenRequest.from(body)));
+  async token(@Body() body: unknown): Promise<TokenView> {
+    return (await this.service.token(TokenInput.from(body))).tokenView();
   }
 
+  /** 응답 본문 없이 성공 */
   @HttpCode(200)
   @Post('oauth/revoke')
-  async revoke(@Body() body: unknown): Promise<EmptyResponse> {
-    await this.service.revokeToken(RevokeTokenRequest.from(body));
-    return new EmptyResponse();
+  async revoke(@Body() body: unknown): Promise<object> {
+    await this.service.revokeToken(RevokeTokenInput.from(body));
+    return {};
   }
 }

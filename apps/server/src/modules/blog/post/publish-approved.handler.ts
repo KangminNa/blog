@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ApprovedActor, BaseHandler, type DomainEvent } from '../../platform';
 import { Post } from './post';
-import { ApprovedPublishRequest } from './post.request';
+import { ApprovedPublishInput } from './post.input';
 import { PostService } from './post.service';
 
 // 주인이 승인한 공개를 받아 실행한다. 다른 동작의 승인은 그 동작을 가진 모듈의 일이라 넘어간다.
@@ -16,7 +16,7 @@ export class PublishApprovedHandler extends BaseHandler {
 
   async handle(event: DomainEvent): Promise<void> {
     if (event.data.action !== Post.PUBLISH_ACTION) return;
-    const req = ApprovedPublishRequest.from(event.data);
+    const req = ApprovedPublishInput.from(event.data);
     await this.posts.publishApproved(
       new ApprovedActor(event.spaceId, req.decidedBy, req.approvalId, req.action),
       req.postId,

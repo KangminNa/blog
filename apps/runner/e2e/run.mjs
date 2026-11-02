@@ -65,6 +65,7 @@ docker([
   '--test',
   '--test-concurrency=1',
   '--test-timeout=300000',
+  '--test-force-exit',
   '-r',
   '@swc-node/register',
   ...extra,

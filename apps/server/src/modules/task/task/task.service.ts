@@ -8,8 +8,8 @@ import {
   Idempotency,
   SecretBox,
   type Sql,
+  type VersionInput,
 } from '../../platform';
-import type { Agent } from '../agent/agent';
 import { AgentRepository } from '../agent/agent.repository';
 import { AiLoginRepository } from '../ai/ai-login.repository';
 import { Approval } from '../approval/approval';
@@ -18,7 +18,6 @@ import { PlanUsage } from '../usage/plan-usage';
 import { PlanUsageRepository } from '../usage/plan-usage.repository';
 import { Task } from './task';
 import type {
-  CancelTaskInput,
   CreateTaskInput,
   NextJobsInput,
   ReleaseJobInput,
@@ -26,7 +25,7 @@ import type {
   SubmitResultInput,
 } from './task.input';
 import { TaskRepository } from './task.repository';
-import { JobView, ProgressView } from './task.view';
+import type { JobView, ProgressView } from './task.view';
 
 // 작업 쓰기: 만들기와 취소(주인), 일 요청(이벤트), 빌리기·진행·끝내기·돌려주기(러너), 끝난 임대 되돌리기(일꾼).
 // 한도 초과처럼 작업과 함께 바뀌는 에이전트·결재는 같은 트랜잭션에서 쓴다 (객체설계 9장).
@@ -50,7 +49,7 @@ export class TaskService extends BaseService {
   /** 콘솔에서 시키는 일. 같은 requestId가 다시 오면 처음 만든 작업을 돌려준다 */
   async create(actor: Actor, req: CreateTaskInput): Promise<Task> {
     actor.assertOwner();
-    return this.open(TaskService.spaceOf(actor), req);
+    return this.open(actor.requireSpace(), req);
   }
 
   /** 다른 모듈이 이벤트로 요청한 일 (일꾼이 부른다). 같은 이벤트가 두 번 와도 작업은 하나 */
@@ -62,7 +61,7 @@ export class TaskService extends BaseService {
   /** 러너가 일을 빌린다. 없으면 waitSeconds까지 기다리다가 일이 생기면 바로 돌려준다 (트랜잭션 밖에서 기다린다) */
   async next(actor: Actor, req: NextJobsInput): Promise<readonly JobView[]> {
     actor.assertCan(Actor.RUN);
-    const spaceId = TaskService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     const runnerId = TaskService.runnerOf(actor);
     const deadline = Date.now() + req.waitSeconds * 1000;
     for (;;) {
@@ -79,7 +78,7 @@ export class TaskService extends BaseService {
   /** 진행 보고: 기록을 남기고 임대를 늘린다. 쓴 토큰은 에이전트의 한 달 한도에 더하고, 러너가 본 구독 사용률을 남긴다 */
   async report(actor: Actor, req: ReportProgressInput): Promise<ProgressView> {
     actor.assertCan(Actor.RUN);
-    const spaceId = TaskService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     const runnerId = TaskService.runnerOf(actor);
     const now = new Date();
     return this.transaction(async (tx) => {
@@ -98,19 +97,14 @@ export class TaskService extends BaseService {
         await this.notePlan(tx, task, req, now);
         await once?.remember({ reported: true });
       }
-      return new ProgressView(
-        task.status,
-        task.cancelled,
-        await this.agentPaused(tx, task),
-        task.leaseUntil,
-      );
+      return task.progressView(await this.agentPaused(tx, task));
     });
   }
 
   /** 끝내기. 살아 있는 임대로만 된다. 같은 request_id는 처음 결과를 돌려준다 */
   async submit(actor: Actor, req: SubmitResultInput): Promise<Task> {
     actor.assertCan(Actor.RUN);
-    const spaceId = TaskService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     const runnerId = TaskService.runnerOf(actor);
     const now = new Date();
     return this.transaction(async (tx) => {
@@ -130,7 +124,7 @@ export class TaskService extends BaseService {
   /** 처리하지 못한 일을 돌려준다 */
   async release(actor: Actor, req: ReleaseJobInput): Promise<Task> {
     actor.assertCan(Actor.RUN);
-    const spaceId = TaskService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     const runnerId = TaskService.runnerOf(actor);
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
@@ -142,9 +136,9 @@ export class TaskService extends BaseService {
   }
 
   /** 주인이 멈춘다. 기다리던 결재도 닫는다 */
-  async cancel(actor: Actor, req: CancelTaskInput): Promise<Task> {
+  async cancel(actor: Actor, req: VersionInput): Promise<Task> {
     actor.assertOwner();
-    const spaceId = TaskService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
       const task = await tasks.lock(spaceId, req.id);
@@ -170,21 +164,9 @@ export class TaskService extends BaseService {
   private open(spaceId: string, req: CreateTaskInput): Promise<Task> {
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
-      if (req.agentId !== null) await new AgentRepository(tx).load(spaceId, req.agentId);
-      const task = Task.open(
-        spaceId,
-        req.agentId,
-        req.kind,
-        req.title,
-        req.instruction,
-        req.payload,
-        req.targetKind,
-        req.targetId,
-        req.baseVersion,
-        req.priority,
-        req.requestId,
-        new Date(),
-      );
+      const agentId = req.fields.agent_id;
+      if (agentId) await new AgentRepository(tx).load(spaceId, agentId);
+      const task = Task.open(spaceId, req.requestId, req.fields, new Date());
       return (await tasks.insertOnce(task)) ? task : tasks.findByRequest(spaceId, req.requestId);
     });
   }
@@ -208,31 +190,10 @@ export class TaskService extends BaseService {
         if (agent === undefined) continue;
         task.lease(runnerId, agent?.id ?? null, now);
         await tasks.save(task);
-        jobs.push(this.jobOf(task, agent));
+        jobs.push(task.jobView(agent, this.box));
       }
       return jobs;
     });
-  }
-
-  private jobOf(task: Task, agent: Agent | null): JobView {
-    return new JobView(
-      task.id,
-      task.kind,
-      task.title,
-      task.instruction,
-      task.payload,
-      task.targetKind,
-      task.targetId,
-      task.baseVersion,
-      task.skill,
-      task.revisionNote,
-      agent?.id ?? null,
-      agent?.name ?? null,
-      agent?.role ?? null,
-      agent?.tool ?? null,
-      task.leaseUntil,
-      agent && task.actorFor(agent.id, agent.scopes).seal(this.box, Task.RUN_TOKEN_SECONDS),
-    );
   }
 
   private async expire(tx: Sql, now: Date): Promise<number> {
@@ -253,8 +214,8 @@ export class TaskService extends BaseService {
   private async noteAiTest(tx: Sql, task: Task, now: Date): Promise<void> {
     if (!task.isAiTest || !task.ended) return;
     const logins = new AiLoginRepository(tx);
-    const login = await logins.lock(task.spaceId, String(task.payload.tool));
-    if (login === null || login.version !== task.payload.loginVersion) return;
+    const login = await logins.lockTool(task.spaceId, task.testedTool);
+    if (login === null || !task.tests(login.version)) return;
     login.noteTest(task.failure, now);
     await logins.save(login);
   }
@@ -276,20 +237,8 @@ export class TaskService extends BaseService {
     if (req.planUsage.length === 0 || task.agentId === null) return;
     const { tool } = await new AgentRepository(tx).load(task.spaceId, task.agentId);
     const seen = PlanUsage.WINDOWS.flatMap((window) => {
-      const last = req.planUsage.findLast((p) => p.window === window);
-      return last
-        ? [
-            PlanUsage.seen(
-              task.spaceId,
-              tool,
-              window,
-              last.percent,
-              last.resetsAt,
-              last.status,
-              now,
-            ),
-          ]
-        : [];
+      const last = req.planUsage.findLast((p) => p.fields.period === window);
+      return last ? [PlanUsage.seen(task.spaceId, tool, last.fields, now)] : [];
     });
     await new PlanUsageRepository(tx).save(seen);
   }
@@ -297,11 +246,6 @@ export class TaskService extends BaseService {
   private async agentPaused(tx: Sql, task: Task): Promise<boolean> {
     if (task.agentId === null) return false;
     return (await new AgentRepository(tx).load(task.spaceId, task.agentId)).paused;
-  }
-
-  private static spaceOf(actor: Actor): string {
-    if (!actor.spaceId) throw new Forbidden(Actor.RUN);
-    return actor.spaceId;
   }
 
   private static runnerOf(actor: Actor): string {

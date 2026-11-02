@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseService, Database, Forbidden, RuleViolation, SecretBox } from '../../platform';
+import { Actor, BaseService, Database, RuleViolation, SecretBox } from '../../platform';
 import { Task } from '../task/task';
 import { TaskRepository } from '../task/task.repository';
 import { AiLogin } from './ai-login';
@@ -20,12 +20,12 @@ export class AiLoginService extends BaseService {
   /** Claude 토큰을 넣거나 바꾼다 */
   async saveToken(actor: Actor, req: AiTokenInput): Promise<AiLogin> {
     actor.assertOwner();
-    const spaceId = AiLoginService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     const sealed = this.box.seal(req.token);
     const now = new Date();
     return this.transaction(async (tx) => {
       const logins = new AiLoginRepository(tx);
-      const found = await logins.lock(spaceId, AiLogin.CLAUDE);
+      const found = await logins.lockTool(spaceId, AiLogin.CLAUDE);
       found?.replace(sealed, now);
       const login = found ?? AiLogin.open(spaceId, AiLogin.CLAUDE, sealed, now);
       await logins.save(login);
@@ -39,10 +39,10 @@ export class AiLoginService extends BaseService {
    */
   async test(actor: Actor): Promise<Task> {
     actor.assertOwner();
-    const spaceId = AiLoginService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     const now = new Date();
     return this.transaction(async (tx) => {
-      const login = await new AiLoginRepository(tx).lock(spaceId, AiLogin.CLAUDE);
+      const login = await new AiLoginRepository(tx).lockTool(spaceId, AiLogin.CLAUDE);
       if (!login) throw new RuleViolation('토큰을 먼저 넣어 주세요');
       login.assertUsable(now);
       const tasks = new TaskRepository(tx);
@@ -67,10 +67,5 @@ export class AiLoginService extends BaseService {
       }
       return count;
     });
-  }
-
-  private static spaceOf(actor: Actor): string {
-    if (!actor.spaceId) throw new Forbidden('owner');
-    return actor.spaceId;
   }
 }

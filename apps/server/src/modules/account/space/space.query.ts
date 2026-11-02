@@ -2,28 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { type Actor, BaseQuery, Database } from '../../platform';
 import { InstallPolicy } from './install.policy';
 import { SpaceRepository } from './space.repository';
-
-/** 블로그 정보 (누구나) */
-export class SpaceView {
-  constructor(
-    readonly name: string,
-    readonly description: string,
-    readonly siteUrl: string | null,
-    readonly installed: boolean,
-    readonly version: number,
-    /** ChatGPT·Claude 앱 연결 허용 */
-    readonly hostedApps: boolean,
-  ) {}
-}
-
-/** 설치 마법사가 다음 단계를 정할 때 보는 상태 */
-export class InstallStatusView {
-  constructor(
-    readonly installed: boolean,
-    readonly spaceId: string | null,
-    readonly passValid: boolean,
-  ) {}
-}
+import { InstallStatusView, SpaceView } from './space.view';
 
 // 공간 읽기. 설치됐다 = 주인이 있다.
 @Injectable()
@@ -36,20 +15,13 @@ export class SpaceQuery extends BaseQuery {
   }
 
   async info(_actor: Actor): Promise<SpaceView> {
-    const space = await new SpaceRepository(this.sql).current();
-    return new SpaceView(
-      space?.name ?? '',
-      space?.description ?? '',
-      space?.siteUrl ?? null,
-      await this.hasOwner(),
-      space?.version ?? 0,
-      space?.hostedApps ?? false,
-    );
+    const space = await new SpaceRepository(this.sql).currentRow();
+    return new SpaceView(space, await this.hasOwner());
   }
 
   /** pass: 이 브라우저가 가진 설치 통행증 쿠키 */
   async installStatus(_actor: Actor, pass: string | null): Promise<InstallStatusView> {
-    const space = await new SpaceRepository(this.sql).current();
+    const space = await new SpaceRepository(this.sql).currentRow();
     const spaceId = space?.id ?? null;
     return new InstallStatusView(
       await this.hasOwner(),

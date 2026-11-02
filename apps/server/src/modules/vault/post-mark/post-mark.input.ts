@@ -5,7 +5,6 @@ export class PostEventInput extends BaseRequest {
   private static readonly DELETED = 'blog.post.deleted';
   private static readonly TEXT_MAX = 10_000;
   private static readonly REFS_MAX = 500;
-  private static readonly VERSION_MAX = 2_147_483_647;
 
   private constructor(
     readonly postId: string,
@@ -31,7 +30,7 @@ export class PostEventInput extends BaseRequest {
           f.optionalText('title', PostEventInput.TEXT_MAX) ?? '',
           f.optionalText('slug', PostEventInput.TEXT_MAX) ?? '',
           f.optionalText('status', PostEventInput.TEXT_MAX) ?? '',
-          f.integer('postVersion', 1, PostEventInput.VERSION_MAX),
+          f.version('postVersion'),
           PostEventInput.mainWiki(f, event.data),
           f.optionalTextList('refWikiIds', PostEventInput.REFS_MAX, 36) ?? [],
           event.name === PostEventInput.DELETED,

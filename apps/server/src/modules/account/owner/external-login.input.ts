@@ -5,7 +5,7 @@ import { BaseRequest, type SecretBox } from '../../platform';
  *   login: 연결해 둔 외부 계정으로 주인 로그인
  *   link:  로그인한 주인이 외부 계정을 연결
  */
-export class ExternalStartRequest extends BaseRequest {
+export class ExternalStartInput extends BaseRequest {
   static readonly LOGIN = 'login';
   static readonly LINK = 'link';
 
@@ -17,12 +17,12 @@ export class ExternalStartRequest extends BaseRequest {
     super();
   }
 
-  static from(method: string, mode: string, query: unknown): ExternalStartRequest {
+  static from(method: string, mode: string, query: unknown): ExternalStartInput {
     return BaseRequest.read(query, (f) => {
       const returnTo = f.optionalText('return', 300) ?? '/';
       if (!returnTo.startsWith('/') || returnTo.startsWith('//') || returnTo.includes('\\'))
         f.reject('return', '이 사이트 안의 경로(/로 시작)여야 해요');
-      return new ExternalStartRequest(method, mode, returnTo);
+      return new ExternalStartInput(method, mode, returnTo);
     });
   }
 }
@@ -31,7 +31,7 @@ export class ExternalStartRequest extends BaseRequest {
  * 외부 서비스가 돌려보낸 요청. 쿼리의 state가 로그인을 시작한 브라우저의 쿠키(암호화한 값)와 맞아야 한다.
  * 쿠키에는 "확인값|방식|돌아갈 곳|연결하는 주인"이 들어 있다. 다른 사람이 만든 링크로는 로그인·연결되지 않는다.
  */
-export class ExternalCallbackRequest extends BaseRequest {
+export class ExternalCallbackInput extends BaseRequest {
   static readonly COOKIE = 'cairn_login';
   static readonly SECONDS = 600;
 
@@ -49,12 +49,12 @@ export class ExternalCallbackRequest extends BaseRequest {
   static cookieFor(
     box: SecretBox,
     state: string,
-    start: ExternalStartRequest,
+    start: ExternalStartInput,
     userId: string | null,
   ): string {
     return box.pack(
       [state, start.mode, start.returnTo, userId ?? ''].join('|'),
-      ExternalCallbackRequest.SECONDS,
+      ExternalCallbackInput.SECONDS,
     );
   }
 
@@ -63,7 +63,7 @@ export class ExternalCallbackRequest extends BaseRequest {
     query: Readonly<Record<string, unknown>>,
     cookie: string | null,
     box: SecretBox,
-  ): ExternalCallbackRequest {
+  ): ExternalCallbackInput {
     return BaseRequest.read(query, (f) => {
       const state = f.text('state', 200);
       const [expected, mode, returnTo, userId] = (box.unpack(cookie) ?? '').split('|');
@@ -72,10 +72,10 @@ export class ExternalCallbackRequest extends BaseRequest {
       const values = new Map<string, string>();
       for (const [key, value] of Object.entries(query))
         if (typeof value === 'string') values.set(key, value);
-      return new ExternalCallbackRequest(
+      return new ExternalCallbackInput(
         method,
         values,
-        mode === ExternalStartRequest.LINK ? ExternalStartRequest.LINK : ExternalStartRequest.LOGIN,
+        mode === ExternalStartInput.LINK ? ExternalStartInput.LINK : ExternalStartInput.LOGIN,
         returnTo || '/',
         userId || null,
       );
@@ -83,6 +83,6 @@ export class ExternalCallbackRequest extends BaseRequest {
   }
 
   get isLink(): boolean {
-    return this.mode === ExternalStartRequest.LINK;
+    return this.mode === ExternalStartInput.LINK;
   }
 }

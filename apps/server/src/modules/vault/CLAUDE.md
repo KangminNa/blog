@@ -4,17 +4,17 @@
 AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 연결선, AI 정리 결과의 변경 묶음과 검토 규칙(승인함), 대정리, 변경 기록과 되돌리기, 그래프 보기.
 지금은 세션 저장·찾기·읽기, wiki · 카테고리 · 연결선, 변경 묶음(검토·되돌리기), 세션 정리 요청, 그래프 보기, 글 자리 사본, 보관 형식 내보내기까지 있다. 대정리는 아직 없다.
 
-- `session/`: 세션(`Session` + 판 `SessionRevision`), 노트(`SessionNote`: 제목·태그·고정 칸 다섯, 해시, 본문 md),
+- `session/`: 세션(`Session`: 판을 쌓는다), 노트(`SessionNote`: 제목·태그·고정 칸 다섯, 해시, 본문 md),
   2차 민감정보 제거(`SensitivePolicy`), 저장 결과(`SessionReceipt`: saved · unchanged · duplicate).
   MCP 도구 `check_session`(`CheckSessionTool`: 올리기 전 검사, 저장하지 않음. request_id·대화 id·같은 대화의 판 수·지울 민감정보)과 `save_session`(`SaveSessionTool`),
   `search_sessions`(`SearchSessionsTool`: 제목·지금 판 본문의 키워드 찾기, pg_bigm `LIKE likequery()`라 대소문자 구분. 순서와 커서는 바뀌지 않는 세션 id)와
   `get_session`(`GetSessionTool`: 지금 판 하나). 두 읽기 도구는 `read_public`이나 `read_all` 중 하나로 열리고(`BaseTool.orScope`), 볼 수 없는 세션은 없는 세션과 똑같이 답한다.
   관리 화면 API `api/sessions`(목록·상세·지난 판, 비공개까지 볼 수 있는 요청자만)
-- `wiki/`: wiki(`Wiki` + 판 `WikiRevision`), 본문(`WikiBody`: md 원문과 `##` 제목 단위의 칸 `WikiSection`, 코드 블록 안의 `##`은 제목이 아니다).
+- `wiki/`: wiki(`Wiki`: 판을 쌓는다), 본문(`WikiBody`: md 원문과 `##` 제목 단위의 칸 `WikiSection`, 코드 블록 안의 `##`은 제목이 아니다).
   `api/wikis`(목록 `?q=&category=&cursor=`, 하나, 만들기, 고치기), MCP `search_wikis` · `get_wiki`(`read_public`이나 `read_all`). 읽기는 방문자도 공개 wiki까지, 쓰기는 주인만
 - `category/`: 그래프 카테고리(`Category`). `api/categories`(목록은 누구나, 이름이 공개다. 쓰기는 주인만). wiki가 남으면 지우지 못한다(409)
 - `edge/`: 연결선(`Edge`, 종류 `EdgeKind`). REST가 아직 없고 변경 묶음으로만 바뀐다 (그래프 단계에서 경로를 더한다)
-- `change/`: 변경 묶음(`ChangeSet`), 변경(`ChangeOp` 하위 클래스 하나 = 변경 종류 하나), 대상(`ChangeTarget`: 네 엔티티의 부모, `snapshot`·`rollBack`),
+- `change/`: 변경 묶음(`ChangeSet`), 변경(`ChangeOp` 하위 클래스 하나 = 변경 종류 하나), 대상(`ChangeTarget`: 네 엔티티의 약속, `snapshot`·`rollBack`. 기반은 `TargetEntity` · `GraphNode`, 저장소 기반은 `TargetEntityRepository` · `NodeRepository` · `GraphNodeRepository`),
   판정(`ReviewPolicy` + `ReviewRule` 하위 클래스), 잠금(`TargetRepository`, `TargetBoard`), 쓰기 전부(`ChangeService`: `submit` · `edit` · `decide` · `revert`).
   `api/changes`(승인함, 결정, 되돌리기: 주인만), MCP `submit_changes`(`tidy`)
 - `tidy/`: 세션 정리 설정(`TidySettings`: 공간마다 한 행, 없으면 꺼짐)과 일 요청. `api/tidy/settings`(주인), `api/tidy/backlog`(대표 wiki가 없고 지금 판을 아직 요청하지 않은 세션을 오래된 순으로 20개까지, 주인).
@@ -42,7 +42,7 @@ change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings
 - 정리 설정: tidy_settings
 
 ## 공개 API (`index.ts`)
-`VaultModule`, `VaultTools`(세션·wiki·그래프·변경 묶음 도구 목록, mcp 모듈이 모아서 연다), `SessionQuery`·`GetSessionRequest`(blog의 소재가 세션을 확인할 때 읽음), `PostWikiQuery`(blog가 글에 이을 wiki를 확인할 때 읽음)
+`VaultModule`, `VaultTools`(세션·wiki·그래프·변경 묶음 도구 목록, mcp 모듈이 모아서 연다), `SessionQuery`·`GetSessionRequest`(`GetSessionInput`의 공개 이름. blog의 소재가 세션을 확인할 때 읽음), `PostWikiQuery`(blog가 글에 이을 wiki를 확인할 때 읽음)
 
 ## 내보내는 이벤트 / 받는 이벤트
 | 이벤트 | 내용 (모두 v1) |

@@ -9,7 +9,8 @@ import {
   OwnerActor,
   RuleViolation,
 } from '../../platform';
-import { Post } from './post';
+import { type LoadedPost, Post } from './post';
+import type { OwnerPostSavedView } from './post.view';
 import { PostContent } from './post-content';
 import { SlugPolicy } from './slug.policy';
 
@@ -19,17 +20,39 @@ const SPACE = '0192d2a0-0000-7000-8000-000000000001';
 const owner = new OwnerActor(SPACE, '0192d2a0-0000-7000-8000-000000000002');
 const writer = new DeviceActor(SPACE, '0192d2a0-0000-7000-8000-000000000003', new Set(['write']));
 const now = new Date('2026-10-24T00:00:00Z');
+const REQUEST = '0192d2a0-0000-7000-8000-0000000000aa';
 
 function draft(by: Actor = owner): Post {
-  return Post.open(
-    by,
-    'first',
-    PostContent.write('첫 글', '본문'),
-    ['mcp'],
-    'left',
-    '0192d2a0-0000-7000-8000-0000000000aa',
-    now,
-  );
+  const fields = { slug: 'first', tags: ['mcp'], align: 'left' };
+  return Post.open(by, PostContent.write('첫 글', '본문'), fields, REQUEST, now);
+}
+
+/** 저장되어 있던 글 */
+function stored(status: string, fields: Partial<LoadedPost> = {}): Post {
+  return Post.restore({
+    id: 'id',
+    version: 3,
+    space_id: SPACE,
+    slug: 'first',
+    status,
+    head_title: '첫 글',
+    head_body: '본문',
+    tags: [],
+    align: 'left',
+    head_revision_id: 'r1',
+    revision_count: 1,
+    published_at: null,
+    updated_at: now,
+    deleted_at: null,
+    main_wiki_id: null,
+    ref_wiki_ids: null,
+    ...fields,
+  } as LoadedPost);
+}
+
+/** 주인이 보는 글의 칸 */
+function shown(post: Post) {
+  return post.view(owner).toJSON() as ReturnType<OwnerPostSavedView['toJSON']>;
 }
 
 describe('SlugPolicy', () => {
@@ -74,79 +97,47 @@ describe('Post', () => {
   test('새 글은 임시 상태로 1판과 함께. 태그는 #·빈칸·겹침을 정리한다', () => {
     const post = Post.open(
       owner,
-      'p',
       PostContent.write('제목', ''),
-      ['#mcp', ' mcp ', '', 'db'],
-      'center',
-      '0192d2a0-0000-7000-8000-0000000000aa',
+      { slug: 'p', tags: ['#mcp', ' mcp ', '', 'db'], align: 'center' },
+      REQUEST,
       now,
     );
-    assert.equal(post.status, Post.DRAFT);
-    assert.equal(post.revisionCount, 1);
-    assert.deepEqual(post.tags, ['mcp', 'db']);
-    assert.equal(post.align, 'center');
-    assert.throws(() => draft().edit(PostContent.write('a', ''), 'p', [], 'right', owner, now));
+    assert.equal(shown(post).status, Post.DRAFT);
+    assert.equal(shown(post).revisionCount, 1);
+    assert.deepEqual(shown(post).tags, ['mcp', 'db']);
+    assert.equal(shown(post).align, 'center');
+    assert.throws(() =>
+      draft().edit(PostContent.write('a', ''), { slug: 'p', align: 'right' }, owner, now),
+    );
   });
 
   test('고쳐 쓰기: 제목·본문이 같으면 판을 만들지 않고, 태그만 바뀌어도 저장할 것은 생긴다', () => {
-    const post = Post.restore(
-      'id',
-      3,
-      SPACE,
-      'first',
-      Post.DRAFT,
-      PostContent.restore('첫 글', '본문'),
-      ['mcp'],
-      'left',
-      'r1',
-      1,
-      null,
-      now,
-      null,
-      null,
-      [],
-    );
-    post.edit(PostContent.write('첫 글', '본문'), 'first', ['mcp'], 'left', owner, now);
-    assert.equal(post.changed, false);
-    post.edit(PostContent.write('첫 글', '본문'), 'first', ['db'], 'left', owner, now);
-    assert.equal(post.changed, true);
+    const post = stored(Post.DRAFT, { tags: ['mcp'] });
+    const same = PostContent.write('첫 글', '본문');
+    post.edit(same, { slug: 'first', tags: ['mcp'], align: 'left' }, owner, now);
+    assert.deepEqual(post.unsaved, {});
+    post.edit(same, { slug: 'first', tags: ['db'], align: 'left' }, owner, now);
+    assert.notDeepEqual(post.unsaved, {});
     const added = () => post.addedRevision;
     assert.equal(added(), null);
-    post.edit(PostContent.write('첫 글', '본문 고침'), 'first', ['db'], 'left', owner, now);
+    post.edit(PostContent.write('첫 글', '본문 고침'), { tags: ['db'] }, owner, now);
     assert.equal(added()?.seq, 2);
-    assert.equal(post.revisionCount, 2);
+    assert.equal(shown(post).revisionCount, 2);
   });
 
   test('판의 작성자: 주인은 user, 기기와 에이전트는 ai', () => {
     const agent = new AgentActor(SPACE, 'a', 't', new Set(['write']));
-    assert.equal(draft(owner).addedRevision?.actorType, 'user');
-    assert.equal(draft(writer).addedRevision?.actorType, 'ai');
-    assert.equal(draft(agent).addedRevision?.actorType, 'ai');
+    assert.equal(draft(owner).addedRevision?.actor_type, 'user');
+    assert.equal(draft(writer).addedRevision?.actor_type, 'ai');
+    assert.equal(draft(agent).addedRevision?.actor_type, 'ai');
   });
 
   test('에이전트도 공개된 글은 고칠 수 없고 공개 범위를 바꿀 수 없다', () => {
     const agent = new AgentActor(SPACE, 'a', 't', new Set(['write']));
-    const open = (status: string) =>
-      Post.restore(
-        'id',
-        3,
-        SPACE,
-        'first',
-        status,
-        PostContent.restore('첫 글', '본문'),
-        [],
-        'left',
-        'r1',
-        1,
-        now,
-        now,
-        null,
-        null,
-        [],
-      );
+    const open = (status: string) => stored(status, { published_at: now });
     for (const status of [Post.PUBLISHED, Post.UNLISTED])
       assert.throws(
-        () => open(status).edit(PostContent.write('고침', ''), 'first', [], 'left', agent, now),
+        () => open(status).edit(PostContent.write('고침', ''), {}, agent, now),
         Forbidden,
       );
     assert.throws(() => open(Post.DRAFT).changeStatus(Post.PUBLISHED, agent, now), Forbidden);
@@ -156,10 +147,10 @@ describe('Post', () => {
     const post = draft();
     post.pullEvents();
     post.changeStatus(Post.UNLISTED, owner, now);
-    assert.equal(post.publishedAt, now);
+    assert.equal(shown(post).publishedAt, now.toISOString());
     assert.deepEqual(post.pullEvents(), []);
     post.changeStatus(Post.PUBLISHED, owner, new Date('2026-10-25T00:00:00Z'));
-    assert.equal(post.publishedAt, now);
+    assert.equal(shown(post).publishedAt, now.toISOString());
     assert.deepEqual(
       post.pullEvents().map((e) => e.name),
       ['blog.post.published'],
@@ -175,10 +166,10 @@ describe('Post', () => {
 
   test('AI 도구(글쓰기 권한)는 임시 글만 고친다. 공개된 글·휴지통은 주인만', () => {
     const post = draft(writer);
-    post.edit(PostContent.write('첫 글', '고침'), 'first', [], 'left', writer, now);
+    post.edit(PostContent.write('첫 글', '고침'), { tags: [] }, writer, now);
     post.changeStatus(Post.PUBLISHED, owner, now);
     assert.throws(
-      () => post.edit(PostContent.write('첫 글', '또'), 'first', [], 'left', writer, now),
+      () => post.edit(PostContent.write('첫 글', '또'), { tags: [] }, writer, now),
       Forbidden,
     );
     assert.throws(() => post.trash(writer, now), Forbidden);
@@ -189,18 +180,15 @@ describe('Post', () => {
     post.changeStatus(Post.PUBLISHED, owner, now);
     post.pullEvents();
     post.trash(owner, now);
-    assert.equal(post.purgeAfter?.toISOString(), '2026-11-23T00:00:00.000Z');
+    assert.equal(post.unsaved.purge_after?.toISOString(), '2026-11-23T00:00:00.000Z');
     assert.deepEqual(
       post.pullEvents().map((e) => e.name),
       ['blog.post.deleted'],
     );
-    assert.throws(
-      () => post.edit(PostContent.write('a', ''), 'first', [], 'left', owner, now),
-      /휴지통/,
-    );
+    assert.throws(() => post.edit(PostContent.write('a', ''), { tags: [] }, owner, now), /휴지통/);
     post.recover(owner, now);
-    assert.equal(post.status, Post.PUBLISHED);
-    assert.equal(post.deletedAt, null);
+    assert.equal(shown(post).status, Post.PUBLISHED);
+    assert.equal(shown(post).deletedAt, null);
     assert.throws(() => post.recover(owner, now), /휴지통에 있는 글이 아니에요/);
   });
 });
@@ -211,60 +199,44 @@ describe('글 → wiki 연결', () => {
   const C = '0192d2a0-0000-7000-8000-00000000000c';
   const agent = new AgentActor(SPACE, 'a', 't', new Set(['write']));
   const linked = (status: string, main: string | null = A, refs: readonly string[] = [B]) =>
-    Post.restore(
-      'id',
-      3,
-      SPACE,
-      'first',
-      status,
-      PostContent.restore('첫 글', '본문'),
-      [],
-      'left',
-      'r1',
-      1,
-      now,
-      now,
-      null,
-      main,
-      refs,
-    );
+    stored(status, { published_at: now, main_wiki_id: main, ref_wiki_ids: refs });
 
   test('보내지 않은 칸은 그대로, 대표 null과 참고 []는 비우기', () => {
     const post = linked(Post.DRAFT);
     post.linkWikis(undefined, undefined, owner, now);
-    assert.equal(post.changed, false);
+    assert.deepEqual(post.unsaved, {});
     post.linkWikis(undefined, [C], owner, now);
-    assert.equal(post.mainWikiId, A);
-    assert.deepEqual(post.refWikiIds, [C]);
+    assert.equal(shown(post).mainWikiId, A);
+    assert.deepEqual(shown(post).refWikiIds, [C]);
     post.linkWikis(null, undefined, owner, now);
-    assert.equal(post.mainWikiId, null);
-    assert.deepEqual(post.refWikiIds, [C]);
+    assert.equal(shown(post).mainWikiId, null);
+    assert.deepEqual(shown(post).refWikiIds, [C]);
     post.linkWikis(undefined, [], owner, now);
-    assert.deepEqual(post.refWikiIds, []);
+    assert.deepEqual(shown(post).refWikiIds, []);
   });
 
   test('겹치는 참고와 대표와 같은 참고는 빠지고, 대표로 옮긴 참고도 빠진다', () => {
     const post = linked(Post.DRAFT, null, []);
     post.linkWikis(A, [C, B, B, A], owner, now);
-    assert.deepEqual(post.refWikiIds, [B, C]);
+    assert.deepEqual(shown(post).refWikiIds, [B, C]);
     post.linkWikis(B, undefined, owner, now);
-    assert.equal(post.mainWikiId, B);
-    assert.deepEqual(post.refWikiIds, [C]);
+    assert.equal(shown(post).mainWikiId, B);
+    assert.deepEqual(shown(post).refWikiIds, [C]);
   });
 
   test('같은 연결이면 바뀐 것이 없고, 보낸 순서만 달라도 그렇다', () => {
     const post = linked(Post.PUBLISHED, A, [B, C]);
     post.linkWikis(A, [C, B], owner, now);
-    assert.equal(post.changed, false);
+    assert.deepEqual(post.unsaved, {});
     assert.deepEqual(post.pullEvents(), []);
   });
 
   test('연결은 판을 쌓지 않는다. 공개 글이면 연결만 바꿔도 알린다', () => {
     const post = linked(Post.PUBLISHED);
     post.linkWikis(B, [], owner, now);
-    assert.equal(post.changed, true);
+    assert.notDeepEqual(post.unsaved, {});
     assert.equal(post.addedRevision, null);
-    assert.equal(post.revisionCount, 1);
+    assert.equal(shown(post).revisionCount, 1);
     const [event, ...rest] = post.pullEvents();
     assert.equal(rest.length, 0);
     assert.equal(event?.name, 'blog.post.updated');
@@ -283,7 +255,7 @@ describe('글 → wiki 연결', () => {
 
   test('한 번의 저장에 내용과 연결이 함께 바뀌면 이벤트는 마지막 모습 하나다', () => {
     const post = linked(Post.PUBLISHED);
-    post.edit(PostContent.write('고친 제목', '본문'), 'moved', [], 'left', owner, now);
+    post.edit(PostContent.write('고친 제목', '본문'), { slug: 'moved' }, owner, now);
     post.linkWikis(C, [], owner, now);
     const events = post.pullEvents();
     assert.equal(events.length, 1);
@@ -306,7 +278,7 @@ describe('글 → wiki 연결', () => {
   test('AI는 임시 글만 잇고, 공개된 글은 주인만. 휴지통 글은 누구도 못 바꾼다', () => {
     const draftPost = linked(Post.DRAFT);
     draftPost.linkWikis(B, [], agent, now);
-    assert.equal(draftPost.mainWikiId, B);
+    assert.equal(shown(draftPost).mainWikiId, B);
     for (const status of [Post.PUBLISHED, Post.UNLISTED]) {
       assert.throws(() => linked(status).linkWikis(B, [], agent, now), Forbidden);
       assert.throws(() => linked(status).linkWikis(B, [], writer, now), Forbidden);
@@ -328,30 +300,14 @@ describe('결재한 공개', () => {
   const approved = new ApprovedActor(SPACE, String(owner.id), APPROVAL, Post.PUBLISH_ACTION);
   const later = new Date('2026-10-30T00:00:00Z');
   const saved = (status: string, publishedAt: Date | null = null, deletedAt: Date | null = null) =>
-    Post.restore(
-      'id',
-      3,
-      SPACE,
-      'first',
-      status,
-      PostContent.restore('첫 글', '본문'),
-      [],
-      'left',
-      'r1',
-      1,
-      publishedAt,
-      now,
-      deletedAt,
-      null,
-      [],
-    );
+    stored(status, { published_at: publishedAt, deleted_at: deletedAt });
 
   test('결재한 버전 그대로면 공개하고, 원래 내용에 결재 결과를 더해 돌려준다', () => {
     const post = saved(Post.DRAFT);
     const result = post.publishApproved(approved, 3, later);
-    assert.equal(post.status, Post.PUBLISHED);
-    assert.equal(post.publishedAt, later);
-    assert.equal(post.changed, true);
+    assert.equal(shown(post).status, Post.PUBLISHED);
+    assert.equal(shown(post).publishedAt, later.toISOString());
+    assert.notDeepEqual(post.unsaved, {});
     assert.equal(post.addedRevision, null);
     assert.equal(result.name, 'blog.post.published');
     assert.deepEqual(result.data, {
@@ -370,7 +326,7 @@ describe('결재한 공개', () => {
   test('한 번 내렸던 글은 처음 공개한 때가 발행일이다', () => {
     const post = saved(Post.DRAFT, now);
     post.publishApproved(approved, 3, later);
-    assert.equal(post.publishedAt, now);
+    assert.equal(shown(post).publishedAt, now.toISOString());
   });
 
   test('공개할 수 없으면 아무것도 바꾸지 않고 실패를 돌려준다', () => {
@@ -380,10 +336,10 @@ describe('결재한 공개', () => {
       [saved(Post.PUBLISHED, now), 3, /이미 공개된 글/],
     ];
     for (const [post, version, reason] of cases) {
-      const status = post.status;
+      const { status } = shown(post);
       const result = post.publishApproved(approved, version, later);
-      assert.equal(post.status, status);
-      assert.equal(post.changed, false);
+      assert.equal(shown(post).status, status);
+      assert.deepEqual(post.unsaved, {});
       assert.equal(result.name, 'blog.post.publish_failed');
       assert.equal(result.data.approvalId, APPROVAL);
       assert.equal(result.data.outcome, 'failed');
@@ -395,10 +351,7 @@ describe('결재한 공개', () => {
     const content = PostContent.write('고침', '');
     assert.throws(() => saved(Post.PUBLISHED, now).trash(approved, now), Forbidden);
     assert.throws(() => saved(Post.DRAFT).trash(approved, now), Forbidden);
-    assert.throws(
-      () => saved(Post.PUBLISHED, now).edit(content, 'first', [], 'left', approved, now),
-      Forbidden,
-    );
+    assert.throws(() => saved(Post.PUBLISHED, now).edit(content, {}, approved, now), Forbidden);
     assert.throws(
       () => saved(Post.UNLISTED, now).changeStatus(Post.DRAFT, approved, now),
       Forbidden,
@@ -413,7 +366,7 @@ describe('결재한 공개', () => {
     for (const by of [otherAction, writer, agent, owner]) {
       const post = saved(Post.DRAFT);
       assert.throws(() => post.publishApproved(by, 3, later), Forbidden);
-      assert.equal(post.status, Post.DRAFT);
+      assert.equal(shown(post).status, Post.DRAFT);
     }
   });
 

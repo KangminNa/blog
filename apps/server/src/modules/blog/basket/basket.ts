@@ -1,9 +1,11 @@
-import { type Actor, BaseEntity, TrackedEntity } from '../../platform';
+import { type Actor, BaseEntity, TableEntity } from '../../platform';
+import type { BasketItemNew, BasketItemRow } from '../blog.tables';
+import { BasketItemView } from './basket.view';
 
 // 소재 하나 (work.basket_items). 글을 쓰려고 모아 두는 세션·글·링크·메모.
 // 세션·글은 id만 값으로 갖고(외래키 없음) 글과 연결을 저장하지 않는다.
 // 사진·파일은 올리는 길이 아직 없어서 받지 않는다. 표의 종류에는 있다 (테이블설계 5장).
-export class BasketItem extends TrackedEntity {
+export class BasketItem extends TableEntity<BasketItemRow, BasketItemNew> {
   static readonly SESSION = 'session';
   static readonly POST = 'post';
   static readonly LINK = 'link';
@@ -21,69 +23,23 @@ export class BasketItem extends TrackedEntity {
   /** 소재는 주인만 담는다 (basket_items.actor_type) */
   private static readonly ACTOR_TYPE = 'user';
 
-  private constructor(
-    id: string,
-    readonly basketId: string,
-    readonly kind: string,
-    readonly refId: string | null,
-    readonly url: string | null,
-    readonly title: string | null,
-    readonly note: string | null,
-    readonly actorType: string,
-    readonly actorId: string | null,
-    readonly createdAt: Date,
-  ) {
-    super(id, 1);
-  }
-
-  static open(
-    basketId: string,
-    kind: string,
-    refId: string | null,
-    url: string | null,
-    title: string | null,
-    note: string | null,
-    by: Actor,
-    now: Date,
-  ): BasketItem {
+  static open(basketId: string, fields: Partial<BasketItemRow>, by: Actor, now: Date): BasketItem {
     return new BasketItem(
-      BaseEntity.newId(),
-      basketId,
-      kind,
-      refId,
-      url,
-      title,
-      note,
-      BasketItem.ACTOR_TYPE,
-      by.id,
-      now,
+      {
+        kind: '',
+        ...fields,
+        id: BaseEntity.newId(),
+        basket_id: basketId,
+        actor_type: BasketItem.ACTOR_TYPE,
+        actor_id: by.id,
+        created_at: now,
+      },
+      true,
     );
   }
 
-  static restore(
-    id: string,
-    basketId: string,
-    kind: string,
-    refId: string | null,
-    url: string | null,
-    title: string | null,
-    note: string | null,
-    actorType: string,
-    actorId: string | null,
-    createdAt: Date,
-  ): BasketItem {
-    return new BasketItem(
-      id,
-      basketId,
-      kind,
-      refId,
-      url,
-      title,
-      note,
-      actorType,
-      actorId,
-      createdAt,
-    );
+  static restore(row: BasketItemRow): BasketItem {
+    return new BasketItem(row);
   }
 
   /** 담을 수 있는 링크면 다듬은 주소, 아니면 null. http·https만: javascript: 같은 주소가 화면의 링크가 되지 않게 */
@@ -94,5 +50,9 @@ export class BasketItem extends TrackedEntity {
     } catch {
       return null;
     }
+  }
+
+  view(): BasketItemView {
+    return new BasketItemView(this.row);
   }
 }

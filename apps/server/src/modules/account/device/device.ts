@@ -1,5 +1,15 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { Actor, BaseEntity, DomainEvent, InvalidRequest } from '../../platform';
+import {
+  Actor,
+  BaseEntity,
+  type ColumnRules,
+  Conflict,
+  DomainEvent,
+  InvalidRequest,
+  TableEntity,
+} from '../../platform';
+import type { DeviceNew, DeviceRow, DeviceTokenNew, OauthTokenNew } from '../account.tables';
+import { DeviceView, TokenView } from './device.view';
 import { OAuthError } from './oauth-error';
 
 /** 기기의 토큰 하나. DB에는 해시만 두고, 원문은 만든 순간에만 있다 */
@@ -49,7 +59,7 @@ export class DeviceCredential {
 
 // 연결된 기기 하나: AI 도구가 있는 컴퓨터. 토큰(OAuth access·refresh, 예비 기기 토큰)과 권한을 가진다.
 // 기기는 지우지 않고 끊는다 (다른 모듈이 기기 id를 값으로 갖고 있으므로). 끊으면 모든 토큰이 바로 무효.
-export class Device extends BaseEntity {
+export class Device extends TableEntity<DeviceRow, DeviceNew> {
   static readonly ACCESS_MS = 60 * 60_000;
   static readonly REFRESH_MS = 30 * 86_400_000;
   /** 새 기기의 기본 권한: 올리기 + 공개 읽기 (2026-10-10 결정). 나머지는 관리 화면에서 켠다 */
@@ -66,25 +76,27 @@ export class Device extends BaseEntity {
   /** 러너의 도구 이름 (기기 목록에 보인다) */
   private static readonly RUNNER_CLIENT = '러너';
 
+  /** 주인이 정하는 칸과 그 규칙 */
+  private static readonly RULES: ColumnRules<DeviceRow> = {
+    name: (value) => Device.checkName(value),
+    scopes: (value) => {
+      const unknown = value.filter((s) => !Device.ALL_SCOPES.includes(s));
+      if (unknown.length > 0)
+        throw new InvalidRequest(new Map([['scopes', `모르는 권한이에요: ${unknown.join(', ')}`]]));
+      return Device.ALL_SCOPES.filter((s) => value.includes(s));
+    },
+  };
+
   private readonly issued: DeviceCredential[] = [];
   private readonly retired: string[] = [];
 
   private constructor(
-    id: string,
-    version: number,
-    readonly spaceId: string,
-    readonly userId: string | null,
-    private nameValue: string,
-    private scopeList: string[],
-    readonly clientId: string | null,
-    readonly clientName: string,
-    readonly createdAt: Date,
-    private revoked: Date | null,
+    row: DeviceRow | DeviceNew,
     /** 불러올 때 함께 읽은 토큰 하나 (갱신 토큰 확인용) */
-    readonly presented: DeviceCredential | null,
-    readonly isNew: boolean,
+    private readonly presented: DeviceCredential | null,
+    fresh = false,
   ) {
-    super(id, version);
+    super(row, fresh);
   }
 
   static connect(
@@ -95,111 +107,96 @@ export class Device extends BaseEntity {
     clientName: string,
     now: Date,
   ): Device {
+    return Device.open(spaceId, userId, name, Device.DEFAULT_SCOPES, clientId, clientName, now);
+  }
+
+  /** 러너: OAuth 없이 콘솔에서 만든다. 일을 빌리는 권한만 갖고, 토큰은 만들 때 한 번만 보인다 */
+  static forRunner(spaceId: string, userId: string, name: string, now: Date): Device {
+    const device = Device.open(spaceId, userId, name, [Actor.RUN], null, Device.RUNNER_CLIENT, now);
+    device.issueDeviceToken(now);
+    return device;
+  }
+
+  static restore(row: DeviceRow, presented: DeviceCredential | null = null): Device {
+    return new Device(row, presented);
+  }
+
+  private static open(
+    spaceId: string,
+    userId: string,
+    name: string,
+    scopes: readonly string[],
+    clientId: string | null,
+    clientName: string,
+    now: Date,
+  ): Device {
     const device = new Device(
-      BaseEntity.newId(),
-      1,
-      spaceId,
-      userId,
-      Device.checkName(name),
-      [...Device.DEFAULT_SCOPES],
-      clientId,
-      clientName,
-      now,
-      null,
+      {
+        id: BaseEntity.newId(),
+        space_id: spaceId,
+        user_id: userId,
+        name: Device.checkName(name),
+        scopes,
+        meta: { clientId, clientName },
+        created_at: now,
+      },
       null,
       true,
     );
     device.record(
       new DomainEvent('account.device.connected', 1, spaceId, {
         deviceId: device.id,
-        name: device.name,
+        name: device.row.name,
         client: clientName,
       }),
     );
     return device;
   }
 
-  /** 러너: OAuth 없이 콘솔에서 만든다. 일을 빌리는 권한만 갖고, 토큰은 만들 때 한 번만 보인다 */
-  static forRunner(spaceId: string, userId: string, name: string, now: Date): Device {
-    const device = new Device(
-      BaseEntity.newId(),
-      1,
-      spaceId,
-      userId,
-      Device.checkName(name),
-      [Actor.RUN],
-      null,
-      Device.RUNNER_CLIENT,
-      now,
-      null,
-      null,
-      true,
-    );
-    device.issueDeviceToken(now);
-    device.record(
-      new DomainEvent('account.device.connected', 1, spaceId, {
-        deviceId: device.id,
-        name: device.name,
-        client: Device.RUNNER_CLIENT,
-      }),
-    );
-    return device;
+  /** 이 기기를 연결한 OAuth 클라이언트. 갱신할 때 같은 클라이언트인지 본다 */
+  get clientId(): string | null {
+    return (this.row.meta as { clientId?: string | null }).clientId ?? null;
   }
 
-  static restore(
-    id: string,
-    version: number,
-    spaceId: string,
-    userId: string | null,
-    name: string,
-    scopes: readonly string[],
-    clientId: string | null,
-    clientName: string,
-    createdAt: Date,
-    revokedAt: Date | null,
-    presented: DeviceCredential | null = null,
-  ): Device {
-    return new Device(
-      id,
-      version,
-      spaceId,
-      userId,
-      name,
-      [...scopes],
-      clientId,
-      clientName,
-      createdAt,
-      revokedAt,
-      presented,
-      false,
-    );
+  get revoked(): boolean {
+    return Boolean(this.row.revoked_at);
   }
 
-  get name(): string {
-    return this.nameValue;
+  /** 칸이 그대로여도 저장하면 version이 오른다: 토큰만 바뀌어도 화면이 든 기기는 옛것이 된다 */
+  override get unsaved(): Partial<DeviceRow> {
+    const changed = super.unsaved;
+    return Object.keys(changed).length > 0 ? changed : { name: this.row.name };
   }
 
-  get scopes(): readonly string[] {
-    return this.scopeList;
+  /** 저장할 새 OAuth 토큰들. 해시만 들어간다 */
+  get newOAuthTokens(): readonly Omit<OauthTokenNew, 'id'>[] {
+    return this.issued
+      .filter((c) => c.kind !== DeviceCredential.DEVICE)
+      .map((c) => ({
+        device_id: this.id,
+        client_id: this.clientId,
+        kind: c.kind,
+        token_hash: c.hash,
+        scopes: this.row.scopes,
+        expires_at: c.expiresAt as Date,
+      }));
   }
 
-  get revokedAt(): Date | null {
-    return this.revoked;
-  }
-
-  /** 저장할 새 토큰들 */
-  get newCredentials(): readonly DeviceCredential[] {
-    return this.issued;
+  /** 저장할 새 예비 기기 토큰들. 해시와 화면에 보일 앞부분만 들어간다 */
+  get newDeviceTokens(): readonly Omit<DeviceTokenNew, 'id'>[] {
+    return this.issued
+      .filter((c) => c.kind === DeviceCredential.DEVICE)
+      .map((c) => ({
+        device_id: this.id,
+        token_hash: c.hash,
+        prefix: c.prefix,
+        expires_at: c.expiresAt,
+      }));
   }
 
   /** 무효로 할 토큰들 (해시) */
   get retiredHashes(): readonly string[] {
     return this.retired;
-  }
-
-  /** 방금 만든 토큰의 원문 (응답에 한 번만) */
-  issuedToken(kind: string): DeviceCredential | null {
-    return this.issued.find((c) => c.kind === kind) ?? null;
   }
 
   /** OAuth 토큰 한 쌍: access 1시간, refresh 30일 */
@@ -238,27 +235,43 @@ export class Device extends BaseEntity {
     this.issued.push(DeviceCredential.issue(DeviceCredential.DEVICE, null, now));
   }
 
-  rename(name: string): void {
-    this.nameValue = Device.checkName(name);
-  }
-
-  grant(scopes: readonly string[]): void {
-    const unknown = scopes.filter((s) => !Device.ALL_SCOPES.includes(s));
-    if (unknown.length > 0)
-      throw new InvalidRequest(new Map([['scopes', `모르는 권한이에요: ${unknown.join(', ')}`]]));
-    this.scopeList = Device.ALL_SCOPES.filter((s) => scopes.includes(s));
+  /** 주인이 고친 칸(이름·권한)을 적는다 */
+  edit(changes: Partial<DeviceRow>): void {
+    this.accept(changes, Device.RULES);
   }
 
   /** 끊는다. 모든 토큰이 바로 무효가 된다 */
   revoke(now: Date): void {
     if (this.revoked) return;
-    this.revoked = now;
+    this.put('revoked_at', now);
     this.record(
-      new DomainEvent('account.device.revoked', 1, this.spaceId, {
+      new DomainEvent('account.device.revoked', 1, this.row.space_id, {
         deviceId: this.id,
-        name: this.name,
+        name: this.row.name,
       }),
     );
+  }
+
+  /** 끊지 않은 기기끼리 이름이 겹쳤을 때 Repository가 던진다 */
+  nameTaken(): Conflict {
+    return new Conflict(`이미 쓰는 기기 이름이에요: ${this.row.name}. 다른 이름을 써 주세요`);
+  }
+
+  view(): DeviceView {
+    return new DeviceView(this.row, this.issuedToken(DeviceCredential.DEVICE));
+  }
+
+  tokenView(): TokenView {
+    return new TokenView(
+      this.issuedToken(DeviceCredential.ACCESS),
+      this.issuedToken(DeviceCredential.REFRESH),
+      this.row.scopes,
+    );
+  }
+
+  /** 방금 만든 토큰의 원문 (응답에 한 번만) */
+  private issuedToken(kind: string): string | null {
+    return this.issued.find((c) => c.kind === kind)?.token ?? null;
   }
 
   private assertConnected(): void {

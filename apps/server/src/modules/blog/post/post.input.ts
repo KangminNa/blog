@@ -1,0 +1,284 @@
+import { BaseRequest, type ColumnReaders, type RequestFields } from '../../platform';
+import type { PostRow } from '../blog.tables';
+import { Post } from './post';
+import { PostContent } from './post-content';
+import { SlugPolicy } from './slug.policy';
+
+/** 주소의 글 id를 본문과 함께 읽는다 (본문이 객체가 아니면 그대로 두어 "객체여야 해요"로 알린다) */
+function withId(id: string, body: unknown): unknown {
+  return typeof body === 'object' && body !== null && !Array.isArray(body) ? { ...body, id } : body;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 편집기가 정하는 칸. 칸 하나에 한 줄이다. 주소가 없으면 새 글은 제목에서 만들고, 고칠 때는 지금 주소 그대로다 */
+const POST_COLUMNS: ColumnReaders<PostRow> = {
+  tags: (f, n) => f.optionalTextList(n, Post.TAGS_MAX, Post.TAG_MAX) ?? [],
+  slug: (f, n) => f.optionalText(n, SlugPolicy.MAX) ?? undefined,
+  align: (f, n) => f.optionalText(n, 10) ?? 'left',
+};
+
+/** 편집기는 태그와 정렬을 늘 함께 저장한다: 보내지 않으면 태그는 비고 정렬은 left다 */
+function postColumns(f: RequestFields): Partial<PostRow> {
+  return { tags: [], align: 'left', ...f.columns(POST_COLUMNS) };
+}
+
+/** AI 도구가 정하는 칸. 태그가 없으면 고칠 때 지금 태그 그대로 */
+const DRAFT_COLUMNS: ColumnReaders<PostRow> = {
+  tags: (f, n) => f.optionalTextList(n, Post.TAGS_MAX, Post.TAG_MAX) ?? undefined,
+};
+
+/** 글 → wiki 연결. 보내지 않으면 지금 연결 그대로, 대표 null·참고 []는 비우기 */
+export class WikiLinksInput extends BaseRequest {
+  private constructor(
+    readonly main: string | null | undefined,
+    readonly refs: readonly string[] | undefined,
+  ) {
+    super();
+  }
+
+  static from(f: RequestFields, raw: unknown, main: string, refs: string): WikiLinksInput {
+    return new WikiLinksInput(WikiLinksInput.mainOf(f, raw, main), WikiLinksInput.refsOf(f, refs));
+  }
+
+  /** 이번 저장으로 잇는 wiki들 (볼 수 있는지 확인할 값) */
+  get ids(): readonly string[] {
+    return [...(this.main ? [this.main] : []), ...(this.refs ?? [])];
+  }
+
+  /** 대표 wiki 칸. 보내지 않으면 undefined(그대로), null이면 비우기 */
+  private static mainOf(f: RequestFields, raw: unknown, name: string): string | null | undefined {
+    const value = (raw as Record<string, unknown> | null)?.[name];
+    return value === undefined || value === null ? value : f.uuid(name);
+  }
+
+  /** 참고 wiki 칸. 보내지 않으면 undefined(그대로), []이면 비우기 */
+  private static refsOf(f: RequestFields, name: string): readonly string[] | undefined {
+    const ids = f.optionalTextList(name, Post.REFS_MAX, 36);
+    if (ids === null) return undefined;
+    for (const [i, id] of ids.entries())
+      if (!UUID.test(id)) f.reject(`${name}.${i}`, 'UUID 형식이어야 해요');
+    return ids.map((id) => id.toLowerCase());
+  }
+}
+
+/** 새 글 (POST /api/posts). requestId: 같은 요청이 두 번 와도 글은 하나 */
+export class CreatePostInput extends BaseRequest {
+  private constructor(
+    readonly requestId: string,
+    readonly title: string,
+    readonly body: string,
+    readonly fields: Partial<PostRow>,
+    readonly links: WikiLinksInput,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): CreatePostInput {
+    return BaseRequest.read(
+      raw,
+      (f) =>
+        new CreatePostInput(
+          f.uuid('requestId'),
+          f.text('title', PostContent.TITLE_MAX),
+          f.optionalText('body', PostContent.BODY_MAX) ?? '',
+          postColumns(f),
+          WikiLinksInput.from(f, raw, 'mainWikiId', 'refWikiIds'),
+        ),
+    );
+  }
+}
+
+/** 고쳐 쓰기 (PUT /api/posts/:id). version: 불러올 때의 글 버전 */
+export class SavePostInput extends BaseRequest {
+  private constructor(
+    readonly id: string,
+    readonly version: number,
+    readonly title: string,
+    readonly body: string,
+    readonly changes: Partial<PostRow>,
+    readonly links: WikiLinksInput,
+  ) {
+    super();
+  }
+
+  static from(id: string, raw: unknown): SavePostInput {
+    return BaseRequest.read(
+      withId(id, raw),
+      (f) =>
+        new SavePostInput(
+          f.uuid('id'),
+          f.version(),
+          f.text('title', PostContent.TITLE_MAX),
+          f.optionalText('body', PostContent.BODY_MAX) ?? '',
+          postColumns(f),
+          WikiLinksInput.from(f, raw, 'mainWikiId', 'refWikiIds'),
+        ),
+    );
+  }
+}
+
+/** 공개 범위 바꾸기 (POST /api/posts/:id/status) */
+export class PostStatusInput extends BaseRequest {
+  private constructor(
+    readonly id: string,
+    readonly version: number,
+    readonly status: string,
+  ) {
+    super();
+  }
+
+  static from(id: string, raw: unknown): PostStatusInput {
+    return BaseRequest.read(
+      withId(id, raw),
+      (f) => new PostStatusInput(f.uuid('id'), f.version(), f.text('status', 20)),
+    );
+  }
+}
+
+/**
+ * 휴지통으로 보내기·되살리기 (DELETE /api/posts/:id, POST /api/posts/:id/restore).
+ * platform의 VersionInput은 객체가 아닌 본문도 펼쳐 읽어 본문이 없을 때의 오류가 달라져서 따로 둔다.
+ */
+export class PostVersionInput extends BaseRequest {
+  private constructor(
+    readonly id: string,
+    readonly version: number,
+  ) {
+    super();
+  }
+
+  static from(id: string, raw: unknown): PostVersionInput {
+    return BaseRequest.read(
+      withId(id, raw),
+      (f) => new PostVersionInput(f.uuid('id'), f.version()),
+    );
+  }
+}
+
+/** 글 목록 (GET /api/posts?status=&cursor=). status: draft · published · unlisted · trash, 없으면 휴지통 말고 전부 */
+export class ListPostsInput extends BaseRequest {
+  static readonly TRASH = 'trash';
+  private static readonly FILTERS = [...Post.STATUSES, ListPostsInput.TRASH];
+  private static readonly CURSOR = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\|([0-9a-f-]{36})$/;
+
+  private constructor(
+    readonly status: string | null,
+    /** 이 시각·id보다 앞(더 오래된) 글부터 */
+    readonly before: readonly [Date, string] | null,
+  ) {
+    super();
+  }
+
+  static from(query: unknown): ListPostsInput {
+    return BaseRequest.read(query, (f) => {
+      const status = f.optionalText('status', 20);
+      if (status !== null && !ListPostsInput.FILTERS.includes(status))
+        f.reject('status', `${ListPostsInput.FILTERS.join(' · ')} 중 하나예요`);
+      const cursor = f.optionalText('cursor', 200);
+      const decoded = cursor ? Buffer.from(cursor, 'base64url').toString() : '';
+      const match = ListPostsInput.CURSOR.exec(decoded);
+      if (cursor && !match) f.reject('cursor', '앞 쪽 응답의 next 값을 그대로 보내 주세요');
+      return new ListPostsInput(
+        status,
+        match?.[1] && match[2] ? [new Date(match[1]), match[2]] : null,
+      );
+    });
+  }
+
+  /** 다음 쪽을 부를 값: 이 쪽의 마지막 글 */
+  static cursorAfter(at: Date, id: string): string {
+    return Buffer.from(`${at.toISOString()}|${id}`).toString('base64url');
+  }
+}
+
+/** 글 하나 (GET /api/posts/:id, MCP `blog_get_post`) */
+export class ReadPostInput extends BaseRequest {
+  private constructor(readonly id: string) {
+    super();
+  }
+
+  static from(id: string): ReadPostInput {
+    return BaseRequest.read({ id }, (f) => new ReadPostInput(f.uuid('id')));
+  }
+
+  static fromTool(raw: unknown): ReadPostInput {
+    return BaseRequest.read(raw, (f) => new ReadPostInput(f.uuid('post_id')));
+  }
+}
+
+/**
+ * AI 도구의 초안 저장 (MCP `blog_save_draft`). post_id가 없으면 새 초안, 있으면 그 초안을 고친다.
+ * 고칠 때는 base_version이 꼭 있어야 한다: 없으면 사람이 그사이 고친 내용을 AI가 모르고 덮을 수 있다.
+ */
+export class SaveDraftInput extends BaseRequest {
+  private static readonly REQUEST_ID_MAX = 200;
+
+  private constructor(
+    readonly requestId: string,
+    readonly postId: string | null,
+    readonly baseVersion: number | null,
+    readonly title: string,
+    readonly body: string,
+    readonly changes: Partial<PostRow>,
+    readonly links: WikiLinksInput,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): SaveDraftInput {
+    return BaseRequest.read(raw, (f) => {
+      const editing = f.optionalText('post_id', 36) !== null;
+      return new SaveDraftInput(
+        f.text('request_id', SaveDraftInput.REQUEST_ID_MAX),
+        editing ? f.uuid('post_id') : null,
+        editing ? f.version('base_version') : null,
+        f.text('title', PostContent.TITLE_MAX),
+        f.text('body_md', PostContent.BODY_MAX),
+        f.columns(DRAFT_COLUMNS),
+        WikiLinksInput.from(f, raw, 'main_wiki_id', 'ref_wiki_ids'),
+      );
+    });
+  }
+}
+
+/** 주인이 승인한 공개: 일꾼이 꺼낸 task.approval.granted의 내용. blog는 task를 모르므로 값으로만 읽는다 */
+export class ApprovedPublishInput extends BaseRequest {
+  private constructor(
+    readonly approvalId: string,
+    readonly action: string,
+    readonly decidedBy: string,
+    readonly postId: string,
+    readonly targetVersion: number,
+  ) {
+    super();
+  }
+
+  static from(data: Readonly<Record<string, unknown>>): ApprovedPublishInput {
+    return BaseRequest.read(
+      data,
+      (f) =>
+        new ApprovedPublishInput(
+          f.uuid('approvalId'),
+          f.text('action', 100),
+          f.uuid('decidedBy'),
+          f.uuid('targetId'),
+          f.integer('targetVersion', 0, 2_147_483_647),
+        ),
+    );
+  }
+}
+
+/** 주소로 글 하나 (GET /api/posts/by-slug/:slug) */
+export class PostSlugInput extends BaseRequest {
+  private constructor(readonly slug: string) {
+    super();
+  }
+
+  static from(slug: string): PostSlugInput {
+    return BaseRequest.read(
+      { slug },
+      (f) => new PostSlugInput(f.text('slug', SlugPolicy.MAX).normalize('NFC').toLowerCase()),
+    );
+  }
+}

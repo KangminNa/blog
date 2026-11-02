@@ -1,25 +1,20 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { RuleViolation } from '../../platform';
+import type { AgentRow } from '../task.tables';
 import { Agent, AgentUsage } from './agent';
 
 // 에이전트가 쉬는 규칙. DB 없이 돈다.
 
-const NOW = new Date('2026-11-01T00:00:00Z');
-
 function agentWith(fiveHourLimit: number | null, planStopPercent: number | null): Agent {
-  return Agent.open(
-    'space',
-    '글쓰기',
-    '',
-    'claude',
-    [],
-    [],
-    null,
-    fiveHourLimit,
-    planStopPercent,
-    NOW,
-  );
+  return Agent.restore({
+    id: 'agent-1',
+    version: 1,
+    space_id: 'space',
+    status: Agent.ACTIVE,
+    five_hour_limit: fiveHourLimit,
+    plan_stop_percent: planStopPercent,
+  } as AgentRow);
 }
 
 describe('Agent.holds', () => {
@@ -56,11 +51,9 @@ describe('Agent.holds', () => {
 
   test('쉬어도 상태는 그대로다: 저장할 것이 없다', () => {
     const agent = agentWith(100, 80);
-    agent.clearChanges();
-    agent.pullEvents();
     agent.holds(100, 90);
-    assert.equal(agent.status, Agent.ACTIVE);
-    assert.equal(agent.changed, false);
+    assert.equal(agent.paused, false);
+    assert.deepEqual(agent.unsaved, {});
     assert.deepEqual(agent.pullEvents(), []);
   });
 });
@@ -80,22 +73,18 @@ describe('AgentUsage', () => {
 describe('한도 칸', () => {
   test('범위를 벗어나면 거절한다', () => {
     const agent = agentWith(null, null);
-    assert.throws(() => {
-      agent.fiveHourLimit = 0;
-    }, RuleViolation);
-    assert.throws(() => {
-      agent.planStopPercent = 0;
-    }, RuleViolation);
-    assert.throws(() => {
-      agent.planStopPercent = 101;
-    }, RuleViolation);
+    assert.throws(() => agent.edit({ five_hour_limit: 0 }), RuleViolation);
+    assert.throws(() => agent.edit({ plan_stop_percent: 0 }), RuleViolation);
+    assert.throws(() => agent.edit({ plan_stop_percent: 101 }), RuleViolation);
   });
 
   test('바뀐 열만 기억하고 null로 비울 수 있다', () => {
     const agent = agentWith(100, 80);
-    agent.clearChanges();
-    agent.fiveHourLimit = null;
-    agent.planStopPercent = 90;
-    assert.deepEqual(agent.changes, { five_hour_limit: null, plan_stop_percent: 90 });
+    agent.edit({ five_hour_limit: null, plan_stop_percent: 90 });
+    assert.deepEqual(agent.unsaved, { five_hour_limit: null, plan_stop_percent: 90 });
+  });
+
+  test('규칙이 없는 칸은 밖에서 바꿀 수 없다', () => {
+    assert.throws(() => agentWith(null, null).edit({ status: Agent.PAUSED }));
   });
 });

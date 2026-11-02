@@ -2,6 +2,16 @@ import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { type Actor, ArchiveFile, ArchiveQuery, BaseQuery, Database } from '../platform';
 import { VaultRestore } from './restore/vault-restore';
 import { SlugPolicy } from './slug.policy';
+import type {
+  CategoryRow,
+  EdgeRow,
+  GraphViewRow,
+  NodeLayoutRow,
+  SessionRevisionRow,
+  SessionRow,
+  WikiRevisionRow,
+  WikiRow,
+} from './vault.tables';
 
 // vault의 보관 파일 (docs/보관형식.md): 카테고리, wiki, 세션, 선. 현재 판만 파일이 되고 지난 판은 git 이력으로 본다.
 // 검색 조각·임베딩·스냅샷은 다시 계산되는 값이라 뺀다. 첨부(assets/)는 파일 저장소가 생긴 뒤에 더한다.
@@ -33,7 +43,7 @@ export class VaultArchiveQuery extends BaseQuery implements OnModuleInit {
   }
 
   private async categories(actor: Actor): Promise<ArchiveFile> {
-    const rows = await this.sql`
+    const rows = await this.sql<Omit<CategoryRow, 'space_id' | 'version' | 'meta'>[]>`
       SELECT c.node_id, c.name, c.slug, c.color, c.sort, c.description, c.origin, c.pinned
       FROM vault.categories c JOIN vault.nodes n ON n.id = c.node_id
       WHERE ${this.inSpace(actor, 'c')} AND n.deleted_at IS NULL
@@ -54,7 +64,7 @@ export class VaultArchiveQuery extends BaseQuery implements OnModuleInit {
   }
 
   private async wikis(actor: Actor): Promise<ArchiveFile[]> {
-    const rows = await this.sql`
+    const rows = await this.sql<(WikiRow & Pick<WikiRevisionRow, 'body_md'>)[]>`
       SELECT w.node_id, w.title, w.slug, w.visibility, w.category_id, w.origin, w.pinned_sections,
              w.meta, r.body_md
       FROM vault.wikis w
@@ -75,14 +85,14 @@ export class VaultArchiveQuery extends BaseQuery implements OnModuleInit {
           cairn_origin: r.origin,
           cairn_pinned: r.pinned_sections,
         },
-        String(r.body_md),
+        r.body_md,
         ArchiveFile.keptIn(r.meta),
       ),
     );
   }
 
   private async sessions(actor: Actor): Promise<ArchiveFile[]> {
-    const rows = await this.sql`
+    const rows = await this.sql<(SessionRow & Pick<SessionRevisionRow, 'body_md' | 'sections'>)[]>`
       SELECT s.node_id, s.head_title, s.visibility, s.tool, s.project, live.id AS wiki_id, s.started_at,
              s.last_revision_at, s.pinned_sections, s.meta, r.body_md, r.sections
       FROM vault.sessions s
@@ -93,10 +103,10 @@ export class VaultArchiveQuery extends BaseQuery implements OnModuleInit {
       ORDER BY s.node_id`;
     const used = new Set<string>();
     return rows.map((r) => {
-      const started = (r.started_at ?? r.last_revision_at) as Date | null;
-      const day = started ? new Date(started).toISOString().slice(0, 10) : 'undated';
-      const folder = SlugPolicy.fromTitle(String(r.project ?? '')) || VaultArchiveQuery.NO_PROJECT;
-      const wanted = `${folder}/${day}-${SlugPolicy.fromTitle(String(r.head_title ?? '')) || 'session'}`;
+      const started = r.started_at ?? r.last_revision_at;
+      const day = started ? started.toISOString().slice(0, 10) : 'undated';
+      const folder = SlugPolicy.fromTitle(r.project ?? '') || VaultArchiveQuery.NO_PROJECT;
+      const wanted = `${folder}/${day}-${SlugPolicy.fromTitle(r.head_title ?? '') || 'session'}`;
       const name = used.has(wanted) ? SlugPolicy.numbered(wanted, used) : wanted;
       used.add(name);
       const tags = ((r.sections as Record<string, unknown> | null)?.tags ?? []) as string[];
@@ -109,13 +119,13 @@ export class VaultArchiveQuery extends BaseQuery implements OnModuleInit {
           title: r.head_title,
           visibility: r.visibility,
           tool: r.tool,
-          started: started ? new Date(started) : null,
+          started,
           ...(r.wiki_id === null ? {} : { cairn_wiki: r.wiki_id }),
           ...(r.project === null ? {} : { project: r.project }),
           ...(tags.length === 0 ? {} : { tags }),
           cairn_pinned: r.pinned_sections,
         },
-        String(r.body_md),
+        r.body_md,
         ArchiveFile.keptIn(r.meta),
       );
     });
@@ -126,14 +136,14 @@ export class VaultArchiveQuery extends BaseQuery implements OnModuleInit {
    * 휴지통의 점에 닿은 선은 뺀다: 그 점이 파일에 없어 복원할 수 없다.
    */
   private async graph(actor: Actor): Promise<ArchiveFile> {
-    const edges = await this.sql`
+    const edges = await this.sql<EdgeRow[]>`
       SELECT e.id, e.src, e.dst, e.kind, e.weight, e.origin, e.pinned, e.deleted_at, e.deleted_by_type
       FROM vault.edges e
       JOIN vault.nodes a ON a.id = e.src AND a.deleted_at IS NULL
       JOIN vault.nodes b ON b.id = e.dst AND b.deleted_at IS NULL
       WHERE ${this.inSpace(actor, 'e')}
       ORDER BY e.id`;
-    const layout = await this.sql`
+    const layout = await this.sql<(NodeLayoutRow & { view: GraphViewRow['name'] })[]>`
       SELECT v.name AS view, l.node_id, l.x, l.y
       FROM vault.node_layout l JOIN vault.graph_views v ON v.id = l.view_id
       JOIN vault.nodes n ON n.id = l.node_id AND n.deleted_at IS NULL

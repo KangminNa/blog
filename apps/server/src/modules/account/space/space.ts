@@ -1,68 +1,58 @@
-import { BaseEntity, RuleViolation } from '../../platform';
+import { BaseEntity, RuleViolation, TableEntity } from '../../platform';
+import type { SpaceNew, SpaceRow } from '../account.tables';
+import { SpaceView, type SpaceWithSettings } from './space.view';
 
 // 블로그 공간 하나: 이름·소개와 사이트 주소(방문자가 들어오는 바깥 주소), 앱 연결 허용. 지금은 공간이 하나뿐이다.
-export class Space extends BaseEntity {
+// 이름만 spaces의 칸이고 나머지는 settings 표의 값이다.
+export class Space extends TableEntity<SpaceRow, SpaceNew> {
   static readonly SLUG = 'default';
 
   private constructor(
-    id: string,
-    version: number,
-    readonly slug: string,
-    private nameValue: string,
-    private descriptionValue: string,
-    private site: string | null,
-    private hostedAppsOn: boolean,
-    readonly isNew: boolean,
+    row: SpaceRow | SpaceNew,
+    private settings: Readonly<Record<string, unknown>>,
+    fresh = false,
   ) {
-    super(id, version);
+    super(row, fresh);
   }
 
   static open(): Space {
-    return new Space(BaseEntity.newId(), 1, Space.SLUG, '', '', null, false, true);
+    return new Space({ id: BaseEntity.newId(), slug: Space.SLUG, name: '' }, {}, true);
   }
 
-  static restore(
-    id: string,
-    version: number,
-    slug: string,
-    name: string,
-    description: string,
-    site: string | null,
-    hostedApps: boolean,
-  ): Space {
-    return new Space(id, version, slug, name, description, site, hostedApps, false);
+  static restore(row: SpaceWithSettings): Space {
+    return new Space(row, row.settings ?? {});
   }
 
-  get name(): string {
-    return this.nameValue;
+  /** 칸이 그대로여도 저장하면 version이 오른다: 설정만 바뀌어도 화면이 든 공간은 옛것이 된다 */
+  override get unsaved(): Partial<SpaceRow> {
+    const changed = super.unsaved;
+    return Object.keys(changed).length > 0 ? changed : { name: this.row.name };
   }
 
-  get description(): string {
-    return this.descriptionValue;
-  }
-
-  get siteUrl(): string | null {
-    return this.site;
-  }
-
-  /**
-   * ChatGPT·Claude 앱(웹·데스크톱 채팅)의 연결을 받는가. 기본은 꺼짐.
-   * 이 앱들은 로그인 열쇠를 chatgpt.com·claude.ai로 돌려받아서, 남이 시작한 연결을 승인하면 그 사람 계정이 붙는다.
-   * 그래서 쓰는 사람만 켜고, 켜도 승인 화면이 앱 연결임을 알린다.
-   */
-  get hostedApps(): boolean {
-    return this.hostedAppsOn;
+  /** 저장할 설정. null이면 그 행을 지운다 */
+  get unsavedSettings(): Readonly<Record<string, string | boolean | null>> {
+    const view = this.view();
+    return {
+      [SpaceView.DESCRIPTION]: view.description || null,
+      [SpaceView.SITE_URL]: view.siteUrl,
+      [SpaceView.HOSTED_APPS]: view.hostedApps || null,
+    };
   }
 
   allowHostedApps(on: boolean): void {
-    this.hostedAppsOn = on;
+    this.settings = { ...this.settings, [SpaceView.HOSTED_APPS]: on };
   }
 
   /** siteUrl이 null이면 그대로 둔다 */
   rename(name: string, description: string, siteUrl: string | null): void {
-    this.nameValue = name.trim();
-    this.descriptionValue = description.trim();
-    if (siteUrl !== null) this.site = Space.address(siteUrl);
+    const site = siteUrl === null ? {} : { [SpaceView.SITE_URL]: Space.address(siteUrl) };
+    this.put('name', name.trim());
+    this.settings = { ...this.settings, [SpaceView.DESCRIPTION]: description.trim(), ...site };
+  }
+
+  /** 저장한 공간을 보여 줄 때. 주인만 고칠 수 있으니 이미 설치된 공간이다 */
+  view(): SpaceView {
+    return new SpaceView({ ...this.row, settings: this.settings }, true);
   }
 
   /**

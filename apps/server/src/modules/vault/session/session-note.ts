@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { RuleViolation } from '../../platform';
+import type { SessionRevisionRow } from '../vault.tables';
 
 /** 민감정보를 지운 자리 하나. 값은 남기지 않고 어느 칸에서 무엇을 지웠는지만 */
 export class Redaction {
@@ -35,6 +36,11 @@ export class SessionNote {
   /** 인용은 핵심 원문만: 넘으면 AI가 줄여서 다시 보낸다 */
   static readonly QUOTES_MAX = 4_000;
   static readonly SECTION_MAX = 20_000;
+  /** check_session이 AI에게 알려 주는 상한 */
+  static readonly LIMITS: Readonly<Record<string, number>> = {
+    section_max: SessionNote.SECTION_MAX,
+    quotes_max: SessionNote.QUOTES_MAX,
+  };
 
   private constructor(
     readonly title: string,
@@ -65,20 +71,35 @@ export class SessionNote {
   }
 
   /** 판(session_revisions)의 sections·redactions 열에서 */
-  static restore(
-    sections: Readonly<Record<string, unknown>>,
-    redactions: readonly Readonly<Record<string, unknown>>[] | null,
-  ): SessionNote {
+  static restore(row: Readonly<Pick<SessionRevisionRow, 'sections' | 'redactions'>>): SessionNote {
+    const sections = row.sections as Readonly<Record<string, unknown>>;
+    const redactions = (row.redactions ?? []) as readonly Readonly<Record<string, unknown>>[];
     return new SessionNote(
       String(sections.title ?? ''),
       Array.isArray(sections.tags) ? sections.tags.map(String) : [],
       new Map(SessionNote.SECTIONS.map(([name]) => [name, String(sections[name] ?? '')])),
-      (redactions ?? []).map((r) => Redaction.restore(r)),
+      redactions.map((r) => Redaction.restore(r)),
     );
   }
 
   section(name: string): string {
     return this.sections.get(name) ?? '';
+  }
+
+  /** 칸마다 이름, 소제목, 글. 화면에 보일 순서대로 */
+  headedSections(): readonly { name: string; heading: string; text: string }[] {
+    return SessionNote.SECTIONS.map(([name, heading]) => ({
+      name,
+      heading,
+      text: this.section(name),
+    }));
+  }
+
+  /** 내용이 있는 칸만 이름 → 글. 이름은 save_session의 입력과 같다 */
+  filledSections(): Readonly<Record<string, string>> {
+    return Object.fromEntries(
+      SessionNote.SECTIONS.map(([name]) => [name, this.section(name)]).filter(([, text]) => text),
+    );
   }
 
   /**

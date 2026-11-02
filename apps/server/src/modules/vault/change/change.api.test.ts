@@ -898,9 +898,11 @@ describe('관리 화면 편집', () => {
     const set = await edit(
       new WikiReviseOp(1, id, Number(version), null, WikiBody.parse('사람'), null),
     );
-    assert.deepEqual([set.kind, set.status, set.actorType], ['human', 'done', 'user']);
-    assert.equal(set.ops[0]?.verdict, 'merge');
-    assert.equal(set.ops[0]?.rule, null);
+    const { kind, status, ops } = set.view().toJSON();
+    const [row] = await db.sql`SELECT actor_type FROM vault.change_sets WHERE id = ${set.id}`;
+    assert.deepEqual([kind, status, row?.actor_type], ['human', 'done', 'user']);
+    assert.equal(ops[0]?.verdict, 'merge');
+    assert.equal(ops[0]?.rule, null);
   });
 
   test('version이 어긋나면 409, 없는 대상은 404', async () => {

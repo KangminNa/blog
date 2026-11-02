@@ -1,63 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseResponse, BaseTool } from '../../platform';
+import { Actor, BaseTool } from '../../platform';
 import { Post } from './post';
-import { PostQuery, type PostView } from './post.query';
-import { ReadPostRequest, SaveDraftRequest } from './post.request';
+import { ReadPostInput, SaveDraftInput } from './post.input';
+import { PostQuery } from './post.query';
 import { PostService } from './post.service';
+import type { ToolDraftView, ToolPostView } from './post.view';
 import { PostContent } from './post-content';
 
 // AI 도구의 글 쓰기 (write 권한). 기기와 에이전트의 작업 토큰이 같은 도구를 쓴다.
 // 초안까지만 쓴다. 공개와 공개된 글 고치기는 주인의 일이다 (Post가 막는다).
 // 입력 모양을 바꾸면 스킬을 함께 고친다. 깨지는 변경은 새 도구 이름으로 (API설계 2장).
-
-/** blog_get_post의 답 */
-export class ToolPostResponse extends BaseResponse {
-  private constructor(private readonly view: PostView) {
-    super();
-  }
-
-  static of(view: PostView): ToolPostResponse {
-    return new ToolPostResponse(view);
-  }
-
-  toJSON(): object {
-    const { summary, body } = this.view;
-    return {
-      post_id: summary.id,
-      title: summary.title,
-      body_md: body,
-      status: summary.status,
-      version: summary.version,
-      tags: summary.tags,
-      main_wiki_id: this.view.mainWikiId,
-      ref_wiki_ids: this.view.refWikiIds,
-    };
-  }
-}
-
-/** blog_save_draft의 답. url은 주인이 초안을 여는 편집기 주소 (초안은 방문자에게 보이지 않는다) */
-export class ToolDraftResponse extends BaseResponse {
-  private constructor(
-    private readonly post: Post,
-    private readonly site: string,
-  ) {
-    super();
-  }
-
-  static of(post: Post, site: string): ToolDraftResponse {
-    return new ToolDraftResponse(post, site);
-  }
-
-  toJSON(): object {
-    const p = this.post;
-    return {
-      post_id: p.id,
-      version: p.version,
-      status: p.status,
-      url: `${this.site}/admin/posts/${p.id}`,
-    };
-  }
-}
 
 @Injectable()
 export class BlogGetPostTool extends BaseTool {
@@ -81,8 +33,8 @@ export class BlogGetPostTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<ToolPostResponse> {
-    return ToolPostResponse.of(await this.posts.editable(actor, ReadPostRequest.fromTool(raw)));
+  async handle(actor: Actor, raw: unknown): Promise<ToolPostView> {
+    return this.posts.editable(actor, ReadPostInput.fromTool(raw));
   }
 }
 
@@ -141,10 +93,7 @@ export class BlogSaveDraftTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown, site: string): Promise<ToolDraftResponse> {
-    return ToolDraftResponse.of(
-      await this.posts.saveDraft(actor, SaveDraftRequest.from(raw)),
-      site,
-    );
+  async handle(actor: Actor, raw: unknown, site: string): Promise<ToolDraftView> {
+    return (await this.posts.saveDraft(actor, SaveDraftInput.from(raw))).draftView(site);
   }
 }

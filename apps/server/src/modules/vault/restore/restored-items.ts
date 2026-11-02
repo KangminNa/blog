@@ -3,6 +3,15 @@ import { ChangeWork } from '../change/change-target';
 import { Session } from '../session/session';
 import { SessionNote } from '../session/session-note';
 import { SlugPolicy } from '../slug.policy';
+import type {
+  CategoryRow,
+  EdgeNew,
+  PostMarkRow,
+  SessionNew,
+  SessionRevisionNew,
+  WikiRevisionNew,
+  WikiRow,
+} from '../vault.tables';
 import { Wiki } from '../wiki/wiki';
 import { WikiBody } from '../wiki/wiki-body';
 
@@ -10,35 +19,32 @@ import { WikiBody } from '../wiki/wiki-body';
 // 칸·해시·찾기용 글은 저장할 때와 같은 객체(SessionNote, WikiBody)로 다시 만든다. 그래야 복원 뒤의 고치기·저장이 그대로 돈다.
 // 지금 판이 첫 판이 되고(판 번호 1), 판을 만든 쪽은 system이다.
 // 판 id는 파일에 없어 새로 짓는다 (지난 판은 복원하지 않는다).
+// 항목마다 넣을 행을 들고 있다. 공간은 복원할 때 정해지므로 행에 없다.
 
 const ORIGINS: readonly string[] = [ChangeWork.AI, ChangeWork.HUMAN];
+const SYSTEM = 'system';
 
 /** vault/categories.yml의 항목 하나. 출처·고정이 없는 옛 백업은 사람의 것으로 본다 (AI가 덮지 못하게) */
 export class RestoredCategory extends BaseEntity {
   private constructor(
-    id: string,
-    readonly name: string,
-    readonly slug: string,
-    readonly color: string | null,
-    readonly description: string | null,
-    readonly sort: number,
-    readonly origin: string,
-    readonly pinned: boolean,
+    readonly row: Omit<CategoryRow, 'space_id' | 'version' | 'meta'>,
     readonly createdAt: Date,
   ) {
-    super(id, 1);
+    super(row.node_id, 1);
   }
 
   static read(record: ArchiveRecord): RestoredCategory {
     return new RestoredCategory(
-      record.id(),
-      record.text('name'),
-      record.attempt(() => SlugPolicy.check(record.text('slug'))),
-      record.optionalText('color'),
-      record.optionalText('description'),
-      record.number('sort'),
-      record.has('origin') ? record.oneOf('origin', ORIGINS) : ChangeWork.HUMAN,
-      record.flag('pinned', true),
+      {
+        node_id: record.id(),
+        name: record.text('name'),
+        slug: record.attempt(() => SlugPolicy.check(record.text('slug'))),
+        color: record.optionalText('color'),
+        description: record.optionalText('description'),
+        sort: record.number('sort'),
+        origin: record.has('origin') ? record.oneOf('origin', ORIGINS) : ChangeWork.HUMAN,
+        pinned: record.flag('pinned', true),
+      },
       record.createdAt,
     );
   }
@@ -56,45 +62,60 @@ export class RestoredWiki extends BaseEntity {
     'cairn_origin',
     'cairn_pinned',
   ]);
-  readonly revisionId = BaseEntity.newId();
 
   private constructor(
-    id: string,
-    readonly slug: string,
-    readonly title: string,
-    readonly visibility: string,
-    readonly categoryId: string | null,
-    readonly origin: string,
-    readonly pinned: readonly string[],
-    readonly body: WikiBody,
-    readonly createdAt: Date,
-    readonly kept: Readonly<Record<string, string>>,
+    readonly row: Omit<WikiRow, 'space_id' | 'version'>,
+    readonly revision: WikiRevisionNew,
   ) {
-    super(id, 1);
+    super(row.node_id, 1);
   }
 
   static read(record: ArchiveRecord): RestoredWiki {
     const name = record.path.slice(record.path.lastIndexOf('/') + 1, -'.md'.length);
     const body = WikiBody.parse(record.body);
+    const id = record.id();
+    const revisionId = BaseEntity.newId();
+    const slug = record.attempt(() => SlugPolicy.check(name));
+    const title = record.text('title');
+    const visibility = record.oneOf('visibility', Wiki.VISIBILITIES);
+    const categoryId = record.optionalId('cairn_category');
+    const origin = record.has('cairn_origin')
+      ? record.oneOf('cairn_origin', ORIGINS)
+      : ChangeWork.HUMAN;
+    // 옛 백업에는 사람이 고친 칸의 표시가 없다. 모두 사람의 것으로 두어 AI가 바로 덮지 못하게 한다
+    const pinned = record.has('cairn_pinned')
+      ? record.texts('cairn_pinned')
+      : [Wiki.TITLE_KEY, ...body.sections.map((s) => s.key)];
+    const createdAt = record.createdAt;
     return new RestoredWiki(
-      record.id(),
-      record.attempt(() => SlugPolicy.check(name)),
-      record.text('title'),
-      record.oneOf('visibility', Wiki.VISIBILITIES),
-      record.optionalId('cairn_category'),
-      record.has('cairn_origin') ? record.oneOf('cairn_origin', ORIGINS) : ChangeWork.HUMAN,
-      // 옛 백업에는 사람이 고친 칸의 표시가 없다. 모두 사람의 것으로 두어 AI가 바로 덮지 못하게 한다
-      record.has('cairn_pinned')
-        ? record.texts('cairn_pinned')
-        : [Wiki.TITLE_KEY, ...body.sections.map((s) => s.key)],
-      body,
-      record.createdAt,
-      record.unknownKeys(RestoredWiki.KNOWN),
+      {
+        node_id: id,
+        category_id: categoryId,
+        title,
+        slug,
+        visibility,
+        origin,
+        head_revision_id: revisionId,
+        pinned_sections: pinned,
+        head_text: body.markdown,
+        revision_count: 1,
+        created_at: createdAt,
+        updated_at: createdAt,
+        meta: ArchiveFile.metaOf(record.unknownKeys(RestoredWiki.KNOWN)),
+      },
+      {
+        id: revisionId,
+        wiki_id: id,
+        seq: 1,
+        kind: origin,
+        body_md: body.markdown,
+        sections: body.sections.map((s) => s.toJSON()),
+        section_hashes: body.sectionHashes(),
+        content_hash: body.hash,
+        actor_type: SYSTEM,
+        created_at: createdAt,
+      },
     );
-  }
-
-  get meta(): Record<string, unknown> {
-    return ArchiveFile.metaOf(this.kept);
   }
 }
 
@@ -108,6 +129,7 @@ export class RestoredSession extends BaseEntity {
    */
   static readonly NO_DEVICE = '00000000-0000-7000-8000-000000000000';
   private static readonly VISIBILITIES: readonly string[] = [Session.PRIVATE, Session.PUBLIC];
+  private static readonly ORIGIN = 'origin';
   private static readonly KNOWN: ReadonlySet<string> = new Set([
     'cairn_format',
     'cairn_type',
@@ -121,47 +143,73 @@ export class RestoredSession extends BaseEntity {
     'project',
     'tags',
   ]);
-  readonly revisionId = BaseEntity.newId();
 
   private constructor(
-    id: string,
-    readonly visibility: string,
-    readonly tool: string,
-    readonly project: string | null,
-    readonly started: Date | null,
+    readonly row: Omit<SessionNew, 'space_id' | 'wiki_id'>,
+    readonly revision: SessionRevisionNew,
+    /** 파일에 적힌 대표 wiki. 복원되는 wiki일 때만 쓴다 */
     readonly wikiId: string | null,
-    readonly pinned: readonly string[],
-    readonly note: SessionNote,
-    /** 본문 md 그대로. 칸은 note에서 다시 만들지만 내보낼 글은 바이트까지 지킨다 */
-    readonly body: string,
-    readonly kept: Readonly<Record<string, string>>,
+    /** 시작한 때. 파일에 없으면 지금 */
+    readonly at: Date,
   ) {
-    super(id, 1);
+    super(row.node_id, 1);
   }
 
   static read(record: ArchiveRecord): RestoredSession {
     const wikiId = record.optionalId('cairn_wiki');
-    return new RestoredSession(
-      record.id(),
-      record.oneOf('visibility', RestoredSession.VISIBILITIES),
-      record.text('tool'),
-      record.optionalText('project'),
-      record.date('started'),
-      wikiId,
-      record.has('cairn_pinned')
-        ? record.texts('cairn_pinned')
-        : wikiId === null
-          ? []
-          : [Session.WIKI_KEY],
-      record.attempt(() =>
-        SessionNote.write(
-          record.text('title'),
-          record.texts('tags'),
-          RestoredSession.sections(record.body),
-        ),
+    const id = record.id();
+    const revisionId = BaseEntity.newId();
+    const visibility = record.oneOf('visibility', RestoredSession.VISIBILITIES);
+    const tool = record.text('tool');
+    const project = record.optionalText('project');
+    const started = record.date('started');
+    const pinned = record.has('cairn_pinned')
+      ? record.texts('cairn_pinned')
+      : wikiId === null
+        ? []
+        : [Session.WIKI_KEY];
+    const note = record.attempt(() =>
+      SessionNote.write(
+        record.text('title'),
+        record.texts('tags'),
+        RestoredSession.sections(record.body),
       ),
-      record.body,
-      record.unknownKeys(RestoredSession.KNOWN),
+    );
+    const meta = ArchiveFile.metaOf(record.unknownKeys(RestoredSession.KNOWN));
+    const at = started ?? new Date();
+    return new RestoredSession(
+      {
+        node_id: id,
+        device_id: RestoredSession.NO_DEVICE,
+        tool,
+        source_session_id: id,
+        project,
+        visibility,
+        head_revision_id: revisionId,
+        head_title: note.title,
+        // 본문 md 그대로. 칸은 note에서 다시 만들지만 내보낼 글은 바이트까지 지킨다
+        head_text: record.body,
+        revision_count: 1,
+        started_at: started,
+        last_revision_at: at,
+        pinned_sections: pinned,
+        meta,
+      },
+      {
+        id: revisionId,
+        session_id: id,
+        seq: 1,
+        kind: RestoredSession.ORIGIN,
+        body_md: record.body,
+        sections: note.toJSON(),
+        sections_schema: SessionNote.SCHEMA,
+        section_hashes: note.sectionHashes(),
+        content_hash: note.hash,
+        actor_type: SYSTEM,
+        created_at: at,
+      },
+      wikiId,
+      at,
     );
   }
 
@@ -189,42 +237,28 @@ export class RestoredSession extends BaseEntity {
     });
     return new Map([...found].map(([name, text]) => [name, text.join('\n')]));
   }
-
-  get meta(): Record<string, unknown> {
-    return ArchiveFile.metaOf(this.kept);
-  }
 }
 
 /** vault/graph.json의 선 하나. 지운 선도 행으로 돌아와 사람이 지운 선을 AI가 다시 만들지 못한다 */
 export class RestoredEdge extends BaseEntity {
-  private constructor(
-    id: string,
-    readonly src: string,
-    readonly dst: string,
-    readonly kind: string,
-    readonly weight: number | null,
-    readonly origin: string,
-    readonly pinned: boolean,
-    readonly deletedAt: Date | null,
-    readonly deletedBy: string | null,
-    readonly createdAt: Date,
-  ) {
-    super(id, 1);
+  private constructor(readonly row: Omit<EdgeNew, 'space_id'>) {
+    super(row.id, 1);
   }
 
   static read(record: ArchiveRecord): RestoredEdge {
-    return new RestoredEdge(
-      record.id(),
-      record.id('src'),
-      record.id('dst'),
-      record.text('kind'),
-      record.optionalNumber('weight'),
-      record.oneOf('origin', ORIGINS),
-      record.flag('pinned', false),
-      record.date('deleted_at'),
-      record.optionalText('deleted_by'),
-      record.createdAt,
-    );
+    return new RestoredEdge({
+      id: record.id(),
+      src: record.id('src'),
+      dst: record.id('dst'),
+      kind: record.text('kind'),
+      weight: record.optionalNumber('weight'),
+      origin: record.oneOf('origin', ORIGINS),
+      pinned: record.flag('pinned', false),
+      deleted_at: record.date('deleted_at'),
+      deleted_by_type: record.optionalText('deleted_by'),
+      actor_type: SYSTEM,
+      created_at: record.createdAt,
+    });
   }
 }
 
@@ -257,26 +291,20 @@ export class RestoredPostMark extends BaseEntity {
   private static readonly PUBLISHED = 'published';
   private static readonly DRAFT = 'draft';
 
-  private constructor(
-    id: string,
-    readonly title: string,
-    readonly slug: string,
-    readonly status: string,
-    readonly mainWikiId: string | null,
-    readonly refWikiIds: readonly string[],
-  ) {
-    super(id, 1);
+  private constructor(readonly row: Omit<PostMarkRow, 'space_id' | 'updated_at'>) {
+    super(row.post_id, 1);
   }
 
   static read(record: ArchiveRecord): RestoredPostMark {
     const published = record.text('status') === RestoredPostMark.PUBLISHED;
-    return new RestoredPostMark(
-      record.id(),
-      record.text('title'),
-      record.text('slug'),
-      published ? RestoredPostMark.PUBLISHED : RestoredPostMark.DRAFT,
-      record.optionalId('cairn_main_wiki'),
-      record.ids('cairn_ref_wikis'),
-    );
+    return new RestoredPostMark({
+      post_id: record.id(),
+      title: record.text('title'),
+      slug: record.text('slug'),
+      status: published ? RestoredPostMark.PUBLISHED : RestoredPostMark.DRAFT,
+      main_wiki_id: record.optionalId('cairn_main_wiki'),
+      ref_wiki_ids: record.ids('cairn_ref_wikis'),
+      post_version: 1,
+    });
   }
 }

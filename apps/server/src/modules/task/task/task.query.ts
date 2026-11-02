@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { type Actor, AgentActor, BaseQuery, NotFound, type Row } from '../../platform';
+import { type Actor, AgentActor, BaseQuery, NotFound } from '../../platform';
+import type { TaskEventRow, TaskRow } from '../task.tables';
 import { Task } from './task';
-import type { ListTasksInput, TaskIdInput } from './task.input';
+import type { IdInput, ListInput } from './task.input';
 import { TaskDetailView, TaskEventView, TaskPageView, TaskView } from './task.view';
 
 // 작업 읽기. 목록과 상세는 주인만. mcp 모듈은 작업 토큰이 아직 살아 있는지 여기에 묻는다.
@@ -13,9 +14,9 @@ export class TaskQuery extends BaseQuery {
   /** 목록 카드에 보이는 마지막 기록의 길이 */
   private static readonly LAST_EVENT = 200;
 
-  async list(actor: Actor, req: ListTasksInput): Promise<TaskPageView> {
+  async list(actor: Actor, req: ListInput): Promise<TaskPageView> {
     actor.assertOwner();
-    const rows = await this.sql`
+    const rows = await this.sql<(TaskRow & { last_event: string | null })[]>`
       SELECT t.*, e.body AS last_event FROM task.tasks t
       LEFT JOIN LATERAL (
         SELECT left(body, ${TaskQuery.LAST_EVENT}) AS body FROM task.task_events
@@ -26,34 +27,25 @@ export class TaskQuery extends BaseQuery {
         ${req.cursor === null ? this.sql`` : this.sql`AND t.id < ${req.cursor}`}
       ORDER BY t.id DESC
       LIMIT ${TaskQuery.PAGE + 1}`;
-    const page = rows.slice(0, TaskQuery.PAGE).map((r) => TaskQuery.view(r));
-    return new TaskPageView(page, rows.length > TaskQuery.PAGE ? (page.at(-1)?.id ?? null) : null);
+    const page = rows.slice(0, TaskQuery.PAGE);
+    return new TaskPageView(
+      page.map((r) => new TaskView(r, r.last_event)),
+      rows.length > TaskQuery.PAGE ? (page.at(-1)?.id ?? null) : null,
+    );
   }
 
-  async get(actor: Actor, req: TaskIdInput): Promise<TaskDetailView> {
+  async get(actor: Actor, req: IdInput): Promise<TaskDetailView> {
     actor.assertOwner();
-    const [row] = await this.sql`
+    const [row] = await this.sql<TaskRow[]>`
       SELECT * FROM task.tasks WHERE space_id = ${actor.spaceId} AND id = ${req.id}`;
     if (!row) throw new NotFound('작업을 찾을 수 없어요');
-    const events = await this.sql`
+    const events = await this.sql<TaskEventRow[]>`
       SELECT * FROM (
         SELECT * FROM task.task_events WHERE task_id = ${req.id} ORDER BY id DESC LIMIT ${TaskQuery.EVENTS}
       ) e ORDER BY id`;
     return new TaskDetailView(
-      TaskQuery.view(row),
-      String(row.instruction),
-      row.payload,
-      row.result,
-      events.map(
-        (e) =>
-          new TaskEventView(
-            String(e.id),
-            new Date(e.at),
-            String(e.kind),
-            String(e.body),
-            Number(e.tokens),
-          ),
-      ),
+      row,
+      events.map((e) => new TaskEventView(e)),
     );
   }
 
@@ -68,25 +60,5 @@ export class TaskQuery extends BaseQuery {
       WHERE id = ${actor.taskId} AND agent_id = ${actor.agentId}
         AND status IN (${Task.RUNNING}, ${Task.WAITING}) AND lease_until > now()`;
     return row !== undefined;
-  }
-
-  private static view(r: Row): TaskView {
-    return new TaskView(
-      String(r.id),
-      r.agent_id === null ? null : String(r.agent_id),
-      String(r.kind),
-      String(r.title),
-      String(r.status),
-      Number(r.priority),
-      r.target_kind === null ? null : String(r.target_kind),
-      r.target_id === null ? null : String(r.target_id),
-      r.base_version === null ? null : Number(r.base_version),
-      Number(r.attempts),
-      r.lease_until === null ? null : new Date(r.lease_until),
-      Number(r.version),
-      new Date(r.created_at),
-      r.finished_at === null ? null : new Date(r.finished_at),
-      r.last_event === undefined || r.last_event === null ? null : String(r.last_event),
-    );
   }
 }

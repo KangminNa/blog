@@ -1,43 +1,38 @@
-// 작업의 읽기 모양. 웹이 `import type`으로 가져오므로 아무것도 import하지 않는다 (객체설계 6장).
+import type { AgentRow, TaskEventRow, TaskRow } from '../task.tables';
+
+// 작업의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
+// 표의 칸 중 무엇을 내보내는지는 여기 한 곳에만 적는다.
+
+/** 작업의 대상. 없으면 null */
+function targetOf(r: Readonly<TaskRow>) {
+  return r.target_kind === null
+    ? null
+    : { kind: r.target_kind, id: r.target_id, version: r.base_version };
+}
 
 /** 작업 목록의 한 줄 */
 export class TaskView {
   constructor(
-    readonly id: string,
-    readonly agentId: string | null,
-    readonly kind: string,
-    readonly title: string,
-    readonly status: string,
-    readonly priority: number,
-    readonly targetKind: string | null,
-    readonly targetId: string | null,
-    readonly baseVersion: number | null,
-    readonly attempts: number,
-    readonly leaseUntil: Date | null,
-    readonly version: number,
-    readonly createdAt: Date,
-    readonly finishedAt: Date | null,
+    protected readonly row: Readonly<TaskRow>,
     /** 마지막 실행 기록 앞부분. 목록에서만 채운다 */
-    readonly lastEvent: string | null,
+    private readonly lastEvent: string | null = null,
   ) {}
 
   toJSON() {
+    const r = this.row;
     return {
-      id: this.id,
-      agentId: this.agentId,
-      kind: this.kind,
-      title: this.title,
-      status: this.status,
-      priority: this.priority,
-      target:
-        this.targetKind === null
-          ? null
-          : { kind: this.targetKind, id: this.targetId, version: this.baseVersion },
-      attempts: this.attempts,
-      leaseUntil: this.leaseUntil?.toISOString() ?? null,
-      version: this.version,
-      createdAt: this.createdAt.toISOString(),
-      finishedAt: this.finishedAt?.toISOString() ?? null,
+      id: r.id,
+      agentId: r.agent_id,
+      kind: r.kind,
+      title: r.title,
+      status: r.status,
+      priority: r.priority,
+      target: targetOf(r),
+      attempts: r.attempts,
+      leaseUntil: r.lease_until?.toISOString() ?? null,
+      version: r.version,
+      createdAt: r.created_at.toISOString(),
+      finishedAt: r.finished_at?.toISOString() ?? null,
       lastEvent: this.lastEvent,
     };
   }
@@ -45,41 +40,36 @@ export class TaskView {
 
 /** 실행 기록 한 줄 */
 export class TaskEventView {
-  constructor(
-    readonly id: string,
-    readonly at: Date,
-    readonly kind: string,
-    readonly body: string,
-    readonly tokens: number,
-  ) {}
+  constructor(private readonly row: Readonly<TaskEventRow>) {}
 
   toJSON() {
+    const r = this.row;
     return {
-      id: this.id,
-      at: this.at.toISOString(),
-      kind: this.kind,
-      body: this.body,
-      tokens: this.tokens,
+      id: String(r.id),
+      at: r.at.toISOString(),
+      kind: r.kind,
+      body: r.body,
+      tokens: r.tokens,
     };
   }
 }
 
 /** 작업 하나: 목록 정보 + 지시, 입력, 결과, 실행 기록 */
-export class TaskDetailView {
+export class TaskDetailView extends TaskView {
   constructor(
-    readonly task: TaskView,
-    readonly instruction: string,
-    readonly payload: unknown,
-    readonly result: unknown,
-    readonly events: readonly TaskEventView[],
-  ) {}
+    row: Readonly<TaskRow>,
+    private readonly events: readonly TaskEventView[],
+  ) {
+    super(row);
+  }
 
-  toJSON() {
+  override toJSON() {
+    const r = this.row;
     return {
-      ...this.task.toJSON(),
-      instruction: this.instruction,
-      payload: this.payload,
-      result: this.result,
+      ...super.toJSON(),
+      instruction: r.instruction,
+      payload: r.payload,
+      result: r.result,
       events: this.events.map((e) => e.toJSON()),
     };
   }
@@ -88,8 +78,8 @@ export class TaskDetailView {
 /** 작업 목록 한 쪽 */
 export class TaskPageView {
   constructor(
-    readonly tasks: readonly TaskView[],
-    readonly next: string | null,
+    private readonly tasks: readonly TaskView[],
+    private readonly next: string | null,
   ) {}
 
   toJSON() {
@@ -103,70 +93,68 @@ export class TaskPageView {
  */
 export class JobView {
   constructor(
-    readonly taskId: string,
-    readonly kind: string,
-    readonly title: string,
-    readonly instruction: string,
-    readonly payload: unknown,
-    readonly targetKind: string | null,
-    readonly targetId: string | null,
-    readonly baseVersion: number | null,
-    readonly skill: string | null,
-    readonly revisionNote: string | null,
-    readonly agentId: string | null,
-    readonly agentName: string | null,
-    readonly agentRole: string | null,
-    readonly agentTool: string | null,
-    readonly leaseUntil: Date | null,
-    readonly runToken: string | null,
+    private readonly row: Readonly<TaskRow>,
+    private readonly skill: string | null,
+    private readonly revisionNote: string | null,
+    private readonly agent: Pick<AgentRow, 'id' | 'name' | 'role' | 'tool'> | null,
+    private readonly runToken: string | null,
   ) {}
 
   toJSON() {
+    const r = this.row;
+    const a = this.agent;
     return {
       task: {
-        id: this.taskId,
-        kind: this.kind,
-        title: this.title,
-        payload: this.payload,
-        lease_until: this.leaseUntil?.toISOString() ?? null,
+        id: r.id,
+        kind: r.kind,
+        title: r.title,
+        payload: r.payload,
+        lease_until: r.lease_until?.toISOString() ?? null,
       },
-      instruction: this.instruction,
-      target:
-        this.targetKind === null
-          ? null
-          : { kind: this.targetKind, id: this.targetId, version: this.baseVersion },
+      instruction: r.instruction,
+      target: targetOf(r),
       skill: this.skill,
       revision_note: this.revisionNote,
-      agent:
-        this.agentId === null
-          ? null
-          : {
-              id: this.agentId,
-              name: this.agentName,
-              role: this.agentRole,
-              tool: this.agentTool,
-            },
+      agent: a === null ? null : { id: a.id, name: a.name, role: a.role, tool: a.tool },
       run_token: this.runToken,
     };
+  }
+}
+
+/** next_jobs의 답 */
+export class NextJobsView {
+  constructor(private readonly jobs: readonly JobView[]) {}
+
+  toJSON() {
+    return { jobs: this.jobs.map((j) => j.toJSON()) };
   }
 }
 
 /** 진행 보고의 답 (report_progress). cancelled면 러너가 작업을 멈춘다 */
 export class ProgressView {
   constructor(
-    readonly status: string,
-    readonly cancelled: boolean,
+    private readonly row: Readonly<TaskRow>,
+    private readonly cancelled: boolean,
     /** 에이전트가 멈췄는가 (한도를 넘겼거나 주인이 멈춤). 러너는 release_job으로 돌려줄 수 있다 */
-    readonly paused: boolean,
-    readonly leaseUntil: Date | null,
+    private readonly paused: boolean,
   ) {}
 
   toJSON() {
+    const r = this.row;
     return {
-      status: this.status,
+      status: r.status,
       cancelled: this.cancelled,
       paused: this.paused,
-      lease_until: this.leaseUntil?.toISOString() ?? null,
+      lease_until: r.lease_until?.toISOString() ?? null,
     };
+  }
+}
+
+/** submit_result · release_job의 답 */
+export class JobStateView {
+  constructor(private readonly row: Readonly<TaskRow>) {}
+
+  toJSON() {
+    return { task_id: this.row.id, status: this.row.status };
   }
 }

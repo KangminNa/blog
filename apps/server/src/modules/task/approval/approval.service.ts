@@ -40,16 +40,7 @@ export class ApprovalService extends BaseService {
       const tasks = new TaskRepository(tx);
       const task = await tasks.lock(spaceId, taskId);
       const agent = await new AgentRepository(tx).load(spaceId, agentId);
-      const approval = Approval.request(
-        task,
-        agent,
-        req.action,
-        req.targetKind,
-        req.targetId,
-        req.targetVersion,
-        req.note,
-        now,
-      );
+      const approval = Approval.request(task, agent, req.fields, now);
       await tasks.save(task);
       await approvals.save(approval);
       await once.remember({ approvalId: approval.id });

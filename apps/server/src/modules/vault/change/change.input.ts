@@ -4,6 +4,7 @@ import { type ChangeOp, ChangeOps } from './change-op';
 // 변경 묶음 입력의 모양. REST(콘솔)는 camelCase, MCP(AI)는 snake_case로 받는다.
 // 도구 모양은 docs/API설계.md 4장이 원본이고, payload의 칸은 변경 종류마다 다르다 (SubmitChangesTool의 설명).
 
+/** 없어도 되는 base_version의 상한. f.version()은 필수 칸만 읽는다 */
 const VERSION_MAX = 2_147_483_647;
 const SEQ_MAX = 9_999;
 
@@ -108,7 +109,7 @@ export class DecideChangeInput extends BaseRequest {
       return new DecideChangeInput(
         f.uuid('setId'),
         f.integer('seq', 1, SEQ_MAX),
-        f.integer('version', 1, VERSION_MAX),
+        f.version(),
         decision,
       );
     });
@@ -131,7 +132,7 @@ export class RevertChangeInput extends BaseRequest {
   static from(setId: string, raw: unknown): RevertChangeInput {
     return BaseRequest.read(
       { ...(raw as object), setId },
-      (f) => new RevertChangeInput(f.uuid('setId'), f.integer('version', 1, VERSION_MAX)),
+      (f) => new RevertChangeInput(f.uuid('setId'), f.version()),
     );
   }
 }

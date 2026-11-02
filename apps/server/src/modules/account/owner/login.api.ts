@@ -7,15 +7,10 @@ import {
   type HttpResponse,
 } from '../../platform';
 import { WebSession } from './owner';
+import { ChangePasswordInput, LoginInput } from './owner.input';
 import { OwnerQuery } from './owner.query';
-import { ChangePasswordRequest, LoginRequest } from './owner.request';
-import {
-  LoginResponse,
-  LogoutResponse,
-  OwnerResponse,
-  PasswordChangedResponse,
-} from './owner.response';
 import { OwnerService } from './owner.service';
+import { LoggedInView, type OwnerView } from './owner.view';
 
 // 주인 로그인 (아이디·비밀번호). 로그인 쿠키는 httpOnly라 웹 화면의 스크립트가 읽을 수 없다.
 @Controller('api/auth')
@@ -31,19 +26,19 @@ export class LoginController {
     @Body() body: unknown,
     @Req() req: HttpRequest,
     @Res({ passthrough: true }) res: HttpResponse,
-  ): Promise<LoginResponse> {
+  ): Promise<LoggedInView> {
     const session = await this.service.login(
-      LoginRequest.from(body),
+      LoginInput.from(body),
       req.ip ?? '',
       String(req.headers['user-agent'] ?? ''),
     );
     Cookies.set(res, req, WebSession.COOKIE, session.token ?? '', WebSession.DAYS * 86_400);
-    return new LoginResponse();
+    return new LoggedInView();
   }
 
   @Get('me')
-  async me(@CurrentActor() actor: Actor): Promise<OwnerResponse> {
-    return OwnerResponse.of(await this.owners.me(actor));
+  me(@CurrentActor() actor: Actor): Promise<OwnerView> {
+    return this.owners.me(actor);
   }
 
   @HttpCode(200)
@@ -52,23 +47,24 @@ export class LoginController {
     @CurrentActor() actor: Actor,
     @Req() req: HttpRequest,
     @Res({ passthrough: true }) res: HttpResponse,
-  ): Promise<LogoutResponse> {
+  ): Promise<object> {
     await this.service.logout(actor, Cookies.read(req, WebSession.COOKIE));
     Cookies.clear(res, WebSession.COOKIE);
-    return new LogoutResponse();
+    return { loggedOut: true };
   }
 
+  /** 비밀번호를 바꿈. 다른 기기의 로그인은 끝났다 */
   @Put('password')
   async password(
     @CurrentActor() actor: Actor,
     @Body() body: unknown,
     @Req() req: HttpRequest,
-  ): Promise<PasswordChangedResponse> {
+  ): Promise<object> {
     await this.service.changePassword(
       actor,
       Cookies.read(req, WebSession.COOKIE),
-      ChangePasswordRequest.from(body),
+      ChangePasswordInput.from(body),
     );
-    return new PasswordChangedResponse();
+    return { changed: true, otherSessionsEnded: true };
   }
 }

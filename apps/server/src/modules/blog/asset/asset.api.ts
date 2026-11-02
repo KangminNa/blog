@@ -1,30 +1,9 @@
 import { Body, Controller, Get, Param, Post, Res, StreamableFile } from '@nestjs/common';
-import {
-  type Actor,
-  BaseResponse,
-  type Blob,
-  CurrentActor,
-  type HttpResponse,
-} from '../../platform';
+import { type Actor, CurrentActor, type HttpResponse } from '../../platform';
 import { UploadAssetInput } from './asset.input';
 import { AssetQuery } from './asset.query';
 import { AssetService } from './asset.service';
 import { AssetView } from './asset.view';
-
-/** 올린 사진 하나 */
-export class AssetResponse extends BaseResponse {
-  private constructor(private readonly blob: Blob) {
-    super();
-  }
-
-  static of(blob: Blob): AssetResponse {
-    return new AssetResponse(blob);
-  }
-
-  toJSON(): object {
-    return new AssetView(this.blob.hash, this.blob.mime, this.blob.size).toJSON();
-  }
-}
 
 // 글에 사진 올리기. 본문은 파일 그대로다 (HttpSetup이 image/*를 10MB까지 받는다). 주인만.
 @Controller('api/posts/:id/assets')
@@ -36,11 +15,9 @@ export class AssetController {
     @CurrentActor() actor: Actor,
     @Param('id') id: string,
     @Body() body: unknown,
-  ): Promise<AssetResponse> {
-    const input = UploadAssetInput.from(id, body);
-    return AssetResponse.of(
-      await this.service.upload(actor, input.postId, input.bytes, input.mime),
-    );
+  ): Promise<AssetView> {
+    const blob = await this.service.upload(actor, UploadAssetInput.from(id, body));
+    return new AssetView(blob.hash, blob.mime, blob.size);
   }
 }
 

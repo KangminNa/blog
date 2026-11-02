@@ -1,7 +1,88 @@
 import { BaseRequest, type RequestFields } from '../../platform';
+import { SessionNote } from './session-note';
+
+/**
+ * 세션 저장 (MCP `save_session`). AI 도구가 보내는 모양 그대로 snake_case.
+ * 인용(quotes)이 4,000자를 넘으면 400: AI가 핵심만 남겨 다시 보낸다.
+ */
+export class SaveSessionInput extends BaseRequest {
+  private constructor(
+    readonly requestId: string,
+    readonly sourceSessionId: string,
+    readonly tool: string,
+    readonly project: string | null,
+    readonly title: string,
+    /** 칸 이름(did · decisions · blocked · quotes · extra) → 글 */
+    readonly sections: ReadonlyMap<string, string>,
+    readonly tags: readonly string[],
+    readonly startedAt: Date | null,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): SaveSessionInput {
+    return BaseRequest.read(
+      raw,
+      (f) =>
+        new SaveSessionInput(
+          f.uuid('request_id'),
+          f.text('source_session_id', 200),
+          f.text('tool', 40),
+          f.optionalText('project', 100),
+          f.text('title', 200),
+          SaveSessionInput.sections(f),
+          f.optionalTextList('tags', 20, 40) ?? [],
+          f.optionalDate('started_at'),
+        ),
+    );
+  }
+
+  /** 고정 칸 다섯 (빈 칸은 빈 글자). 저장과 검사가 같은 규칙으로 읽는다 */
+  static sections(f: RequestFields): ReadonlyMap<string, string> {
+    return new Map(
+      SessionNote.SECTIONS.map(([name]) => [
+        name,
+        f.optionalText(
+          name,
+          name === 'quotes' ? SessionNote.QUOTES_MAX : SessionNote.SECTION_MAX,
+        ) ?? '',
+      ]),
+    );
+  }
+}
+
+/**
+ * 저장 전 검사 (MCP `check_session`). save_session과 같은 노트 모양이지만 대화 id·도구 이름은 없어도 된다.
+ * 대화 id를 모르는 도구(ChatGPT·Claude 앱)는 비워 보내고, 서버가 만들어 준 값을 같은 대화의 다음 저장에도 쓴다.
+ */
+export class CheckSessionInput extends BaseRequest {
+  private constructor(
+    readonly sourceSessionId: string | null,
+    readonly tool: string | null,
+    readonly title: string,
+    readonly sections: ReadonlyMap<string, string>,
+    readonly tags: readonly string[],
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): CheckSessionInput {
+    return BaseRequest.read(
+      raw,
+      (f) =>
+        new CheckSessionInput(
+          f.optionalText('source_session_id', 200),
+          f.optionalText('tool', 40),
+          f.text('title', 200),
+          SaveSessionInput.sections(f),
+          f.optionalTextList('tags', 20, 40) ?? [],
+        ),
+    );
+  }
+}
 
 /** 세션 목록 (GET /api/sessions?project=&cursor=). cursor는 앞 쪽 응답의 next 그대로 */
-export class ListSessionsRequest extends BaseRequest {
+export class ListSessionsInput extends BaseRequest {
   private static readonly CURSOR = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\|([0-9a-f-]{36})$/;
 
   private constructor(
@@ -12,13 +93,13 @@ export class ListSessionsRequest extends BaseRequest {
     super();
   }
 
-  static from(query: unknown): ListSessionsRequest {
+  static from(query: unknown): ListSessionsInput {
     return BaseRequest.read(query, (f) => {
       const cursor = f.optionalText('cursor', 200);
       const decoded = cursor ? Buffer.from(cursor, 'base64url').toString() : '';
-      const match = ListSessionsRequest.CURSOR.exec(decoded);
+      const match = ListSessionsInput.CURSOR.exec(decoded);
       if (cursor && !match) f.reject('cursor', '앞 쪽 응답의 next 값을 그대로 보내 주세요');
-      return new ListSessionsRequest(
+      return new ListSessionsInput(
         f.optionalText('project', 100),
         match?.[1] && match[2] ? [new Date(match[1]), match[2]] : null,
       );
@@ -35,7 +116,7 @@ export class ListSessionsRequest extends BaseRequest {
  * 세션 찾기 (MCP `search_sessions`). 띄어 쓴 단어는 모두 들어 있어야 찾는다.
  * cursor는 앞 응답의 next 그대로. 자리만 담고 있어서 서버가 그 세션을 다시 찾아보지 않는다.
  */
-export class SearchSessionsRequest extends BaseRequest {
+export class SearchSessionsInput extends BaseRequest {
   static readonly QUERY_MAX = 200;
   static readonly LIMIT_DEFAULT = 10;
   static readonly LIMIT_MAX = 30;
@@ -55,22 +136,22 @@ export class SearchSessionsRequest extends BaseRequest {
     super();
   }
 
-  static from(raw: unknown): SearchSessionsRequest {
+  static from(raw: unknown): SearchSessionsInput {
     return BaseRequest.read(raw, (f) => {
-      const query = f.text('query', SearchSessionsRequest.QUERY_MAX);
+      const query = f.text('query', SearchSessionsInput.QUERY_MAX);
       const words = query.split(/\s+/).filter(Boolean);
       if (query && words.length === 0) f.reject('query', '찾을 말을 써 주세요');
       const cursor = f.optionalText('cursor', 100);
       const before = cursor ? Buffer.from(cursor, 'base64url').toString() : null;
-      if (before !== null && !SearchSessionsRequest.SESSION_ID.test(before))
+      if (before !== null && !SearchSessionsInput.SESSION_ID.test(before))
         f.reject('cursor', '앞 응답의 next 값을 그대로 보내 주세요');
-      return new SearchSessionsRequest(
+      return new SearchSessionsInput(
         words,
         f.optionalText('project', 100),
         f.optionalText('tool', 40),
         f.optionalDate('from'),
         f.optionalDate('to'),
-        SearchSessionsRequest.limit(raw, f),
+        SearchSessionsInput.limit(raw, f),
         before,
       );
     });
@@ -85,24 +166,24 @@ export class SearchSessionsRequest extends BaseRequest {
   private static limit(raw: unknown, f: RequestFields): number {
     const given = (raw as Readonly<Record<string, unknown>> | null)?.limit;
     return given === undefined || given === null
-      ? SearchSessionsRequest.LIMIT_DEFAULT
-      : f.integer('limit', 1, SearchSessionsRequest.LIMIT_MAX);
+      ? SearchSessionsInput.LIMIT_DEFAULT
+      : f.integer('limit', 1, SearchSessionsInput.LIMIT_MAX);
   }
 }
 
 /** 세션 하나의 지금 판 (MCP `get_session`). save_session이 돌려준 session_id를 그대로 받는다 */
-export class GetSessionRequest extends BaseRequest {
+export class GetSessionInput extends BaseRequest {
   private constructor(readonly id: string) {
     super();
   }
 
-  static from(raw: unknown): GetSessionRequest {
-    return BaseRequest.read(raw, (f) => new GetSessionRequest(f.uuid('session_id')));
+  static from(raw: unknown): GetSessionInput {
+    return BaseRequest.read(raw, (f) => new GetSessionInput(f.uuid('session_id')));
   }
 }
 
 /** 세션 하나 또는 그 판 하나 (GET /api/sessions/:id, /api/sessions/:id/revisions/:seq) */
-export class ReadSessionRequest extends BaseRequest {
+export class ReadSessionInput extends BaseRequest {
   private constructor(
     readonly id: string,
     readonly seq: number | null,
@@ -110,11 +191,11 @@ export class ReadSessionRequest extends BaseRequest {
     super();
   }
 
-  static from(params: unknown): ReadSessionRequest {
+  static from(params: unknown): ReadSessionInput {
     return BaseRequest.read(params, (f) => {
       const seq = f.optionalText('seq', 9);
       if (seq !== null && !/^[1-9]\d*$/.test(seq)) f.reject('seq', '1 이상의 판 번호여야 해요');
-      return new ReadSessionRequest(f.uuid('id'), seq === null ? null : Number(seq));
+      return new ReadSessionInput(f.uuid('id'), seq === null ? null : Number(seq));
     });
   }
 }

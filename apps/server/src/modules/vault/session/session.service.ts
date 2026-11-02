@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseService, Database, Idempotency } from '../../platform';
-import type { SaveSessionRequest } from './save-session.request';
 import { SensitivePolicy } from './sensitive.policy';
 import { Session, SessionReceipt } from './session';
+import type { SaveSessionInput } from './session.input';
 import { SessionRepository } from './session.repository';
 import { SessionNote } from './session-note';
 
@@ -23,7 +23,7 @@ export class SessionService extends BaseService {
    * 트랜잭션 하나: 같은 요청인지 확인 → 대화 자리 잠그고 세션 찾기(없으면 만들기) → 판 쌓기 → outbox → 결과 기록.
    * 민감정보는 트랜잭션 전에 지운다 (판은 고칠 수 없으므로 판이 되기 전에).
    */
-  async save(actor: Actor, req: SaveSessionRequest): Promise<SessionReceipt> {
+  async save(actor: Actor, req: SaveSessionInput): Promise<SessionReceipt> {
     actor.assertCan(Actor.UPLOAD);
     const [spaceId, deviceId] = Session.uploader(actor);
     const note = this.sensitive.clean(SessionNote.write(req.title, req.tags, req.sections));

@@ -18,7 +18,7 @@ import { GetSessionTool } from './session/get-session.tool';
 import { SaveSessionTool } from './session/save-session.tool';
 import { SearchSessionsTool } from './session/search-sessions.tool';
 import { SensitivePolicy } from './session/sensitive.policy';
-import { SessionController } from './session/session.controller';
+import { SessionController } from './session/session.api';
 import { SessionQuery } from './session/session.query';
 import { SessionService } from './session/session.service';
 import { TidyController } from './tidy/tidy.api';

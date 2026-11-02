@@ -74,7 +74,8 @@ export class ApiClient {
   ) {}
 
   static async start(): Promise<ApiClient> {
-    process.env.CAIRN_SECRET_KEY ??= SecretBox.newKey();
+    // compose는 값이 없으면 빈 문자열로 넘긴다
+    process.env.CAIRN_SECRET_KEY ||= SecretBox.newKey();
     const app = await NestFactory.create(AppModule, { logger: false });
     HttpSetup.apply(app);
     await app.listen(0, '127.0.0.1');

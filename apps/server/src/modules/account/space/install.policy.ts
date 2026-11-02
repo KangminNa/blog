@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Conflict, type SecretBox, Unauthenticated } from '../../platform';
-import type { InstallStatusView } from './space.query';
+import type { InstallStatusView } from './space.view';
 
 // 처음 설치할 때 "서버를 가진 사람"인지 확인하는 규칙.
 //   설치 코드: 서버 키에서 만든다. 저장하지 않고, 서버 로그와 `pnpm install-code`로만 볼 수 있다.

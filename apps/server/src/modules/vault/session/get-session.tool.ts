@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseTool } from '../../platform';
-import { GetSessionRequest } from './read-session.request';
+import { GetSessionInput } from './session.input';
 import { SessionQuery } from './session.query';
-import { SessionNoteResponse } from './session.response';
+import type { SessionNoteView } from './session.view';
 
 // MCP 도구 get_session: 세션 하나의 지금 판을 읽는다. 볼 수 없는 세션은 없는 세션과 똑같이 답한다.
 @Injectable()
@@ -30,7 +30,7 @@ export class GetSessionTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<SessionNoteResponse> {
-    return SessionNoteResponse.of(await this.sessions.note(actor, GetSessionRequest.from(raw)));
+  handle(actor: Actor, raw: unknown): Promise<SessionNoteView> {
+    return this.sessions.note(actor, GetSessionInput.from(raw));
   }
 }

@@ -1,60 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseQuery, Database, NotFound, type Row } from '../../platform';
+import { Actor, BaseQuery, Database, NotFound } from '../../platform';
 import { PostWikiQuery } from '../../vault';
-import { Post } from './post';
-import { ListPostsRequest, type PostSlugRequest, type ReadPostRequest } from './post.request';
+import type { PostRow } from '../blog.tables';
+import { type LoadedPost, Post } from './post';
+import { ListPostsInput, type PostSlugInput, type ReadPostInput } from './post.input';
+import {
+  OwnerPostItemView,
+  OwnerPostView,
+  PostCountsView,
+  PostItemView,
+  PostPageView,
+  PostView,
+  ToolPostView,
+} from './post.view';
 
-/** 글 목록의 한 줄 */
-export class PostSummaryView {
-  constructor(
-    readonly id: string,
-    readonly slug: string,
-    readonly title: string,
-    readonly excerpt: string,
-    readonly status: string,
-    readonly tags: readonly string[],
-    readonly revisionCount: number,
-    readonly publishedAt: Date | null,
-    readonly updatedAt: Date,
-    readonly deletedAt: Date | null,
-    /** 글 버전 (목록에서 바로 되살릴 때 보낸다) */
-    readonly version: number,
-  ) {}
-}
-
-/** 관리 화면 탭의 글 수 */
-export class PostCountsView {
-  constructor(
-    readonly draft: number,
-    readonly published: number,
-    readonly unlisted: number,
-    readonly trash: number,
-  ) {}
-}
-
-/** 목록 한 쪽. counts는 비공개 글까지 보는 사람(주인)에게만 */
-export class PostPageView {
-  constructor(
-    readonly posts: readonly PostSummaryView[],
-    readonly next: string | null,
-    readonly counts: PostCountsView | null,
-  ) {}
-}
-
-/**
- * 글 하나: 목록 정보 + 본문. owner면 공개 범위·버전까지 보여준다.
- * wiki 연결에는 이 요청자가 볼 수 있는 wiki만 담는다: 진짜 id는 UUIDv7이라 비공개 wiki가 만들어진 때가 드러난다.
- */
-export class PostView {
-  constructor(
-    readonly summary: PostSummaryView,
-    readonly body: string,
-    readonly align: string,
-    readonly owner: boolean,
-    readonly mainWikiId: string | null,
-    readonly refWikiIds: readonly string[],
-  ) {}
-}
+/** 글 하나를 열 때 읽는 행. 제목은 찾기용 사본을 보여 준다 */
+type OpenedPost = Omit<LoadedPost, 'head_title'>;
 
 // 글 읽기. 방문자는 공개 글만 목록에 보이고, 링크만 글은 주소로만 열린다. 임시·휴지통 글은 없는 글과 같다.
 // 비공개까지 볼 수 있는 요청자(주인, read_all 기기)는 전부 본다.
@@ -70,60 +31,65 @@ export class PostQuery extends BaseQuery {
     super(db);
   }
 
-  async list(actor: Actor, req: ListPostsRequest): Promise<PostPageView> {
+  async list(actor: Actor, req: ListPostsInput): Promise<PostPageView> {
     const all = actor.canSeePrivate();
     // 주인은 고친 순서, 방문자는 발행한 순서
     const at = all ? this.sql`p.updated_at` : this.sql`p.published_at`;
-    const rows = await this.sql`
+    const rows = await this.sql<(PostRow & { revision_count: number })[]>`
       SELECT p.*, (SELECT count(*) FROM blog.post_revisions x WHERE x.post_id = p.id)::int AS revision_count
       FROM blog.posts p
       WHERE ${this.inSpace(actor)} ${this.filter(all, req.status)}
         ${req.before === null ? this.sql`` : this.sql`AND (${at}, p.id) < (${req.before[0]}, ${req.before[1]})`}
       ORDER BY ${at} DESC, p.id DESC
       LIMIT ${PostQuery.PAGE + 1}`;
-    const page = rows.slice(0, PostQuery.PAGE).map((r) => this.summary(r));
+    const page = rows.slice(0, PostQuery.PAGE);
     const last = page.at(-1);
-    const lastAt = all ? last?.updatedAt : last?.publishedAt;
+    const lastAt = all ? last?.updated_at : last?.published_at;
     return new PostPageView(
-      page,
+      page.map((r) => (all ? new OwnerPostItemView(r, r.revision_count) : new PostItemView(r))),
       rows.length > PostQuery.PAGE && last && lastAt
-        ? ListPostsRequest.cursorAfter(lastAt, last.id)
+        ? ListPostsInput.cursorAfter(lastAt, last.id)
         : null,
       all ? await this.counts(actor) : null,
     );
   }
 
   /** 주소로 글 하나. 방문자는 공개·링크만 글, 주인은 임시 글도 (미리 보기) */
-  async bySlug(actor: Actor, req: PostSlugRequest): Promise<PostView> {
+  async bySlug(actor: Actor, req: PostSlugInput): Promise<PostView> {
     const all = actor.canSeePrivate();
-    const [row] = await this.sql`
+    const [row] = await this.sql<OpenedPost[]>`
       ${this.selectOne()}
       WHERE ${this.inSpace(actor)} AND p.slug = ${req.slug} AND p.deleted_at IS NULL
         ${all ? this.sql`` : this.sql`AND p.status IN (${Post.PUBLISHED}, ${Post.UNLISTED})`}`;
-    if (!row) throw new NotFound('글을 찾을 수 없어요');
-    return this.view(row, all);
+    return PostQuery.view(PostQuery.found(row), all);
   }
 
   /** 편집기가 여는 글 하나 (휴지통 글 포함). 글을 쓸 수 있는 요청자만 */
-  async get(actor: Actor, req: ReadPostRequest): Promise<PostView> {
+  async get(actor: Actor, req: ReadPostInput): Promise<PostView> {
     actor.assertCan(Actor.WRITE);
-    const [row] = await this.sql`
+    const [row] = await this.sql<OpenedPost[]>`
       ${this.selectOne()}
       WHERE ${this.inSpace(actor)} AND p.id = ${req.id}`;
-    if (!row) throw new NotFound('글을 찾을 수 없어요');
-    return this.view(row, actor.canSeePrivate());
+    return PostQuery.view(PostQuery.found(row), actor.canSeePrivate());
   }
 
   /** 고칠 수 있는 글 하나 (AI 도구의 읽기, 사진 올리기). 휴지통 글은 없는 글과 같다 */
-  async editable(actor: Actor, req: ReadPostRequest): Promise<PostView> {
+  async editable(actor: Actor, req: ReadPostInput): Promise<ToolPostView> {
     actor.assertCan(Actor.WRITE);
-    const [row] = await this.sql`
+    const [row] = await this.sql<OpenedPost[]>`
       ${this.selectOne()}
       WHERE ${this.inSpace(actor)} AND p.id = ${req.id} AND p.deleted_at IS NULL`;
-    if (!row) throw new NotFound('글을 찾을 수 없어요');
-    const all = actor.canSeePrivate();
-    const seen = all ? null : await this.wikis.visible(actor, PostQuery.linksOf(row));
-    return this.view(row, all, seen);
+    const r = PostQuery.found(row);
+    const main = r.main_wiki_id;
+    const refs = r.ref_wiki_ids ?? [];
+    const links = [...(main === null ? [] : [main]), ...refs];
+    const seen = actor.canSeePrivate() ? new Set(links) : await this.wikis.visible(actor, links);
+    return new ToolPostView(
+      r,
+      r.head_body ?? '',
+      main !== null && seen.has(main) ? main : null,
+      refs.filter((id) => seen.has(id)),
+    );
   }
 
   private async counts(actor: Actor): Promise<PostCountsView> {
@@ -133,18 +99,13 @@ export class PostQuery extends BaseQuery {
              count(*) FILTER (WHERE deleted_at IS NULL AND status = ${Post.UNLISTED})::int AS unlisted,
              count(*) FILTER (WHERE deleted_at IS NOT NULL)::int AS trash
       FROM blog.posts p WHERE ${this.inSpace(actor)}`;
-    return new PostCountsView(
-      Number(c?.draft ?? 0),
-      Number(c?.published ?? 0),
-      Number(c?.unlisted ?? 0),
-      Number(c?.trash ?? 0),
-    );
+    return new PostCountsView(c?.draft ?? 0, c?.published ?? 0, c?.unlisted ?? 0, c?.trash ?? 0);
   }
 
   /** 목록에서 볼 글: 방문자는 공개 글만, 주인은 고른 탭 (없으면 휴지통 말고 전부) */
   private filter(all: boolean, status: string | null) {
     if (!all) return this.sql`AND p.status = ${Post.PUBLISHED} AND p.deleted_at IS NULL`;
-    if (status === ListPostsRequest.TRASH) return this.sql`AND p.deleted_at IS NOT NULL`;
+    if (status === ListPostsInput.TRASH) return this.sql`AND p.deleted_at IS NOT NULL`;
     if (status === null) return this.sql`AND p.deleted_at IS NULL`;
     return this.sql`AND p.status = ${status} AND p.deleted_at IS NULL`;
   }
@@ -162,41 +123,16 @@ export class PostQuery extends BaseQuery {
       FROM blog.posts p LEFT JOIN blog.post_revisions r ON r.id = p.head_revision_id`;
   }
 
-  /** seen: 비공개를 볼 수 없는 요청자에게 보여도 되는 wiki. 없으면 연결을 담지 않는다 */
-  private view(r: Row, owner: boolean, seen: ReadonlySet<string> | null = null): PostView {
-    const shown = (id: string) => owner || (seen?.has(id) ?? false);
-    const main = r.main_wiki_id === null ? null : String(r.main_wiki_id);
-    return new PostView(
-      this.summary(r),
-      String(r.head_body ?? ''),
-      String(r.align),
-      owner,
-      main !== null && shown(main) ? main : null,
-      PostQuery.refsOf(r).filter(shown),
-    );
+  private static found(row: OpenedPost | undefined): OpenedPost {
+    if (!row) throw new NotFound('글을 찾을 수 없어요');
+    return row;
   }
 
-  private static refsOf(r: Row): readonly string[] {
-    return (r.ref_wiki_ids as string[] | null) ?? [];
-  }
-
-  private static linksOf(r: Row): readonly string[] {
-    return [...(r.main_wiki_id === null ? [] : [String(r.main_wiki_id)]), ...PostQuery.refsOf(r)];
-  }
-
-  private summary(r: Row): PostSummaryView {
-    return new PostSummaryView(
-      String(r.id),
-      String(r.slug),
-      String(r.title ?? ''),
-      String(r.excerpt ?? ''),
-      String(r.status),
-      (r.tags as string[] | null) ?? [],
-      Number(r.revision_count),
-      r.published_at === null ? null : new Date(r.published_at),
-      new Date(r.updated_at),
-      r.deleted_at === null ? null : new Date(r.deleted_at),
-      Number(r.version),
-    );
+  private static view(r: OpenedPost, owner: boolean): PostView {
+    const body = r.head_body ?? '';
+    const listed = r.status === Post.PUBLISHED;
+    return owner
+      ? new OwnerPostView(r, body, listed, r.revision_count, r.ref_wiki_ids ?? [])
+      : new PostView(r, body, listed);
   }
 }

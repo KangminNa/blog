@@ -5,13 +5,17 @@ import {
   BaseService,
   Conflict,
   Database,
-  Forbidden,
   Idempotency,
   NotFound,
   RuleViolation,
 } from '../../platform';
 import { SensitivePolicy } from '../session/sensitive.policy';
-import type { DecideChangeInput, EditInput, SubmitChangesInput } from './change.input';
+import type {
+  DecideChangeInput,
+  EditInput,
+  RevertChangeInput,
+  SubmitChangesInput,
+} from './change.input';
 import { ChangeRepository } from './change.repository';
 import type { ChangeOp, TargetBoard } from './change-op';
 import { ChangeSet } from './change-set';
@@ -42,7 +46,7 @@ export class ChangeService extends BaseService {
    */
   async submit(actor: Actor, req: SubmitChangesInput): Promise<ChangeSet> {
     actor.assertCan(Actor.TIDY);
-    const spaceId = ChangeService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     const scrub = (text: string) => this.sensitive.scrub('wiki', text)[0];
     for (const op of req.ops) op.clean(scrub);
     const jobId = actor instanceof AgentActor ? actor.taskId : null;
@@ -87,7 +91,7 @@ export class ChangeService extends BaseService {
    */
   async edit(actor: Actor, req: EditInput): Promise<ChangeSet> {
     actor.assertOwner();
-    const spaceId = ChangeService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     return this.transaction(async (tx) => {
       const sets = new ChangeRepository(tx);
       const targets = new TargetRepository(tx, spaceId);
@@ -133,21 +137,16 @@ export class ChangeService extends BaseService {
    * 검토 결정 (T6). 묶음·대상 잠금 → 판정한 뒤 대상이 바뀌었으면 밀려남, 아니면 적용 → 남은 검토가 없으면 묶음을 닫는다.
    * 최신 내용 위에 덮어쓰지 않는다. 승인한 사람은 decided_by, 내용의 주인은 그대로 AI다.
    */
-  async decide(
-    actor: Actor,
-    setId: string,
-    seq: number,
-    decision: DecideChangeInput,
-  ): Promise<ChangeSet> {
+  async decide(actor: Actor, req: DecideChangeInput): Promise<ChangeSet> {
     actor.assertOwner();
-    const spaceId = ChangeService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     return this.transaction(async (tx) => {
       const sets = new ChangeRepository(tx);
-      const set = await sets.lock(spaceId, setId);
-      set.assertVersion(decision.version);
-      const op = set.waitingOp(seq);
+      const set = await sets.lock(spaceId, req.setId);
+      set.assertVersion(req.version);
+      const op = set.waitingOp(req.seq);
       const now = new Date();
-      if (!decision.approved) {
+      if (!req.approved) {
         op.decline(actor.id, now);
       } else {
         const targets = new TargetRepository(tx, spaceId);
@@ -170,15 +169,15 @@ export class ChangeService extends BaseService {
    * 되돌리기 (T7). 기록을 지우지 않고 앞 상태를 적용하는 새 묶음(kind = revert)을 쓴다. 판은 앞 내용을 새 판으로 쌓는다.
    * 그사이 같은 대상이 바뀌었으면 덮어쓰지 않고 Conflict로 멈춘다.
    */
-  async revert(actor: Actor, setId: string, version: number): Promise<ChangeSet> {
+  async revert(actor: Actor, req: RevertChangeInput): Promise<ChangeSet> {
     actor.assertOwner();
-    const spaceId = ChangeService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     return this.transaction(async (tx) => {
       const sets = new ChangeRepository(tx);
-      const original = await sets.lock(spaceId, setId);
-      original.assertVersion(version);
+      const original = await sets.lock(spaceId, req.setId);
+      original.assertVersion(req.version);
       original.assertRevertible();
-      const ops = await sets.revertOps(setId);
+      const ops = await sets.revertOps(req.setId);
       if (ops.length === 0) throw new RuleViolation('되돌릴 변경이 없어요');
       const now = new Date();
       const revert = ChangeSet.reverting(original, actor.id, ops, now);
@@ -197,7 +196,7 @@ export class ChangeService extends BaseService {
       await sets.save(revert);
       original.revertedWith(revert.id, actor.id, now);
       await sets.save(original);
-      await sets.markUndone(setId, revert.id);
+      await sets.markUndone(req.setId, revert.id);
       return revert;
     });
   }
@@ -229,10 +228,5 @@ export class ChangeService extends BaseService {
     if (jobId) return sets.lockJob(spaceId, jobId);
     const before = await once?.previous();
     return before ? sets.load(spaceId, String(before.changeSetId)) : null;
-  }
-
-  private static spaceOf(actor: Actor): string {
-    if (!actor.spaceId) throw new Forbidden('owner');
-    return actor.spaceId;
   }
 }

@@ -1,41 +1,44 @@
-import { BaseRepository, Conflict, type Row } from '../../platform';
-import { TidySettings } from './tidy-settings';
+import { BaseRepository, Conflict } from '../../platform';
+import { type LoadedTidySettings, TidySettings } from './tidy-settings';
 
-// vault.tidy_settings ↔ TidySettings. 정리 일 요청도 저장할 때 outbox로 나간다.
+// vault.tidy_settings ↔ TidySettings. 공간마다 한 행이고 열쇠가 space_id다. 정리 일 요청도 저장할 때 outbox로 나간다.
 export class TidySettingsRepository extends BaseRepository<TidySettings> {
-  protected toEntity(row: Row): TidySettings {
-    return TidySettings.restore(
-      String(row.space_id),
-      Number(row.version),
-      Boolean(row.auto_tidy),
-      new Date(row.updated_at),
-    );
+  protected toEntity(row: LoadedTidySettings): TidySettings {
+    return TidySettings.restore(row);
   }
 
   /** 공간의 설정을 잠근다. 행이 없으면 꺼짐으로 시작한다 */
-  async lock(spaceId: string, now: Date): Promise<TidySettings> {
+  async lock(spaceId: string): Promise<TidySettings> {
     const found = this.maybeOne(
-      await this.sql`SELECT * FROM vault.tidy_settings WHERE space_id = ${spaceId} FOR UPDATE`,
+      await this.sql`
+        SELECT *, space_id AS id FROM vault.tidy_settings WHERE space_id = ${spaceId} FOR UPDATE`,
     );
-    return found ?? TidySettings.absent(spaceId, now);
+    return found ?? TidySettings.absent(spaceId);
   }
 
   async save(settings: TidySettings): Promise<void> {
-    if (settings.changed && settings.isNew) {
-      const inserted = await this.sql`
-        INSERT INTO vault.tidy_settings (space_id, auto_tidy, updated_at)
-        VALUES (${settings.spaceId}, ${settings.autoTidy}, ${settings.updatedAt})
-        ON CONFLICT (space_id) DO NOTHING
-        RETURNING space_id`;
-      if (inserted.length === 0) throw new Conflict('다른 곳에서 먼저 바뀌었어요');
-      settings.markSaved(1);
-    } else if (settings.changed) {
-      const update = await this.sql`
-        UPDATE vault.tidy_settings SET ${this.sql(settings.changes)}, version = version + 1
-        WHERE space_id = ${settings.spaceId} AND version = ${settings.version}`;
-      this.expectUpdated(update.count, settings);
+    if (Object.keys(settings.unsaved).length > 0) {
+      if (settings.version === 0) await this.insert(settings);
+      else await this.update(settings);
     }
-    settings.clearChanges();
     await this.publishEvents(settings);
+  }
+
+  private async insert(settings: TidySettings): Promise<void> {
+    const columns = { ...settings.unsaved, space_id: settings.id };
+    const [row] = await this.sql<LoadedTidySettings[]>`
+      INSERT INTO vault.tidy_settings ${this.sql(columns as never)}
+      ON CONFLICT (space_id) DO NOTHING
+      RETURNING *`;
+    if (!row) throw new Conflict('다른 곳에서 먼저 바뀌었어요');
+    settings.saved(row);
+  }
+
+  private async update(settings: TidySettings): Promise<void> {
+    const rows = await this.sql<LoadedTidySettings[]>`
+      UPDATE vault.tidy_settings SET ${this.sql(settings.unsaved as never)}, version = version + 1
+      WHERE space_id = ${settings.id} AND version = ${settings.version} RETURNING *`;
+    this.expectUpdated(rows.length, settings);
+    settings.saved(rows[0] as LoadedTidySettings);
   }
 }

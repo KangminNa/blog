@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseTool } from '../../platform';
-import { CheckSessionRequest } from './save-session.request';
 import { SaveSessionTool } from './save-session.tool';
+import { CheckSessionInput } from './session.input';
 import { SessionQuery } from './session.query';
-import { SessionCheckResponse } from './session.response';
+import type { SessionCheckView } from './session.view';
 
 // MCP 도구 check_session: 저장하기 전에 세션 노트를 검사한다 (아무것도 쓰지 않는다).
 // 대화 원문이나 스크립트를 쓸 수 없는 도구(ChatGPT·Claude 앱)도 이것으로 기계 검사를 하고, 저장에 쓸 id를 받는다.
@@ -28,10 +28,7 @@ export class CheckSessionTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown, site: string): Promise<SessionCheckResponse> {
-    return SessionCheckResponse.of(
-      await this.sessions.check(actor, CheckSessionRequest.from(raw)),
-      site,
-    );
+  handle(actor: Actor, raw: unknown, site: string): Promise<SessionCheckView> {
+    return this.sessions.check(actor, CheckSessionInput.from(raw), site);
   }
 }

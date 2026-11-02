@@ -1,50 +1,40 @@
-import { BaseRepository, type Row } from '../../platform';
+import { TableRepository } from '../../platform';
+import type { SpaceRow } from '../account.tables';
 import { Space } from './space';
+import type { SpaceWithSettings } from './space.view';
 
 // account.spaces + settings ↔ Space. 공간은 지금 하나라 "가장 먼저 만든 공간"이 그 공간이다.
 // 설정은 키 하나에 행 하나(값은 jsonb).
-export class SpaceRepository extends BaseRepository<Space> {
-  protected toEntity(row: Row): Space {
-    const settings = (row.settings ?? {}) as Record<string, unknown>;
-    const text = (key: string) =>
-      typeof settings[key] === 'string' ? String(settings[key]) : null;
-    return Space.restore(
-      String(row.id),
-      Number(row.version),
-      String(row.slug),
-      String(row.name),
-      text('blog.description') ?? '',
-      text('site.url'),
-      settings['connect.hosted_apps'] === true,
-    );
+export class SpaceRepository extends TableRepository<SpaceRow, Space> {
+  protected readonly table = 'account.spaces';
+  protected readonly noun = '블로그 공간';
+
+  protected toEntity(row: SpaceWithSettings): Space {
+    return Space.restore(row);
   }
 
   async current(): Promise<Space | null> {
-    return this.maybeOne(await this.select(false));
+    return this.maybeOne(await this.first(false));
   }
 
   /** 트랜잭션 안에서 잠그고 읽는다 */
   async lockCurrent(): Promise<Space | null> {
-    return this.maybeOne(await this.select(true));
+    return this.maybeOne(await this.first(true));
   }
 
-  async save(space: Space): Promise<void> {
-    if (space.isNew) {
-      await this.sql`
-        INSERT INTO account.spaces (id, slug, name) VALUES (${space.id}, ${space.slug}, ${space.name})`;
-      space.markSaved(space.version);
-    } else {
-      const result = await this.sql`
-        UPDATE account.spaces SET name = ${space.name}, version = version + 1
-        WHERE id = ${space.id} AND version = ${space.version}`;
-      this.expectUpdated(result.count, space);
-    }
-    const settings: Record<string, string | boolean | null> = {
-      'blog.description': space.description || null,
-      'site.url': space.siteUrl,
-      'connect.hosted_apps': space.hostedApps || null,
-    };
-    for (const [key, value] of Object.entries(settings)) {
+  /** 공간의 행 그대로. Query가 View에 넘긴다 */
+  async currentRow(): Promise<SpaceWithSettings | null> {
+    const [row] = await this.first(false);
+    return (row as SpaceWithSettings | undefined) ?? null;
+  }
+
+  /** 공간은 하나뿐이라 id로 고르지 않는다 */
+  protected override select(_spaceId: string, _id: string, lock: boolean) {
+    return this.first(lock);
+  }
+
+  protected override async saveParts(space: Space): Promise<void> {
+    for (const [key, value] of Object.entries(space.unsavedSettings)) {
       if (value === null) {
         await this.sql`DELETE FROM account.settings WHERE space_id = ${space.id} AND key = ${key}`;
         continue;
@@ -53,10 +43,9 @@ export class SpaceRepository extends BaseRepository<Space> {
         INSERT INTO account.settings (space_id, key, value) VALUES (${space.id}, ${key}, ${this.sql.json(value)})
         ON CONFLICT (space_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
     }
-    await this.publishEvents(space);
   }
 
-  private select(lock: boolean) {
+  private first(lock: boolean) {
     return this.sql`
       SELECT s.*,
              (SELECT jsonb_object_agg(key, value) FROM account.settings WHERE space_id = s.id) AS settings

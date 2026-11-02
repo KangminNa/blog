@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseTool } from '../../platform';
-import { SaveSessionRequest } from './save-session.request';
-import { SaveSessionResponse } from './session.response';
+import { SaveSessionInput } from './session.input';
 import { SessionService } from './session.service';
+import type { SessionSavedView } from './session.view';
 import { SessionNote } from './session-note';
 
 // MCP 도구 save_session: AI 도구가 작업한 세션의 노트를 저장한다. mcp 모듈이 모아서 연다.
@@ -80,10 +80,7 @@ export class SaveSessionTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown, site: string): Promise<SaveSessionResponse> {
-    return SaveSessionResponse.of(
-      await this.sessions.save(actor, SaveSessionRequest.from(raw)),
-      site,
-    );
+  async handle(actor: Actor, raw: unknown, site: string): Promise<SessionSavedView> {
+    return (await this.sessions.save(actor, SaveSessionInput.from(raw))).view(site);
   }
 }

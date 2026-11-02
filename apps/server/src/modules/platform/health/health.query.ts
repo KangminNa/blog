@@ -1,15 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Actor } from '../base/actor';
 import { BaseQuery } from '../base/base-query';
-
-/** 서버 상태 화면에 함께 보이는 묶음 */
-export class HealthView {
-  constructor(
-    readonly extensions: ReadonlyMap<string, string>,
-    readonly migrations: readonly string[],
-    readonly tablesBySchema: ReadonlyMap<string, number>,
-  ) {}
-}
+import { HealthView } from './health.view';
 
 // DB 연결, 확장, 적용된 마이그레이션, 모듈 스키마별 테이블 수. DB 카탈로그만 읽는다.
 @Injectable()

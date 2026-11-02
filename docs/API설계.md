@@ -1,6 +1,6 @@
 # Cairn API 설계
 
-> 2026-10-31 확정. 객체 구조는 [객체설계.md](객체설계.md), 테이블은 [테이블설계.md](테이블설계.md), 범위와 단계는 [MVP-기획서.md](MVP-기획서.md) 11장.
+> 2026-10-31 확정. 객체 구조는 [객체설계.md](객체설계.md), 테이블은 [테이블설계.md](테이블설계.md), 범위와 단계는 [기획서.md](기획서.md) 6장·10장.
 
 ---
 
@@ -34,7 +34,7 @@
 
 ## 3. REST 경로
 
-있는 경로는 코드가 원본이다. 아래는 새로 만들 경로다.
+경로의 원본은 코드다. 아래는 3단계부터 만든 경로이고, 7단계의 스케줄만 아직 없다.
 
 | 메뉴 | 경로 | 단계 |
 |---|---|---|
@@ -71,7 +71,7 @@
 | `run` | `ai_login { tool }` → `{ token, expires_at }` | 서버 러너 | 4 |
 | 작업 토큰 | `request_approval` | 에이전트 | 3 |
 | `write` | `blog_get_post`, `blog_save_draft`, `basket_get` | 에이전트 | 5 |
-| `read_*` | `search_sessions`, `get_session` | AI 도구, 에이전트 | 1라운드 |
+| `read_*` | `search_sessions`, `get_session` | AI 도구, 에이전트 | 있음 |
 | `read_*` | `search_wikis`, `get_wiki`, `neighbors` | AI 도구, 에이전트 | 6 |
 | `tidy` | `submit_changes` | 에이전트 | 6 |
 
@@ -123,13 +123,13 @@ AI가 세션이나 메일 속 지시문에 속아도 이 권한을 넘을 수 �
 
 ## 7. 큐
 
-Redis 없이 Postgres로 한다.
+Redis 없이 Postgres로 한다. 큐와 DB가 나뉘면 원본이 둘이 되고 설치할 서비스가 하나 늘어난다. MCP 요청은 큐에 넣지 않고 바로 처리해 결과를 돌려준다. 큐는 요청 뒤의 일에만 쓴다.
 
 | 일 | 저장 위치 | 처리 | 실패 처리 |
 |---|---|---|---|
 | 모듈 이벤트 | `platform.outbox` | 일꾼 | 지수 백오프 |
 | AI 작업 | `task.tasks` | 러너 (`FOR UPDATE SKIP LOCKED`) | 임대 만료 후 재시도, 3회 실패 시 실패 표시 |
-| 스케줄 | `task.schedules` | 일꾼이 작업 생성 | `requestId`로 중복 방지 |
+| 스케줄 (7단계) | `task.schedules` | 일꾼이 작업 생성 | `requestId`로 중복 방지 |
 
 `NOTIFY`는 깨우기 신호로만 쓴다. 신호를 놓쳐도 다음 조회에서 찾는다. 일꾼은 `cairn_outbox`를 듣고 30초마다 한 번 더 확인한다. 콘솔과 러너의 긴 폴링은 `cairn_changes`를 쓴다. 실행 기록 신호에 일꾼이 깨지 않게 채널을 나눴다.
 

@@ -1,23 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseResponse, BaseTool } from '../../platform';
+import { Actor, BaseTool } from '../../platform';
 import { AiLoginInput } from './ai-login.input';
 import { AiLoginQuery } from './ai-login.query';
 import type { AiTokenView } from './ai-login.view';
-
-/** ai_login의 답 */
-export class AiTokenResponse extends BaseResponse {
-  private constructor(private readonly view: AiTokenView) {
-    super();
-  }
-
-  static of(view: AiTokenView): AiTokenResponse {
-    return new AiTokenResponse(view);
-  }
-
-  toJSON(): object {
-    return this.view.toJSON();
-  }
-}
 
 // 러너가 일마다 부른다 (run 권한). 받은 토큰은 메모리에만 두고 AI CLI를 띄울 때 환경 변수로만 넘긴다.
 @Injectable()
@@ -42,7 +27,7 @@ export class AiLoginTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<AiTokenResponse> {
-    return AiTokenResponse.of(await this.logins.token(actor, AiLoginInput.from(raw)));
+  handle(actor: Actor, raw: unknown): Promise<AiTokenView> {
+    return this.logins.token(actor, AiLoginInput.from(raw));
   }
 }

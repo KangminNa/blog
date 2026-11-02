@@ -4,7 +4,7 @@
 방문자가 읽는 블로그. 글(판·발행), 카테고리, 시리즈, 사진, 소재(글을 쓰기 위한 작업대).
 지금은 글, 사진, 소재, AI 도구의 초안까지 있다. 카테고리·시리즈는 뒤 단계에서.
 
-- `post/`: 글(`Post` + 판 `PostRevision`), 내용(`PostContent`: 제목·본문 md, 앞부분·찾기용 글자), 주소 규칙(`SlugPolicy`).
+- `post/`: 글(`Post`, 판은 `post_revisions`에 추가만), 내용(`PostContent`: 제목·본문 md, 앞부분·찾기용 글자), 주소 규칙(`SlugPolicy`).
   `api/posts`: 목록(방문자는 공개 글만, 주인은 공개 범위별 + 탭별 글 수), 주소로 열기(`by-slug/:slug`, 방문자는 공개·링크만),
   편집기용 읽기, 새 글(`requestId`로 한 번만), 고쳐 쓰기(새 판, `version`), 공개 범위(`/status`), 휴지통(`DELETE`)·되살리기(`/restore`).
   글 → wiki 연결은 `Post.linkWikis`: 새 글·고쳐 쓰기·초안 저장의 `mainWikiId`·`refWikiIds` (`blog_save_draft`는 `main_wiki_id`·`ref_wiki_ids`). 보내지 않으면 그대로, 대표 null과 참고 []는 비우기.
