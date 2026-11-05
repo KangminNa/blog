@@ -55,7 +55,7 @@ export class ExternalLoginQuery extends BaseQuery {
   }
 
   async links(actor: Actor): Promise<readonly LoginLinkView[]> {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwner();
     const rows = await this.sql`
       SELECT method, label, created_at FROM account.login_links WHERE user_id = ${actor.id}
       ORDER BY method`;
@@ -67,7 +67,7 @@ export class ExternalLoginQuery extends BaseQuery {
   /** 연결(link)은 로그인한 주인만. 돌아올 주소는 사이트 주소 아래 /api/auth/login/<방법>/callback */
   async start(actor: Actor, req: ExternalStartRequest): Promise<ExternalStartView> {
     const method = this.method(req.method);
-    if (req.mode === ExternalStartRequest.LINK) actor.assertCan(Actor.WRITE);
+    if (req.mode === ExternalStartRequest.LINK) actor.assertOwner();
     const state = randomBytes(16).toString('base64url');
     return new ExternalStartView(
       method.login.start(await this.callbackUrl(actor, method.name), state),

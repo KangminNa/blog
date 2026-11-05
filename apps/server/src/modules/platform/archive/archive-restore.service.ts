@@ -69,7 +69,7 @@ export class ArchiveRestoreService extends BaseService {
 
   /** 주인과 서버 자신만: write 권한을 가진 기기가 동작 경로로 복원하지 못하게 */
   private static assertAllowed(actor: Actor): void {
-    if (actor.kind !== 'system') actor.assertOwner();
+    actor.assertOwnerOrSystem();
   }
 
   private read(files: readonly ArchiveFile[]): readonly ArchivePart[] {

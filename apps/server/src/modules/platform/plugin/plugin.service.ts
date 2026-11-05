@@ -60,7 +60,7 @@ export class PluginService extends BaseService {
    * 꺼진 플러그인과 폴더가 없어진 플러그인의 값도 DB에 있으면 함께 바꾼다. 풀리지 않는 값이 있으면 하나도 바뀌지 않는다.
    */
   async resealSecrets(actor: Actor): Promise<number> {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwnerOrSystem();
     return this.transaction(async (tx) => {
       const plugins = new PluginRepository(tx);
       let count = 0;
@@ -76,7 +76,7 @@ export class PluginService extends BaseService {
 
   /** 관리 동작 (예: 연결 확인). 외부를 부를 수 있어 트랜잭션 밖에서 돈다 */
   async runAction(actor: Actor, name: string, action: string): Promise<ActionResult> {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwnerOrSystem();
     const found = this.registry.action(name, action);
     if (!found)
       throw new NotFound(
@@ -90,7 +90,7 @@ export class PluginService extends BaseService {
     name: string,
     apply: (state: PluginState, manifest: PluginManifest) => void,
   ): Promise<PluginState> {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwnerOrSystem();
     const manifest = this.registry.manifest(name);
     if (!manifest) throw new NotFound(`설치되지 않은 플러그인이에요: ${name}`);
     const state = await this.transaction(async (tx) => {

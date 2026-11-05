@@ -56,7 +56,7 @@ export class AiLoginService extends BaseService {
 
   /** 지금 서버 키로 다시 잠근다 (pnpm secret:rotate). 바꾼 수를 돌려준다 */
   async resealSecrets(actor: Actor): Promise<number> {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwnerOrSystem();
     return this.transaction(async (tx) => {
       const logins = new AiLoginRepository(tx);
       let count = 0;

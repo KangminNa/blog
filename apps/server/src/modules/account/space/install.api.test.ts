@@ -246,7 +246,7 @@ describe('보안 머리글과 쓰기 요청 출처', () => {
     );
     assert.equal(
       (await api.request('PUT', '/api/space', TestUser.visitor, stale, evil)).json().scope,
-      'write',
+      'owner',
     );
   });
 });

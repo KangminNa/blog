@@ -117,6 +117,19 @@ describe('Actor', () => {
     assert.throws(() => device.assertCan(DeviceActor.READ_ALL), Forbidden);
     assert.equal(new VisitorActor().canSeePrivate(), false);
   });
+
+  test('관리 일은 권한 이름이 아니라 종류로: 모든 권한을 가진 기기도 주인이 아니다', () => {
+    const everything = new DeviceActor(
+      's',
+      'd',
+      new Set([DeviceActor.WRITE, DeviceActor.READ_ALL, DeviceActor.RUN]),
+    );
+    assert.throws(() => everything.assertOwner(), Forbidden);
+    assert.throws(() => everything.assertOwnerOrSystem(), Forbidden);
+    assert.throws(() => new VisitorActor().assertOwnerOrSystem(), Forbidden);
+    new OwnerActor('s', 'u').assertOwnerOrSystem();
+    new SystemActor().assertOwnerOrSystem();
+  });
 });
 
 describe('BaseQuery', () => {

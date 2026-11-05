@@ -162,7 +162,7 @@ export class OwnerService extends BaseService {
 
   /** 연결한 외부 계정을 끊는다. 그 계정으로는 더 로그인되지 않는다 (비밀번호 로그인은 그대로) */
   async unlink(actor: Actor, method: string): Promise<void> {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwner();
     await this.transaction(async (tx) => {
       const owners = new OwnerRepository(tx);
       const owner = await owners.findById(actor.id ?? '');

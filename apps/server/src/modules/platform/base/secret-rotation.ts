@@ -20,7 +20,7 @@ export class SecretRotation {
 
   /** 등록된 곳을 차례로 다시 잠근다. 결과는 이름별로 다시 잠근 값의 수 */
   async run(actor: Actor): Promise<ReadonlyMap<string, number>> {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwnerOrSystem();
     const counts = new Map<string, number>();
     for (const [name, reseal] of this.holders) counts.set(name, await reseal(actor));
     return counts;

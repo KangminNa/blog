@@ -72,7 +72,7 @@ export class DeviceService extends BaseService {
 
   /** 주인이 승인 화면에서 "연결"을 누름 → 5분짜리 일회용 코드 (기기는 코드를 토큰으로 바꿀 때 생긴다) */
   async approve(actor: Actor, req: ConsentRequest): Promise<AuthorizationCode> {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwner();
     if (!actor.spaceId || !actor.id) throw new RuleViolation('로그인해 주세요');
     if (await new DeviceRepository(this.db.sql).nameTaken(actor.spaceId, req.name))
       throw new RuleViolation(
@@ -203,7 +203,7 @@ export class DeviceService extends BaseService {
   }
 
   private async change(actor: Actor, id: string, apply: (device: Device) => void): Promise<Device> {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwner();
     return this.transaction(async (tx) => {
       const devices = new DeviceRepository(tx);
       const device = await devices.lock(id);

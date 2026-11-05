@@ -49,7 +49,7 @@ export class SpaceService extends BaseService {
   }
 
   async rename(actor: Actor, req: RenameSpaceRequest): Promise<Space> {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwner();
     return this.transaction(async (tx) => {
       const repo = new SpaceRepository(tx);
       const space = await repo.lockCurrent();
@@ -62,7 +62,7 @@ export class SpaceService extends BaseService {
   }
 
   async setHostedApps(actor: Actor, req: HostedAppsRequest): Promise<Space> {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwner();
     return this.transaction(async (tx) => {
       const repo = new SpaceRepository(tx);
       const space = await repo.lockCurrent();

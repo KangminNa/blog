@@ -35,6 +35,14 @@ export abstract class Actor {
     if (this.kind !== 'owner') throw new Forbidden('owner', '주인만 할 수 있어요');
   }
 
+  /**
+   * 주인이나 서버 자신(명령줄·일꾼)만 하는 관리 일 (플러그인 켜기·설정·동작, 서버 키 교체, 복원).
+   * assertOwner처럼 종류로 묻는다: write 권한을 가진 기기가 관리 일에 닿지 못하게.
+   */
+  assertOwnerOrSystem(): void {
+    if (this.kind !== 'system') this.assertOwner();
+  }
+
   /** 비공개 데이터까지 볼 수 있는가 */
   canSeePrivate(): boolean {
     return this.can(Actor.READ_ALL);

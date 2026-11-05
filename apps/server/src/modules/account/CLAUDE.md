@@ -32,6 +32,7 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
 platform
 
 ## 지켜야 할 것
+- 관리 일(기기 목록·권한·토큰·끊기, 승인 화면, 사이트 정보·앱 연결 허용, 연결된 로그인)은 `assertOwner()`로 막는다. `assertCan(WRITE)`는 기기도 통과한다: 기기 Bearer 토큰은 REST에서도 `DeviceActor`가 되므로, write를 받은 AI 도구가 자기 권한을 올리지 못하게. API 테스트에 write 기기 경우를 둔다 (`device.api.test.ts`)
 - 비밀값(GitHub client secret, SMTP 비밀번호 등)은 `secrets`에 암호화해서만 저장하고, 응답·로그에 내보내지 않는다
 - 토큰(로그인·기기)은 해시만 저장한다. 원문은 만든 순간의 응답(쿠키)에만
 - 주인은 공간마다 한 명 (DB 부분 유일 인덱스)

@@ -542,3 +542,70 @@ describe('갱신과 끊기', () => {
     );
   });
 });
+
+describe('write 기기와 관리 일', () => {
+  test('write 권한 기기도 관리 일은 못 한다: 자기 권한 올리기, 토큰 만들기, 사이트·플러그인·연결된 로그인', async () => {
+    // 이 파일의 다른 등록과 세지 않게 새 서버(같은 DB)로 연결한다 (스스로 등록은 IP당 1시간 20번)
+    const fresh = await ApiClient.start();
+    try {
+      const access = await fresh.connectDevice(owner, 'writer');
+      const list = (await api.get('/api/devices', owner)).json().devices as Record<
+        string,
+        unknown
+      >[];
+      const device = list.find((d) => d.name === 'writer') as Record<string, unknown>;
+      const granted = await api.request('PATCH', `/api/devices/${device.id}`, owner, {
+        scopes: ['upload', 'read_public', 'write'],
+        version: device.version,
+      });
+      assert.equal(granted.status, 200, granted.text);
+
+      const writer = { authorization: `Bearer ${access}` };
+      const as = (method: string, path: string, body?: object) =>
+        api.request(method, path, TestUser.visitor, body, writer);
+      const { version: siteVersion } = (await api.get('/api/space')).json() as { version: number };
+      const tries: [string, string, object?][] = [
+        ['GET', '/api/devices'],
+        [
+          'PATCH',
+          `/api/devices/${device.id}`,
+          { scopes: ['upload', 'read_all', 'write', 'run'], version: granted.json().version },
+        ],
+        ['POST', `/api/devices/${device.id}/token`],
+        ['POST', `/api/devices/${device.id}/revoke`],
+        ['POST', '/api/devices/runner', { requestId: randomUUID(), name: 'stolen-runner' }],
+        [
+          'PUT',
+          '/api/space',
+          { name: '가로챔', siteUrl: 'https://evil.example', version: siteVersion },
+        ],
+        ['PUT', '/api/space/hosted-apps', { on: true, version: siteVersion }],
+        ['POST', '/api/plugins/sync-github/enable'],
+        [
+          'PUT',
+          '/api/plugins/sync-github/settings',
+          { values: { apiUrl: 'https://evil.example' } },
+        ],
+        ['POST', '/api/plugins/sync-github/actions/check'],
+        ['GET', '/api/auth/links'],
+        ['DELETE', '/api/auth/links/github'],
+      ];
+      for (const [method, path, body] of tries) {
+        const res = await as(method, path, body);
+        assert.equal(res.status, 403, `${method} ${path}: ${res.text}`);
+      }
+
+      const latest = (await api.get('/api/devices', owner)).json().devices as Record<
+        string,
+        unknown
+      >[];
+      const same = latest.find((d) => d.id === device.id) as Record<string, unknown>;
+      assert.deepEqual(same.scopes, ['upload', 'read_public', 'write'], '권한은 그대로');
+      assert.equal(same.revokedAt ?? null, null, '스스로 끊지도 못한다');
+      assert.equal((await api.get('/api/space')).json().siteUrl, site, '사이트 주소도 그대로');
+      assert.equal((await api.mcp(access, 'tools/list')).status, 200, '자기 일(MCP)은 그대로 한다');
+    } finally {
+      await fresh.close();
+    }
+  });
+});

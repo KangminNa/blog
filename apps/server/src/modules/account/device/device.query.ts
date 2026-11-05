@@ -77,7 +77,7 @@ export class DeviceQuery extends BaseQuery {
   }
 
   async list(actor: Actor): Promise<readonly DeviceView[]> {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwner();
     const rows = await this.sql`
       SELECT d.*, (SELECT max(created_at) FROM account.oauth_tokens t WHERE t.device_id = d.id) AS last_used
       FROM account.devices d
@@ -114,7 +114,7 @@ export class DeviceQuery extends BaseQuery {
 
   /** 승인 화면 (로그인한 주인만) */
   consent(actor: Actor, req: ConsentRequest): ConsentView {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwner();
     return new ConsentView(
       req.clientName,
       new URL(req.redirectUri).host,
@@ -126,7 +126,7 @@ export class DeviceQuery extends BaseQuery {
 
   /** 거절: 오류를 붙여 AI 도구에게 돌려보낼 주소 */
   deniedRedirect(actor: Actor, req: ConsentRequest): string {
-    actor.assertCan(Actor.WRITE);
+    actor.assertOwner();
     return this.policy.deniedRedirect(req);
   }
 }
