@@ -1,15 +1,11 @@
-// 구조 검사 (docs/객체설계.md 6장 "새 파일 구조"와 "콘솔 메뉴 하나의 구조"). pnpm check가 돌린다.
+// 구조 검사 (docs/객체설계.md 6장 "파일 구조"와 "콘솔 메뉴 하나의 구조"). pnpm check가 돌린다.
 //
-//   1. 모듈 안의 파일 이름은 새 이름만 (.api · .input · .view). 옛 이름(.controller · .request · .response)은
-//      OLD_NAMES의 폴더에만 남아 있다 (옮기는 중)
-//   2. REST 진입(.api.ts, 옛 .controller.ts) 옆에는 같은 이름의 .api.test.ts. 다른 파일에서 시험하면
+//   1. 모듈 안의 파일 이름은 .api · .input · .view (옛 .controller · .request · .response는 쓰지 않는다)
+//   2. REST 진입(.api.ts) 옆에는 같은 이름의 .api.test.ts. 다른 파일에서 시험하면
 //      TESTED_ELSEWHERE에 그 파일을 적는다 (적은 파일이 없으면 실패)
 //   3. 콘솔 메뉴(app/admin/menu.tsx의 href)와 app/admin/<주소>/page.tsx가 하나씩 맞는다
-//   4. 웹이 손으로 적은 API 응답 타입(app/_lib/types.ts)은 HAND_WRITTEN_TYPES에 있는 것만.
-//      새 타입은 서버 view에서 import type으로 만든다 (ReturnType<XxxView['toJSON']>)
-//
-// OLD_NAMES와 HAND_WRITTEN_TYPES는 옛 코드를 옮기는 동안의 빚이다. 줄이기만 하고 늘리지 않는다.
-// 옮긴 뒤 목록에 남은 이름도 실패로 알려 준다 (목록이 저절로 줄게).
+//   4. 웹은 서버 응답 모양을 손으로 적지 않는다: app/_lib/types.ts에는 HAND_WRITTEN_TYPES(오류 모양)만.
+//      응답 타입은 서버 view에서 import type으로 만든다 (ReturnType<XxxView['toJSON']>, app/_<모듈>/types.ts)
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,29 +14,26 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const modulesDir = join(root, 'apps/server/src/modules');
 const adminDir = join(root, 'apps/web/app/admin');
 
-/** 옛 이름이 남은 폴더 (modules/ 아래). 옮기면 지운다 */
-const OLD_NAMES = ['mcp', 'platform/health', 'platform/stream'];
-
-/** 옆이 아닌 곳에서 시험하는 REST 진입 → 그 테스트 파일 (modules/ 아래) */
+/** 옆이 아닌 곳에서 시험하는 REST 진입 → 그 테스트 파일 (modules/ 아래). 흐름 하나를 여러 진입이 함께 이룰 때 */
 const TESTED_ELSEWHERE = {
+  // OAuth 흐름(등록 → 승인 → 토큰)과 MCP 입구는 기기 연결 테스트가 처음부터 끝까지 본다
   'account/device/oauth.api.ts': 'account/device/device.api.test.ts',
+  'mcp/mcp.api.ts': 'account/device/device.api.test.ts',
+  // 로그인 · 블로그 정보는 설치 마법사 흐름에서
   'account/owner/login.api.ts': 'account/space/install.api.test.ts',
   'account/space/space.api.ts': 'account/space/install.api.test.ts',
-  'mcp/mcp.controller.ts': 'account/device/device.api.test.ts',
-  'platform/stream/stream.controller.ts': 'task/task.api.test.ts',
+  // 작업 · 결재 · 에이전트와 그 변경 신호는 작업 흐름 하나로
+  'platform/stream/stream.api.ts': 'task/task.api.test.ts',
   'task/agent/agent.api.ts': 'task/task.api.test.ts',
   'task/approval/approval.api.ts': 'task/task.api.test.ts',
   'task/task/task.api.ts': 'task/task.api.test.ts',
 };
 
-/** app/_lib/types.ts에 손으로 적은 API 응답 타입. 메뉴를 옮기면 view에서 만든 타입으로 바꾸고 지운다 */
-const HAND_WRITTEN_TYPES = [
-  // 오류 모양 (DomainError.toJSON). view가 아니라 모든 응답의 실패 모양이라 남는다
-  'ApiError',
-];
+/** app/_lib/types.ts에 손으로 적어도 되는 타입: 오류 모양(DomainError.toJSON)은 view가 아니라 모든 실패 응답의 모양이다 */
+const HAND_WRITTEN_TYPES = ['ApiError'];
 
 const OLD_SUFFIX = /\.(controller|request|response)\.ts$/;
-const ENTRY = /\.(api|controller)\.ts$/;
+const ENTRY = /\.api\.ts$/;
 const problems = [];
 const at = (file) => relative(root, file);
 
@@ -52,27 +45,17 @@ function walk(dir) {
 }
 
 function checkNames(files) {
-  const oldDirs = new Set();
-  for (const file of files) {
-    if (!OLD_SUFFIX.test(file)) continue;
-    const dir = relative(modulesDir, dirname(file));
-    if (OLD_NAMES.includes(dir)) oldDirs.add(dir);
-    else
+  for (const file of files)
+    if (OLD_SUFFIX.test(file))
       problems.push(
-        `${at(file)} 옛 이름. 새 이름(.api · .input · .view)으로 (객체설계 6장, pnpm new:bundle)`,
-      );
-  }
-  for (const dir of OLD_NAMES)
-    if (!oldDirs.has(dir))
-      problems.push(
-        `scripts/check-structure.mjs OLD_NAMES의 ${dir}에 옛 이름이 없어요. 목록에서 지워 주세요`,
+        `${at(file)} 옛 이름. .api(Controller + Response) · .input · .view로 (객체설계 6장, pnpm new:bundle)`,
       );
 }
 
 function checkTests(files) {
   const seen = new Set();
   for (const file of files) {
-    if (!ENTRY.test(file) || file.endsWith('.test.ts')) continue;
+    if (!ENTRY.test(file)) continue;
     const key = relative(modulesDir, file);
     const beside = file.replace(ENTRY, '.api.test.ts');
     const elsewhere = TESTED_ELSEWHERE[key];
@@ -124,12 +107,7 @@ function checkWebTypes() {
   for (const name of names)
     if (!HAND_WRITTEN_TYPES.includes(name))
       problems.push(
-        `${at(file)} ${name}: 손으로 적은 API 타입. 서버 view에서 import type으로 (ReturnType<XxxView['toJSON']>)`,
-      );
-  for (const name of HAND_WRITTEN_TYPES)
-    if (!names.includes(name))
-      problems.push(
-        `scripts/check-structure.mjs HAND_WRITTEN_TYPES의 ${name}이 없어요. 목록에서 지워 주세요`,
+        `${at(file)} ${name}: 손으로 적은 API 타입. 서버 view에서 import type으로 (ReturnType<XxxView['toJSON']>, app/_<모듈>/types.ts)`,
       );
 }
 

@@ -7,7 +7,7 @@ import { BlobStore } from './base/blob-store';
 import { Database } from './base/database';
 import { SecretBox } from './base/secret-box';
 import { SecretRotation } from './base/secret-rotation';
-import { HealthController } from './health/health.controller';
+import { HealthController } from './health/health.api';
 import { HealthQuery } from './health/health.query';
 import { DomainErrorFilter } from './http/domain-error.filter';
 import { PluginController } from './plugin/plugin.api';
@@ -15,7 +15,7 @@ import { PluginQuery } from './plugin/plugin.query';
 import { PluginService } from './plugin/plugin.service';
 import { PluginRegistry } from './plugin/plugin-registry';
 import { ChangeStream } from './stream/change-stream';
-import { StreamController } from './stream/stream.controller';
+import { StreamController } from './stream/stream.api';
 import { CoreWorkers } from './worker/core-workers';
 import { OutboxWorker } from './worker/outbox-worker';
 

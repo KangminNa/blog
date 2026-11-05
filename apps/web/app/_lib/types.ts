@@ -1,5 +1,5 @@
-// 손으로 적은 서버 응답 모양 (옮기는 중). 새 타입은 서버 view에서 import type으로 _<모듈>/types.ts에 만든다.
-// 여기 남은 이름은 scripts/check-structure.mjs의 HAND_WRITTEN_TYPES에 있고, 메뉴를 옮기면 함께 지운다.
+// 웹 전체가 함께 쓰는 것. 서버 응답 모양은 여기에 손으로 적지 않고 서버 view에서 import type으로
+// app/_<모듈>/types.ts에 만든다 (scripts/check-structure.mjs). 오류 모양만은 모든 실패 응답의 모양이라 여기 둔다.
 
 /** 서버의 오류 모양: { code, message, fields? } */
 export type ApiError = { code: string; message: string; fields?: Record<string, string> };

@@ -6,7 +6,7 @@ paths:
 # 서버 코드 규칙
 
 전체는 [docs/객체설계.md](../../docs/객체설계.md). 파일을 만들거나 고치기 전에 그 파일의 종류(이름 끝)를 확인하고 아래를 지킨다.
-새 데이터 묶음은 `pnpm new:bundle <모듈>/<묶음> [--menu <그룹>/<이름>] [--tool]`로 만든다. 옛 이름(`.controller` · `.request` · `.response`)은 옮기는 중인 폴더(`scripts/check-structure.mjs`의 `OLD_NAMES`)에만 남아 있고 새로 쓰지 않는다.
+새 데이터 묶음은 `pnpm new:bundle <모듈>/<묶음> [--menu <그룹>/<이름>] [--tool]`로 만든다. 옛 이름(`.controller` · `.request` · `.response`)은 쓰지 않는다 (`pnpm check`의 구조 검사가 막는다).
 
 | 파일 | 해도 되는 것 | 하면 안 되는 것 |
 |---|---|---|
