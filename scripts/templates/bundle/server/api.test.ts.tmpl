@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { after, before, describe, test } from 'node:test';
+import { ApiClient, TestUser } from '../../../testing/api-client';
+
+// /api/__plural__: 보는 사람별 결과 (방문자 · write 기기 · 주인). 생성기가 만든 기본 경우에 이 묶음의 규칙을 더한다.
+
+let api: ApiClient;
+let owner: TestUser;
+/** write 권한을 준 기기의 Bearer 머리글. 관리 일은 이 기기에게도 막혀야 한다 */
+let writer: Readonly<Record<string, string>>;
+
+before(async () => {
+  api = await ApiClient.start();
+  owner = await api.signIn();
+  writer = { authorization: `Bearer ${await api.writeDevice(owner, '__bundle__-writer')}` };
+});
+after(() => api.close());
+
+describe('__label__ (/api/__plural__)', () => {
+  test('방문자와 write 기기는 보지도 만들지도 못한다 (403)', async () => {
+    for (const headers of [{}, writer]) {
+      const list = await api.request('GET', '/api/__plural__', TestUser.visitor, undefined, headers);
+      assert.equal(list.status, 403, list.text);
+      const made = await api.request(
+        'POST',
+        '/api/__plural__',
+        TestUser.visitor,
+        { requestId: randomUUID(), name: '막힘' },
+        headers,
+      );
+      assert.equal(made.status, 403, made.text);
+    }
+  });
+
+  test('주인은 만들고(같은 requestId는 한 번), 목록에서 보고, version을 맞춰 고친다', async () => {
+    const requestId = randomUUID();
+    const made = await api.request('POST', '/api/__plural__', owner, { requestId, name: '첫째' });
+    assert.equal(made.status, 201, made.text);
+    const again = await api.request('POST', '/api/__plural__', owner, { requestId, name: '첫째' });
+    assert.equal(again.json().id, made.json().id, '같은 requestId는 처음 것');
+
+    const list = (await api.get('/api/__plural__', owner)).json().items as { id: string }[];
+    assert.ok(list.some((i) => i.id === made.json().id));
+
+    const { id, version } = made.json() as { id: string; version: number };
+    const changed = await api.request('PATCH', `/api/__plural__/${id}`, owner, {
+      name: '둘째',
+      version,
+    });
+    assert.equal(changed.status, 200, changed.text);
+    assert.equal(changed.json().name, '둘째');
+    const stale = await api.request('PATCH', `/api/__plural__/${id}`, owner, {
+      name: '셋째',
+      version,
+    });
+    assert.equal(stale.status, 409, '늦은 쓰기는 덮지 않는다');
+  });
+
+  test('모양이 틀리면 400과 고칠 칸', async () => {
+    const res = await api.request('POST', '/api/__plural__', owner, { requestId: 'nope' });
+    assert.equal(res.status, 400, res.text);
+    assert.ok((res.json().fields as Record<string, string>).requestId);
+  });
+});

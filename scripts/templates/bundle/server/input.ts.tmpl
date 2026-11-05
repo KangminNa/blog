@@ -1,0 +1,48 @@
+import { BaseRequest } from '../../platform';
+import { __Name__ } from './__bundle__';
+
+/** POST /api/__plural__. 같은 requestId는 처음 만든 것을 돌려준다 */
+export class Create__Name__Input extends BaseRequest {
+  private constructor(
+    readonly requestId: string,
+    readonly name: string,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): Create__Name__Input {
+    return BaseRequest.read(
+      raw,
+      (f) => new Create__Name__Input(f.uuid('requestId'), f.text('name', __Name__.NAME_MAX)),
+    );
+  }
+}
+
+/** PATCH /api/__plural__/:id. 본 version을 함께 보낸다 (낙관적 잠금) */
+export class Update__Name__Input extends BaseRequest {
+  private constructor(
+    readonly name: string,
+    readonly version: number,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): Update__Name__Input {
+    return BaseRequest.read(
+      raw,
+      (f) =>
+        new Update__Name__Input(f.text('name', __Name__.NAME_MAX), f.integer('version', 1, 2_147_483_647)),
+    );
+  }
+}
+
+/** 주소의 :id */
+export class __Name__IdInput extends BaseRequest {
+  private constructor(readonly id: string) {
+    super();
+  }
+
+  static from(id: string): __Name__IdInput {
+    return BaseRequest.read({ id }, (f) => new __Name__IdInput(f.uuid('id')));
+  }
+}

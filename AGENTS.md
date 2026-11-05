@@ -40,6 +40,7 @@ docs/          기획 문서 (기획서 · MVP 기획서 · 테이블 설계 · 
 | `pnpm run restore` | 표준 입력의 백업 zip을 빈 Cairn에 복원. 기본은 미리 보기, `--apply`로 반영 (`docs/보관형식.md`) |
 | `pnpm secret:new` | 서버 키(`CAIRN_SECRET_KEY`) 만들기. 비밀값 암호화에 씀 |
 | `pnpm secret:rotate` | 서버 키를 바꾼 뒤 저장된 비밀값을 새 키로 다시 암호화 (순서는 `.env.example`) |
+| `pnpm new:bundle <모듈>/<묶음> [--menu <그룹>/<이름>] [--tool]` | 새 데이터 묶음(+ 콘솔 메뉴, MCP 도구)의 뼈대. 등록할 줄과 마이그레이션 SQL을 출력한다 (객체설계 6장) |
 | `pnpm format` | Biome 포맷·자동 수정 |
 | `pnpm db:new <이름>` | 새 마이그레이션 파일 |
 | `pnpm db:migrate` / `db:rollback` / `db:reset` / `db:psql` | 마이그레이션 적용 / 하나 되돌리기 / 데이터 지우고 처음부터 / psql 접속 |

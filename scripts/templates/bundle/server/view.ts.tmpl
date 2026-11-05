@@ -1,0 +1,29 @@
+// __label__의 읽기 모양. 웹이 `import type`으로 가져오므로 아무것도 import하지 않는다 (객체설계 6장).
+
+/** __label__ 하나 */
+export class __Name__View {
+  constructor(
+    readonly id: string,
+    readonly name: string,
+    readonly createdAt: Date,
+    readonly version: number,
+  ) {}
+
+  toJSON() {
+    return {
+      id: this.id,
+      name: this.name,
+      createdAt: this.createdAt.toISOString(),
+      version: this.version,
+    };
+  }
+}
+
+/** __label__ 목록 */
+export class __Name__ListView {
+  constructor(readonly items: readonly __Name__View[]) {}
+
+  toJSON() {
+    return { items: this.items.map((i) => i.toJSON()) };
+  }
+}

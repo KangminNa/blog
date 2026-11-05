@@ -1,0 +1,41 @@
+import { BaseEntity, TrackedEntity } from '../../platform';
+
+// __label__ 하나 (__schema__.__table__). 이 묶음이 지키는 규칙을 여기에 적는다.
+// 단순한 칸은 set으로, 상태는 규칙을 지키는 메서드로만 바꾼다. 둘 다 track으로 적는다 (객체설계 6장).
+export class __Name__ extends TrackedEntity {
+  static readonly NAME_MAX = 100;
+
+  private constructor(
+    id: string,
+    version: number,
+    readonly spaceId: string,
+    private nameValue: string,
+    readonly createdAt: Date,
+    readonly isNew: boolean,
+  ) {
+    super(id, version);
+  }
+
+  static open(spaceId: string, name: string, now: Date): __Name__ {
+    return new __Name__(BaseEntity.newId(), 1, spaceId, name, now, true);
+  }
+
+  static restore(
+    id: string,
+    version: number,
+    spaceId: string,
+    name: string,
+    createdAt: Date,
+  ): __Name__ {
+    return new __Name__(id, version, spaceId, name, createdAt, false);
+  }
+
+  get name(): string {
+    return this.nameValue;
+  }
+
+  set name(value: string) {
+    this.nameValue = value;
+    this.track('name', value);
+  }
+}

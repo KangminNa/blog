@@ -210,6 +210,34 @@ export class ApiClient {
     return String(token.json().access_token);
   }
 
+  /**
+   * write 권한을 준 기기의 토큰. 관리 일이 이 기기에게도 막히는지 볼 때 쓴다 (`Bearer <토큰>`).
+   * 기기 연결이 사이트 주소를 쓰므로 이 서버의 주소로 정한 뒤 연결한다.
+   */
+  async writeDevice(owner: TestUser, name: string): Promise<string> {
+    const space = (await this.get('/api/space')).json() as { name: string; version: number };
+    const site = await this.request('PUT', '/api/space', owner, {
+      name: space.name || '돌무더기',
+      siteUrl: this.baseUrl,
+      version: space.version,
+    });
+    if (site.status !== 200) throw new Error(`사이트 주소 정하기 실패: ${site.text}`);
+    const token = await this.connectDevice(owner, name);
+    const devices = (await this.get('/api/devices', owner)).json().devices as {
+      id: string;
+      name: string;
+      version: number;
+    }[];
+    const device = devices.find((d) => d.name === name);
+    if (!device) throw new Error(`연결한 기기가 목록에 없어요: ${name}`);
+    const granted = await this.request('PATCH', `/api/devices/${device.id}`, owner, {
+      scopes: ['upload', 'read_public', 'write'],
+      version: device.version,
+    });
+    if (granted.status !== 200) throw new Error(`write 권한 주기 실패: ${granted.text}`);
+    return token;
+  }
+
   async close(): Promise<void> {
     await this.app.close();
   }

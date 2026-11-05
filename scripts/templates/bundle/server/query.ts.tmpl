@@ -1,0 +1,36 @@
+import { Injectable } from '@nestjs/common';
+//#if tool
+import { Actor, BaseQuery, type Row } from '../../platform';
+//#else
+import { type Actor, BaseQuery, type Row } from '../../platform';
+//#endif
+import { __Name__ListView, __Name__View } from './__bundle__.view';
+
+// __label__ 읽기. 공개 메서드는 Actor를 받고 첫 줄에서 권한을 묻는다.
+// 공개 범위가 있는 데이터면 SQL에서 거른 뒤(this.visibleTo) 개수·순위를 계산한다.
+@Injectable()
+export class __Name__Query extends BaseQuery {
+  /** 콘솔의 __label__ 메뉴 (주인만) */
+  async list(actor: Actor): Promise<__Name__ListView> {
+    actor.assertOwner();
+    return this.items(actor);
+  }
+//#if tool
+
+  /** AI 도구 (__tool__) */
+  async forTool(actor: Actor): Promise<__Name__ListView> {
+    actor.assertCan(Actor.READ_ALL);
+    return this.items(actor);
+  }
+//#endif
+
+  private async items(actor: Actor): Promise<__Name__ListView> {
+    const rows = await this.sql`
+      SELECT * FROM __schema__.__table__ WHERE space_id = ${actor.spaceId} ORDER BY id DESC`;
+    return new __Name__ListView(rows.map((r) => __Name__Query.view(r)));
+  }
+
+  private static view(r: Row): __Name__View {
+    return new __Name__View(String(r.id), String(r.name), new Date(r.created_at), Number(r.version));
+  }
+}

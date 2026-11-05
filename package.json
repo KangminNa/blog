@@ -31,7 +31,8 @@
     "cairn": "pnpm --silent --filter @cairn/cli cairn",
     "runner": "pnpm --silent --filter @cairn/runner",
     "secret:new": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\"",
-    "secret:rotate": "docker compose exec -T server cairn-admin secret rotate"
+    "secret:rotate": "docker compose exec -T server cairn-admin secret rotate",
+    "new:bundle": "node scripts/new-bundle.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15"

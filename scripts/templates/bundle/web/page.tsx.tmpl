@@ -1,0 +1,15 @@
+import { __Name__Panel } from './__Name__Panel';
+
+export const metadata = { title: '__label__ · Cairn', robots: { index: false } };
+
+// __label__ 메뉴. 페이지는 틀만 두고, 읽기·쓰기는 클라이언트 패널이 서버 API로 한다.
+export default function __Name__Page() {
+  return (
+    <section className="console-inner narrow" aria-label="__label__">
+      <header className="page-head">
+        <h1>__label__</h1>
+      </header>
+      <__Name__Panel />
+    </section>
+  );
+}
