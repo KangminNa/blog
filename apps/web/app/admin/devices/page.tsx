@@ -1,5 +1,5 @@
+import type { SpaceInfo } from '../../_account/types';
 import { serverGet } from '../../_lib/server-api';
-import type { SpaceInfo } from '../../_lib/types';
 import { DevicesPage } from './DevicesPage';
 
 export default async function Devices() {

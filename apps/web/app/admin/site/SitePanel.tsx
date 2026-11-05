@@ -1,16 +1,14 @@
 'use client';
 
-import type { SpaceInfo } from '../../_lib/types';
+import type { SpaceInfo } from '../../_account/types';
 import { useNotify } from '../AdminShell';
 import { BlogForm } from './BlogForm';
 
-export function SitePage({ space }: { space: SpaceInfo }) {
+// 사이트 정보(이름·소개·주소)와 백업 받기. 틀(제목)은 page.tsx에 있다.
+export function SitePanel({ space }: { space: SpaceInfo }) {
   const notify = useNotify();
   return (
-    <section className="console-inner narrow" aria-label="사이트">
-      <header className="page-head">
-        <h1>사이트</h1>
-      </header>
+    <>
       <BlogForm
         space={space}
         submitLabel="저장"
@@ -27,6 +25,6 @@ export function SitePage({ space }: { space: SpaceInfo }) {
           백업 받기
         </a>
       </section>
-    </section>
+    </>
   );
 }

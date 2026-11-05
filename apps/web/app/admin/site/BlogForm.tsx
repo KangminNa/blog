@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { SpaceInfo } from '../../_account/types';
 import { api, describe } from '../../_lib/client-api';
-import type { SpaceInfo } from '../../_lib/types';
 
 // 사이트 이름·소개·주소. 설치 마법사의 3단계와 콘솔의 사이트 메뉴가 함께 쓴다.
 // version을 함께 보내서, 다른 곳에서 먼저 바꿨으면 덮지 않고 알린다.

@@ -1,8 +1,9 @@
 'use client';
 
 import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
+import type { SpaceInfo } from '../../_account/types';
 import { api, describe } from '../../_lib/client-api';
-import { type Device, SCOPE_LABELS, type SpaceInfo } from '../../_lib/types';
+import { type Device, SCOPE_LABELS } from '../../_lib/types';
 import { ConnectGuide } from './ConnectGuide';
 
 const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write', 'run'];

@@ -1,8 +1,8 @@
 'use client';
 
 import { type ReactNode, useEffect, useState } from 'react';
+import type { SpaceInfo } from '../../_account/types';
 import { api, describe } from '../../_lib/client-api';
-import type { SpaceInfo } from '../../_lib/types';
 
 // 기기 화면 맨 위의 "연결하는 법". 도구마다 길이 다르다.
 //   이 컴퓨터의 도구(Claude Code · Codex): cairn connect가 스킬·검토자를 넣고 MCP 등록·로그인까지 한다

@@ -10,9 +10,9 @@ import {
 } from '../../platform';
 import { InstallPolicy } from './install.policy';
 import { Space } from './space';
+import type { HostedAppsInput, InstallCodeInput, RenameSpaceInput } from './space.input';
 import { SpaceQuery } from './space.query';
 import { SpaceRepository } from './space.repository';
-import type { HostedAppsRequest, InstallCodeRequest, RenameSpaceRequest } from './space.request';
 
 // 공간 쓰기: 설치 코드 확인(공간 만들기), 블로그 이름·소개·사이트 주소 바꾸기, 앱 연결 허용.
 @Injectable()
@@ -29,7 +29,7 @@ export class SpaceService extends BaseService {
   }
 
   /** 설치 코드가 맞으면 공간을 만들고(없을 때) 10분짜리 설치 통행증을 돌려준다. from: 요청한 곳(IP) */
-  async verifyInstallCode(actor: Actor, req: InstallCodeRequest, from: string): Promise<string> {
+  async verifyInstallCode(actor: Actor, req: InstallCodeInput, from: string): Promise<string> {
     this.attempts.hit(from);
     if (!this.install.matches(req.code)) throw new Forbidden('install', '맞지 않는 설치 코드예요');
     if ((await this.spaces.installStatus(actor, null)).installed)
@@ -48,7 +48,7 @@ export class SpaceService extends BaseService {
     return this.install.issuePass(space.id);
   }
 
-  async rename(actor: Actor, req: RenameSpaceRequest): Promise<Space> {
+  async rename(actor: Actor, req: RenameSpaceInput): Promise<Space> {
     actor.assertOwner();
     return this.transaction(async (tx) => {
       const repo = new SpaceRepository(tx);
@@ -61,7 +61,7 @@ export class SpaceService extends BaseService {
     });
   }
 
-  async setHostedApps(actor: Actor, req: HostedAppsRequest): Promise<Space> {
+  async setHostedApps(actor: Actor, req: HostedAppsInput): Promise<Space> {
     actor.assertOwner();
     return this.transaction(async (tx) => {
       const repo = new SpaceRepository(tx);

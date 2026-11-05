@@ -22,7 +22,6 @@ const adminDir = join(root, 'apps/web/app/admin');
 const OLD_NAMES = [
   'account/device',
   'account/owner',
-  'account/space',
   'blog/post',
   'mcp',
   'platform/health',
@@ -35,7 +34,7 @@ const OLD_NAMES = [
 const TESTED_ELSEWHERE = {
   'account/device/oauth.controller.ts': 'account/device/device.api.test.ts',
   'account/owner/login.controller.ts': 'account/space/install.api.test.ts',
-  'account/space/space.controller.ts': 'account/space/install.api.test.ts',
+  'account/space/space.api.ts': 'account/space/install.api.test.ts',
   'mcp/mcp.controller.ts': 'account/device/device.api.test.ts',
   'platform/stream/stream.controller.ts': 'task/task.api.test.ts',
   'task/agent/agent.api.ts': 'task/task.api.test.ts',
@@ -47,8 +46,6 @@ const TESTED_ELSEWHERE = {
 const HAND_WRITTEN_TYPES = [
   // 오류 모양 (DomainError.toJSON). view가 아니라 모든 응답의 실패 모양이라 남는다
   'ApiError',
-  'InstallStatus',
-  'SpaceInfo',
   'Owner',
   'LoginMethod',
   'LoginLink',

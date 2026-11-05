@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
+import type { SpaceInfo } from '../../_account/types';
 import { serverGet } from '../../_lib/server-api';
-import type { SpaceInfo } from '../../_lib/types';
 import { GraphBoard } from '../../_vault/GraphBoard';
 import type { Graph } from '../../_vault/types';
 

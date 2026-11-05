@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
+import type { SpaceInfo } from '../_account/types';
 import { formatDate, postPath } from '../_blog/format';
 import { serverGet } from '../_lib/server-api';
-import type { PostList, SpaceInfo } from '../_lib/types';
+import type { PostList } from '../_lib/types';
 
 // 첫 화면 = 글 목록: 공개한 글을 발행한 순서로. 주인이 열어도 방문자가 보는 그대로 (초안·링크 공개 글은 없음).
 export const dynamic = 'force-dynamic';

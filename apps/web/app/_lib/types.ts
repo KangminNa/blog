@@ -1,19 +1,5 @@
-// 서버 API가 돌려주는 모양 (apps/server의 *.response.ts와 맞춘다)
-
-export type InstallStatus = {
-  installed: boolean;
-  step: 'code' | 'owner' | 'done';
-};
-
-export type SpaceInfo = {
-  name: string;
-  description: string;
-  siteUrl: string | null;
-  installed: boolean;
-  version: number;
-  /** ChatGPT·Claude 앱(회사 서버에서 들어오는 연결)을 받는가 */
-  hostedApps: boolean;
-};
+// 손으로 적은 서버 응답 모양 (옮기는 중). 새 타입은 서버 view에서 import type으로 _<모듈>/types.ts에 만든다.
+// 여기 남은 이름은 scripts/check-structure.mjs의 HAND_WRITTEN_TYPES에 있고, 메뉴를 옮기면 함께 지운다.
 
 export type Owner = { login: string };
 

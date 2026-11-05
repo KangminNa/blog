@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import type { InstallStatus, SpaceInfo } from '../_account/types';
 import { api, describe } from '../_lib/client-api';
-import type { Device, InstallStatus, Owner, SpaceInfo } from '../_lib/types';
+import type { Device, Owner } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
 import { useToast } from '../_ui/useToast';
 import { DevicesPanel } from '../admin/devices/DevicesPanel';

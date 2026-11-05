@@ -2,28 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { type Actor, BaseQuery, Database } from '../../platform';
 import { InstallPolicy } from './install.policy';
 import { SpaceRepository } from './space.repository';
-
-/** 블로그 정보 (누구나) */
-export class SpaceView {
-  constructor(
-    readonly name: string,
-    readonly description: string,
-    readonly siteUrl: string | null,
-    readonly installed: boolean,
-    readonly version: number,
-    /** ChatGPT·Claude 앱 연결 허용 */
-    readonly hostedApps: boolean,
-  ) {}
-}
-
-/** 설치 마법사가 다음 단계를 정할 때 보는 상태 */
-export class InstallStatusView {
-  constructor(
-    readonly installed: boolean,
-    readonly spaceId: string | null,
-    readonly passValid: boolean,
-  ) {}
-}
+import { InstallStatusView, SpaceView } from './space.view';
 
 // 공간 읽기. 설치됐다 = 주인이 있다.
 @Injectable()
