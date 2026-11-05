@@ -1,15 +1,21 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, describe } from '../../_lib/client-api';
 import type {
-  Device,
-  SessionDetail,
-  SessionPage,
-  SessionRevision,
-  SessionSummary,
-} from '../../_lib/types';
+  SessionDetailView,
+  SessionPageView,
+  SessionRevisionView,
+  SessionSummaryView,
+} from '../../../../server/src/modules/vault/session/session.view';
+import { api, describe } from '../../_lib/client-api';
+import type { Device } from '../../_lib/types';
 import { TidyPanel } from './TidyPanel';
+
+// 응답 모양은 서버 view의 toJSON()이 원본이다 (객체설계 6장)
+type SessionSummary = ReturnType<SessionSummaryView['toJSON']>;
+type SessionPage = ReturnType<SessionPageView['toJSON']>;
+type SessionRevision = ReturnType<SessionRevisionView['toJSON']>;
+type SessionDetail = ReturnType<SessionDetailView['toJSON']>;
 
 const KIND_LABELS: Record<string, string> = { origin: '원본', human: '사람', merge: '합침' };
 /** 판 번호는 최근 몇 개만 펼쳐 둔다 (판이 많으면 노트가 밀려 내려가므로) */

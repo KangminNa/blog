@@ -4,7 +4,7 @@ import { InvalidRequest } from './errors';
 // 의미 검사(예: 도구 이름 규칙)는 도메인이 한다.
 //
 //   static from(raw: unknown) {
-//     return BaseRequest.read(raw, (f) => new SaveSessionRequest(f.uuid('requestId'), f.text('title', 200)));
+//     return BaseRequest.read(raw, (f) => new SaveSessionInput(f.uuid('requestId'), f.text('title', 200)));
 //   }
 // biome-ignore lint/complexity/noStaticOnlyClass: 모든 Request의 공통 부모. 인스턴스 필드는 하위 클래스가 가진다
 export abstract class BaseRequest {

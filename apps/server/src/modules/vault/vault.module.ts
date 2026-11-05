@@ -13,14 +13,16 @@ import { NeighborsTool } from './graph/graph.tool';
 import { PostMarkHandler } from './post-mark/post-mark.handler';
 import { PostMarkService } from './post-mark/post-mark.service';
 import { PostWikiQuery } from './post-mark/post-wiki.query';
-import { CheckSessionTool } from './session/check-session.tool';
-import { GetSessionTool } from './session/get-session.tool';
-import { SaveSessionTool } from './session/save-session.tool';
-import { SearchSessionsTool } from './session/search-sessions.tool';
 import { SensitivePolicy } from './session/sensitive.policy';
-import { SessionController } from './session/session.controller';
+import { SessionController } from './session/session.api';
 import { SessionQuery } from './session/session.query';
 import { SessionService } from './session/session.service';
+import {
+  CheckSessionTool,
+  GetSessionTool,
+  SaveSessionTool,
+  SearchSessionsTool,
+} from './session/session.tool';
 import { TidyController } from './tidy/tidy.api';
 import { TidyQuery } from './tidy/tidy.query';
 import { TidyService } from './tidy/tidy.service';

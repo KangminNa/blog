@@ -26,7 +26,6 @@ const OLD_NAMES = [
   'mcp',
   'platform/health',
   'platform/stream',
-  'vault/session',
 ];
 
 /** 옆이 아닌 곳에서 시험하는 REST 진입 → 그 테스트 파일 (modules/ 아래) */
@@ -50,11 +49,6 @@ const HAND_WRITTEN_TYPES = [
   'LoginLink',
   'Device',
   'Consent',
-  'SessionSummary',
-  'SessionPage',
-  'Redaction',
-  'SessionRevision',
-  'SessionDetail',
   'PostStatus',
   'PostSummary',
   'AdminPostSummary',

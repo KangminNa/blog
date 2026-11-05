@@ -45,50 +45,6 @@ export const SCOPE_LABELS: Record<string, string> = {
 };
 
 /** 세션 목록의 한 줄 (콘솔의 세션 메뉴). 기기는 id만: 이름은 기기 목록과 맞춘다 */
-export type SessionSummary = {
-  id: string;
-  title: string;
-  project: string | null;
-  tool: string;
-  deviceId: string;
-  visibility: 'private' | 'public';
-  revisionCount: number;
-  startedAt: string | null;
-  lastRevisionAt: string | null;
-};
-
-/** 목록 한 쪽. next가 있으면 ?cursor=next로 다음 쪽 */
-export type SessionPage = { sessions: SessionSummary[]; next: string | null };
-
-/** 서버가 지운 민감정보 (값은 없이 칸과 종류만) */
-export type Redaction = { kind: 'secret'; section: string; label: string };
-
-/** 판 하나의 내용 */
-export type SessionRevision = {
-  seq: number;
-  kind: 'origin' | 'human' | 'merge';
-  actorType: string;
-  createdAt: string;
-  title: string;
-  tags: string[];
-  sections: { name: string; heading: string; text: string }[];
-  warnings: Redaction[];
-  markdown: string;
-};
-
-/** 세션 하나: 지금 판 + 판 기록 */
-export type SessionDetail = SessionSummary & {
-  sourceSessionId: string;
-  head: SessionRevision;
-  history: {
-    seq: number;
-    kind: string;
-    actorType: string;
-    createdAt: string;
-    redactions: number;
-  }[];
-};
-
 /** 글의 공개 범위: 초안(나만) · 공개(목록에 보임) · 링크 공개(주소로만) */
 export type PostStatus = 'draft' | 'published' | 'unlisted';
 

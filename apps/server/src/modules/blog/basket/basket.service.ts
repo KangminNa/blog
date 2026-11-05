@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { type Actor, BaseService, Database, Forbidden, Idempotency } from '../../platform';
-import { GetSessionRequest, SessionQuery } from '../../vault';
+import { GetSessionInput, SessionQuery } from '../../vault';
 import { PostQuery } from '../post/post.query';
 import { ReadPostRequest } from '../post/post.request';
 import { BasketItem } from './basket';
@@ -60,7 +60,7 @@ export class BasketService extends BaseService {
   /** 가리키는 세션·글의 제목. 없거나 볼 수 없으면 NotFound. 링크·메모는 가리키는 것이 없다 */
   private async titleOf(actor: Actor, req: AddBasketItemInput): Promise<string | null> {
     if (req.kind === BasketItem.SESSION) {
-      const session = GetSessionRequest.from({ session_id: req.refId });
+      const session = GetSessionInput.from({ session_id: req.refId });
       return (await this.sessions.note(actor, session)).summary.title;
     }
     if (req.kind === BasketItem.POST) {

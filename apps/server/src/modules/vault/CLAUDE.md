@@ -42,7 +42,7 @@ change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings
 - 정리 설정: tidy_settings
 
 ## 공개 API (`index.ts`)
-`VaultModule`, `VaultTools`(세션·wiki·그래프·변경 묶음 도구 목록, mcp 모듈이 모아서 연다), `SessionQuery`·`GetSessionRequest`(blog의 소재가 세션을 확인할 때 읽음), `PostWikiQuery`(blog가 글에 이을 wiki를 확인할 때 읽음)
+`VaultModule`, `VaultTools`(세션·wiki·그래프·변경 묶음 도구 목록, mcp 모듈이 모아서 연다), `SessionQuery`·`GetSessionInput`(blog의 소재가 세션을 확인할 때 읽음), `PostWikiQuery`(blog가 글에 이을 wiki를 확인할 때 읽음)
 
 ## 내보내는 이벤트 / 받는 이벤트
 | 이벤트 | 내용 (모두 v1) |
