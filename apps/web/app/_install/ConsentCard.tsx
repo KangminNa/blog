@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import type { Consent } from '../_account/types';
 import { api, describe } from '../_lib/client-api';
-import { type Consent, SCOPE_LABELS } from '../_lib/types';
+import { SCOPE_LABELS } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
 
 // 기기 연결 승인 카드. 연결하면 AI 도구가 기다리는 주소로 돌아가고, 도구가 토큰을 받아 붙는다.

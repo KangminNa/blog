@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { PasswordHasher, SecretBox } from '../platform';
-import { DeviceController } from './device/device.controller';
+import { DeviceController } from './device/device.api';
 import { DeviceQuery } from './device/device.query';
 import { DeviceService } from './device/device.service';
-import { OAuthController } from './device/oauth.controller';
+import { OAuthController } from './device/oauth.api';
 import { ActorGuard } from './guard/actor.guard';
 import { ExternalLoginController } from './owner/external-login.controller';
 import { ExternalLoginQuery } from './owner/external-login.query';

@@ -1,9 +1,16 @@
-import { Actor, BaseResponse } from '../../platform';
-import { AuthorizationPolicy } from './authorization.policy';
-import type { AuthorizationCode } from './authorization-code';
+import { Body, Controller, Get, Header, HttpCode, Post, Req, Res } from '@nestjs/common';
+import {
+  Actor,
+  BaseResponse,
+  CurrentActor,
+  type HttpRequest,
+  type HttpResponse,
+} from '../../platform';
 import { type Device, DeviceCredential } from './device';
-import type { ConsentView, DeviceView, OAuthAddressView } from './device.query';
-import type { ConsentRequest } from './device.request';
+import { AuthorizeInput, RegisterClientInput, RevokeTokenInput, TokenInput } from './device.input';
+import { DeviceQuery } from './device.query';
+import { DeviceService } from './device.service';
+import type { OAuthAddressView } from './device.view';
 import type { OAuthClient } from './oauth-client';
 
 /** 인가 서버 안내 (RFC 8414). AI 도구가 어디로 등록·승인·토큰 요청을 보낼지 여기서 안다 */
@@ -114,94 +121,57 @@ export class EmptyResponse extends BaseResponse {
   }
 }
 
-/** 승인 화면 */
-export class ConsentResponse extends BaseResponse {
-  private constructor(private readonly view: ConsentView) {
-    super();
+// MCP 인증 (OAuth 2.1). AI 도구(Claude Code 등)가 이 순서로 붙는다:
+//   /mcp가 401 → 안내 문서 두 개 → 스스로 등록 → 브라우저로 승인(주인이 /connect에서 연결) → 코드를 토큰으로 → /mcp
+// 경로는 OAuth 표준 그대로라 /api 아래가 아니다.
+@Controller()
+export class OAuthController {
+  constructor(
+    private readonly devices: DeviceQuery,
+    private readonly service: DeviceService,
+  ) {}
+
+  @Get('.well-known/oauth-authorization-server')
+  async authorizationServer(@CurrentActor() actor: Actor): Promise<AuthorizationServerResponse> {
+    return AuthorizationServerResponse.of(await this.devices.addresses(actor));
   }
 
-  static of(view: ConsentView): ConsentResponse {
-    return new ConsentResponse(view);
+  @Get(['.well-known/oauth-protected-resource', '.well-known/oauth-protected-resource/mcp'])
+  async protectedResource(@CurrentActor() actor: Actor): Promise<ProtectedResourceResponse> {
+    return ProtectedResourceResponse.of(await this.devices.addresses(actor));
   }
 
-  toJSON(): object {
-    return {
-      clientName: this.view.clientName,
-      redirectHost: this.view.redirectHost,
-      name: this.view.name,
-      scopes: this.view.scopes,
-      app: this.view.app,
-    };
-  }
-}
-
-/** 승인·거절 뒤 브라우저가 갈 곳 (AI 도구가 기다리는 주소) */
-export class ConsentResultResponse extends BaseResponse {
-  private constructor(private readonly redirect: string) {
-    super();
-  }
-
-  static of(redirect: string): ConsentResultResponse {
-    return new ConsentResultResponse(redirect);
-  }
-
-  /** 승인: 코드와 state를 붙인 AI 도구의 주소 */
-  static approved(request: ConsentRequest, code: AuthorizationCode): ConsentResultResponse {
-    return new ConsentResultResponse(
-      AuthorizationPolicy.approvedRedirect(request, code.code ?? ''),
+  @Post('oauth/register')
+  async register(
+    @CurrentActor() actor: Actor,
+    @Req() req: HttpRequest,
+    @Body() body: unknown,
+  ): Promise<ClientRegisteredResponse> {
+    return ClientRegisteredResponse.of(
+      await this.service.registerClient(actor, RegisterClientInput.from(body), req.ip ?? ''),
     );
   }
 
-  toJSON(): object {
-    return { redirect: this.redirect };
-  }
-}
-
-/** 관리 화면의 기기 목록 */
-export class DeviceListResponse extends BaseResponse {
-  private constructor(private readonly devices: readonly DeviceView[]) {
-    super();
+  @Get('oauth/authorize')
+  async authorize(
+    @CurrentActor() actor: Actor,
+    @Req() req: HttpRequest,
+    @Res() res: HttpResponse,
+  ): Promise<void> {
+    res.redirect(302, await this.devices.authorizeRedirect(actor, AuthorizeInput.from(req.query)));
   }
 
-  static of(devices: readonly DeviceView[]): DeviceListResponse {
-    return new DeviceListResponse(devices);
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @Post('oauth/token')
+  async token(@Body() body: unknown): Promise<TokenResponse> {
+    return TokenResponse.of(await this.service.token(TokenInput.from(body)));
   }
 
-  toJSON(): object {
-    return {
-      devices: this.devices.map((d) => ({
-        id: d.id,
-        name: d.name,
-        client: d.clientName,
-        scopes: d.scopes,
-        createdAt: d.createdAt.toISOString(),
-        lastUsedAt: d.lastUsedAt?.toISOString() ?? null,
-        revokedAt: d.revokedAt?.toISOString() ?? null,
-        version: d.version,
-      })),
-    };
-  }
-}
-
-/** 기기 하나를 바꾼 결과. 예비 기기 토큰을 만들었으면 원문을 이번 한 번만 */
-export class DeviceResponse extends BaseResponse {
-  private constructor(private readonly device: Device) {
-    super();
-  }
-
-  static of(device: Device): DeviceResponse {
-    return new DeviceResponse(device);
-  }
-
-  toJSON(): object {
-    const issued = this.device.issuedToken(DeviceCredential.DEVICE);
-    return {
-      id: this.device.id,
-      name: this.device.name,
-      scopes: this.device.scopes,
-      revokedAt: this.device.revokedAt?.toISOString() ?? null,
-      version: this.device.version,
-      ...(issued ? { token: issued.token } : {}),
-    };
+  @HttpCode(200)
+  @Post('oauth/revoke')
+  async revoke(@Body() body: unknown): Promise<EmptyResponse> {
+    await this.service.revokeToken(RevokeTokenInput.from(body));
+    return new EmptyResponse();
   }
 }

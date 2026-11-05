@@ -19,18 +19,11 @@ const modulesDir = join(root, 'apps/server/src/modules');
 const adminDir = join(root, 'apps/web/app/admin');
 
 /** 옛 이름이 남은 폴더 (modules/ 아래). 옮기면 지운다 */
-const OLD_NAMES = [
-  'account/device',
-  'account/owner',
-  'blog/post',
-  'mcp',
-  'platform/health',
-  'platform/stream',
-];
+const OLD_NAMES = ['account/owner', 'blog/post', 'mcp', 'platform/health', 'platform/stream'];
 
 /** 옆이 아닌 곳에서 시험하는 REST 진입 → 그 테스트 파일 (modules/ 아래) */
 const TESTED_ELSEWHERE = {
-  'account/device/oauth.controller.ts': 'account/device/device.api.test.ts',
+  'account/device/oauth.api.ts': 'account/device/device.api.test.ts',
   'account/owner/login.controller.ts': 'account/space/install.api.test.ts',
   'account/space/space.api.ts': 'account/space/install.api.test.ts',
   'mcp/mcp.controller.ts': 'account/device/device.api.test.ts',
@@ -47,8 +40,6 @@ const HAND_WRITTEN_TYPES = [
   'Owner',
   'LoginMethod',
   'LoginLink',
-  'Device',
-  'Consent',
   'PostStatus',
   'PostSummary',
   'AdminPostSummary',

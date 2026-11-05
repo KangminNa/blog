@@ -12,15 +12,15 @@ import {
 import { SpaceQuery } from '../space/space.query';
 import { AuthorizationCode } from './authorization-code';
 import { Device, DeviceCredential } from './device';
-import { DeviceRepository } from './device.repository';
 import {
-  type AddRunnerRequest,
-  type ConsentRequest,
-  type RegisterClientRequest,
-  type RevokeTokenRequest,
-  TokenRequest,
-  type UpdateDeviceRequest,
-} from './device.request';
+  type AddRunnerInput,
+  type ConsentInput,
+  type RegisterClientInput,
+  type RevokeTokenInput,
+  TokenInput,
+  type UpdateDeviceInput,
+} from './device.input';
+import { DeviceRepository } from './device.repository';
 import { OAuthClient } from './oauth-client';
 import { OAuthClientRepository } from './oauth-client.repository';
 import { OAuthError } from './oauth-error';
@@ -43,7 +43,7 @@ export class DeviceService extends BaseService {
   }
 
   /** AI 도구가 스스로 등록한다 (누구나). 설치가 끝난 블로그만, 한 곳에서 1시간에 20번까지 */
-  async registerClient(actor: Actor, req: RegisterClientRequest, ip: string): Promise<OAuthClient> {
+  async registerClient(actor: Actor, req: RegisterClientInput, ip: string): Promise<OAuthClient> {
     try {
       this.registrations.hit(ip);
     } catch (error) {
@@ -71,7 +71,7 @@ export class DeviceService extends BaseService {
   }
 
   /** 주인이 승인 화면에서 "연결"을 누름 → 5분짜리 일회용 코드 (기기는 코드를 토큰으로 바꿀 때 생긴다) */
-  async approve(actor: Actor, req: ConsentRequest): Promise<AuthorizationCode> {
+  async approve(actor: Actor, req: ConsentInput): Promise<AuthorizationCode> {
     actor.assertOwner();
     if (!actor.spaceId || !actor.id) throw new RuleViolation('로그인해 주세요');
     if (await new DeviceRepository(this.db.sql).nameTaken(actor.spaceId, req.name))
@@ -98,12 +98,12 @@ export class DeviceService extends BaseService {
   }
 
   /** 토큰 받기: 승인 코드 → 새 기기와 토큰, 또는 갱신 토큰 → 새 토큰 (갱신 토큰은 한 번만 쓸 수 있다) */
-  async token(req: TokenRequest): Promise<Device> {
-    return req.grantType === TokenRequest.CODE ? this.redeem(req) : this.refresh(req);
+  async token(req: TokenInput): Promise<Device> {
+    return req.grantType === TokenInput.CODE ? this.redeem(req) : this.refresh(req);
   }
 
   /** AI 도구가 토큰을 버릴 때 (RFC 7009). 없는 토큰이어도 성공으로 답한다 */
-  async revokeToken(req: RevokeTokenRequest): Promise<void> {
+  async revokeToken(req: RevokeTokenInput): Promise<void> {
     const hash = DeviceCredential.hash(req.token);
     await this.transaction(async (tx) => {
       const devices = new DeviceRepository(tx);
@@ -114,7 +114,7 @@ export class DeviceService extends BaseService {
     });
   }
 
-  async update(actor: Actor, id: string, req: UpdateDeviceRequest): Promise<Device> {
+  async update(actor: Actor, id: string, req: UpdateDeviceInput): Promise<Device> {
     return this.change(actor, id, (device) => {
       device.assertVersion(req.version);
       if (req.name !== null) device.rename(req.name);
@@ -136,7 +136,7 @@ export class DeviceService extends BaseService {
    * 러너 추가: run 권한만 가진 기기와 토큰을 콘솔에서 바로 만든다. 원문은 이번 응답에만.
    * 같은 requestId가 다시 오면 처음 만든 기기를 돌려준다 (토큰은 다시 볼 수 없어 예비 토큰을 새로 만든다).
    */
-  async addRunner(actor: Actor, req: AddRunnerRequest): Promise<Device> {
+  async addRunner(actor: Actor, req: AddRunnerInput): Promise<Device> {
     actor.assertOwner();
     const { spaceId, id: userId } = actor;
     if (!spaceId || !userId) throw new RuleViolation('로그인해 주세요');
@@ -153,7 +153,7 @@ export class DeviceService extends BaseService {
     });
   }
 
-  private async redeem(req: TokenRequest): Promise<Device> {
+  private async redeem(req: TokenInput): Promise<Device> {
     const now = new Date();
     return this.transaction(async (tx) => {
       const clients = new OAuthClientRepository(tx);
@@ -176,7 +176,7 @@ export class DeviceService extends BaseService {
     });
   }
 
-  private async refresh(req: TokenRequest): Promise<Device> {
+  private async refresh(req: TokenInput): Promise<Device> {
     const now = new Date();
     const hash = DeviceCredential.hash(req.refreshToken ?? '');
     const reused = await this.transaction(async (tx) => {

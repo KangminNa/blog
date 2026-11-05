@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
+import type { Consent } from '../_account/types';
 import { ConsentCard } from '../_install/ConsentCard';
 import { serverFetch } from '../_lib/server-api';
-import type { Consent } from '../_lib/types';
 
 // 기기 연결 승인 화면. AI 도구(Claude Code 등)가 브라우저를 열어 여기로 보낸다 (?request=서명한 승인 요청).
 // 주인이 로그인해 있지 않으면 로그인한 뒤 다시 이 화면으로 돌아온다.

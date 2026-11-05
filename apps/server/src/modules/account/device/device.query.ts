@@ -3,48 +3,10 @@ import { Actor, BaseQuery, Database, DeviceActor, RuleViolation, SecretBox } fro
 import { SpaceQuery } from '../space/space.query';
 import { AuthorizationPolicy } from './authorization.policy';
 import { Device, DeviceCredential } from './device';
-import type { AuthorizeRequest, ConsentRequest } from './device.request';
+import type { AuthorizeInput, ConsentInput } from './device.input';
+import { ConsentView, DeviceView, OAuthAddressView } from './device.view';
 import { OAuthClient } from './oauth-client';
 import { OAuthClientRepository } from './oauth-client.repository';
-
-/** 기기 하나 (관리 화면의 기기 화면) */
-export class DeviceView {
-  constructor(
-    readonly id: string,
-    readonly name: string,
-    readonly clientName: string,
-    readonly scopes: readonly string[],
-    readonly createdAt: Date,
-    readonly lastUsedAt: Date | null,
-    readonly revokedAt: Date | null,
-    readonly version: number,
-  ) {}
-}
-
-/** 승인 화면에 보일 것 */
-export class ConsentView {
-  constructor(
-    readonly clientName: string,
-    readonly redirectHost: string,
-    readonly name: string,
-    readonly scopes: readonly string[],
-    /** ChatGPT·Claude 앱의 연결이면 그 앱 이름 (승인 화면이 직접 시작한 연결인지 묻는다) */
-    readonly app: string | null,
-  ) {}
-}
-
-/** OAuth 안내 문서(메타데이터)를 만들 때 쓰는 주소들 */
-export class OAuthAddressView {
-  constructor(readonly siteUrl: string) {}
-
-  get issuer(): string {
-    return this.siteUrl;
-  }
-
-  get resource(): string {
-    return `${this.siteUrl}/mcp`;
-  }
-}
 
 // 기기 읽기: 토큰 → 요청자(Guard), 기기 목록, 승인 화면, 승인 요청을 어디로 보낼지, OAuth 주소.
 @Injectable()
@@ -105,7 +67,7 @@ export class DeviceQuery extends BaseQuery {
   }
 
   /** 승인 요청을 승인 화면으로 보낼 주소, 또는 오류를 붙여 돌려보낼 주소 */
-  async authorizeRedirect(actor: Actor, req: AuthorizeRequest): Promise<string> {
+  async authorizeRedirect(actor: Actor, req: AuthorizeInput): Promise<string> {
     const { siteUrl } = await this.addresses(actor);
     const { hostedApps } = await this.spaces.info(actor);
     const client = await new OAuthClientRepository(this.sql).find(req.clientId);
@@ -113,7 +75,7 @@ export class DeviceQuery extends BaseQuery {
   }
 
   /** 승인 화면 (로그인한 주인만) */
-  consent(actor: Actor, req: ConsentRequest): ConsentView {
+  consent(actor: Actor, req: ConsentInput): ConsentView {
     actor.assertOwner();
     return new ConsentView(
       req.clientName,
@@ -125,7 +87,7 @@ export class DeviceQuery extends BaseQuery {
   }
 
   /** 거절: 오류를 붙여 AI 도구에게 돌려보낼 주소 */
-  deniedRedirect(actor: Actor, req: ConsentRequest): string {
+  deniedRedirect(actor: Actor, req: ConsentInput): string {
     actor.assertOwner();
     return this.policy.deniedRedirect(req);
   }

@@ -7,8 +7,8 @@ import type {
   SessionRevisionView,
   SessionSummaryView,
 } from '../../../../server/src/modules/vault/session/session.view';
+import type { Device } from '../../_account/types';
 import { api, describe } from '../../_lib/client-api';
-import type { Device } from '../../_lib/types';
 import { TidyPanel } from './TidyPanel';
 
 // 응답 모양은 서버 view의 toJSON()이 원본이다 (객체설계 6장)

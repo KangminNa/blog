@@ -13,7 +13,7 @@ function asOAuth<R>(code: string, read: () => R): R {
 }
 
 /** 동적 클라이언트 등록 (RFC 7591): { client_name, redirect_uris: [...] } */
-export class RegisterClientRequest extends BaseRequest {
+export class RegisterClientInput extends BaseRequest {
   private constructor(
     readonly clientName: string,
     readonly redirectUris: readonly string[],
@@ -21,12 +21,12 @@ export class RegisterClientRequest extends BaseRequest {
     super();
   }
 
-  static from(raw: unknown): RegisterClientRequest {
+  static from(raw: unknown): RegisterClientInput {
     return asOAuth('invalid_client_metadata', () =>
       BaseRequest.read(
         raw,
         (f) =>
-          new RegisterClientRequest(
+          new RegisterClientInput(
             f.optionalText('client_name', 200) ?? '',
             f.optionalTextList('redirect_uris', 10, 2000) ?? [],
           ),
@@ -39,7 +39,7 @@ export class RegisterClientRequest extends BaseRequest {
  * 승인 요청 (GET /oauth/authorize). client_id와 redirect_uri가 틀리면 그 주소로 돌려보낼 수 없으므로 바로 400,
  * 그 밖의 값은 읽기만 하고 판단은 승인 단계에서 한다 (틀리면 돌려보낼 주소에 error를 붙인다).
  */
-export class AuthorizeRequest extends BaseRequest {
+export class AuthorizeInput extends BaseRequest {
   private constructor(
     readonly clientId: string,
     readonly redirectUri: string,
@@ -51,12 +51,12 @@ export class AuthorizeRequest extends BaseRequest {
     super();
   }
 
-  static from(query: unknown): AuthorizeRequest {
+  static from(query: unknown): AuthorizeInput {
     return asOAuth('invalid_request', () =>
       BaseRequest.read(
         query,
         (f) =>
-          new AuthorizeRequest(
+          new AuthorizeInput(
             f.text('client_id', 200),
             f.text('redirect_uri', 2000),
             f.optionalText('response_type', 40),
@@ -70,7 +70,7 @@ export class AuthorizeRequest extends BaseRequest {
 }
 
 /** 토큰 (POST /oauth/token, form): 승인 코드 → 토큰, 또는 갱신 토큰 → 새 토큰 */
-export class TokenRequest extends BaseRequest {
+export class TokenInput extends BaseRequest {
   static readonly CODE = 'authorization_code';
   static readonly REFRESH = 'refresh_token';
 
@@ -85,12 +85,12 @@ export class TokenRequest extends BaseRequest {
     super();
   }
 
-  static from(body: unknown): TokenRequest {
+  static from(body: unknown): TokenInput {
     const request = asOAuth('invalid_request', () =>
       BaseRequest.read(
         body,
         (f) =>
-          new TokenRequest(
+          new TokenInput(
             f.text('grant_type', 40),
             f.optionalText('client_id', 200) ?? '',
             f.optionalText('code', 200),
@@ -100,31 +100,31 @@ export class TokenRequest extends BaseRequest {
           ),
       ),
     );
-    if (request.grantType !== TokenRequest.CODE && request.grantType !== TokenRequest.REFRESH)
+    if (request.grantType !== TokenInput.CODE && request.grantType !== TokenInput.REFRESH)
       throw new OAuthError(
         'unsupported_grant_type',
         `지원하지 않는 grant_type이에요: ${request.grantType}`,
       );
     if (
-      request.grantType === TokenRequest.CODE &&
+      request.grantType === TokenInput.CODE &&
       (!request.code || !request.codeVerifier || !request.redirectUri)
     )
       throw new OAuthError('invalid_request', 'code, code_verifier, redirect_uri가 필요해요');
-    if (request.grantType === TokenRequest.REFRESH && !request.refreshToken)
+    if (request.grantType === TokenInput.REFRESH && !request.refreshToken)
       throw new OAuthError('invalid_request', 'refresh_token이 필요해요');
     return request;
   }
 }
 
 /** 토큰 무효로 하기 (RFC 7009) */
-export class RevokeTokenRequest extends BaseRequest {
+export class RevokeTokenInput extends BaseRequest {
   private constructor(readonly token: string) {
     super();
   }
 
-  static from(body: unknown): RevokeTokenRequest {
+  static from(body: unknown): RevokeTokenInput {
     return asOAuth('invalid_request', () =>
-      BaseRequest.read(body, (f) => new RevokeTokenRequest(f.text('token', 300))),
+      BaseRequest.read(body, (f) => new RevokeTokenInput(f.text('token', 300))),
     );
   }
 }
@@ -133,7 +133,7 @@ export class RevokeTokenRequest extends BaseRequest {
  * 승인 화면에 걸린 요청. 승인을 기다리는 동안의 값(어느 도구, 어디로 돌려보낼지, PKCE)을 DB에 두지 않고
  * 서버 키로 암호화해 승인 화면 주소에 싣는다 (10분). 주인이 연결·거절을 누르면 이 값을 그대로 돌려받는다.
  */
-export class ConsentRequest extends BaseRequest {
+export class ConsentInput extends BaseRequest {
   static readonly SECONDS = 600;
 
   private constructor(
@@ -160,17 +160,17 @@ export class ConsentRequest extends BaseRequest {
   ): string {
     return box.pack(
       JSON.stringify({ clientId, clientName, redirectUri, codeChallenge, state, issuer }),
-      ConsentRequest.SECONDS,
+      ConsentInput.SECONDS,
     );
   }
 
   /** raw: { request, name? } — request는 승인 화면 주소의 ?request= 값 */
-  static from(raw: unknown, box: SecretBox): ConsentRequest {
+  static from(raw: unknown, box: SecretBox): ConsentInput {
     return BaseRequest.read(raw, (f) => {
       const opened = box.unpack(f.text('request', 4000));
       if (!opened) f.reject('request', '승인 요청이 만료됐어요. AI 도구에서 다시 연결해 주세요');
       const v = (opened ? JSON.parse(opened) : {}) as Record<string, string | null>;
-      return new ConsentRequest(
+      return new ConsentInput(
         String(v.clientId ?? ''),
         String(v.clientName ?? ''),
         String(v.redirectUri ?? ''),
@@ -184,7 +184,7 @@ export class ConsentRequest extends BaseRequest {
 }
 
 /** 기기 이름·권한 바꾸기. version은 화면이 불러올 때 받은 값 */
-export class AddRunnerRequest extends BaseRequest {
+export class AddRunnerInput extends BaseRequest {
   private constructor(
     readonly requestId: string,
     readonly name: string,
@@ -192,15 +192,15 @@ export class AddRunnerRequest extends BaseRequest {
     super();
   }
 
-  static from(raw: unknown): AddRunnerRequest {
+  static from(raw: unknown): AddRunnerInput {
     return BaseRequest.read(
       raw,
-      (f) => new AddRunnerRequest(f.text('requestId', 200), f.text('name', 60)),
+      (f) => new AddRunnerInput(f.text('requestId', 200), f.text('name', 60)),
     );
   }
 }
 
-export class UpdateDeviceRequest extends BaseRequest {
+export class UpdateDeviceInput extends BaseRequest {
   private constructor(
     readonly name: string | null,
     readonly scopes: readonly string[] | null,
@@ -209,11 +209,11 @@ export class UpdateDeviceRequest extends BaseRequest {
     super();
   }
 
-  static from(raw: unknown): UpdateDeviceRequest {
+  static from(raw: unknown): UpdateDeviceInput {
     return BaseRequest.read(
       raw,
       (f) =>
-        new UpdateDeviceRequest(
+        new UpdateDeviceInput(
           f.optionalText('name', 60),
           f.optionalTextList('scopes', 10, 40),
           f.integer('version', 1, 2_147_483_647),

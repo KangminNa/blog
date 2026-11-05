@@ -12,28 +12,6 @@ export type LoginLink = { method: string; label: string; linkedAt: string };
 /** 서버의 오류 모양: { code, message, fields? } */
 export type ApiError = { code: string; message: string; fields?: Record<string, string> };
 
-/** 기기 하나 (콘솔의 기기 메뉴) */
-export type Device = {
-  id: string;
-  name: string;
-  client: string;
-  scopes: string[];
-  createdAt: string;
-  lastUsedAt: string | null;
-  revokedAt: string | null;
-  version: number;
-};
-
-/** 승인 화면에 보일 것 */
-export type Consent = {
-  clientName: string;
-  redirectHost: string;
-  name: string;
-  scopes: string[];
-  /** 돌아갈 곳이 ChatGPT·Claude 앱이면 그 이름 (이 컴퓨터의 도구면 null) */
-  app: string | null;
-};
-
 /** 기기 권한의 화면 이름 */
 export const SCOPE_LABELS: Record<string, string> = {
   upload: '세션 저장',
@@ -44,7 +22,6 @@ export const SCOPE_LABELS: Record<string, string> = {
   run: '작업 실행',
 };
 
-/** 세션 목록의 한 줄 (콘솔의 세션 메뉴). 기기는 id만: 이름은 기기 목록과 맞춘다 */
 /** 글의 공개 범위: 초안(나만) · 공개(목록에 보임) · 링크 공개(주소로만) */
 export type PostStatus = 'draft' | 'published' | 'unlisted';
 

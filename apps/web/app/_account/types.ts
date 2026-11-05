@@ -1,4 +1,8 @@
 import type {
+  ConsentView,
+  DeviceView,
+} from '../../../server/src/modules/account/device/device.view';
+import type {
   InstallStatusView,
   SpaceView,
 } from '../../../server/src/modules/account/space/space.view';
@@ -8,3 +12,7 @@ import type {
 
 export type SpaceInfo = ReturnType<SpaceView['toJSON']>;
 export type InstallStatus = ReturnType<InstallStatusView['toJSON']>;
+/** 기기 하나 (콘솔의 기기 메뉴, 세션의 기기 이름) */
+export type Device = ReturnType<DeviceView['toJSON']>;
+/** 승인 화면 (/connect, 설치 마법사의 첫 기기) */
+export type Consent = ReturnType<ConsentView['toJSON']>;
