@@ -1,11 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { type Actor, BaseQuery, Database, OwnerActor, Unauthenticated } from '../../platform';
 import { WebSession } from './owner';
-
-/** 로그인한 주인 (관리 화면 위쪽) */
-export class OwnerView {
-  constructor(readonly login: string) {}
-}
+import { OwnerView } from './owner.view';
 
 // 주인 읽기: 로그인 쿠키 → 요청자(Guard), 로그인한 사람 정보.
 @Injectable()

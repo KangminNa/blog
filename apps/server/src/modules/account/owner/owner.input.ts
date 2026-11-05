@@ -1,7 +1,7 @@
 import { BaseRequest, type RequestFields } from '../../platform';
 
 /** 설치 때 주인 계정 만들기: { "login": "kangmin", "password": "…" } */
-export class CreateOwnerRequest extends BaseRequest {
+export class CreateOwnerInput extends BaseRequest {
   private constructor(
     readonly login: string,
     readonly password: string,
@@ -17,16 +17,16 @@ export class CreateOwnerRequest extends BaseRequest {
     return login;
   }
 
-  static from(raw: unknown): CreateOwnerRequest {
+  static from(raw: unknown): CreateOwnerInput {
     return BaseRequest.read(
       raw,
-      (f) => new CreateOwnerRequest(CreateOwnerRequest.readLogin(f), f.text('password', 200)),
+      (f) => new CreateOwnerInput(CreateOwnerInput.readLogin(f), f.text('password', 200)),
     );
   }
 }
 
 /** 로그인 */
-export class LoginRequest extends BaseRequest {
+export class LoginInput extends BaseRequest {
   private constructor(
     readonly login: string,
     readonly password: string,
@@ -34,16 +34,16 @@ export class LoginRequest extends BaseRequest {
     super();
   }
 
-  static from(raw: unknown): LoginRequest {
+  static from(raw: unknown): LoginInput {
     return BaseRequest.read(
       raw,
-      (f) => new LoginRequest(f.text('login', 40).trim().toLowerCase(), f.text('password', 200)),
+      (f) => new LoginInput(f.text('login', 40).trim().toLowerCase(), f.text('password', 200)),
     );
   }
 }
 
 /** 비밀번호 바꾸기: 지금 비밀번호를 한 번 더 확인한다 */
-export class ChangePasswordRequest extends BaseRequest {
+export class ChangePasswordInput extends BaseRequest {
   private constructor(
     readonly current: string,
     readonly next: string,
@@ -51,10 +51,10 @@ export class ChangePasswordRequest extends BaseRequest {
     super();
   }
 
-  static from(raw: unknown): ChangePasswordRequest {
+  static from(raw: unknown): ChangePasswordInput {
     return BaseRequest.read(
       raw,
-      (f) => new ChangePasswordRequest(f.text('current', 200), f.text('next', 200)),
+      (f) => new ChangePasswordInput(f.text('current', 200), f.text('next', 200)),
     );
   }
 }

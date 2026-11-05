@@ -1,8 +1,7 @@
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
-import type { SpaceInfo } from '../_account/types';
+import type { Owner, SpaceInfo } from '../_account/types';
 import { serverGet } from '../_lib/server-api';
-import type { Owner } from '../_lib/types';
 import { AdminShell } from './AdminShell';
 
 // 콘솔은 주인만. 로그인하지 않았으면 로그인한 뒤 콘솔로 돌아온다.

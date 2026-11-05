@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import '../../../_blog/blog.css';
+import type { Owner } from '../../../_account/types';
 import { serverGet } from '../../../_lib/server-api';
-import type { Owner } from '../../../_lib/types';
 import { type LinkedPost, PostEditor } from '../PostEditor';
 
 // 글 편집기 (/admin/posts/new: 새 글, /admin/posts/<id>: 고쳐 쓰기). 주인만.

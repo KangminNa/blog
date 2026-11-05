@@ -1,6 +1,7 @@
 import { Controller, Delete, Get, Param, Req, Res } from '@nestjs/common';
 import {
   type Actor,
+  BaseResponse,
   Cookies,
   CurrentActor,
   DomainError,
@@ -8,15 +9,48 @@ import {
   type HttpResponse,
   SecretBox,
 } from '../../platform';
+import { ExternalCallbackInput, ExternalStartInput } from './external-login.input';
 import { ExternalLoginQuery } from './external-login.query';
-import { ExternalCallbackRequest, ExternalStartRequest } from './external-login.request';
-import {
-  LoginLinksResponse,
-  LoginMethodsResponse,
-  UnlinkedResponse,
-} from './external-login.response';
+import type { LoginLinkView, LoginMethodView } from './external-login.view';
 import { WebSession } from './owner';
 import { OwnerService } from './owner.service';
+
+/** 로그인 화면의 버튼들 (켜진 로그인 플러그인) */
+export class LoginMethodsResponse extends BaseResponse {
+  private constructor(private readonly methods: readonly LoginMethodView[]) {
+    super();
+  }
+
+  static of(methods: readonly LoginMethodView[]): LoginMethodsResponse {
+    return new LoginMethodsResponse(methods);
+  }
+
+  toJSON(): object {
+    return { methods: this.methods.map((m) => m.toJSON()) };
+  }
+}
+
+/** 주인에게 연결된 외부 계정들 (계정 화면) */
+export class LoginLinksResponse extends BaseResponse {
+  private constructor(private readonly links: readonly LoginLinkView[]) {
+    super();
+  }
+
+  static of(links: readonly LoginLinkView[]): LoginLinksResponse {
+    return new LoginLinksResponse(links);
+  }
+
+  toJSON(): object {
+    return { links: this.links.map((l) => l.toJSON()) };
+  }
+}
+
+/** 연결을 끊음 */
+export class UnlinkedResponse extends BaseResponse {
+  toJSON(): object {
+    return { unlinked: true };
+  }
+}
 
 // 외부 로그인 (로그인 플러그인: GitHub 등). 코어가 경로·확인값·로그인 쿠키를 맡고, 플러그인은 누구인지만 알려준다.
 //   GET    api/auth/methods                    로그인 화면의 버튼들
@@ -47,7 +81,7 @@ export class ExternalLoginController {
   ): Promise<void> {
     await this.start(
       actor,
-      ExternalStartRequest.from(method, ExternalStartRequest.LOGIN, req.query),
+      ExternalStartInput.from(method, ExternalStartInput.LOGIN, req.query),
       req,
       res,
     );
@@ -62,7 +96,7 @@ export class ExternalLoginController {
   ): Promise<void> {
     await this.start(
       actor,
-      ExternalStartRequest.from(method, ExternalStartRequest.LINK, req.query),
+      ExternalStartInput.from(method, ExternalStartInput.LINK, req.query),
       req,
       res,
     );
@@ -79,13 +113,13 @@ export class ExternalLoginController {
     @Req() req: HttpRequest,
     @Res() res: HttpResponse,
   ): Promise<void> {
-    const request = ExternalCallbackRequest.from(
+    const request = ExternalCallbackInput.from(
       method,
       req.query,
-      Cookies.read(req, ExternalCallbackRequest.COOKIE),
+      Cookies.read(req, ExternalCallbackInput.COOKIE),
       this.box,
     );
-    Cookies.clear(res, ExternalCallbackRequest.COOKIE);
+    Cookies.clear(res, ExternalCallbackInput.COOKIE);
     try {
       const session = await this.owners.finishExternal(
         actor,
@@ -120,18 +154,12 @@ export class ExternalLoginController {
 
   private async start(
     actor: Actor,
-    request: ExternalStartRequest,
+    request: ExternalStartInput,
     req: HttpRequest,
     res: HttpResponse,
   ): Promise<void> {
     const view = await this.external.start(actor, request);
-    Cookies.set(
-      res,
-      req,
-      ExternalCallbackRequest.COOKIE,
-      view.cookie,
-      ExternalCallbackRequest.SECONDS,
-    );
+    Cookies.set(res, req, ExternalCallbackInput.COOKIE, view.cookie, ExternalCallbackInput.SECONDS);
     res.redirect(302, view.url);
   }
 }

@@ -12,11 +12,11 @@ import {
 } from '../../platform';
 import { InstallPolicy } from '../space/install.policy';
 import { SpaceQuery } from '../space/space.query';
+import type { ExternalCallbackInput } from './external-login.input';
 import { ExternalLoginQuery } from './external-login.query';
-import type { ExternalCallbackRequest } from './external-login.request';
 import { Owner, WebSession } from './owner';
+import type { ChangePasswordInput, CreateOwnerInput, LoginInput } from './owner.input';
 import { OwnerRepository } from './owner.repository';
-import type { ChangePasswordRequest, CreateOwnerRequest, LoginRequest } from './owner.request';
 import { PasswordPolicy } from './password.policy';
 
 // 주인 계정과 로그인: 설치 때 계정 만들기, 아이디·비밀번호 로그인, 로그아웃, 비밀번호 바꾸기·다시 정하기.
@@ -43,7 +43,7 @@ export class OwnerService extends BaseService {
   async create(
     actor: Actor,
     pass: string | null,
-    req: CreateOwnerRequest,
+    req: CreateOwnerInput,
     ip: string,
     userAgent: string,
   ): Promise<WebSession> {
@@ -59,7 +59,7 @@ export class OwnerService extends BaseService {
     });
   }
 
-  async login(req: LoginRequest, ip: string, userAgent: string): Promise<WebSession> {
+  async login(req: LoginInput, ip: string, userAgent: string): Promise<WebSession> {
     this.byPlace.check(ip);
     this.byLogin.check(req.login);
     const found = await new OwnerRepository(this.db.sql).findByLogin(req.login);
@@ -99,7 +99,7 @@ export class OwnerService extends BaseService {
   async changePassword(
     actor: Actor,
     token: string | null,
-    req: ChangePasswordRequest,
+    req: ChangePasswordInput,
   ): Promise<void> {
     if (actor.kind !== 'owner' || !token) throw new Unauthenticated('로그인해 주세요');
     const tokenHash = WebSession.hash(token);
@@ -128,7 +128,7 @@ export class OwnerService extends BaseService {
    */
   async finishExternal(
     actor: Actor,
-    req: ExternalCallbackRequest,
+    req: ExternalCallbackInput,
     ip: string,
     userAgent: string,
   ): Promise<WebSession | null> {

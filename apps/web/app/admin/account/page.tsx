@@ -1,5 +1,5 @@
+import type { Owner } from '../../_account/types';
 import { serverGet } from '../../_lib/server-api';
-import type { Owner } from '../../_lib/types';
 import { AccountPage } from './AccountPage';
 
 // 외부 계정 연결에서 실패하면 ?error=이유 로 돌아온다.

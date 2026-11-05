@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import type { LoginLink, LoginMethod } from '../../_account/types';
 import { api, describe } from '../../_lib/client-api';
-import type { LoginLink, LoginMethod } from '../../_lib/types';
 
 // 계정 화면의 "연결된 로그인": 켜진 로그인 플러그인마다 연결하거나 끊는다.
 // 연결해 둔 외부 계정으로만 로그인되므로, 플러그인이 아무 계정이나 주인으로 만들 수 없다.

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import type { LoginMethod } from '../_account/types';
 import { api, describe } from '../_lib/client-api';
-import type { LoginMethod } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
 
 // 로그인 카드. 켜진 로그인 플러그인(GitHub 등)의 버튼이 아래에 붙는다.

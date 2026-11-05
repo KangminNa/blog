@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
 import '../_blog/blog.css';
-import type { SpaceInfo } from '../_account/types';
+import type { Owner, SpaceInfo } from '../_account/types';
 import { BlogHeader } from '../_blog/BlogHeader';
 import { serverGet } from '../_lib/server-api';
-import type { Owner } from '../_lib/types';
 
 // 구독기가 블로그 주소만으로 RSS를 찾게 한다
 export const metadata = { alternates: { types: { 'application/rss+xml': '/rss.xml' } } };

@@ -7,9 +7,9 @@ import {
   type HttpRequest,
   type HttpResponse,
 } from '../../platform';
+import { LoginResponse } from '../owner/login.api';
 import { WebSession } from '../owner/owner';
-import { CreateOwnerRequest } from '../owner/owner.request';
-import { LoginResponse } from '../owner/owner.response';
+import { CreateOwnerInput } from '../owner/owner.input';
 import { OwnerService } from '../owner/owner.service';
 import { InstallPolicy } from './install.policy';
 import { InstallCodeInput } from './space.input';
@@ -95,7 +95,7 @@ export class InstallController {
     const session = await this.owners.create(
       actor,
       Cookies.read(req, InstallPolicy.COOKIE),
-      CreateOwnerRequest.from(body),
+      CreateOwnerInput.from(body),
       req.ip ?? '',
       String(req.headers['user-agent'] ?? ''),
     );
