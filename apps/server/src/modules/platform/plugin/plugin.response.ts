@@ -1,4 +1,4 @@
-import { Actor } from '../base/actor';
+import type { Actor } from '../base/actor';
 import type { ActionResult } from '../base/base-action';
 import { BaseResponse } from '../base/base-response';
 import type { PluginSettingsView, PluginView } from './plugin.query';
@@ -14,7 +14,7 @@ export class PluginListResponse extends BaseResponse {
   }
 
   static of(plugins: readonly PluginView[], actor: Actor): PluginListResponse {
-    return new PluginListResponse(plugins, actor.can(Actor.WRITE));
+    return new PluginListResponse(plugins, actor.canManage());
   }
 
   toJSON(): object {

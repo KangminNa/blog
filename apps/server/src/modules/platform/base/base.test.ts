@@ -129,6 +129,10 @@ describe('Actor', () => {
     assert.throws(() => new VisitorActor().assertOwnerOrSystem(), Forbidden);
     new OwnerActor('s', 'u').assertOwnerOrSystem();
     new SystemActor().assertOwnerOrSystem();
+    assert.equal(everything.canManage(), false);
+    assert.equal(new VisitorActor().canManage(), false);
+    assert.equal(new OwnerActor('s', 'u').canManage(), true);
+    assert.equal(new SystemActor().canManage(), true);
   });
 });
 

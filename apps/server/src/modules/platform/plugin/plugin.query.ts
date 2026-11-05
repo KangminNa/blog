@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Actor } from '../base/actor';
+import type { Actor } from '../base/actor';
 import { BaseQuery } from '../base/base-query';
 import { Database } from '../base/database';
 import { NotFound } from '../base/errors';
@@ -56,7 +56,7 @@ export class PluginQuery extends BaseQuery {
     return this.registry
       .installed()
       .map((m) => this.view(m, states.get(m.name) ?? null))
-      .filter((v) => actor.can(Actor.WRITE) || v.active);
+      .filter((v) => actor.canManage() || v.active);
   }
 
   async publicSettings(_actor: Actor, name: string): Promise<PluginSettingsView> {

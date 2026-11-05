@@ -97,6 +97,11 @@ describe('켜기 → 공개 설정', () => {
 
   test('방문자 목록에는 켜진 것만, 주인 전용 정보(설정 칸·권한)는 빠진다', async () => {
     const res = await api.get('/api/plugins');
+    const writer = await api.writeDevice(owner, 'plugin-writer');
+    const asWriter = await api.request('GET', '/api/plugins', TestUser.visitor, undefined, {
+      authorization: `Bearer ${writer}`,
+    });
+    assert.deepEqual(asWriter.json(), res.json(), 'write 기기도 방문자와 같은 목록');
     assert.deepEqual(res.json(), {
       plugins: [
         {

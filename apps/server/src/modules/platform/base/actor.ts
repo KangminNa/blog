@@ -43,6 +43,11 @@ export abstract class Actor {
     if (this.kind !== 'system') this.assertOwner();
   }
 
+  /** 관리 화면의 정보(설정 칸, 필요한 권한 등)를 볼 수 있는가: 주인이나 서버 자신. 권한 이름이 아니라 종류로 */
+  canManage(): boolean {
+    return this.kind === 'owner' || this.kind === 'system';
+  }
+
   /** 비공개 데이터까지 볼 수 있는가 */
   canSeePrivate(): boolean {
     return this.can(Actor.READ_ALL);
