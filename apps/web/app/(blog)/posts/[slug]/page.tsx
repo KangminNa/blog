@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import type { SpaceInfo } from '../../../_account/types';
 import { formatDate, slugFrom } from '../../../_blog/format';
+import type { PostPage } from '../../../_blog/types';
 import { renderMarkdown } from '../../../_lib/markdown';
 import { serverGet } from '../../../_lib/server-api';
-import type { PostPage } from '../../../_lib/types';
 import { Slot } from '../../../_plugins/Slot';
 
 // 글 페이지. 방문자는 공개·링크 공개 글을, 주인은 초안도 미리 본다 (서버가 보는 사람마다 거른다).

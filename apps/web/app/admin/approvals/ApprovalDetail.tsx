@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { useRef, useState } from 'react';
+import { POST_STATUS_LABELS } from '../../_blog/labels';
+import type { EditablePost } from '../../_blog/types';
 import { api, describe } from '../../_lib/client-api';
-import { type EditablePost, POST_STATUS_LABELS } from '../../_lib/types';
 import { useLiveValue } from '../../_lib/use-live';
 import {
   actionLabel,

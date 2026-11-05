@@ -2,14 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { Actor, AgentActor, BaseService, Database, Idempotency } from '../../platform';
 import { PostWikiQuery } from '../../vault';
 import { Post } from './post';
-import { PostRepository } from './post.repository';
 import type {
-  CreatePostRequest,
-  PostStatusRequest,
-  PostVersionRequest,
-  SaveDraftRequest,
-  SavePostRequest,
-} from './post.request';
+  CreatePostInput,
+  PostStatusInput,
+  PostVersionInput,
+  SaveDraftInput,
+  SavePostInput,
+} from './post.input';
+import { PostRepository } from './post.repository';
 import { PostContent } from './post-content';
 import { SlugPolicy } from './slug.policy';
 
@@ -31,7 +31,7 @@ export class PostService extends BaseService {
   }
 
   /** 같은 requestId가 다시 오면 처음 만든 글을 그대로 돌려준다 (두 번 눌러도 글은 하나) */
-  async create(actor: Actor, req: CreatePostRequest): Promise<Post> {
+  async create(actor: Actor, req: CreatePostInput): Promise<Post> {
     actor.assertCan(Actor.WRITE);
     const spaceId = Post.spaceOf(actor);
     const content = PostContent.write(req.title, req.body);
@@ -54,7 +54,7 @@ export class PostService extends BaseService {
   }
 
   /** 고쳐 쓰기: 제목·본문이 바뀌었으면 새 판. 주소·wiki 연결을 보내지 않으면 지금 그대로 */
-  async save(actor: Actor, req: SavePostRequest): Promise<Post> {
+  async save(actor: Actor, req: SavePostInput): Promise<Post> {
     actor.assertCan(Actor.WRITE);
     const spaceId = Post.spaceOf(actor);
     const content = PostContent.write(req.title, req.body);
@@ -78,7 +78,7 @@ export class PostService extends BaseService {
    * 응답을 못 받아 같은 request_id로 다시 보내면 처음 저장한 글을 돌려준다.
    * request_id는 AI가 만들어서, 다른 작업에서 같은 값을 써도 앞 글이 돌아오지 않게 작업마다 센다.
    */
-  async saveDraft(actor: Actor, req: SaveDraftRequest): Promise<Post> {
+  async saveDraft(actor: Actor, req: SaveDraftInput): Promise<Post> {
     actor.assertCan(Actor.WRITE);
     const spaceId = Post.spaceOf(actor);
     const content = PostContent.write(req.title, req.body);
@@ -107,7 +107,7 @@ export class PostService extends BaseService {
     });
   }
 
-  async changeStatus(actor: Actor, req: PostStatusRequest): Promise<Post> {
+  async changeStatus(actor: Actor, req: PostStatusInput): Promise<Post> {
     actor.assertCan(Actor.WRITE);
     const spaceId = Post.spaceOf(actor);
     return this.transaction(async (tx) => {
@@ -142,7 +142,7 @@ export class PostService extends BaseService {
     });
   }
 
-  async trash(actor: Actor, req: PostVersionRequest): Promise<Post> {
+  async trash(actor: Actor, req: PostVersionInput): Promise<Post> {
     actor.assertCan(Actor.WRITE);
     const spaceId = Post.spaceOf(actor);
     return this.transaction(async (tx) => {
@@ -155,7 +155,7 @@ export class PostService extends BaseService {
     });
   }
 
-  async recover(actor: Actor, req: PostVersionRequest): Promise<Post> {
+  async recover(actor: Actor, req: PostVersionInput): Promise<Post> {
     actor.assertCan(Actor.WRITE);
     const spaceId = Post.spaceOf(actor);
     return this.transaction(async (tx) => {

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { type Actor, BaseService, type Blob, BlobStore, Database } from '../../platform';
+import { ReadPostInput } from '../post/post.input';
 import { PostQuery } from '../post/post.query';
-import { ReadPostRequest } from '../post/post.request';
 import { Asset } from './asset';
 import { AssetRepository } from './asset.repository';
 
@@ -20,7 +20,7 @@ export class AssetService extends BaseService {
   /** mime은 입력 검사가 파일의 앞부분으로 정한 값이다. 없는 글·휴지통 글이면 파일을 쓰기 전에 NotFound */
   async upload(actor: Actor, postId: string, bytes: Buffer, mime: string): Promise<Blob> {
     actor.assertOwner();
-    await this.posts.editable(actor, ReadPostRequest.from(postId));
+    await this.posts.editable(actor, ReadPostInput.from(postId));
     const blob = await this.blobs.save(bytes, mime);
     await this.transaction((tx) => new AssetRepository(tx).save(Asset.open(postId, blob.hash)));
     return blob;

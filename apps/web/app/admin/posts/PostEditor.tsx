@@ -8,15 +8,16 @@ import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AssetView } from '../../../../server/src/modules/blog/asset/asset.view';
 import { postPath } from '../../_blog/format';
+import { POST_STATUS_LABELS } from '../../_blog/labels';
+import type { EditablePost, PostStatus, SavedPost } from '../../_blog/types';
 import { api, describe, uploadFile } from '../../_lib/client-api';
-import { type EditablePost, POST_STATUS_LABELS, type PostStatus } from '../../_lib/types';
 import { useToast } from '../../_ui/useToast';
 import { BigQuote } from './editor/big-quote';
 import { docToMarkdown, markdownToEditorHtml } from './editor/markdown-doc';
 import { WikiPicker } from './WikiPicker';
 
-/** 편집기가 다루는 글: 쓰는 결과도 같은 모양 */
-export type LinkedPost = EditablePost & { mainWikiId: string | null; refWikiIds: string[] };
+/** 편집기가 다루는 글: 불러온 글이거나 방금 쓴 결과 (둘 다 편집기가 쓰는 칸을 모두 가진다) */
+export type LinkedPost = EditablePost | SavedPost;
 
 /** 글 설정 (발행 창에서 고르는 것) */
 type Settings = {
@@ -184,12 +185,12 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
       ...(refsChanged ? { refWikiIds: settings.refWikiIds } : {}),
     };
     const reply = post
-      ? await api<LinkedPost>('PUT', `/api/posts/${post.id}`, {
+      ? await api<SavedPost>('PUT', `/api/posts/${post.id}`, {
           ...fields,
           version: post.version,
           slug: slugChanged ? settings.slug.trim() : null,
         })
-      : await api<LinkedPost>('POST', '/api/posts', {
+      : await api<SavedPost>('POST', '/api/posts', {
           ...fields,
           requestId: requestId.current,
           slug: settings.slug.trim() || null,
@@ -221,7 +222,7 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
     if (!current) return;
     if (current.status !== choice) {
       setBusy(true);
-      const reply = await api<LinkedPost>('POST', `/api/posts/${current.id}/status`, {
+      const reply = await api<SavedPost>('POST', `/api/posts/${current.id}/status`, {
         version: current.version,
         status: choice,
       });
@@ -251,7 +252,7 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
 
   async function recover() {
     if (!post) return;
-    const reply = await api<LinkedPost>('POST', `/api/posts/${post.id}/restore`, {
+    const reply = await api<SavedPost>('POST', `/api/posts/${post.id}/restore`, {
       version: post.version,
     });
     if (!reply.ok) return setError(describe(reply.error));

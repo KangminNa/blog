@@ -2,59 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { Actor, BaseQuery, Database, NotFound, type Row } from '../../platform';
 import { PostWikiQuery } from '../../vault';
 import { Post } from './post';
-import { ListPostsRequest, type PostSlugRequest, type ReadPostRequest } from './post.request';
-
-/** 글 목록의 한 줄 */
-export class PostSummaryView {
-  constructor(
-    readonly id: string,
-    readonly slug: string,
-    readonly title: string,
-    readonly excerpt: string,
-    readonly status: string,
-    readonly tags: readonly string[],
-    readonly revisionCount: number,
-    readonly publishedAt: Date | null,
-    readonly updatedAt: Date,
-    readonly deletedAt: Date | null,
-    /** 글 버전 (목록에서 바로 되살릴 때 보낸다) */
-    readonly version: number,
-  ) {}
-}
-
-/** 관리 화면 탭의 글 수 */
-export class PostCountsView {
-  constructor(
-    readonly draft: number,
-    readonly published: number,
-    readonly unlisted: number,
-    readonly trash: number,
-  ) {}
-}
-
-/** 목록 한 쪽. counts는 비공개 글까지 보는 사람(주인)에게만 */
-export class PostPageView {
-  constructor(
-    readonly posts: readonly PostSummaryView[],
-    readonly next: string | null,
-    readonly counts: PostCountsView | null,
-  ) {}
-}
-
-/**
- * 글 하나: 목록 정보 + 본문. owner면 공개 범위·버전까지 보여준다.
- * wiki 연결에는 이 요청자가 볼 수 있는 wiki만 담는다: 진짜 id는 UUIDv7이라 비공개 wiki가 만들어진 때가 드러난다.
- */
-export class PostView {
-  constructor(
-    readonly summary: PostSummaryView,
-    readonly body: string,
-    readonly align: string,
-    readonly owner: boolean,
-    readonly mainWikiId: string | null,
-    readonly refWikiIds: readonly string[],
-  ) {}
-}
+import { ListPostsInput, type PostSlugInput, type ReadPostInput } from './post.input';
+import { PostCountsView, PostPageView, PostSummaryView, PostView } from './post.view';
 
 // 글 읽기. 방문자는 공개 글만 목록에 보이고, 링크만 글은 주소로만 열린다. 임시·휴지통 글은 없는 글과 같다.
 // 비공개까지 볼 수 있는 요청자(주인, read_all 기기)는 전부 본다.
@@ -70,7 +19,7 @@ export class PostQuery extends BaseQuery {
     super(db);
   }
 
-  async list(actor: Actor, req: ListPostsRequest): Promise<PostPageView> {
+  async list(actor: Actor, req: ListPostsInput): Promise<PostPageView> {
     const all = actor.canSeePrivate();
     // 주인은 고친 순서, 방문자는 발행한 순서
     const at = all ? this.sql`p.updated_at` : this.sql`p.published_at`;
@@ -87,14 +36,14 @@ export class PostQuery extends BaseQuery {
     return new PostPageView(
       page,
       rows.length > PostQuery.PAGE && last && lastAt
-        ? ListPostsRequest.cursorAfter(lastAt, last.id)
+        ? ListPostsInput.cursorAfter(lastAt, last.id)
         : null,
       all ? await this.counts(actor) : null,
     );
   }
 
   /** 주소로 글 하나. 방문자는 공개·링크만 글, 주인은 임시 글도 (미리 보기) */
-  async bySlug(actor: Actor, req: PostSlugRequest): Promise<PostView> {
+  async bySlug(actor: Actor, req: PostSlugInput): Promise<PostView> {
     const all = actor.canSeePrivate();
     const [row] = await this.sql`
       ${this.selectOne()}
@@ -105,7 +54,7 @@ export class PostQuery extends BaseQuery {
   }
 
   /** 편집기가 여는 글 하나 (휴지통 글 포함). 글을 쓸 수 있는 요청자만 */
-  async get(actor: Actor, req: ReadPostRequest): Promise<PostView> {
+  async get(actor: Actor, req: ReadPostInput): Promise<PostView> {
     actor.assertCan(Actor.WRITE);
     const [row] = await this.sql`
       ${this.selectOne()}
@@ -115,7 +64,7 @@ export class PostQuery extends BaseQuery {
   }
 
   /** 고칠 수 있는 글 하나 (AI 도구의 읽기, 사진 올리기). 휴지통 글은 없는 글과 같다 */
-  async editable(actor: Actor, req: ReadPostRequest): Promise<PostView> {
+  async editable(actor: Actor, req: ReadPostInput): Promise<PostView> {
     actor.assertCan(Actor.WRITE);
     const [row] = await this.sql`
       ${this.selectOne()}
@@ -144,7 +93,7 @@ export class PostQuery extends BaseQuery {
   /** 목록에서 볼 글: 방문자는 공개 글만, 주인은 고른 탭 (없으면 휴지통 말고 전부) */
   private filter(all: boolean, status: string | null) {
     if (!all) return this.sql`AND p.status = ${Post.PUBLISHED} AND p.deleted_at IS NULL`;
-    if (status === ListPostsRequest.TRASH) return this.sql`AND p.deleted_at IS NOT NULL`;
+    if (status === ListPostsInput.TRASH) return this.sql`AND p.deleted_at IS NOT NULL`;
     if (status === null) return this.sql`AND p.deleted_at IS NULL`;
     return this.sql`AND p.status = ${status} AND p.deleted_at IS NULL`;
   }
@@ -169,11 +118,21 @@ export class PostQuery extends BaseQuery {
     return new PostView(
       this.summary(r),
       String(r.head_body ?? ''),
-      String(r.align),
+      PostQuery.alignOf(r),
       owner,
       main !== null && shown(main) ? main : null,
       PostQuery.refsOf(r).filter(shown),
     );
+  }
+
+  /** DB의 CHECK가 Post.STATUSES만 받으니 그대로 좁힌다 */
+  private static statusOf(r: Row): PostSummaryView['status'] {
+    return String(r.status) as PostSummaryView['status'];
+  }
+
+  /** DB의 CHECK가 Post.ALIGNS만 받으니 그대로 좁힌다 */
+  private static alignOf(r: Row): PostView['align'] {
+    return String(r.align) as PostView['align'];
   }
 
   private static refsOf(r: Row): readonly string[] {
@@ -190,7 +149,7 @@ export class PostQuery extends BaseQuery {
       String(r.slug),
       String(r.title ?? ''),
       String(r.excerpt ?? ''),
-      String(r.status),
+      PostQuery.statusOf(r),
       (r.tags as string[] | null) ?? [],
       Number(r.revision_count),
       r.published_at === null ? null : new Date(r.published_at),

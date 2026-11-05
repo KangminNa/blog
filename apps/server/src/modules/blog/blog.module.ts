@@ -9,7 +9,7 @@ import { BasketQuery } from './basket/basket.query';
 import { BasketService } from './basket/basket.service';
 import { BasketGetTool } from './basket/basket.tool';
 import { BlogTools } from './blog-tools';
-import { PostController } from './post/post.controller';
+import { PostController } from './post/post.api';
 import { PostQuery } from './post/post.query';
 import { PostService } from './post/post.service';
 import { BlogGetPostTool, BlogSaveDraftTool } from './post/post.tool';

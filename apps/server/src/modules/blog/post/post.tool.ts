@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseResponse, BaseTool } from '../../platform';
 import { Post } from './post';
-import { PostQuery, type PostView } from './post.query';
-import { ReadPostRequest, SaveDraftRequest } from './post.request';
+import { ReadPostInput, SaveDraftInput } from './post.input';
+import { PostQuery } from './post.query';
 import { PostService } from './post.service';
+import type { PostView } from './post.view';
 import { PostContent } from './post-content';
 
 // AI 도구의 글 쓰기 (write 권한). 기기와 에이전트의 작업 토큰이 같은 도구를 쓴다.
@@ -82,7 +83,7 @@ export class BlogGetPostTool extends BaseTool {
   }
 
   async handle(actor: Actor, raw: unknown): Promise<ToolPostResponse> {
-    return ToolPostResponse.of(await this.posts.editable(actor, ReadPostRequest.fromTool(raw)));
+    return ToolPostResponse.of(await this.posts.editable(actor, ReadPostInput.fromTool(raw)));
   }
 }
 
@@ -142,9 +143,6 @@ export class BlogSaveDraftTool extends BaseTool {
   }
 
   async handle(actor: Actor, raw: unknown, site: string): Promise<ToolDraftResponse> {
-    return ToolDraftResponse.of(
-      await this.posts.saveDraft(actor, SaveDraftRequest.from(raw)),
-      site,
-    );
+    return ToolDraftResponse.of(await this.posts.saveDraft(actor, SaveDraftInput.from(raw)), site);
   }
 }

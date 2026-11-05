@@ -1,13 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { POST_STATUS_LABELS } from '../../_blog/labels';
+import type { AdminPostList, AdminPostSummary, PostCounts } from '../../_blog/types';
 import { api, describe } from '../../_lib/client-api';
-import {
-  type AdminPostSummary,
-  POST_STATUS_LABELS,
-  type PostCounts,
-  type PostList,
-} from '../../_lib/types';
 
 type Filter = 'all' | 'draft' | 'published' | 'unlisted' | 'trash';
 
@@ -27,14 +23,14 @@ function countOf(counts: PostCounts | undefined, tab: Filter): number | null {
 // 글: 공개 범위별 글 목록, 새 글, 휴지통에서 되살리기. 글을 누르면 편집기(/admin/posts/[id])로.
 export function PostsPanel({ onMessage }: { onMessage: (text: string) => void }) {
   const [tab, setTab] = useState<Filter>('all');
-  const [list, setList] = useState<PostList<AdminPostSummary> | null>(null);
+  const [list, setList] = useState<AdminPostList | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (filter: Filter, cursor: string | null = null) => {
     const query = new URLSearchParams();
     if (filter !== 'all') query.set('status', filter);
     if (cursor) query.set('cursor', cursor);
-    const reply = await api<PostList<AdminPostSummary>>('GET', `/api/posts?${query}`);
+    const reply = await api<AdminPostList>('GET', `/api/posts?${query}`);
     if (!reply.ok) return setError(describe(reply.error));
     setError(null);
     setList((before) =>

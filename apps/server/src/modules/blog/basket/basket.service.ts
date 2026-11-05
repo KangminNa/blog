@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { type Actor, BaseService, Database, Forbidden, Idempotency } from '../../platform';
 import { GetSessionInput, SessionQuery } from '../../vault';
+import { ReadPostInput } from '../post/post.input';
 import { PostQuery } from '../post/post.query';
-import { ReadPostRequest } from '../post/post.request';
 import { BasketItem } from './basket';
 import type { AddBasketItemInput } from './basket.input';
 import { BasketRepository } from './basket.repository';
@@ -64,7 +64,7 @@ export class BasketService extends BaseService {
       return (await this.sessions.note(actor, session)).summary.title;
     }
     if (req.kind === BasketItem.POST) {
-      const post = ReadPostRequest.from(req.refId ?? '');
+      const post = ReadPostInput.from(req.refId ?? '');
       return (await this.posts.editable(actor, post)).summary.title;
     }
     return null;

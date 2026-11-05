@@ -1,7 +1,7 @@
 import type { SpaceInfo } from '../_account/types';
 import { postPath } from '../_blog/format';
+import type { PostList, PostSummary } from '../_blog/types';
 import { serverGet } from '../_lib/server-api';
-import type { PostList, PostSummary } from '../_lib/types';
 
 // RSS: 공개 글 20개를 발행한 순서로 (서버의 글 목록 한 쪽이 20개다). 방문자로 묻는다: 주인이 열어도 공개 글만.
 // 서버에 닿지 못하면 빈 피드 대신 503을 준다: 구독기가 글이 다 사라졌다고 여기지 않게.
