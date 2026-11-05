@@ -25,7 +25,6 @@ const OLD_NAMES = [
   'blog/post',
   'mcp',
   'platform/health',
-  'platform/plugin',
   'platform/stream',
   'vault/session',
 ];
@@ -49,9 +48,6 @@ const HAND_WRITTEN_TYPES = [
   'Owner',
   'LoginMethod',
   'LoginLink',
-  'PluginSetting',
-  'Plugin',
-  'ActionResult',
   'Device',
   'Consent',
   'SessionSummary',

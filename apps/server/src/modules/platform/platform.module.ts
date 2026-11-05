@@ -10,7 +10,7 @@ import { SecretRotation } from './base/secret-rotation';
 import { HealthController } from './health/health.controller';
 import { HealthQuery } from './health/health.query';
 import { DomainErrorFilter } from './http/domain-error.filter';
-import { PluginController } from './plugin/plugin.controller';
+import { PluginController } from './plugin/plugin.api';
 import { PluginQuery } from './plugin/plugin.query';
 import { PluginService } from './plugin/plugin.service';
 import { PluginRegistry } from './plugin/plugin-registry';

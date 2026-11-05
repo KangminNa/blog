@@ -9,33 +9,6 @@ export type LoginMethod = { method: string; label: string };
 /** 주인에게 연결된 외부 계정 */
 export type LoginLink = { method: string; label: string; linkedAt: string };
 
-export type PluginSetting = {
-  key: string;
-  label: string;
-  type: 'text' | 'secret' | 'select' | 'boolean';
-  required: boolean;
-  help: string | null;
-  options: string[];
-  value: string | null;
-  isSet: boolean;
-};
-
-export type Plugin = {
-  name: string;
-  version: string;
-  description: string;
-  enabled: boolean;
-  active: boolean;
-  uses: string[];
-  useLabels: string[];
-  needsGrant: string[];
-  missing: string[];
-  settings: PluginSetting[];
-  actions: { name: string; label: string }[];
-};
-
-export type ActionResult = { ok: boolean; message: string; details: string[] };
-
 /** 서버의 오류 모양: { code, message, fields? } */
 export type ApiError = { code: string; message: string; fields?: Record<string, string> };
 

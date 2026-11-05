@@ -4,41 +4,16 @@ import { BaseQuery } from '../base/base-query';
 import { Database } from '../base/database';
 import { NotFound } from '../base/errors';
 import { PluginRepository } from './plugin.repository';
-import type { PluginAction } from './plugin-context';
-import type { PluginManifest, PluginSettingSpec } from './plugin-manifest';
+import {
+  PluginActionView,
+  PluginListView,
+  PluginSettingsView,
+  PluginSettingView,
+  PluginView,
+} from './plugin.view';
+import { PluginManifest } from './plugin-manifest';
 import { PluginRegistry } from './plugin-registry';
 import type { PluginState } from './plugin-state';
-
-/** 설정 칸 하나 (관리 화면용). 비밀값은 값 대신 채워졌는지만 */
-export class PluginSettingView {
-  constructor(
-    readonly spec: PluginSettingSpec,
-    readonly value: string | null,
-    readonly isSet: boolean,
-  ) {}
-}
-
-/** 플러그인 하나 */
-export class PluginView {
-  constructor(
-    readonly manifest: PluginManifest,
-    readonly enabled: boolean,
-    readonly active: boolean,
-    readonly missing: readonly string[],
-    readonly needsGrant: readonly string[],
-    readonly settings: readonly PluginSettingView[],
-    readonly actions: readonly PluginAction[],
-  ) {}
-}
-
-/** 웹 화면이 플러그인을 그릴 때 받는 공개 설정 */
-export class PluginSettingsView {
-  constructor(
-    readonly name: string,
-    readonly settings: ReadonlyMap<string, string>,
-    readonly ready: boolean,
-  ) {}
-}
 
 // 플러그인 목록과 설정. 켜짐·설정은 매번 DB에서 읽는다 (다른 곳에서 바꿔도 바로 보이게).
 @Injectable()
@@ -51,12 +26,14 @@ export class PluginQuery extends BaseQuery {
   }
 
   /** 주인에게는 들어 있는 플러그인 전부, 방문자에게는 동작 중인 것만 */
-  async list(actor: Actor): Promise<readonly PluginView[]> {
+  async list(actor: Actor): Promise<PluginListView> {
     const states = new Map((await new PluginRepository(this.sql).all()).map((s) => [s.name, s]));
-    return this.registry
-      .installed()
-      .map((m) => this.view(m, states.get(m.name) ?? null))
-      .filter((v) => actor.canManage() || v.active);
+    return new PluginListView(
+      this.registry
+        .installed()
+        .map((m) => this.view(m, states.get(m.name) ?? null))
+        .filter((v) => actor.canManage() || v.active),
+    );
   }
 
   async publicSettings(_actor: Actor, name: string): Promise<PluginSettingsView> {
@@ -77,19 +54,32 @@ export class PluginQuery extends BaseQuery {
     const settings = m.settings.map((spec) => {
       const stored = state?.storedSetting(spec.key) ?? null;
       return new PluginSettingView(
-        spec,
+        spec.key,
+        spec.label,
+        spec.type,
+        spec.required,
+        spec.help,
+        spec.options,
         spec.isSecret ? null : (stored?.value ?? null),
         stored !== null,
       );
     });
     return new PluginView(
-      m,
+      m.name,
+      m.version,
+      m.description,
+      [...m.webSlots.keys()],
       state?.enabled ?? false,
       state?.isActiveFor(m) ?? false,
-      state ? state.missingRequired(m) : m.settings.filter((s) => s.required).map((s) => s.key),
+      [...m.uses],
+      [...m.uses].map((u) => PluginManifest.describeUse(u)),
       state?.enabled ? m.needsGrant(new Set(state.grantedUses)) : [],
+      state ? state.missingRequired(m) : m.settings.filter((s) => s.required).map((s) => s.key),
       settings,
-      this.registry.actions().filter((a) => a.plugin === m.name),
+      this.registry
+        .actions()
+        .filter((a) => a.plugin === m.name)
+        .map((a) => new PluginActionView(a.name, a.action.label)),
     );
   }
 }

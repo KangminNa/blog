@@ -1,8 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useId, useState } from 'react';
+import type {
+  PluginActionResultView,
+  PluginListView,
+  PluginSettingView,
+  PluginView,
+} from '../../../../server/src/modules/platform/plugin/plugin.view';
 import { api, describe } from '../../_lib/client-api';
-import type { ActionResult, Plugin, PluginSetting } from '../../_lib/types';
+
+// 응답 모양은 서버 view의 toJSON()이 원본이다 (객체설계 6장)
+type Plugin = ReturnType<PluginView['toJSON']>;
+type PluginList = ReturnType<PluginListView['toJSON']>;
+type PluginSetting = ReturnType<PluginSettingView['toJSON']>;
+type ActionResult = ReturnType<PluginActionResultView['toJSON']>;
 
 // 플러그인 켜기·설정·관리 동작. 설치 마법사의 5단계와 콘솔의 플러그인 메뉴가 함께 쓴다.
 // 켜기 전에 플러그인이 쓰는 권한을 보여주고, 켜는 순간 그 권한을 허락한 것으로 기록된다.
@@ -11,7 +22,7 @@ export function PluginsPanel({ onMessage }: { onMessage: (text: string) => void 
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const reply = await api<{ plugins: Plugin[] }>('GET', '/api/plugins');
+    const reply = await api<PluginList>('GET', '/api/plugins');
     if (reply.ok) setPlugins(reply.data.plugins);
     else setError(describe(reply.error));
   }, []);
