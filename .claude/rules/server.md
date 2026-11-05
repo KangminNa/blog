@@ -6,13 +6,15 @@ paths:
 # 서버 코드 규칙
 
 전체는 [docs/객체설계.md](../../docs/객체설계.md). 파일을 만들거나 고치기 전에 그 파일의 종류(이름 끝)를 확인하고 아래를 지킨다.
+새 데이터 묶음은 `pnpm new:bundle <모듈>/<묶음> [--menu <그룹>/<이름>] [--tool]`로 만든다. 옛 이름(`.controller` · `.request` · `.response`)은 옮기는 중인 폴더(`scripts/check-structure.mjs`의 `OLD_NAMES`)에만 남아 있고 새로 쓰지 않는다.
 
 | 파일 | 해도 되는 것 | 하면 안 되는 것 |
 |---|---|---|
-| `*.controller.ts` · `*.tool.ts` | Request 만들기 → Service·Query 메서드 **하나** 호출 → Response 만들기 | if로 비즈니스 분기, Repository·SQL 직접 사용 |
-| `*.response.ts` | Entity·View에서 보는 사람별로 필드 고르기, `toJSON()` | 조회, 저장 |
-| `*.request.ts` | `static from(raw)`로 모양 검사(`InvalidRequest`), 값 꺼내기 | 의미 검사(도메인의 일), DB |
-| `*.service.ts` | 첫 줄 권한 확인, 트랜잭션 하나, 불러오기 → 엔티티 메서드 → 저장, 같은 모듈의 Query로 읽기 | 판단 로직, 다른 Service 호출, 트랜잭션 안 외부 호출, 다른 데이터 묶음의 Repository 사용(예외: vault의 `ChangeService`) |
+| `*.api.ts` · `*.tool.ts` | Controller(·Tool): Input 만들기 → Service·Query 메서드 **하나** 호출 → Response 만들기. Response(같은 파일): Entity·View에서 보는 사람별로 필드 고르기, `toJSON()` | if로 비즈니스 분기, Repository·SQL 직접 사용, 조회·저장 |
+| `*.input.ts` | `static from(raw)`로 모양 검사(`InvalidRequest`), 값 꺼내기 | 의미 검사(도메인의 일), DB |
+| `*.view.ts` | 읽기 모양과 `toJSON()`(실제 모양을 돌려준다, `object` 아님). 웹이 `import type`으로 가져온다 | import (아무것도) |
+| `*.api.test.ts` | 보는 사람별 결과: 방문자 · write 기기(`ApiClient.writeDevice`) · 주인 | 손으로 curl 확인 |
+| `*.service.ts` | 첫 줄 권한 확인(관리 일은 `assertOwner()`, `assertCan(WRITE)`는 write 기기도 통과), 트랜잭션 하나, 불러오기 → 엔티티 메서드 → 저장, 같은 모듈의 Query로 읽기 | 판단 로직, 다른 Service 호출, 트랜잭션 안 외부 호출, 다른 데이터 묶음의 Repository 사용(예외: vault의 `ChangeService`) |
 | `*.query.ts` | Actor로 공개 범위를 거른 읽기 SQL, View 반환 | 쓰기, 엔티티 반환, Actor 없는 메서드 |
 | Entity (`<이름>.ts`) | 상태와 규칙, 상태를 바꾸는 동사형 메서드, `static open` / `static restore` | import `@nestjs/*`, `postgres`, `Date.now()` 직접 호출 |
 | `*.policy.ts` | 입력 → 판단 결과 | 상태 보관, DB |

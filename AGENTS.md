@@ -17,7 +17,7 @@ apps/runner/   러너. 서버에서 일을 빌려 AI CLI로 처리한다. MCP로
 db/            DB 이미지(Postgres 17 + pgvector + pg_bigm)와 SQL 마이그레이션(dbmate)
 packages/cli/  연결 명령 cairn connect · status (스킬 넣기 + MCP 등록 + 로그인). 배포 전에는 pnpm cairn
 plugins/       플러그인 (comments-giscus · sync-github · login-github · office). 규칙은 plugins/CLAUDE.md, 객체설계 12장
-scripts/       모듈 경계 검사, 플러그인 화면 맞추기
+scripts/       모듈 경계 검사, 구조 검사, 묶음 생성기(templates/), 플러그인 화면 맞추기
 skills/        AI 도구와 러너의 스킬 (cairn-save · cairn-recall, 러너 전용 cairn-write · cairn-tidy). 도구 입력 모양을 바꾸면 스킬도 함께 고친다
                앱(ChatGPT·Claude)용 zip은 서버가 여기서 만든다(api/skills). 스크립트 테스트는 packages/cli
 docs/          기획 문서 (기획서 · MVP 기획서 · 테이블 설계 · 객체 설계 · API 설계 · 보관 형식)
@@ -28,7 +28,7 @@ docs/          기획 문서 (기획서 · MVP 기획서 · 테이블 설계 · 
 | 명령 | 하는 일 |
 |---|---|
 | `pnpm dev` | Docker Compose로 db → migrate → server(:4000) · worker(일꾼) → web(:3000) |
-| `pnpm check` | Biome 린트 + 타입 검사 + 모듈 경계 검사. 작업을 끝내기 전에 반드시 통과시킨다 |
+| `pnpm check` | Biome 린트 + 타입 검사 + 모듈 경계 검사 + 구조 검사(새 파일 이름, 옆의 API 테스트, 메뉴와 화면, 웹 타입의 출처). 작업을 끝내기 전에 반드시 통과시킨다 |
 | `pnpm test` | 테스트 전용 DB(`cairn_test`)를 새로 만들어 단위 + API 테스트, 러너 통합 테스트까지. 개발 DB는 건드리지 않는다. `-- --test-name-pattern=<이름>`으로 골라서 |
 | `pnpm slot <1~9> <스크립트>` | 슬롯별 compose 프로젝트·포트·이미지로 실행 (`test`, `dev`, `db:reset` 등). 작업 트리에서 병렬로 일할 때 쓴다 |
 | `pnpm db:check` | DB의 모듈 경계 (모듈 사이 외래키, 주인 없는 스키마) |

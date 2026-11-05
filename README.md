@@ -113,7 +113,7 @@ cairn/
 ├── docker-compose.prod.yml   운영 구성
 ├── packages/cli/      연결 명령 (cairn connect · status)
 ├── plugins/           플러그인 (comments-giscus · sync-github · login-github · office)
-├── scripts/           모듈 경계 검사, 슬롯, 테스트, 플러그인 화면 맞추기
+├── scripts/           모듈 경계·구조 검사, 묶음 생성기, 슬롯, 테스트, 플러그인 화면 맞추기
 ├── skills/            AI 도구와 러너의 스킬 (cairn-save · cairn-recall · cairn-write · cairn-tidy)
 └── AGENTS.md          AI 도구 작업 규칙 (CLAUDE.md가 가져옴)
 ```
@@ -135,7 +135,8 @@ docker compose up --build
 | 명령 | 하는 일 |
 |---|---|
 | `pnpm install` | 로컬 도구(Biome, 타입 검사) 설치. 실행은 Docker에서 하므로 편집기용 |
-| `pnpm check` | 린트 + 타입 검사 + 모듈 경계 검사 (CI와 같음) |
+| `pnpm check` | 린트 + 타입 검사 + 모듈 경계 검사 + 구조 검사 (CI와 같음) |
+| `pnpm new:bundle <모듈>/<묶음>` | 새 데이터 묶음(+ 콘솔 메뉴)의 뼈대 |
 | `pnpm test` | 서버·플러그인 테스트 (단위 + API). 테스트 전용 DB를 매번 새로 만든다 |
 | `pnpm install-code` | 설치 코드. 브라우저에서 `/install`을 열고 넣는다 |
 | `pnpm run owner reset-password` | 관리자 비밀번호 다시 정하기 (표준 입력으로. 모든 로그인이 끝남) |
