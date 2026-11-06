@@ -128,9 +128,13 @@ export class NextJobsInput extends BaseRequest {
   static readonly WAIT_MAX = 25;
   static readonly LIMIT_MAX = 10;
 
+  static readonly KINDS_MAX = 10;
+
   private constructor(
     readonly waitSeconds: number,
     readonly limit: number,
+    /** 이 종류의 일만 빌린다. null이면 모두 (AI 토큰이 없는 러너는 웹 로그인만 받는다) */
+    readonly kinds: readonly string[] | null,
   ) {
     super();
   }
@@ -142,6 +146,7 @@ export class NextJobsInput extends BaseRequest {
         new NextJobsInput(
           f.optionalInteger('wait_seconds', 0, NextJobsInput.WAIT_MAX) ?? 0,
           f.optionalInteger('limit', 1, NextJobsInput.LIMIT_MAX) ?? 1,
+          f.optionalTextList('kinds', NextJobsInput.KINDS_MAX, 40),
         ),
     );
   }

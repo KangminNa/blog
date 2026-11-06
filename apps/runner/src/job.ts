@@ -71,9 +71,11 @@ export class SubtaskResult {
 }
 
 // next_jobs가 빌려 준 일 하나. run_token은 AI CLI의 MCP 설정에만 쓴다.
-// 연결 확인(ai_test)에는 에이전트도 run_token도 없다. 도구는 작업의 payload에 있고, MCP 없이 지시만 돌린다.
+// 연결 확인(ai_test)과 웹 로그인(ai_signin)에는 에이전트도 run_token도 없다. 도구는 작업의 payload에 있고, MCP 없이 지시만 돌린다.
 export class Job {
   private static readonly AI_TEST = 'ai_test';
+  /** 웹 AI 로그인: 러너가 로그인 명령을 대신 돌린다 (SigninRun) */
+  static readonly AI_SIGNIN = 'ai_signin';
 
   constructor(
     readonly taskId: string,
@@ -132,6 +134,11 @@ export class Job {
   /** 콘솔에 넣은 AI 토큰이 도는지 보는 일 */
   get isAiTest(): boolean {
     return this.kind === Job.AI_TEST;
+  }
+
+  /** 주인이 웹에서 누른 AI 로그인. 도구(tool)는 작업의 payload에 있다 */
+  get isAiSignin(): boolean {
+    return this.kind === Job.AI_SIGNIN;
   }
 
   /** AI CLI에게 줄 글. skillReady: 스킬을 넣어 두었는가 */

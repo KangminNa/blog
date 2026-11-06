@@ -10,8 +10,65 @@
 //   [fake:delegate]     지시문의 "내 팀"에게 하위 작업을 하나씩 맡기고 끝난다. 결과를 받아 깨어난 실행은 맡기지 않고 끝낸다
 //   [fake:stray]        허락하지 않은 MCP 서버가 붙은 것처럼 보인다
 // 연결 확인(MCP 설정 없음)은 ok라고 답한다. 토큰에 wrong이 들어 있으면 로그인 실패처럼 끝난다
+// setup-token은 웹 로그인이다: 터미널이어야 뜨고, 주소를 보이고, 붙여 넣은 코드로 토큰을 그린다.
+//   코드에 wrong이 있으면 실패. 코드와 Enter가 한 덩어리로 오면 Ink처럼 붙여 넣기로 보고 제출하지 않는다
 import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+
+if (process.argv[2] === 'setup-token') await setupToken();
+
+/** claude setup-token의 화면 (색, 하이퍼링크). 화면의 문구는 실제 CLI의 것 */
+async function setupToken() {
+  const esc = '\x1b';
+  const leaks = [
+    'CLAUDE_CODE_OAUTH_TOKEN',
+    'ANTHROPIC_API_KEY',
+    'CAIRN_RUNNER_TOKEN',
+    'DATABASE_URL',
+  ];
+  const config = process.env.CLAUDE_CONFIG_DIR;
+  if (!process.stdin.isTTY) {
+    process.stderr.write('Error: Raw mode is not supported on the current process.stdin\n');
+    process.exit(1);
+  }
+  const broken =
+    leaks.some((name) => process.env[name]) ||
+    !config ||
+    readdirSync(config).length > 0 ||
+    process.env.BROWSER !== 'true' ||
+    process.stdout.columns < 500;
+  if (broken) {
+    process.stdout.write('fake: 격리가 깨졌다\n');
+    process.exit(9);
+  }
+  const url =
+    'https://claude.ai/oauth/authorize?code=true&client_id=fake&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&scope=user%3Ainference&code_challenge=fake&code_challenge_method=S256&state=fake';
+  process.stdout.write(
+    `${esc}[36mBrowser didn't open? Use the url below to sign in (c to copy)${esc}[39m\n\n` +
+      `${esc}]8;;${url}\x07${url}${esc}]8;;\x07\n\nPaste code here if prompted > `,
+  );
+  process.stdin.setRawMode(true);
+  process.stdin.setEncoding('utf8');
+  let code = '';
+  for await (const chunk of process.stdin) {
+    if (chunk === '\r') break;
+    code += chunk.replaceAll('\r', '');
+    process.stdout.write(chunk.replaceAll('\r', ''));
+  }
+  process.stdout.write('\n');
+  if (code.includes('wrong')) {
+    process.stdout.write('OAuth error: Invalid code\n');
+    process.exit(1);
+  }
+  const token = `sk-ant-oat01-fake_${code.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+  process.stdout.write(
+    `${esc}[32m✓ Long-lived authentication token created successfully!${esc}[39m\n\n` +
+      `Your OAuth token (valid for 1 year):\n\n${token}\n\n` +
+      "Store this token securely. You won't be able to see it again.\n\n" +
+      'Use this token by setting: export CLAUDE_CODE_OAUTH_TOKEN=<token>\n',
+  );
+  process.exit(0);
+}
 
 const prompt = await new Promise((resolve) => {
   let text = '';

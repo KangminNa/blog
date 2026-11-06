@@ -1,11 +1,13 @@
 import { AiLogins } from './ai-login';
 import { Backoff } from './backoff';
 import { CairnServer } from './cairn-server';
-import type { Job } from './job';
+import { Job } from './job';
 import { CliUnavailable, JobRun } from './job-run';
 import { AccessDenied, McpClient, ToolRefused } from './mcp-client';
 import { Redactor, RunLog } from './redactor';
 import type { RunnerConfig } from './runner-config';
+import { SigninRun } from './signin-run';
+import { SigninTerminal } from './signin-terminal';
 
 /** 다시 시도해도 소용없음: 토큰이나 설치를 사람이 고쳐야 한다 */
 export class RunnerHalted extends Error {}
@@ -15,11 +17,17 @@ export class TokenRejected extends RunnerHalted {}
 
 // 러너의 고리: 일을 하나 빌리고, 끝까지 처리하고, 다시 빌린다. 한 번에 일 하나.
 // 서버에 닿지 못하면 간격을 늘려 다시 묻는다. 들어오는 포트 없이 나가는 요청만 쓴다 (객체설계 13장 임대 큐).
-// 쓸 AI 토큰이 없으면 빌리지 않는다: 빌렸다가 돌려주면 작업 기록에 오류가 한 줄씩 쌓인다.
+// 쓸 AI 토큰이 없으면 웹 로그인(ai_signin)만 빌린다: 다른 일은 빌렸다가 돌려주면 작업 기록에 오류가 한 줄씩 쌓인다.
+// 웹 로그인은 토큰이 없을 때 하는 일이라 토큰 없이 돈다 (SigninRun).
 // 연결 확인은 우선순위가 가장 높아 토큰이 돌아오면 가장 먼저 빌려진다. 러너는 빌리지 않고는 대기열을 볼 수 없다.
 export class Runner {
   /** next_jobs가 기다리는 시간. 서버의 NextJobsInput.WAIT_MAX */
   private static readonly WAIT_SECONDS = 25;
+  /**
+   * 토큰이 없을 때 웹 로그인을 기다리는 시간. 콘솔에 토큰을 넣어도 기다리는 next_jobs는 깨지 않으므로 짧게 둔다:
+   * 웹 로그인은 생기는 대로 바로 오고, 붙여 넣은 토큰은 이 안에 알아챈다
+   */
+  private static readonly SIGNIN_WAIT_SECONDS = 5;
   private static readonly BACKOFF_FIRST_MS = 1_000;
   private static readonly BACKOFF_MAX_MS = 60_000;
   /** 일을 빌린 뒤에 토큰을 받지 못했을 때. 돌려준 일이 바로 다시 빌려지므로 쉬지 않으면 빌리고 돌려주기를 되풀이한다 */
@@ -72,13 +80,18 @@ export class Runner {
       try {
         const problem = await this.logins.shortage(this.pollCutter.signal);
         this.noteLogin(problem);
-        if (problem !== null) {
+        if (problem !== null && !SigninTerminal.supported) {
           await this.backoff.wait(stop);
           continue;
         }
         if (stop.aborted) break;
         this.polling = true;
-        const jobs = await this.server.nextJobs(Runner.WAIT_SECONDS, this.pollCutter.signal);
+        const jobs =
+          problem === null
+            ? await this.server.nextJobs(Runner.WAIT_SECONDS, this.pollCutter.signal)
+            : await this.server.nextJobs(Runner.SIGNIN_WAIT_SECONDS, this.pollCutter.signal, [
+                Job.AI_SIGNIN,
+              ]);
         this.polling = false;
         this.backoff.reset();
         for (const job of jobs) await this.perform(job);
@@ -101,13 +114,24 @@ export class Runner {
     this.log.info(
       problem === null
         ? 'AI 토큰을 받아 일을 빌려요'
-        : `AI 토큰이 없어 일을 빌리지 않아요: ${problem}`,
+        : `AI 토큰이 없어 웹 로그인만 받아요: ${problem}`,
     );
   }
 
   private async perform(job: Job): Promise<void> {
     const who = job.agentName ? `(${job.agentName}) ` : '';
     this.log.info(`${job.taskId}: 일을 맡았어요 ${who}${job.title}`);
+    if (job.isAiSignin) {
+      const signin = new SigninRun(
+        job,
+        this.server,
+        this.config,
+        this.log,
+        this.redactor,
+        this.stopper.signal,
+      );
+      return signin.perform();
+    }
     const login = await this.logins.forJob(job);
     await new JobRun(
       job,

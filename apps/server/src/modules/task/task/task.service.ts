@@ -80,7 +80,7 @@ export class TaskService extends BaseService {
       const accepting = await this.transaction((tx) =>
         new RunnerRepository(tx).seen(spaceId, runnerId, new Date()),
       );
-      const jobs = accepting ? await this.lease(spaceId, runnerId, req.limit) : [];
+      const jobs = accepting ? await this.lease(spaceId, runnerId, req.limit, req.kinds) : [];
       const left = deadline - Date.now();
       if (jobs.length > 0 || left <= 0 || this.changes.closed) return jobs;
       await this.changes.wait(
@@ -285,7 +285,12 @@ export class TaskService extends BaseService {
     });
   }
 
-  private lease(spaceId: string, runnerId: string, limit: number): Promise<readonly JobView[]> {
+  private lease(
+    spaceId: string,
+    runnerId: string,
+    limit: number,
+    kinds: readonly string[] | null,
+  ): Promise<readonly JobView[]> {
     const now = new Date();
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
@@ -295,7 +300,7 @@ export class TaskService extends BaseService {
       const usage = await agents.usage(spaceId, now);
       const ready = usage.filter((u) => u.ready).map((u) => u.agent);
       const jobs: JobView[] = [];
-      for (const task of await tasks.lockNext(spaceId, ready, limit)) {
+      for (const task of await tasks.lockNext(spaceId, ready, limit, kinds)) {
         // 담당을 정하지 않은 일은 그 일의 권한이 있는 에이전트 중 가장 먼저 만든, 일을 받을 수 있는 에이전트가 맡는다
         const worker = task.agentId
           ? ready.find((a) => a.id === task.agentId)

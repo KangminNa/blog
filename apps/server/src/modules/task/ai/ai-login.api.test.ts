@@ -739,15 +739,43 @@ describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () =>
     await start('claude');
     const task = await takeSignin('claude');
     assert.equal((await relay(task.id, { url: CLAUDE_URL })).ok, true);
+    const finished = await submit(task.id, 'done');
+    assert.equal(finished.body.code, 'rule_violation', '자격 없이 done으로 끝낼 수 없다');
+    ok(await pasteCode(task.id, 'code#state'));
     const { version } = await getTask(task.id);
     ok(await api.request('POST', `/api/tasks/${task.id}/cancel`, owner, { version }));
     assert.equal(await signinOf('claude'), null, '취소한 로그인은 보이지 않는다');
+    const [row] = await db.sql`SELECT payload FROM task.tasks WHERE id = ${String(task.id)}`;
+    assert.deepEqual(row?.payload, { tool: 'claude' }, '가져가지 않은 코드도 주소도 지운다');
 
     const told = await relay(task.id, { credential: newToken() });
     assert.equal(told.ok, true, JSON.stringify(told.body));
     assert.equal(told.body.cancelled, true);
     assert.equal((await claude()).connected, false, '취소 뒤 온 자격은 버린다');
     assert.notEqual((await start('claude')).taskId, task.id, '다시 시작하면 새 작업');
+  });
+
+  test('토큰이 없는 러너는 kinds로 웹 로그인만 빌린다. 다른 일은 대기열에 남는다', async () => {
+    const agent = await newAgent();
+    const work = await newTask(agent);
+    const begun = await start('claude');
+    const only = await tool(runner, 'next_jobs', { kinds: ['ai_signin'], limit: 5 });
+    const jobs = only.body.jobs as Json[];
+    assert.deepEqual(
+      jobs.map((j) => (j.task as Json).id),
+      [begun.taskId],
+    );
+    assert.equal((await getTask(work.id)).status, 'queued', '글쓰기 일은 빌리지 않는다');
+    const none = await tool(runner, 'next_jobs', { kinds: ['ai_signin'] });
+    assert.deepEqual(none.body.jobs, []);
+    const bad = await tool(runner, 'next_jobs', { kinds: 'ai_signin' });
+    assert.equal(bad.ok, false, '목록이 아니면 거절');
+    const all = await lease(5);
+    assert.deepEqual(
+      all.map((j) => (j.task as Json).id),
+      [work.id],
+      'kinds가 없으면 남아 있던 일을 빌린다',
+    );
   });
 
   test('Codex auth.json이 JSON 객체가 아니면 받지 않는다', async () => {

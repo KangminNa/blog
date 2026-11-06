@@ -83,6 +83,12 @@ export class NextJobsTool extends BaseTool {
         maximum: NextJobsInput.LIMIT_MAX,
         description: '한 번에 빌릴 일의 수. 기본 1',
       },
+      kinds: {
+        type: 'array',
+        items: { type: 'string' },
+        maxItems: NextJobsInput.KINDS_MAX,
+        description: '이 종류의 일만 빌린다 (예: AI 토큰이 없으면 ["ai_signin"]). 없으면 모두',
+      },
     },
   };
 

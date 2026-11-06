@@ -6,6 +6,7 @@ export class ConfigProblem extends Error {}
 // 러너 설정 (환경 변수). 토큰 값은 오류 문구에 넣지 않는다.
 export class RunnerConfig {
   private static readonly DEFAULT_CLI = 'claude';
+  private static readonly DEFAULT_CODEX_CLI = 'codex';
   /** apps/runner/src 기준 저장소의 skills/ */
   private static readonly DEFAULT_SKILLS = resolve(__dirname, '../../../skills');
 
@@ -23,6 +24,8 @@ export class RunnerConfig {
      * 토큰이 있으면 쓰지 않는다
      */
     readonly pairingFile: string | null = null,
+    /** Codex CLI. 지금은 웹 로그인(codex login --device-auth)에만 쓴다 */
+    readonly codexCliPath: string = RunnerConfig.DEFAULT_CODEX_CLI,
   ) {}
 
   static fromEnv(env: Readonly<Record<string, string | undefined>>): RunnerConfig {
@@ -41,6 +44,7 @@ export class RunnerConfig {
       env.CAIRN_RUNNER_CLI?.trim() || RunnerConfig.DEFAULT_CLI,
       env.CAIRN_SKILLS_DIR?.trim() || RunnerConfig.DEFAULT_SKILLS,
       token ? null : pairingFile,
+      env.CAIRN_RUNNER_CODEX_CLI?.trim() || RunnerConfig.DEFAULT_CODEX_CLI,
     );
   }
 
@@ -53,6 +57,7 @@ export class RunnerConfig {
       this.cliPath,
       this.skillsDir,
       this.pairingFile,
+      this.codexCliPath,
     );
   }
 

@@ -20,6 +20,7 @@ import { ApiClient, type ApiResult, type TestUser } from '../../server/src/testi
 type Json = Record<string, unknown>;
 
 const FAKE_CLI = resolve(__dirname, 'fake-claude.mjs');
+const FAKE_CODEX = resolve(__dirname, 'fake-codex.mjs');
 const RUNNER_MAIN = resolve(__dirname, '../src/main.ts');
 const OAUTH_TOKEN = `claude-${randomUUID()}`;
 /** 가짜 CLI의 assistant 줄이 낸 420에 result의 합계가 7을 더한다 */
@@ -62,6 +63,7 @@ class RunnerProcess {
           CAIRN_RUNNER_URL: url,
           CAIRN_RUNNER_TOKEN: deviceToken,
           CAIRN_RUNNER_CLI: FAKE_CLI,
+          CAIRN_RUNNER_CODEX_CLI: FAKE_CODEX,
           CLAUDE_CODE_OAUTH_TOKEN: OAUTH_TOKEN,
           ...env,
         } as NodeJS.ProcessEnv,
@@ -246,6 +248,7 @@ const tokens = (task: Json): number => events(task).reduce((sum, e) => sum + Num
 
 before(async () => {
   chmodSync(FAKE_CLI, 0o755);
+  chmodSync(FAKE_CODEX, 0o755);
   spyDir = mkdtempSync(join(tmpdir(), 'cairn-e2e-'));
   api = await ApiClient.start();
   owner = await api.signIn();
@@ -588,14 +591,14 @@ describe('콘솔에 넣은 토큰으로 일한다', () => {
     const spy = new Spy();
     const created = await newTask(agent, spy.mark);
 
-    await runner.logged('AI 토큰이 없어 일을 빌리지 않아요');
+    await runner.logged('AI 토큰이 없어 웹 로그인만 받아요');
     await new Promise((done) => setTimeout(done, 4_000)); // 토큰을 몇 번 더 물어볼 시간
     const held = await getTask(created.id);
     assert.equal(held.status, 'queued', '실패로 끝내지 않는다');
     assert.equal(held.attempts, 0);
     assert.deepEqual(events(held), [], '오류 기록이 쌓이지 않는다');
     assert.equal(runner.logs.split('AI 토큰이 없어').length - 1, 1, '로그는 한 번만');
-    assert.match(runner.logs, /AI 토큰이 없어 일을 빌리지 않아요: .*AI 메뉴/);
+    assert.match(runner.logs, /AI 토큰이 없어 웹 로그인만 받아요: .*AI 메뉴/);
 
     const token = `sk-ant-oat01-${randomUUID()}`;
     await saveToken(token);
@@ -655,7 +658,7 @@ describe('기다리는 연결 확인의 토큰이 사라진다', () => {
     const other = await newTask(await newAgent(), '');
 
     const runner = RunnerProcess.start(api.baseUrl, { CLAUDE_CODE_OAUTH_TOKEN: '' });
-    await runner.logged('AI 토큰이 없어 일을 빌리지 않아요: 만료된 토큰');
+    await runner.logged('AI 토큰이 없어 웹 로그인만 받아요: 만료된 토큰');
     await new Promise((done) => setTimeout(done, 1_500));
     const held = await getTask(test.taskId);
     assert.equal(held.status, 'queued');
@@ -710,6 +713,106 @@ describe('서버 러너는 연결 값으로 스스로 연결한다', () => {
     } finally {
       assert.equal(await runner.stop('SIGTERM'), 0);
     }
+  });
+});
+
+// 웹 AI 로그인: 주인이 AI 메뉴에서 누르면 러너가 로그인 명령을 PTY(script)에서 대신 돌린다.
+// 토큰 없이 뜬 러너(서버 러너와 같은 처지)가 로그인 일만 받아 로그인하고, 받은 토큰으로 이어서 일한다.
+describe('웹 AI 로그인', () => {
+  let runner: RunnerProcess;
+  const toolOf = async (name: string): Promise<Json> => {
+    const { tools } = ok(await api.get('/api/ai', owner)) as { tools: Json[] };
+    return tools.find((t) => t.tool === name) as Json;
+  };
+  const begin = async (name: string): Promise<string> =>
+    String(ok(await api.request('POST', `/api/ai/${name}/signin`, owner)).taskId);
+  const step = (name: string, wanted: string): Promise<Json> =>
+    until(`${name} 로그인이 ${wanted}`, async () => {
+      const signin = (await toolOf(name)).signin as Json | null;
+      return signin?.step === wanted ? signin : null;
+    });
+  const paste = async (taskId: string, code: string): Promise<void> => {
+    ok(await api.request('POST', '/api/ai/claude/signin/code', owner, { taskId, code }));
+  };
+
+  before(async () => {
+    await db.sql`DELETE FROM task.ai_logins`;
+    runner = RunnerProcess.start(api.baseUrl, { CLAUDE_CODE_OAUTH_TOKEN: '' });
+    await runner.logged('AI 토큰이 없어 웹 로그인만 받아요');
+  });
+
+  after(async () => {
+    assert.equal(await runner.stop(), 0);
+  });
+
+  test('Claude: 토큰 없는 러너가 로그인 일만 받아 주소를 보이고, 붙여 넣은 코드로 받은 토큰으로 이어서 일한다', async () => {
+    const spy = new Spy();
+    const waiting = await newTask(await newAgent(), spy.mark);
+    const taskId = await begin('claude');
+
+    const shown = await step('claude', 'waiting_code');
+    assert.match(String(shown.url), /^https:\/\/claude\.ai\/oauth\/authorize\?code=true&/);
+    assert.equal(shown.userCode, null);
+    assert.equal(
+      (await getTask(waiting.id)).status,
+      'queued',
+      '토큰이 없으니 다른 일은 받지 않는다',
+    );
+
+    const code = `e2e${randomUUID().replaceAll('-', '')}#state`;
+    await paste(taskId, code);
+    const signin = await taskIn(taskId, 'done');
+    const claude = await toolOf('claude');
+    assert.equal(claude.connected, true);
+    assert.ok(claude.expiresAt, 'Claude 토큰은 1년');
+
+    const token = `sk-ant-oat01-fake_${code.replace('#', '_')}`;
+    const seen = await spy.seen();
+    assert.equal((seen.env as Json).CLAUDE_CODE_OAUTH_TOKEN, token, '받은 토큰으로 일한다');
+    await taskIn(waiting.id, 'done');
+
+    const record = `${JSON.stringify(signin)}\n${runner.logs}`;
+    for (const secret of [code, token, 'claude.ai/oauth'])
+      assert.equal(record.includes(secret), false, `${secret.slice(0, 16)}… 은 기록과 로그에 없다`);
+    assert.ok(runner.logs.includes(`${taskId}: 붙여 넣은 코드를 넣었어요`));
+    assert.ok(runner.logs.includes(`${taskId}: 로그인했어요`));
+  });
+
+  test('Claude: 틀린 코드면 실패로 끝나고 이유를 남긴다', async () => {
+    const taskId = await begin('claude');
+    await step('claude', 'waiting_code');
+    await paste(taskId, 'wrong-code-1234');
+    const failed = await taskIn(taskId, 'failed');
+    assert.match(String((failed.result as Json).error), /코드가 맞지 않거나/);
+    assert.equal(JSON.stringify(failed).includes('wrong-code-1234'), false);
+  });
+
+  test('취소하면 로그인 명령을 끄고 다음 일을 받는다', async () => {
+    const taskId = await begin('claude');
+    await step('claude', 'waiting_code');
+    await cancelTask({ id: taskId });
+    await runner.logged(`${taskId}: 주인이 취소했어요`);
+    const next = await begin('claude');
+    assert.notEqual(next, taskId);
+    await step('claude', 'waiting_code');
+    await cancelTask({ id: next });
+    await runner.logged(`${next}: 주인이 취소했어요`);
+  });
+
+  test('Codex: 주소와 코드를 보이고, 로그인이 끝나면 auth.json을 만료 없이 저장한다', async () => {
+    const taskId = await begin('codex');
+    const shown = await step('codex', 'open_url');
+    assert.equal(shown.url, 'https://auth.openai.com/codex/device');
+    assert.equal(shown.userCode, 'FAKE-C0DE1');
+
+    await taskIn(taskId, 'done');
+    const codex = await toolOf('codex');
+    assert.equal(codex.connected, true);
+    assert.equal(codex.expiresAt, null);
+    const [row] =
+      await db.sql`SELECT octet_length(secret) AS size FROM task.ai_logins WHERE tool = 'codex'`;
+    assert.ok(Number(row?.size) > 0, '잠가서 저장했다');
+    assert.equal(runner.logs.includes('fake-refresh'), false);
   });
 });
 

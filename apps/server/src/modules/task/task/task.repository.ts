@@ -70,11 +70,13 @@ export class TaskRepository extends BaseRepository<Task> {
    * 빌려 줄 작업을 잠근다. 다른 러너가 잡은 행은 건너뛰고, 담당이 없거나 일을 받을 수 있는 에이전트(ready)의 일만,
    * 우선순위 → 오래된 순. 멈췄거나 쉬는 에이전트의 일과 맡을 권한이 없는 일은 대기열에 남아 뒤의 일을 막지 않는다.
    * 연결 확인과 웹 로그인은 에이전트가 필요 없어 일을 받을 에이전트가 없어도 빌려 준다.
+   * kinds가 있으면 그 종류만 (러너가 고른다: AI 토큰이 없으면 웹 로그인만)
    */
   async lockNext(
     spaceId: string,
     ready: readonly Agent[],
     limit: number,
+    kinds: readonly string[] | null,
   ): Promise<readonly Task[]> {
     const agentIds = ready.map((a) => a.id);
     const rows = await this.sql`
@@ -84,6 +86,7 @@ export class TaskRepository extends BaseRepository<Task> {
           OR agent_id = ANY(${agentIds}::uuid[])
           OR (agent_id IS NULL AND ${agentIds.length > 0}))
         ${this.scoped(ready)}
+        ${kinds === null ? this.sql`` : this.sql`AND kind = ANY(${kinds as string[]}::text[])`}
       ORDER BY priority DESC, id
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED`;

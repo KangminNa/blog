@@ -5,7 +5,7 @@ import { after, before, beforeEach, describe, mock, test } from 'node:test';
 import { Runner, RunnerHalted } from './runner';
 import { RunnerConfig } from './runner-config';
 
-// 러너의 고리를 가짜 MCP 서버에 붙여 본다. 도구마다 불린 횟수를 세서, 토큰이 없을 때 일을 빌리지 않는지 확인한다.
+// 러너의 고리를 가짜 MCP 서버에 붙여 본다. 도구마다 불린 횟수를 세서, 토큰이 없을 때 웹 로그인 말고는 빌리지 않는지 확인한다.
 
 type Call = { tool: string; args: Record<string, unknown> };
 
@@ -45,6 +45,8 @@ const aiTest = {
 };
 
 const count = (tool: string): number => calls.filter((c) => c.tool === tool).length;
+/** 종류를 가리지 않고 일을 빌린 횟수. 토큰이 없을 때는 웹 로그인만 묻는다 (kinds) */
+const leases = (): number => calls.filter((c) => c.tool === 'next_jobs' && !c.args.kinds).length;
 
 async function until(what: string, ready: () => boolean): Promise<void> {
   const deadline = Date.now() + 10_000;
@@ -103,13 +105,21 @@ describe('쓸 AI 토큰이 없으면', () => {
     const running = loop.run();
 
     await until('토큰을 두 번 물어봄', () => count('ai_login') >= 2);
-    assert.equal(count('next_jobs'), 0, '토큰이 없으면 빌리지 않는다');
+    assert.equal(leases(), 0, '토큰이 없으면 빌리지 않는다');
+    const asked = calls.filter((c) => c.tool === 'next_jobs').map((c) => c.args.kinds);
+    assert.ok(asked.length > 0, '웹 로그인은 받는다');
+    assert.ok(asked.every((kinds) => JSON.stringify(kinds) === '["ai_signin"]'));
+    const waits = calls.filter((c) => c.tool === 'next_jobs').map((c) => c.args.wait_seconds);
+    assert.ok(
+      waits.every((w) => w === 5),
+      '콘솔에 넣은 토큰을 곧 알아채게 짧게 기다린다',
+    );
     assert.equal(count('release_job'), 0);
     const held = logLines().filter((line) => line.includes(NO_TOKEN));
     assert.equal(held.length, 1, '이유는 상태가 바뀔 때 한 번만 적는다');
 
     answers.ai_login = hasToken;
-    await until('일을 빌림', () => count('next_jobs') >= 1);
+    await until('일을 빌림', () => leases() >= 1);
     assert.equal(logLines().filter((line) => line.includes('AI 토큰을 받아')).length, 1);
 
     loop.stop();
@@ -140,7 +150,7 @@ describe('쓸 AI 토큰이 없으면', () => {
     await until('토큰을 물어봄', () => count('ai_login') >= 1);
     loop.stop();
     await running;
-    assert.equal(count('next_jobs'), 0);
+    assert.equal(leases(), 0);
   });
 
   test('빌린 뒤에 토큰이 사라진 연결 확인은 돌려주고, 토큰이 올 때까지 다시 빌리지 않는다', async () => {
@@ -160,7 +170,7 @@ describe('쓸 AI 토큰이 없으면', () => {
     // 돌려준 뒤 5초를 쉬고 나서 다시 토큰을 묻는다
     const asked = count('ai_login');
     await until('다시 물어봄', () => count('ai_login') > asked);
-    assert.equal(count('next_jobs'), 1, '토큰이 없으니 다시 빌리지 않는다');
+    assert.equal(leases(), 1, '토큰이 없으니 웹 로그인 말고는 다시 빌리지 않는다');
 
     loop.stop();
     await running;

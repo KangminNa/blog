@@ -84,12 +84,13 @@ COPY apps/runner/tsconfig.json apps/runner/tsconfig.build.json apps/runner/
 RUN pnpm --filter @cairn/runner build
 
 # 운영 러너: 러너는 런타임 의존 패키지가 없어 컴파일한 JS만 둔다. 저장소와 같은 모양이라 스킬은 /app/skills에서 찾는다.
-# Claude CLI는 이 이미지에만 넣고 정확한 버전으로 고정한다 (package.json에 넣지 않는다: 서버와 웹에 딸려 가면 안 된다).
+# AI CLI(Claude, Codex)는 이 이미지에만 넣고 정확한 버전으로 고정한다 (package.json에 넣지 않는다: 서버와 웹에 딸려 가면 안 된다).
+# Codex는 지금 웹 로그인(codex login --device-auth)에만 쓴다. 로그인 명령의 PTY는 기본으로 든 script(util-linux)로 만든다.
 # 비밀값은 이미지와 홈에 두지 않는다. 기기 토큰은 환경 변수, AI 토큰은 일마다 서버에서 받아 메모리에만 둔다
 FROM node:24-bookworm-slim AS runner
 ENV NODE_ENV=production
 WORKDIR /app/apps/runner
-RUN npm install -g @anthropic-ai/claude-code@2.1.302
+RUN npm install -g @anthropic-ai/claude-code@2.1.302 @openai/codex@0.164.0
 COPY skills /app/skills
 COPY --from=runner-build /repo/apps/runner/dist /app/apps/runner/src
 USER node

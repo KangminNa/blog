@@ -633,6 +633,9 @@ export class Task extends TrackedEntity {
     now: Date,
   ): void {
     this.assertHeldBy(runnerId, now);
+    // 웹 로그인은 자격(ai_signin credential)이 와야 끝난다. 러너가 실패만 알린다
+    if (this.isAiSignin && status === Task.DONE)
+      throw new RuleViolation('웹 로그인은 ai_signin으로 자격을 보내야 끝나요');
     if (status === Task.DONE) this.finish(result, now);
     else if (status === Task.FAILED) this.fail(error ?? '러너가 실패로 끝냈어요', now);
     else throw new RuleViolation(`결과는 ${Task.DONE} · ${Task.FAILED} 중 하나예요`);
@@ -669,6 +672,7 @@ export class Task extends TrackedEntity {
     this.track('lease_until', null);
     this.finishedOn = now;
     this.track('finished_at', now);
+    this.forgetSignin();
   }
 
   /** 러너가 처리하지 못하고 돌려준다: running → queued. 실패가 아니라 시도로 세지 않는다 */
@@ -724,6 +728,13 @@ export class Task extends TrackedEntity {
     this.track('result', result);
     this.finishedOn = now;
     this.track('finished_at', now);
+    this.forgetSignin();
+  }
+
+  /** 끝난 웹 로그인에는 주소도 가져가지 않은 코드도 남기지 않는다. 어느 도구였는지만 */
+  private forgetSignin(): void {
+    if (this.isAiSignin && Object.keys(this.payloadValue).some((key) => key !== 'tool'))
+      this.setPayload({ tool: this.payloadValue.tool });
   }
 
   private assertWaitingFor(reason: string): void {
