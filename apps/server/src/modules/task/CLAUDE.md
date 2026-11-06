@@ -51,7 +51,7 @@ platform
 - `.view.ts`는 아무것도 import하지 않는다 (`pnpm check`가 막는다). 웹이 `import type`으로 가져온다
 - 주인의 일은 `actor.assertOwner()`로 묻는다. `assertCan(WRITE)`로 물으면 write 권한을 가진 기기가 결재할 수 있다
 - 작업 토큰은 저장하지 않는다 (`AgentActor.seal`). `RUN_TOKEN_SECONDS`는 상한이고 실제 끝은 임대다: AI CLI는 받은 토큰을 바꿔 끼울 수 없어 임대가 늘어도 끊기면 안 되고, 끝은 호출마다 `TaskQuery.isLive`가 본다
-- 작업 토큰은 `/mcp`에서만 Actor가 된다 (`ActorGuard`). REST에서 쓰면 호출마다 하는 작업 확인을 건너뛴다
+- 작업 토큰은 `/mcp`에서만 Actor가 된다 (`ActorGuard`, 기기 토큰도 같다). REST에서 쓰면 호출마다 하는 작업 확인을 건너뛴다
 - 에이전트에게 `run`을 줄 수 없다. 러너만 일을 빌린다
 - 진행 보고는 version을 올리지 않는다 (`saveLease`). 보고가 잦아도 주인의 취소가 막히면 안 된다
 - 잠그는 순서는 어디서나 작업 → 결재 → 에이전트

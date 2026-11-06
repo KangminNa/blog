@@ -12,8 +12,10 @@ import { WebSession } from '../owner/owner';
 import { OwnerQuery } from '../owner/owner.query';
 import { SpaceQuery } from '../space/space.query';
 
-// 모든 요청에서 요청자를 정한다: 작업 토큰 → 에이전트(/mcp만), 그 밖의 Bearer 토큰 → 기기(MCP),
+// 모든 요청에서 요청자를 정한다: 작업 토큰 → 에이전트, 그 밖의 Bearer 토큰 → 기기 (둘 다 /mcp에서만),
 // 로그인 쿠키 → 주인, 없으면 방문자.
+// AI의 입구는 /mcp 하나다: Bearer 토큰은 REST(/api)에서 요청자가 되지 않아 방문자와 같다.
+// REST의 관리 일에 권한 확인이 하나 빠져도 AI 토큰은 닿지 않게 구조로 막는다 (2026-11-06).
 // 누구인지 정하는 것 말고 막는 일은 하나뿐이다: 로그인 쿠키로 오는 쓰기 요청의 출처 확인.
 // 그 밖의 권한은 Service 첫 줄에서 확인한다 (/mcp는 기기나 살아 있는 작업이 아니면 401).
 @Injectable()
@@ -31,15 +33,14 @@ export class ActorGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<HttpRequest & { path: string }>();
     const bearer = /^Bearer\s+(\S+)$/i.exec(String(request.headers.authorization ?? ''))?.[1];
-    if (bearer && AgentActor.isToken(bearer)) {
-      // 작업 토큰은 MCP 입구에서만 쓴다. 호출마다 작업을 확인하는 곳이 거기뿐이고,
-      // REST에서 write 권한으로 통하면 기기 토큰 만들기처럼 에이전트에게 주지 않은 일까지 닿는다
-      if (request.path === ActorGuard.MCP)
-        request.actor = AgentActor.open(this.box, bearer) ?? undefined;
-      return true;
-    }
     if (bearer) {
-      request.actor = (await this.devices.actorFor(bearer)) ?? undefined;
+      // AI 토큰은 MCP 입구에서만 쓴다. 작업 토큰은 호출마다 작업을 확인하는 곳이 거기뿐이고,
+      // 기기 토큰이 REST에서 write 권한으로 통하면 기기 권한 바꾸기처럼 주인의 일까지 닿는다
+      if (request.path !== ActorGuard.MCP) return true;
+      request.actor =
+        (AgentActor.isToken(bearer)
+          ? AgentActor.open(this.box, bearer)
+          : await this.devices.actorFor(bearer)) ?? undefined;
       return true;
     }
     const token = Cookies.read(request, WebSession.COOKIE);

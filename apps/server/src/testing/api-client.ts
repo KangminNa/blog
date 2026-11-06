@@ -238,6 +238,24 @@ export class ApiClient {
     return token;
   }
 
+  /**
+   * 서버에 등록된 HTTP 경로 전부 ("GET /api/posts/:id" 모양, 정렬). 방문자에게 열린 경로를 표로 고정할 때 쓴다.
+   * Nest가 경로를 Express(5)의 라우터에 등록하므로 그 목록을 읽는다.
+   */
+  routes(): readonly string[] {
+    const express = this.app.getHttpAdapter().getInstance() as {
+      router: { stack: { route?: { path: string; methods: Record<string, boolean> } }[] };
+    };
+    const found = express.router.stack.flatMap(({ route }) =>
+      route
+        ? Object.entries(route.methods)
+            .filter(([, on]) => on)
+            .map(([method]) => `${method.toUpperCase()} ${route.path}`)
+        : [],
+    );
+    return [...new Set(found)].sort();
+  }
+
   async close(): Promise<void> {
     await this.app.close();
   }

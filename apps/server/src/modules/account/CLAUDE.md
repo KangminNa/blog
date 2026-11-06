@@ -11,7 +11,7 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
 - `device/`: 기기(`Device` + `DeviceCredential`), OAuth 클라이언트(`OAuthClient`), 승인 코드(`AuthorizationCode`), 승인 요청 규칙(`AuthorizationPolicy`).
   `OAuthController`(`/.well-known/*`, `/oauth/*`: 표준 경로라 /api 아래가 아님), `DeviceController`(`api/connect` 승인 화면, `api/devices` 기기 화면)
 - 러너는 OAuth 없이 콘솔에서 만든다 (`POST api/devices/runner`, `Device.forRunner`). 권한은 `run` 하나, 토큰은 응답에 한 번
-- `guard/`: `ActorGuard` (모든 요청: 작업 토큰 → `AgentActor`(`/mcp`만, 작업이 살아 있는지는 mcp 모듈이 묻는다), 그 밖의 Bearer 토큰 → `DeviceActor`, 로그인 쿠키 → `OwnerActor`. 로그인 쿠키로 오는 쓰기 요청은 출처가 사이트 주소일 때만, 아니면 403 `origin`)
+- `guard/`: `ActorGuard` (모든 요청: 작업 토큰 → `AgentActor`(작업이 살아 있는지는 mcp 모듈이 묻는다), 그 밖의 Bearer 토큰 → `DeviceActor`. 둘 다 `/mcp`에서만 요청자가 되고 REST에서는 방문자와 같다. 로그인 쿠키 → `OwnerActor`. 로그인 쿠키로 오는 쓰기 요청은 출처가 사이트 주소일 때만, 아니면 403 `origin`)
 
 ## 소유 데이터
 스키마 `account`: spaces, users, login_links, space_members, settings, secrets, devices, oauth_clients, oauth_codes, oauth_tokens, device_tokens, web_sessions
@@ -32,7 +32,7 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
 platform
 
 ## 지켜야 할 것
-- 관리 일(기기 목록·권한·토큰·끊기, 승인 화면, 사이트 정보·앱 연결 허용, 연결된 로그인)은 `assertOwner()`로 막는다. `assertCan(WRITE)`는 기기도 통과한다: 기기 Bearer 토큰은 REST에서도 `DeviceActor`가 되므로, write를 받은 AI 도구가 자기 권한을 올리지 못하게. API 테스트에 write 기기 경우를 둔다 (`device.api.test.ts`)
+- 관리 일(기기 목록·권한·토큰·끊기, 승인 화면, 사이트 정보·앱 연결 허용, 연결된 로그인)은 `assertOwner()`로 막는다. `assertCan(WRITE)`는 write 기기도 통과한다. 기기 토큰은 `/mcp`에서만 요청자가 되지만(`ActorGuard`, 2026-11-06), 관리 일은 Service에서도 한 번 더 막는다 (두 겹). API 테스트에 write 기기 경우를 둔다 (`device.api.test.ts`)
 - 비밀값(GitHub client secret, SMTP 비밀번호 등)은 `secrets`에 암호화해서만 저장하고, 응답·로그에 내보내지 않는다
 - 토큰(로그인·기기)은 해시만 저장한다. 원문은 만든 순간의 응답(쿠키)에만
 - 주인은 공간마다 한 명 (DB 부분 유일 인덱스)

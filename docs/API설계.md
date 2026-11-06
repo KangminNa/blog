@@ -14,6 +14,8 @@
 
 웹은 DB에 닿지 않고 REST만 부른다. REST와 MCP는 같은 Service·Query를 부르며, 진입 계층에 판단을 두지 않는다.
 
+**AI의 입구는 `/mcp` 하나다.** Bearer 토큰(기기·작업)은 `/mcp`에서만 요청자가 되고, REST에서는 방문자와 같다 (`ActorGuard`, 2026-11-06). 방문자가 GET으로 닿는 경로와 응답 코드는 `apps/server/src/modules/platform/http/visitor-surface.api.test.ts`의 표가 원본이다: 새 경로나 열림·막힘이 바뀌면 그 표를 고쳐야 테스트가 통과한다. `/api/health`는 방문자에게 `status`만 주고, 확장·마이그레이션·표 수는 주인과 서버 자신에게만 준다.
+
 ---
 
 ## 2. 공통 규칙
