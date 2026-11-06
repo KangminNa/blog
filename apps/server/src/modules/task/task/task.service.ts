@@ -17,6 +17,7 @@ import { AiLoginRepository } from '../ai/ai-login.repository';
 import { Approval } from '../approval/approval';
 import { ApprovalRepository } from '../approval/approval.repository';
 import { GoalRepository } from '../goal/goal.repository';
+import { RunnerRepository } from '../runner/runner.repository';
 import { PlanUsage } from '../usage/plan-usage';
 import { PlanUsageRepository } from '../usage/plan-usage.repository';
 import { Task } from './task';
@@ -66,14 +67,20 @@ export class TaskService extends BaseService {
     return this.open(spaceId, req);
   }
 
-  /** 러너가 일을 빌린다. 없으면 waitSeconds까지 기다리다가 일이 생기면 바로 돌려준다 (트랜잭션 밖에서 기다린다) */
+  /**
+   * 러너가 일을 빌린다. 없으면 waitSeconds까지 기다리다가 일이 생기면 바로 돌려준다 (트랜잭션 밖에서 기다린다).
+   * 물을 때마다 러너가 닿은 때를 남긴다. 주인이 일 받기를 꺼 둔 러너에게는 빈 목록이다 (러너는 켜진 채로 쉰다)
+   */
   async next(actor: Actor, req: NextJobsInput): Promise<readonly JobView[]> {
     actor.assertCan(Actor.RUN);
     const spaceId = TaskService.spaceOf(actor);
     const runnerId = TaskService.runnerOf(actor);
     const deadline = Date.now() + req.waitSeconds * 1000;
     for (;;) {
-      const jobs = await this.lease(spaceId, runnerId, req.limit);
+      const accepting = await this.transaction((tx) =>
+        new RunnerRepository(tx).seen(spaceId, runnerId, new Date()),
+      );
+      const jobs = accepting ? await this.lease(spaceId, runnerId, req.limit) : [];
       const left = deadline - Date.now();
       if (jobs.length > 0 || left <= 0 || this.changes.closed) return jobs;
       await this.changes.wait(
@@ -105,6 +112,8 @@ export class TaskService extends BaseService {
         await this.notePlan(tx, task, req, now);
         await once?.remember({ reported: true });
       }
+      // 일하는 동안에는 next_jobs를 부르지 않으므로 진행 보고로 닿은 때를 남긴다 (잠그는 순서의 맨 뒤)
+      await new RunnerRepository(tx).seen(spaceId, runnerId, now);
       return new ProgressView(
         task.status,
         task.cancelled,

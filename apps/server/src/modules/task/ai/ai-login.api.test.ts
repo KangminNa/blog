@@ -508,7 +508,7 @@ describe('서버 키 교체', () => {
     const finished = SecretBox.fromEnv({ CAIRN_SECRET_KEY: newKey });
     const [before] = await db.sql`SELECT secret, space_id FROM task.ai_logins`;
 
-    const service = new AiLoginService(db, rotating);
+    const service = new AiLoginService(db, rotating, new AiLoginQuery(db, rotating));
     assert.equal(await service.resealSecrets(cliActor), 1);
     assert.equal(await service.resealSecrets(cliActor), 0, '두 번째는 할 일이 없다');
     await assert.rejects(service.resealSecrets(new VisitorActor()), Forbidden);
@@ -528,7 +528,10 @@ describe('서버 키 교체', () => {
     const [before] = await db.sql`SELECT secret FROM task.ai_logins`;
     const stranger = SecretBox.fromEnv({ CAIRN_SECRET_KEY: SecretBox.newKey() });
 
-    await assert.rejects(new AiLoginService(db, stranger).resealSecrets(cliActor), /풀 수 없어요/);
+    await assert.rejects(
+      new AiLoginService(db, stranger, new AiLoginQuery(db, stranger)).resealSecrets(cliActor),
+      /풀 수 없어요/,
+    );
 
     const [after] = await db.sql`SELECT secret FROM task.ai_logins`;
     assert.deepEqual(after?.secret, before?.secret);

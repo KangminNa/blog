@@ -13,13 +13,14 @@
   `api/approvals`, MCP `request_approval`
 - `usage/`: 구독 사용률 (`PlanUsage`)과 사용량 읽기 (`UsageQuery`). `api/usage`. 쓰기는 `report_progress`의 `plan_usage`로만 들어온다
 - `ai/`: AI 도구의 로그인 (`AiLogin`). 콘솔에 넣은 토큰을 서버 키로 잠가 두고 서버 러너에게 건넨다. `api/ai`, MCP `ai_login`
+- `runner/`: 러너의 상태 (`Runner`). 마지막으로 닿은 때, 일 받기 켜기·끄기. `api/runners`. 기기 이름·종류는 account의 것이라 화면이 합친다
 
 파일 구조는 새 규칙의 시범이다 (객체설계 6장): `<이름>.ts` · `.view.ts` · `.input.ts` · `.service.ts` · `.query.ts` · `.api.ts` · `.tool.ts` · `.repository.ts`.
 엔티티는 `TrackedEntity`(platform)로 바뀐 열을 기억하고 Repository는 그 열만 저장한다.
 도구 모양은 docs/API설계.md 4장이 원본이다. `report_progress`는 기록을 모아 받고, 러너가 쓰므로 바꾸면 `apps/runner`도 함께 고친다.
 
 ## 소유 데이터
-스키마 `task`: agents, goals, heartbeats, tasks, task_events(추가만), approvals, plan_usage, ai_logins
+스키마 `task`: agents, goals, heartbeats, tasks, task_events(추가만), approvals, plan_usage, ai_logins, runners
 
 ## 데이터 묶음
 - 에이전트: agents (조직도는 `reports_to`)
@@ -29,6 +30,7 @@
 - 결재: approvals
 - 구독 사용률: plan_usage (창마다 마지막 값 하나. `window`는 Postgres 예약어라 열은 `period`, API는 `window`)
 - AI 로그인: ai_logins (공간과 도구마다 한 줄)
+- 러너: runners (러너 기기마다 한 줄, 처음 닿을 때 생긴다)
 
 ## 공개 API (`index.ts`)
 `TaskModule`, `TaskTools`(mcp 모듈이 모아서 연다), `TaskQuery`(`isLive`: mcp 입구가 호출마다 작업 토큰이 살아 있는지 묻는다)
@@ -61,6 +63,7 @@ platform
 - 보고 대상은 `Agent.reportTo`로만 바꾼다 (순환 · 깊이 4). 바꿀 때는 공간의 에이전트를 모두 잠근다(`lockAll`): 하나만 잠그면 동시에 서로에게 보고하게 바꾸는 둘이 모두 통과한다. 결재는 조직도와 상관없이 늘 주인에게
 - 목표는 지우지 않고 상태로 닫는다. 부모는 만들 때 정하고 바꾸지 않는다 (그래서 목표 사슬은 잠그지 않고 읽는다). 진행 중인 목표에만 작업과 하위 목표를 더한다. 목표를 정하는 건 주인만이고 AI는 읽기만 한다
 - 진행 보고는 version을 올리지 않는다 (`saveLease`). 보고가 잦아도 주인의 취소가 막히면 안 된다
+- 러너가 닿은 때(`RunnerRepository.seen`)도 version을 올리지 않는다: 러너가 자주 닿아도 주인의 켜기·끄기가 막히면 안 된다. `next_jobs` · `report_progress` · `ai_login`이 남긴다 (토큰이 없는 러너는 `ai_login`만 묻는다). 일 받기를 끈 러너의 `next_jobs`는 빈 목록이다
 - 잠그는 순서는 어디서나 작업 → 결재 → 에이전트. 작업끼리는 위 작업 → 아래 작업 (취소 전파). 위 작업을 깨우는 쪽은 위 작업만 잠근다
 - 하트비트: 주기는 매일(시각 + 요일)과 N시간마다만. 시각 계산은 `HeartbeatPolicy` 한 곳 (크론 라이브러리를 넣지 않는다). 깨우기는 하트비트 → 작업 순서로 쓰고, 작업의 request_id(`heartbeat:<에이전트>:<시각>`)로 한 번만 만든다. 앞 하트비트 작업이 끝나지 않았거나 에이전트가 일을 받을 수 없으면 건너뛴다. 놓친 시각은 몰아서 깨우지 않는다
 - 위임: `waiting`에는 늘 기다리는 것(`wait_reason`: approval · subtasks)이 있다 (DB CHECK). 결재 승인 · 고쳐 달라는 말은 결재를 기다리는 작업에만, 깨우기는 하위 작업을 기다리는 작업에만. 받는 쪽 · 종류 · 한도는 `Task`가 막고 LLM에게 맡기지 않는다

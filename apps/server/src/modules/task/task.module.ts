@@ -18,6 +18,9 @@ import { GoalService } from './goal/goal.service';
 import { HeartbeatController } from './heartbeat/heartbeat.api';
 import { HeartbeatJob } from './heartbeat/heartbeat.job';
 import { HeartbeatService } from './heartbeat/heartbeat.service';
+import { RunnerController } from './runner/runner.api';
+import { RunnerQuery } from './runner/runner.query';
+import { RunnerService } from './runner/runner.service';
 import { DelegateTaskTool } from './task/delegate.tool';
 import { LeaseJob } from './task/lease.job';
 import { SubtaskSettledHandler } from './task/subtask-settled.handler';
@@ -51,6 +54,8 @@ import { UsageQuery } from './usage/usage.query';
     GoalService,
     HeartbeatService,
     HeartbeatJob,
+    RunnerQuery,
+    RunnerService,
     AiLoginQuery,
     AiLoginService,
     AiLoginTool,
@@ -74,6 +79,7 @@ import { UsageQuery } from './usage/usage.query';
     AiLoginController,
     GoalController,
     HeartbeatController,
+    RunnerController,
   ],
   exports: [TaskTools, TaskQuery],
 })

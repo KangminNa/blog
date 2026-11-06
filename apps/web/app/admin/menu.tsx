@@ -11,6 +11,12 @@ const ICONS: Record<string, ReactNode> = {
   ),
   stamp: <path d="M6 2.5h4v3.2c0 1.2 2.8 1.6 2.8 4H3.2c0-2.4 2.8-2.8 2.8-4zM3 12.8h10" />,
   flag: <path d="M3.5 14V2.5M3.5 3h8.5l-2 3 2 3H3.5" />,
+  runner: (
+    <>
+      <rect x="4" y="4" width="8" height="8" rx="1.5" />
+      <path d="M6.5 2v2M9.5 2v2M6.5 12v2M9.5 12v2M2 6.5h2M2 9.5h2M12 6.5h2M12 9.5h2" />
+    </>
+  ),
   people: (
     <>
       <circle cx="5.6" cy="5.4" r="2.2" />
@@ -81,6 +87,7 @@ export const MENU = [
       { href: APPROVALS_HREF, name: '결재', icon: 'stamp' },
       { href: '/admin/agents', name: '에이전트', icon: 'people' },
       { href: '/admin/goals', name: '목표', icon: 'flag' },
+      { href: '/admin/runners', name: '러너', icon: 'runner' },
       { href: '/admin/office', name: '오피스', icon: 'office' },
     ],
   },

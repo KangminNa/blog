@@ -5,6 +5,10 @@ import type {
 } from '../../../server/src/modules/task/approval/approval.view';
 import type { GoalListView, GoalView } from '../../../server/src/modules/task/goal/goal.view';
 import type {
+  RunnerListView,
+  RunnerView,
+} from '../../../server/src/modules/task/runner/runner.view';
+import type {
   TaskDetailView,
   TaskPageView,
   TaskView,
@@ -21,6 +25,8 @@ export type TaskEvent = TaskDetail['events'][number];
 export type TaskGoal = TaskDetail['goalChain'][number];
 export type Goal = ReturnType<GoalView['toJSON']>;
 export type GoalList = ReturnType<GoalListView['toJSON']>;
+export type Runner = ReturnType<RunnerView['toJSON']>;
+export type RunnerList = ReturnType<RunnerListView['toJSON']>;
 export type Approval = ReturnType<ApprovalView['toJSON']>;
 export type ApprovalPage = ReturnType<ApprovalPageView['toJSON']>;
 export type Agent = ReturnType<AgentView['toJSON']>;

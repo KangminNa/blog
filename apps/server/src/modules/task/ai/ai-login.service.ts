@@ -1,20 +1,36 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseService, Database, Forbidden, RuleViolation, SecretBox } from '../../platform';
+import { RunnerRepository } from '../runner/runner.repository';
 import { Task } from '../task/task';
 import { TaskRepository } from '../task/task.repository';
 import { AiLogin } from './ai-login';
-import type { AiTokenInput } from './ai-login.input';
+import type { AiLoginInput, AiTokenInput } from './ai-login.input';
+import { AiLoginQuery } from './ai-login.query';
 import { AiLoginRepository } from './ai-login.repository';
+import type { AiTokenView } from './ai-login.view';
 
-// AI 로그인 쓰기: 토큰 넣기, 연결 확인 맡기기(주인), 서버 키를 바꾼 뒤 다시 잠그기.
+// AI 로그인 쓰기: 토큰 넣기, 연결 확인 맡기기(주인), 서버 키를 바꾼 뒤 다시 잠그기, 러너에게 건네기(ai_login).
 // 확인 결과는 작업이 끝날 때 TaskService가 같은 트랜잭션에서 적는다. 잠그는 순서는 작업 → 로그인.
 @Injectable()
 export class AiLoginService extends BaseService {
   constructor(
     db: Database,
     private readonly box: SecretBox,
+    private readonly logins: AiLoginQuery,
   ) {
     super(db);
+  }
+
+  /**
+   * ai_login: 러너에게 토큰을 건넨다 (읽기는 AiLoginQuery.token). 그 전에 러너가 닿은 때를 남긴다:
+   * 토큰이 없는 동안 러너는 일을 빌리지 않고 이것만 묻기 때문이다. 토큰이 없어 거절해도 닿은 때는 남는다
+   */
+  async handOver(actor: Actor, req: AiLoginInput): Promise<AiTokenView> {
+    actor.assertCan(Actor.RUN);
+    const { spaceId, id } = actor;
+    if (actor.kind !== 'device' || !spaceId || !id) throw new Forbidden(Actor.RUN);
+    await this.transaction((tx) => new RunnerRepository(tx).seen(spaceId, id, new Date()));
+    return this.logins.token(actor, req);
   }
 
   /** Claude 토큰을 넣거나 바꾼다 */

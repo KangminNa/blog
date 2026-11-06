@@ -48,6 +48,7 @@
 | 사용량 | `GET /api/usage` → `{ agents: [{ id, fiveHourTokens, monthTokens, fiveHourLimit, monthlyLimit, planStopPercent, holding }], plan: [{ tool, window, percent, resetsAt, seenAt }] }` (주인만). 확인 전이거나 초기화 시각이 지난 창은 `percent`가 null | 3 |
 | AI | `GET /api/ai` → `{ tools: [{ tool, connected, expiresAt, checkedAt, lastError }] }`, `PUT /api/ai/claude/token { token }`, `POST /api/ai/claude/test` → `{ taskId, status }` (주인만. 쓸 수 있는 토큰이 없으면 422). Codex 로그인은 첫 완성 뒤 | 4 |
 | 기기 | `POST /api/devices/runner { requestId, name }` (주인만. `run` 권한만 가진 기기, 토큰은 이 응답에 한 번) | 3 |
+| 러너 | `GET /api/runners` → `{ runners: [{ id, deviceId, accepting, online, lastSeenAt, task: { id, title } \| null, version }] }`, `POST /api/runners/:id/accepting { accepting, version }` (주인만). 이름·종류는 기기 목록(`deviceId`)에서. `online`은 마지막으로 닿은 지 90초 안. 일 받기를 끄면 `next_jobs`가 빈 목록을 돌려주고 하던 일은 끝까지 간다 | 러너 |
 | 서버 러너 | `POST /api/devices/server-runner { secret }` → `{ id, name: "서버 러너", scopes: ["run"], token }` (로그인 없이. 서버와 러너만 보는 볼륨의 연결 값이 곧 권한. 틀리면 403, 설치 전 409, IP당 1시간 30번). 부를 때마다 같은 기기의 토큰을 바꾼다. 러너가 MCP 앞에서 한 번 부르는 유일한 REST다 | 러너 |
 | 소재 | `GET·POST /api/basket/items { requestId, kind, refId?, url?, title?, note? }`, `DELETE /api/basket/items/:id` | 5 |
 | 글 연결 | 글 만들기·저장에 `mainWikiId?`, `refWikiIds?`. 공개된 글의 연결은 주인만 바꾼다 | 6 |
