@@ -1202,6 +1202,57 @@ a.chip {
   overflow-wrap: anywhere;
 }
 
+/* AI 메뉴의 웹 로그인: 단계마다 할 일 하나 */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.signin-steps {
+  margin: 0;
+  padding-left: 20px;
+  list-style: decimal;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 13px;
+}
+
+.signin-steps li {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.signin-steps .row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.signin-code {
+  align-self: flex-start;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+
+.more summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.more[open] summary {
+  margin-bottom: 10px;
+}
+
 .log {
   margin: 0;
   padding: 0;

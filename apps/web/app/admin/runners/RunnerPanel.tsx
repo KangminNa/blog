@@ -25,7 +25,7 @@ export function RunnerPanel() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** AI 토큰이 하나라도 있는가. 없으면 러너는 연결돼 있어도 일을 빌리지 않는다 */
+  /** Claude 로그인이 있는가. 없으면 러너는 연결돼 있어도 웹 로그인 말고는 일을 빌리지 않는다 (Codex로 일하기는 아직) */
   const [hasAiToken, setHasAiToken] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
@@ -37,7 +37,7 @@ export function RunnerPanel() {
     if (!runners.ok) return setError(describe(runners.error));
     if (!devices.ok) return setError(describe(devices.error));
     setError(null);
-    if (ai.ok) setHasAiToken(ai.data.tools.some((t) => t.connected));
+    if (ai.ok) setHasAiToken(ai.data.tools.find((t) => t.tool === 'claude')?.connected ?? false);
     // 끊긴 기기의 러너는 보이지 않는다 (서버 러너는 끊기면 새 기기로 다시 연결한다)
     const live = new Map(
       devices.data.devices.filter((d) => d.revokedAt === null).map((d) => [d.id, d]),
@@ -78,7 +78,8 @@ export function RunnerPanel() {
       {error && <p className="error">{error}</p>}
       {hasAiToken === false && (
         <p className="warn">
-          AI 토큰이 없어 러너가 일을 빌리지 않아요 · <Link href="/admin/ai">AI 메뉴에서 넣기</Link>
+          Claude 로그인이 없어 러너가 일을 빌리지 않아요 ·{' '}
+          <Link href="/admin/ai">AI 메뉴에서 로그인</Link>
         </p>
       )}
       {rows === null ? (
@@ -101,8 +102,8 @@ export function RunnerPanel() {
         </ul>
       )}
       <p className="note">
-        일하려면 AI 토큰이 있어야 해요 · <Link href="/admin/ai">AI 메뉴</Link>. 일 받기를 끄면 하던
-        일은 끝까지 하고 새 일은 받지 않아요
+        일하려면 Claude 로그인이 있어야 해요 · <Link href="/admin/ai">AI 메뉴</Link>. 일 받기를 끄면
+        하던 일은 끝까지 하고 새 일은 받지 않아요
       </p>
     </>
   );

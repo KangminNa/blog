@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import type {
   AiTestView,
   AiToolListView,
@@ -9,20 +10,23 @@ import { api, describe } from '../../_lib/client-api';
 import { useLiveValue } from '../../_lib/use-live';
 import { TOOL_LABELS, when } from '../../_task/labels';
 import { TASK_TOPICS } from '../../_task/live';
-import type { Task } from '../../_task/types';
+import type { Task, TaskDetail } from '../../_task/types';
 import { useNotify } from '../AdminShell';
 
 type AiTools = ReturnType<AiToolListView['toJSON']>;
 type AiTool = AiTools['tools'][number];
 type AiTest = ReturnType<AiTestView['toJSON']>;
+type Signin = NonNullable<AiTool['signin']>;
 
 const DAY_MS = 86_400_000;
 /** 만료가 이만큼 남으면 알린다 */
 const WARN_DAYS = 30;
+/** 로그인 단계는 작업의 상태가 아니라서 신호가 없다. 로그인하는 동안만 이 간격으로 다시 읽는다 */
+const SIGNIN_REREAD_MS = 2_000;
 
 function stateOf(tool: AiTool): string {
   if (tool.connected) return '연결됨';
-  return tool.expiresAt ? '만료됨' : '토큰 없음';
+  return tool.expiresAt ? '만료됨' : '로그인 전';
 }
 
 /** 만료까지 남은 날. 지났으면 null */
@@ -36,28 +40,69 @@ function checkOf(tool: AiTool): string {
   return `${tool.lastError ? '실패' : '정상'} · ${when(tool.checkedAt)}`;
 }
 
-// AI 로그인: 서버 러너가 쓸 토큰 넣기, 만료, 연결 확인. 토큰은 서버가 돌려주지 않아 화면에 다시 보이지 않는다.
+/** 서버가 정해진 출처만 받지만, 링크로 여는 것은 https일 때만 */
+function safeUrl(url: string | null): string | null {
+  return url?.startsWith('https://') ? url : null;
+}
+
+// AI 로그인. 러너가 로그인 명령을 대신 돌리고(웹 로그인), 주인은 주소에서 로그인해 코드를 붙여 넣는다.
+// Claude는 토큰을 직접 넣을 수도 있다. 토큰은 서버가 돌려주지 않아 화면에 다시 보이지 않는다.
 export function AiPanel() {
   const tools = useLiveValue('ai', () => api<AiTools>('GET', '/api/ai'), TASK_TOPICS);
-  const claude = tools.data?.tools.find((t) => t.tool === 'claude');
+  const { reload } = tools;
+  const signingIn = tools.data?.tools.some((t) => t.signin !== null) ?? false;
+  useEffect(() => {
+    if (!signingIn) return;
+    const timer = setInterval(() => void reload(), SIGNIN_REREAD_MS);
+    return () => clearInterval(timer);
+  }, [signingIn, reload]);
+
   return (
     <>
       <header className="page-head">
         <h1>AI</h1>
       </header>
       {tools.error && <p className="error">{tools.error}</p>}
-      {claude ? (
-        <ClaudeLogin tool={claude} reload={tools.reload} />
-      ) : (
-        !tools.error && <p className="label-mono">불러오는 중…</p>
-      )}
+      {tools.data
+        ? tools.data.tools.map((tool) => <ToolCard key={tool.tool} tool={tool} reload={reload} />)
+        : !tools.error && <p className="label-mono">불러오는 중…</p>}
+      <p className="note">
+        로그인은 러너가 돌려요. 러너가 꺼져 있으면 시작되지 않아요 ·{' '}
+        <Link href="/admin/runners">러너 메뉴</Link>
+      </p>
     </>
   );
 }
 
-function ClaudeLogin({ tool, reload }: { tool: AiTool; reload: () => Promise<void> }) {
-  const notify = useNotify();
-  const [token, setToken] = useState('');
+function ToolCard({ tool, reload }: { tool: AiTool; reload: () => Promise<void> }) {
+  const claude = tool.tool === 'claude';
+  const name = TOOL_LABELS[tool.tool] ?? tool.tool;
+  return (
+    <section className="panel" aria-label={name}>
+      <h2>{name}</h2>
+      {claude ? (
+        <ClaudeState tool={tool} />
+      ) : (
+        <dl className="kv">
+          <dt>상태</dt>
+          <dd>{stateOf(tool)}</dd>
+        </dl>
+      )}
+      <SigninBox tool={tool} reload={reload} />
+      {claude ? (
+        <details className="more">
+          <summary>토큰 직접 넣기</summary>
+          <TokenForm tool={tool} reload={reload} />
+        </details>
+      ) : (
+        <p className="note">로그인만 저장돼요. Codex로 일하기는 준비 중이에요</p>
+      )}
+    </section>
+  );
+}
+
+/** Claude: 만료와 연결 확인 */
+function ClaudeState({ tool }: { tool: AiTool }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   // 맡긴 연결 확인의 작업. 끝나면 결과는 /api/ai로 온다
@@ -74,20 +119,6 @@ function ClaudeLogin({ tool, reload }: { tool: AiTool; reload: () => Promise<voi
     testing !== null && (test.data === null || ['queued', 'running'].includes(test.data.status));
   const left = tool.expiresAt ? daysLeft(tool.expiresAt) : null;
 
-  async function save(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setProblem(null);
-    const reply = await api('PUT', '/api/ai/claude/token', { token: token.trim() });
-    // 틀린 값도 칸에 남기지 않는다. 가려져 있어 고칠 수 없고 다시 붙여 넣으면 된다
-    setToken('');
-    setBusy(false);
-    if (!reply.ok) return setProblem(describe(reply.error));
-    setTesting(null);
-    notify('토큰 저장됨');
-    await reload();
-  }
-
   async function startTest() {
     setBusy(true);
     setProblem(null);
@@ -100,61 +131,237 @@ function ClaudeLogin({ tool, reload }: { tool: AiTool; reload: () => Promise<voi
   return (
     <>
       {problem && <p className="error">{problem}</p>}
-      <div className="panel">
-        <h2>{TOOL_LABELS[tool.tool] ?? tool.tool}</h2>
-        <dl className="kv">
-          <dt>상태</dt>
-          <dd>{stateOf(tool)}</dd>
-          {tool.expiresAt && (
-            <>
-              <dt>만료</dt>
-              <dd>{new Date(tool.expiresAt).toLocaleDateString('ko-KR')}</dd>
-            </>
-          )}
-          <dt>연결 확인</dt>
-          <dd>{pending ? '확인 중' : checkOf(tool)}</dd>
-          {tool.lastError && !pending && (
-            <>
-              <dt>이유</dt>
-              <dd>{tool.lastError}</dd>
-            </>
-          )}
-        </dl>
-        {left !== null && left <= WARN_DAYS && (
-          <p>
-            <span className="pill strong">만료 {left}일 전 · 새 토큰 필요</span>
-          </p>
+      <dl className="kv">
+        <dt>상태</dt>
+        <dd>{stateOf(tool)}</dd>
+        {tool.expiresAt && (
+          <>
+            <dt>만료</dt>
+            <dd>{new Date(tool.expiresAt).toLocaleDateString('ko-KR')}</dd>
+          </>
         )}
-        {tool.connected && (
-          <button
-            type="button"
-            className="cta small fit"
-            disabled={busy || pending}
-            onClick={startTest}
-          >
-            연결 확인
-          </button>
+        <dt>연결 확인</dt>
+        <dd>{pending ? '확인 중' : checkOf(tool)}</dd>
+        {tool.lastError && !pending && (
+          <>
+            <dt>이유</dt>
+            <dd>{tool.lastError}</dd>
+          </>
         )}
-        {pending && <p className="note">러너가 일을 맡으면 끝나요</p>}
-      </div>
-      <form className="panel" onSubmit={save}>
-        <label className="field">
-          <span>{tool.expiresAt ? '새 토큰' : '토큰'}</span>
-          <input
-            className="input"
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            required
-          />
-          <small>claude setup-token의 값. 끊긴 곳 없이 한 줄로</small>
-        </label>
-        <button className="cta small fit" type="submit" disabled={busy || !token.trim()}>
-          저장
+      </dl>
+      {left !== null && left <= WARN_DAYS && (
+        <p>
+          <span className="pill strong">만료 {left}일 전 · 다시 로그인 필요</span>
+        </p>
+      )}
+      {tool.connected && (
+        <button type="button" className="ghost fit" disabled={busy || pending} onClick={startTest}>
+          연결 확인
         </button>
-      </form>
+      )}
+      {pending && <p className="note">러너가 일을 맡으면 끝나요</p>}
     </>
+  );
+}
+
+/**
+ * 웹 로그인. 진행 중인 로그인은 /api/ai의 signin으로 온다 (새로 고쳐도 이어진다).
+ * 이 화면에서 시작한 로그인이 끝나면 작업을 읽어 실패 이유를 보인다
+ */
+function SigninBox({ tool, reload }: { tool: AiTool; reload: () => Promise<void> }) {
+  const notify = useNotify();
+  const name = TOOL_LABELS[tool.tool] ?? tool.tool;
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [started, setStarted] = useState<string | null>(null);
+  const signin = tool.signin;
+  const ended = useLiveValue(
+    `ai-signin:${started}`,
+    () =>
+      started && signin === null
+        ? api<TaskDetail>('GET', `/api/tasks/${started}`)
+        : Promise.resolve({ ok: true as const, data: null }),
+    TASK_TOPICS,
+  );
+  const result = ended.data;
+  const failure =
+    result?.status === 'failed'
+      ? String((result.result as { error?: unknown } | null)?.error ?? '로그인하지 못했어요')
+      : null;
+
+  useEffect(() => {
+    if (result?.status !== 'done') return;
+    notify(`${name} 로그인됨`);
+    setStarted(null);
+  }, [result?.status, name, notify]);
+
+  async function start() {
+    setBusy(true);
+    setProblem(null);
+    const reply = await api<AiTest>('POST', `/api/ai/${tool.tool}/signin`);
+    setBusy(false);
+    if (!reply.ok) return setProblem(describe(reply.error));
+    setStarted(reply.data.taskId);
+    await reload();
+  }
+
+  async function cancel(taskId: string) {
+    setBusy(true);
+    setProblem(null);
+    const task = await api<TaskDetail>('GET', `/api/tasks/${taskId}`);
+    const reply = task.ok
+      ? await api('POST', `/api/tasks/${taskId}/cancel`, { version: task.data.version })
+      : task;
+    setBusy(false);
+    setStarted(null);
+    if (!reply.ok) setProblem(describe(reply.error));
+    await reload();
+  }
+
+  if (signin === null)
+    return (
+      <div className="stack">
+        {problem && <p className="error">{problem}</p>}
+        {failure && <p className="error">{failure}</p>}
+        <button
+          type="button"
+          className={tool.connected ? 'ghost fit' : 'cta small fit'}
+          disabled={busy}
+          onClick={start}
+        >
+          {tool.connected ? '다시 로그인' : '브라우저로 로그인'}
+        </button>
+      </div>
+    );
+
+  return (
+    <section className="stack" aria-label={`${name} 로그인`}>
+      {problem && <p className="error">{problem}</p>}
+      <SigninSteps signin={signin} tool={tool.tool} />
+      <button
+        type="button"
+        className="ghost fit"
+        disabled={busy}
+        onClick={() => cancel(signin.taskId)}
+      >
+        로그인 취소
+      </button>
+    </section>
+  );
+}
+
+function SigninSteps({ signin, tool }: { signin: Signin; tool: string }) {
+  const url = safeUrl(signin.url);
+  if (signin.step === 'starting' || url === null)
+    return <p className="label-mono">러너가 로그인을 여는 중…</p>;
+  if (signin.step === 'verifying') return <p className="label-mono">코드를 확인하는 중…</p>;
+  const open = (
+    <a className="cta small fit" href={url} target="_blank" rel="noopener noreferrer">
+      로그인 페이지 열기
+    </a>
+  );
+  if (tool === 'codex')
+    return (
+      <ol className="signin-steps">
+        <li>
+          <span>로그인 페이지에서 로그인</span>
+          {open}
+        </li>
+        <li>
+          <span>이 코드 넣기</span>
+          <code className="signin-code">{signin.userCode}</code>
+          <small className="note">넣으면 저절로 연결돼요. 남이 보낸 코드는 넣지 마세요</small>
+        </li>
+      </ol>
+    );
+  return (
+    <ol className="signin-steps">
+      <li>
+        <span>로그인 페이지에서 로그인</span>
+        {open}
+      </li>
+      <li>
+        <span>브라우저에 나온 코드 붙여 넣기</span>
+        <CodeForm taskId={signin.taskId} />
+      </li>
+    </ol>
+  );
+}
+
+/** Claude: 브라우저에 나온 코드. 러너가 받아 로그인 명령에 쳐 넣는다 */
+function CodeForm({ taskId }: { taskId: string }) {
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  async function send(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setProblem(null);
+    const reply = await api('POST', '/api/ai/claude/signin/code', { taskId, code: code.trim() });
+    setBusy(false);
+    if (!reply.ok) return setProblem(describe(reply.error));
+    setCode('');
+  }
+
+  return (
+    <form className="row" onSubmit={send}>
+      <input
+        className="input"
+        aria-label="로그인 코드"
+        autoComplete="off"
+        spellCheck={false}
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        required
+      />
+      <button className="cta small" type="submit" disabled={busy || !code.trim()}>
+        넣기
+      </button>
+      {problem && <p className="error">{problem}</p>}
+    </form>
+  );
+}
+
+/** Claude: claude setup-token으로 직접 만든 토큰 */
+function TokenForm({ tool, reload }: { tool: AiTool; reload: () => Promise<void> }) {
+  const notify = useNotify();
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setProblem(null);
+    const reply = await api('PUT', '/api/ai/claude/token', { token: token.trim() });
+    // 틀린 값도 칸에 남기지 않는다. 가려져 있어 고칠 수 없고 다시 붙여 넣으면 된다
+    setToken('');
+    setBusy(false);
+    if (!reply.ok) return setProblem(describe(reply.error));
+    notify('토큰 저장됨');
+    await reload();
+  }
+
+  return (
+    <form className="stack" onSubmit={save}>
+      {problem && <p className="error">{problem}</p>}
+      <label className="field">
+        <span>{tool.expiresAt ? '새 토큰' : '토큰'}</span>
+        <input
+          className="input"
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          required
+        />
+        <small>claude setup-token의 값. 끊긴 곳 없이 한 줄로</small>
+      </label>
+      <button className="cta small fit" type="submit" disabled={busy || !token.trim()}>
+        저장
+      </button>
+    </form>
   );
 }
