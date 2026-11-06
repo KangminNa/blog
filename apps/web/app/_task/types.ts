@@ -25,6 +25,7 @@ export type Approval = ReturnType<ApprovalView['toJSON']>;
 export type ApprovalPage = ReturnType<ApprovalPageView['toJSON']>;
 export type Agent = ReturnType<AgentView['toJSON']>;
 export type AgentList = ReturnType<AgentListView['toJSON']>;
+export type AgentHeartbeat = NonNullable<Agent['heartbeat']>;
 export type Usage = ReturnType<UsageView['toJSON']>;
 export type UsageAgent = Usage['agents'][number];
 export type UsageWindow = Usage['plan'][number];

@@ -58,6 +58,39 @@ export const EVENT_KINDS: Record<string, string> = {
 
 export const TOOL_LABELS: Record<string, string> = { claude: 'Claude Code', codex: 'Codex' };
 
+/** ISO 요일 (월 1 ~ 일 7)의 이름 */
+export const WEEKDAY_LABELS: Record<number, string> = {
+  1: '월',
+  2: '화',
+  3: '수',
+  4: '목',
+  5: '금',
+  6: '토',
+  7: '일',
+};
+
+/** 하트비트 주기를 한 줄로: "매일 09:30 · 평일", "6시간마다" */
+export function heartbeatLabel(
+  heartbeat: {
+    enabled: boolean;
+    mode: string;
+    atTime: string | null;
+    weekdays: readonly number[];
+    everyHours: number | null;
+  } | null,
+): string {
+  if (!heartbeat?.enabled) return '꺼짐';
+  if (heartbeat.mode === 'hourly') return `${heartbeat.everyHours}시간마다`;
+  const days = heartbeat.weekdays.join(',');
+  const which =
+    days === '1,2,3,4,5,6,7'
+      ? ''
+      : days === '1,2,3,4,5'
+        ? ' · 평일'
+        : ` · ${heartbeat.weekdays.map((d) => WEEKDAY_LABELS[d]).join('')}`;
+  return `매일 ${heartbeat.atTime}${which}`;
+}
+
 /** 목표 상태 (서버의 Goal.STATUSES와 맞춘다) */
 export const GOAL_STATUS: Record<string, string> = {
   active: '진행 중',

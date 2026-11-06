@@ -3,14 +3,25 @@
 import { useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
 import { SCOPE_LABELS } from '../../_lib/types';
-import { actionLabel, flatTree, holdLabel, TASK_STATUS, TOOL_LABELS } from '../../_task/labels';
+import {
+  actionLabel,
+  flatTree,
+  heartbeatLabel,
+  holdLabel,
+  TOOL_LABELS,
+  taskStatusLabel,
+  when,
+} from '../../_task/labels';
 import { useAgents, useTasksIn, useUsage } from '../../_task/live';
 import { AgentUsage } from '../../_task/parts';
 import type { Agent } from '../../_task/types';
 import { useNotify } from '../AdminShell';
 import { AgentForm } from './AgentForm';
+import { HeartbeatForm } from './HeartbeatForm';
 
 const NEW = 'new';
+/** 하트비트 입력 칸을 연 에이전트: open에 이 앞부분 + id */
+const HEARTBEAT = 'heartbeat:';
 
 // 에이전트: 조직도, 사용량과 한도, 추가, 편집, 중지, 재개.
 export function AgentsPanel({ adding }: { adding: boolean }) {
@@ -25,11 +36,11 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
   const list = agents.data?.agents;
 
-  /** 실행 중이거나 결재를 기다리는 작업이 있으면 그 상태 */
+  /** 실행 중이거나 기다리는 작업이 있으면 그 상태 이름 (결재 · 하위 작업 대기를 나눈다) */
   function workOf(agent: Agent): string | null {
-    if (running.data?.tasks.some((t) => t.agentId === agent.id)) return 'running';
-    if (waiting.data?.tasks.some((t) => t.agentId === agent.id)) return 'waiting';
-    return null;
+    if (running.data?.tasks.some((t) => t.agentId === agent.id)) return taskStatusLabel('running');
+    const waits = waiting.data?.tasks.find((t) => t.agentId === agent.id);
+    return waits ? taskStatusLabel(waits.status, waits.waitReason) : null;
   }
 
   async function flip(agent: Agent) {
@@ -94,7 +105,15 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
       ) : (
         <div className="agents">
           {list.map((a) =>
-            open === a.id ? (
+            open === `${HEARTBEAT}${a.id}` ? (
+              <HeartbeatForm
+                key={a.id}
+                agent={a}
+                onSaved={saved}
+                onClose={() => setOpen(null)}
+                reload={agents.reload}
+              />
+            ) : open === a.id ? (
               <AgentForm
                 key={a.id}
                 agent={a}
@@ -113,6 +132,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
                 busy={busy === a.id}
                 onFlip={() => flip(a)}
                 onEdit={() => setOpen(a.id)}
+                onHeartbeat={() => setOpen(`${HEARTBEAT}${a.id}`)}
               />
             ),
           )}
@@ -152,6 +172,7 @@ function AgentCard({
   busy,
   onFlip,
   onEdit,
+  onHeartbeat,
 }: {
   agent: Agent;
   work: string | null;
@@ -161,6 +182,7 @@ function AgentCard({
   busy: boolean;
   onFlip: () => void;
   onEdit: () => void;
+  onHeartbeat: () => void;
 }) {
   const paused = agent.status === 'paused';
   return (
@@ -176,7 +198,7 @@ function AgentCard({
         {!paused && hold && <span className="pill strong">{hold}</span>}
         {(paused || work || !hold) && (
           <span className={paused ? 'pill off' : work ? 'pill on' : 'pill'}>
-            {paused ? '중지' : work ? TASK_STATUS[work] : '대기'}
+            {paused ? '중지' : (work ?? '대기')}
           </span>
         )}
       </div>
@@ -192,12 +214,19 @@ function AgentCard({
         {agent.scopes.length === 0 && agent.approvalActions.length === 0 && <li>권한 없음</li>}
       </ul>
       <AgentUsage agent={agent} />
+      <p className="note">
+        하트비트: {heartbeatLabel(agent.heartbeat)}
+        {agent.heartbeat?.nextRunAt ? ` · 다음 ${when(agent.heartbeat.nextRunAt)}` : ''}
+      </p>
       <div className="row">
         <button type="button" className="ghost" disabled={busy} onClick={onFlip}>
           {paused ? '재개' : '중지'}
         </button>
         <button type="button" className="ghost" onClick={onEdit}>
           편집
+        </button>
+        <button type="button" className="ghost" onClick={onHeartbeat}>
+          하트비트
         </button>
       </div>
     </article>

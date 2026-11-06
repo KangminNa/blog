@@ -109,6 +109,16 @@ export class TaskRepository extends BaseRepository<Task> {
     return rows.map((r) => this.toEntity(r));
   }
 
+  /** 이 에이전트에게 request_id가 prefix로 시작하는 끝나지 않은 작업이 있는가 (앞 하트비트 작업) */
+  async hasOpenRequest(agentId: string, prefix: string): Promise<boolean> {
+    const [row] = await this.sql`
+      SELECT 1 FROM task.tasks
+      WHERE agent_id = ${agentId} AND request_id LIKE ${`${prefix}%`}
+        AND status IN (${Task.QUEUED}, ${Task.RUNNING}, ${Task.WAITING})
+      LIMIT 1`;
+    return row !== undefined;
+  }
+
   /** 이 작업을 맡긴 위 작업의 id. 없으면 null */
   async parentOf(id: string): Promise<string | null> {
     const [row] = await this.sql`SELECT parent_id FROM task.tasks WHERE id = ${id}`;

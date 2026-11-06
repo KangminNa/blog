@@ -42,7 +42,8 @@
 |---|---|---|
 | 작업 | `GET /api/tasks?status=&goalId=&cursor=`, `POST /api/tasks { requestId, instruction, agentId?, goalId? }`, `GET /api/tasks/:id` (+ `goalChain`: 회사 목표부터 이 작업의 목표까지), `POST /api/tasks/:id/cancel { version }` | 3 |
 | 결재 | `GET /api/approvals`, `GET /api/approvals/:id`, `POST /api/approvals/:id/decide { version, decision: approve·revise·reject, note? }` | 3 |
-| 에이전트 | `GET·POST /api/agents`, `PATCH /api/agents/:id`, `POST /api/agents/:id/pause`, `POST /api/agents/:id/resume`. 한도 칸은 `monthlyLimit`, `fiveHourLimit`, `planStopPercent`. 보고 대상은 `reportsTo` (null이면 주인, 순환·4단계 초과는 422) | 3 |
+| 에이전트 | `GET·POST /api/agents`, `PATCH /api/agents/:id`, `POST /api/agents/:id/pause`, `POST /api/agents/:id/resume`. 한도 칸은 `monthlyLimit`, `fiveHourLimit`, `planStopPercent`. 보고 대상은 `reportsTo` (null이면 주인, 순환·4단계 초과는 422). 목록의 `heartbeat`는 하트비트 설정과 `nextRunAt`(정한 적이 없으면 null) | 3 |
+| 하트비트 | `PUT /api/agents/:id/heartbeat { version, enabled, mode: daily·hourly, atTime?: "09:30", weekdays?: [1..7], everyHours?: 1~24, timeZone, instruction?, goalId? }` (주인만. 처음이면 `version` 0). 일꾼이 1분마다 때가 된 것을 깨워 `general` 작업 "정기 확인"을 만든다 | 조직 |
 | 목표 | `GET /api/goals` → `{ goals: [{ id, parentId, title, description, status, sort, openTasks, doneTasks, version }] }`, `POST /api/goals { requestId, title, parentId?, description?, sort? }`, `PATCH /api/goals/:id { version, title?, description?, sort? }`, `POST /api/goals/:id/status { version, status: active·done·dropped }` (주인만. 지우지 않는다. 진행 중인 목표에만 작업과 하위 목표를 더하고, 5단계까지) | 조직 |
 | 사용량 | `GET /api/usage` → `{ agents: [{ id, fiveHourTokens, monthTokens, fiveHourLimit, monthlyLimit, planStopPercent, holding }], plan: [{ tool, window, percent, resetsAt, seenAt }] }` (주인만). 확인 전이거나 초기화 시각이 지난 창은 `percent`가 null | 3 |
 | AI | `GET /api/ai` → `{ tools: [{ tool, connected, expiresAt, checkedAt, lastError }] }`, `PUT /api/ai/claude/token { token }`, `POST /api/ai/claude/test` → `{ taskId, status }` (주인만. 쓸 수 있는 토큰이 없으면 422). Codex 로그인은 첫 완성 뒤 | 4 |
@@ -55,7 +56,7 @@
 | 변경 묶음 | `GET /api/changes?status=waiting&cursor=`, `POST /api/changes/:id/ops/:seq/decide { version, decision: approve·decline }`, `POST /api/changes/:id/revert { version }` | 6 |
 | 백업 | `GET /api/archive.zip` (주인만, 보관 형식) | 6 |
 | 세션 정리 | `GET·PUT /api/tidy/settings { autoTidy, version }`, `POST /api/tidy/backlog` → `{ requested, remaining }` (주인만. 기본은 꺼짐. 대표 wiki가 없고 이번 판을 아직 요청하지 않은 세션을 오래된 순으로 20개씩 요청. 실패한 세션은 새 판이 생기면 다시 대상이 된다) | 6 |
-| 스케줄 | `GET·POST /api/schedules`, `PATCH /api/schedules/:id`, `POST /api/schedules/:id/run` | 7 |
+| 스케줄 | `GET·POST /api/schedules`, `PATCH /api/schedules/:id`, `POST /api/schedules/:id/run`. 에이전트의 하트비트로 시작했다 | 7 |
 
 결재는 작업에 묶이지 않는 경우(한도 변경 등)가 있어 작업 아래에 두지 않는다. 결재 메뉴는 위키 제안도 함께 보여 주되, 데이터는 각 모듈이 따로 가진다.
 

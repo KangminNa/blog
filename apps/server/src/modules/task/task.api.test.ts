@@ -794,6 +794,12 @@ describe('중복과 버전', () => {
       version: 99,
     });
     assert.equal(cancel.status, 409);
+    // 담당 없는 일이 남으면 아래 빌리기에 섞여, 다른 파일이 먼저 만든 에이전트가 맡을 수 있다
+    ok(
+      await api.request('POST', `/api/tasks/${queued.id}/cancel`, owner, {
+        version: queued.version,
+      }),
+    );
 
     await newTask(await newAgent());
     const job = await take();

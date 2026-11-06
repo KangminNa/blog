@@ -6,6 +6,7 @@
 
 - `agent/`: 에이전트 (`Agent`). 권한, 결재로 맡길 동작, 토큰 한도(한 달 · 5시간), 구독 사용률 멈춤값, 보고 대상(조직도). `api/agents`
 - `goal/`: 목표 (`Goal`). 회사 목표부터 이어지는 나무. 작업이 목표 하나에 이어진다. `api/goals`
+- `heartbeat/`: 하트비트 (`Heartbeat`, `HeartbeatPolicy`). 에이전트를 정해진 시각에 깨운다. `PUT api/agents/:id/heartbeat`, 일꾼의 `HeartbeatJob`(1분마다)
 - `task/`: 작업 (`Task` + `TaskLogEntry`). `queued → running → waiting → running → done`, `failed`, `cancelled`.
   `api/tasks`, MCP `next_jobs` · `report_progress` · `submit_result` · `release_job`, 위임 `delegate_task`(작업 토큰)
 - `approval/`: 결재 (`Approval`). `pending → approved · rejected · revision_requested · cancelled`.
@@ -18,11 +19,12 @@
 도구 모양은 docs/API설계.md 4장이 원본이다. `report_progress`는 기록을 모아 받고, 러너가 쓰므로 바꾸면 `apps/runner`도 함께 고친다.
 
 ## 소유 데이터
-스키마 `task`: agents, goals, tasks, task_events(추가만), approvals, plan_usage, ai_logins
+스키마 `task`: agents, goals, heartbeats, tasks, task_events(추가만), approvals, plan_usage, ai_logins
 
 ## 데이터 묶음
 - 에이전트: agents (조직도는 `reports_to`)
 - 목표: goals
+- 하트비트: heartbeats (에이전트마다 한 줄)
 - 작업: tasks + task_events
 - 결재: approvals
 - 구독 사용률: plan_usage (창마다 마지막 값 하나. `window`는 Postgres 예약어라 열은 `period`, API는 `window`)
@@ -60,6 +62,7 @@ platform
 - 목표는 지우지 않고 상태로 닫는다. 부모는 만들 때 정하고 바꾸지 않는다 (그래서 목표 사슬은 잠그지 않고 읽는다). 진행 중인 목표에만 작업과 하위 목표를 더한다. 목표를 정하는 건 주인만이고 AI는 읽기만 한다
 - 진행 보고는 version을 올리지 않는다 (`saveLease`). 보고가 잦아도 주인의 취소가 막히면 안 된다
 - 잠그는 순서는 어디서나 작업 → 결재 → 에이전트. 작업끼리는 위 작업 → 아래 작업 (취소 전파). 위 작업을 깨우는 쪽은 위 작업만 잠근다
+- 하트비트: 주기는 매일(시각 + 요일)과 N시간마다만. 시각 계산은 `HeartbeatPolicy` 한 곳 (크론 라이브러리를 넣지 않는다). 깨우기는 하트비트 → 작업 순서로 쓰고, 작업의 request_id(`heartbeat:<에이전트>:<시각>`)로 한 번만 만든다. 앞 하트비트 작업이 끝나지 않았거나 에이전트가 일을 받을 수 없으면 건너뛴다. 놓친 시각은 몰아서 깨우지 않는다
 - 위임: `waiting`에는 늘 기다리는 것(`wait_reason`: approval · subtasks)이 있다 (DB CHECK). 결재 승인 · 고쳐 달라는 말은 결재를 기다리는 작업에만, 깨우기는 하위 작업을 기다리는 작업에만. 받는 쪽 · 종류 · 한도는 `Task`가 막고 LLM에게 맡기지 않는다
 - 한도 올리기 결재는 서버만 올린다. 승인은 같은 트랜잭션에서 한도를 두 배로 하고 에이전트를 다시 움직인다
 - 쉬기(`Agent.holds`)는 저장하지 않고 그때마다 계산한다. 5시간 토큰이나 구독 사용률에 닿으면 새 일만 안 빌려주고, 달리는 작업은 끝까지 간다. 결재도 `paused`도 없다: `report_progress`가 `paused: true`를 돌려주면 러너가 작업을 돌려주므로 쉬기에는 쓰지 않는다
