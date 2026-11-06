@@ -10,6 +10,8 @@ export class AiToolView {
     /** 마지막 연결 확인. null이면 확인 전 */
     readonly checkedAt: Date | null,
     readonly lastError: string | null,
+    /** 진행 중인 웹 로그인. 없으면 null */
+    readonly signin: AiSigninView | null,
   ) {}
 
   toJSON() {
@@ -19,6 +21,7 @@ export class AiToolView {
       expiresAt: this.expiresAt?.toISOString() ?? null,
       checkedAt: this.checkedAt?.toISOString() ?? null,
       lastError: this.lastError,
+      signin: this.signin?.toJSON() ?? null,
     };
   }
 }
@@ -44,14 +47,45 @@ export class AiTestView {
   }
 }
 
-/** 러너가 받는 토큰 (ai_login). MCP 도구의 모양이라 snake_case. REST로는 나가지 않는다 */
+/** 러너가 받는 토큰 (ai_login). MCP 도구의 모양이라 snake_case. REST로는 나가지 않는다. Codex는 auth.json 내용, 만료 null */
 export class AiTokenView {
   constructor(
     readonly token: string,
-    readonly expiresAt: Date,
+    readonly expiresAt: Date | null,
   ) {}
 
   toJSON() {
-    return { token: this.token, expires_at: this.expiresAt.toISOString() };
+    return { token: this.token, expires_at: this.expiresAt?.toISOString() ?? null };
+  }
+}
+
+/** 진행 중인 웹 로그인 (콘솔). 주소는 주인에게만 보인다 */
+export class AiSigninView {
+  constructor(
+    readonly taskId: string,
+    /** starting · open_url · waiting_code · verifying */
+    readonly step: string,
+    readonly url: string | null,
+    /** Codex: 주소에서 입력할 코드 */
+    readonly userCode: string | null,
+  ) {}
+
+  toJSON() {
+    return { taskId: this.taskId, step: this.step, url: this.url, userCode: this.userCode };
+  }
+}
+
+/** 웹 로그인을 진행하는 러너에게 주는 답 (ai_signin). MCP라 snake_case */
+export class AiSigninRelayView {
+  constructor(
+    /** 사람이 붙여 넣은 코드 (Claude). 한 번만 오고 서버에서 지운다 */
+    readonly code: string | null,
+    /** 주인이 취소했다: 러너는 CLI를 끄고 끝낸다 */
+    readonly cancelled: boolean,
+    readonly status: string,
+  ) {}
+
+  toJSON() {
+    return { code: this.code, cancelled: this.cancelled, status: this.status };
   }
 }

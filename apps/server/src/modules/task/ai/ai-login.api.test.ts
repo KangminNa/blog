@@ -186,9 +186,17 @@ describe('누가 쓸 수 있나', () => {
   });
 
   test('주인은 넣기 전의 상태를 본다', async () => {
+    const empty = {
+      connected: false,
+      expiresAt: null,
+      checkedAt: null,
+      lastError: null,
+      signin: null,
+    };
     assert.deepEqual(ok(await api.get('/api/ai', owner)), {
       tools: [
-        { tool: 'claude', connected: false, expiresAt: null, checkedAt: null, lastError: null },
+        { tool: 'claude', ...empty },
+        { tool: 'codex', ...empty },
       ],
     });
   });
@@ -225,6 +233,7 @@ describe('토큰 넣기', () => {
       'connected',
       'expiresAt',
       'lastError',
+      'signin',
       'tool',
     ]);
 
@@ -535,5 +544,220 @@ describe('서버 키 교체', () => {
 
     const [after] = await db.sql`SELECT secret FROM task.ai_logins`;
     assert.deepEqual(after?.secret, before?.secret);
+  });
+});
+
+describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () => {
+  const CLAUDE_URL =
+    'https://claude.ai/oauth/authorize?code=true&client_id=abc&response_type=code&state=s123';
+  const CODEX_URL = 'https://auth.openai.com/codex/device';
+  const AUTH_JSON = JSON.stringify({ tokens: { refresh_token: 'r', access_token: 'a' } });
+
+  const start = async (tool: string): Promise<Json> =>
+    ok(await api.request('POST', `/api/ai/${tool}/signin`, owner));
+  const signinOf = async (tool: string): Promise<Json | null> => {
+    const { tools } = ok(await api.get('/api/ai', owner)) as { tools: Json[] };
+    return (tools.find((t) => t.tool === tool)?.signin as Json | null) ?? null;
+  };
+  const relay = (taskId: unknown, args: Json = {}, token = runner) =>
+    tool(token, 'ai_signin', { task_id: taskId, ...args });
+  const pasteCode = (taskId: unknown, code: string) =>
+    api.request('POST', '/api/ai/claude/signin/code', owner, { taskId, code });
+
+  /** 러너가 웹 로그인 일을 빌린다 */
+  async function takeSignin(tool: string): Promise<Json> {
+    const [job] = await lease();
+    assert.ok(job, '빌린 일이 없다');
+    const task = job.task as Json;
+    assert.equal(task.kind, 'ai_signin');
+    assert.equal((task.payload as Json).tool, tool);
+    assert.equal(job.agent, null, '에이전트도');
+    assert.equal(job.run_token, null, '작업 토큰도 없다');
+    return task;
+  }
+
+  test('방문자와 write 기기는 로그인을 시작하거나 코드를 넣지 못한다', async () => {
+    const asWho: Readonly<Record<string, string>>[] = [{}, { authorization: `Bearer ${laptop}` }];
+    for (const headers of asWho) {
+      const begin = await api.request(
+        'POST',
+        '/api/ai/claude/signin',
+        TestUser.visitor,
+        undefined,
+        headers,
+      );
+      assert.equal(begin.status, 403);
+      const code = await api.request(
+        'POST',
+        '/api/ai/claude/signin/code',
+        TestUser.visitor,
+        { taskId: randomUUID(), code: 'abcd' },
+        headers,
+      );
+      assert.equal(code.status, 403);
+    }
+    assert.equal(
+      (await toolNames(laptop)).includes('ai_signin'),
+      false,
+      'run 권한이 없으면 도구도 없다',
+    );
+  });
+
+  test('Claude: 주소를 보이고, 붙여 넣은 코드를 러너가 한 번 가져가고, 받은 토큰을 저장한다', async () => {
+    const begun = await start('claude');
+    assert.equal((await start('claude')).taskId, begun.taskId, '도구마다 하나');
+    assert.equal((await signinOf('claude'))?.step, 'starting');
+
+    const task = await takeSignin('claude');
+    const early = await pasteCode(task.id, 'code#state');
+    assert.equal(early.status, 422, '주소를 보이기 전에는 코드를 받지 않는다');
+
+    const shown = await relay(task.id, { url: CLAUDE_URL });
+    assert.equal(shown.ok, true, JSON.stringify(shown.body));
+    assert.equal(shown.body.code, null);
+    assert.deepEqual(await signinOf('claude'), {
+      taskId: task.id,
+      step: 'waiting_code',
+      url: CLAUDE_URL,
+      userCode: null,
+    });
+
+    assert.equal((await pasteCode(task.id, 'with space')).status, 422);
+    ok(await pasteCode(task.id, 'code#state'));
+    assert.equal((await signinOf('claude'))?.step, 'verifying');
+    const raw = await db.sql`SELECT payload FROM task.tasks WHERE id = ${String(task.id)}`;
+    assert.equal(
+      JSON.stringify(raw[0]?.payload).includes('code#state'),
+      false,
+      '코드는 암호화해 둔다',
+    );
+
+    assert.equal((await relay(task.id)).body.code, 'code#state');
+    assert.equal((await relay(task.id)).body.code, null, '한 번만 온다');
+
+    const token = newToken().replace(/-/g, '_');
+    const saved = await relay(task.id, { credential: `sk-ant-oat01-${token}` });
+    assert.equal(saved.body.status, 'done');
+    const claudeNow = await claude();
+    assert.equal(claudeNow.connected, true);
+    assert.equal(claudeNow.signin, null);
+    assert.equal(
+      (await tool(runner, 'ai_login', { tool: 'claude' })).body.token,
+      `sk-ant-oat01-${token}`,
+    );
+    const events = (await getTask(task.id)).events as Json[];
+    assert.equal(
+      JSON.stringify(events).includes('claude.ai/oauth'),
+      false,
+      '주소·코드·토큰은 기록에 없다',
+    );
+  });
+
+  test('Codex: 주소와 코드를 보이고, 받은 auth.json을 만료 없이 저장한다', async () => {
+    const begun = await start('codex');
+    const task = await takeSignin('codex');
+    assert.equal(task.id, begun.taskId);
+
+    const noCode = await relay(task.id, { url: CODEX_URL });
+    assert.equal(noCode.ok, false);
+    assert.equal(noCode.body.code, 'rule_violation', 'Codex는 화면의 코드가 꼭 있다');
+    const shown = await relay(task.id, { url: CODEX_URL, user_code: 'ABCD-12345' });
+    assert.equal(shown.ok, true, JSON.stringify(shown.body));
+    assert.deepEqual(await signinOf('codex'), {
+      taskId: task.id,
+      step: 'open_url',
+      url: CODEX_URL,
+      userCode: 'ABCD-12345',
+    });
+    const paste = await pasteCode(task.id, 'code#state');
+    assert.equal(paste.status, 422, 'Codex는 붙여 넣는 코드가 없다');
+
+    const saved = await relay(task.id, { credential: AUTH_JSON });
+    assert.equal(saved.body.status, 'done');
+    const { tools } = ok(await api.get('/api/ai', owner)) as { tools: Json[] };
+    const codex = tools.find((t) => t.tool === 'codex');
+    assert.equal(codex?.connected, true);
+    assert.equal(codex?.expiresAt, null, '갱신 토큰이 든 auth.json은 만료를 알 수 없다');
+    assert.equal(codex?.signin, null);
+    assert.equal((await claude()).connected, false, 'Claude 로그인과는 따로다');
+    const handed = await tool(runner, 'ai_login', { tool: 'codex' });
+    assert.equal(handed.body.token, AUTH_JSON);
+    assert.equal(handed.body.expiresAt ?? null, null);
+  });
+
+  test('임대를 쥔 러너만 알린다. 이상한 주소와 자격은 받지 않는다', async () => {
+    await start('claude');
+    const task = await takeSignin('claude');
+    const other = ok(
+      await api.request('POST', '/api/devices/runner', owner, {
+        requestId: randomUUID(),
+        name: `다른-러너-${randomUUID().slice(0, 8)}`,
+      }),
+      201,
+    ) as { token: string };
+    const stolen = await relay(task.id, { url: CLAUDE_URL }, other.token);
+    assert.equal(stolen.ok, false, '다른 러너는 남의 로그인에 끼어들지 못한다');
+    assert.equal((await signinOf('claude'))?.step, 'starting');
+
+    for (const url of [
+      'https://evil.example/oauth/authorize',
+      'https://claude.ai:8443/oauth/authorize',
+      'https://user@claude.ai/oauth/authorize',
+      'not a url',
+    ]) {
+      const bad = await relay(task.id, { url });
+      assert.equal(bad.body.code, 'rule_violation', url);
+    }
+    const withCode = await relay(task.id, { url: CLAUDE_URL, user_code: 'ABCD-12345' });
+    assert.equal(withCode.body.code, 'rule_violation', 'Claude 화면에는 코드가 없다');
+
+    assert.equal((await relay(task.id, { url: CLAUDE_URL })).ok, true);
+    assert.equal(
+      (await relay(task.id, { url: CLAUDE_URL })).ok,
+      true,
+      '같은 주소를 다시 보내도 된다',
+    );
+    const moved = await relay(task.id, {
+      url: 'https://claude.com/cai/oauth/authorize?code=true&state=other',
+    });
+    assert.equal(moved.body.code, 'conflict', '주소는 한 번 정하면 바뀌지 않는다');
+    assert.equal((await signinOf('claude'))?.url, CLAUDE_URL);
+
+    for (const credential of [
+      'sk-ant-api03-abcdefghijklmnopqrstuvwxyz',
+      'sk-ant-oat01-short',
+      '{}',
+    ]) {
+      const bad = await relay(task.id, { credential });
+      assert.equal(bad.body.code, 'rule_violation', credential.slice(0, 12));
+    }
+    assert.equal((await claude()).connected, false, '틀린 자격은 저장하지 않는다');
+    assert.equal((await getTask(task.id)).status, 'running');
+  });
+
+  test('주인이 취소하면 러너는 cancelled를 받고, 더는 저장하지 못한다', async () => {
+    await start('claude');
+    const task = await takeSignin('claude');
+    assert.equal((await relay(task.id, { url: CLAUDE_URL })).ok, true);
+    const { version } = await getTask(task.id);
+    ok(await api.request('POST', `/api/tasks/${task.id}/cancel`, owner, { version }));
+    assert.equal(await signinOf('claude'), null, '취소한 로그인은 보이지 않는다');
+
+    const told = await relay(task.id, { credential: newToken() });
+    assert.equal(told.ok, true, JSON.stringify(told.body));
+    assert.equal(told.body.cancelled, true);
+    assert.equal((await claude()).connected, false, '취소 뒤 온 자격은 버린다');
+    assert.notEqual((await start('claude')).taskId, task.id, '다시 시작하면 새 작업');
+  });
+
+  test('Codex auth.json이 JSON 객체가 아니면 받지 않는다', async () => {
+    await start('codex');
+    const task = await takeSignin('codex');
+    for (const credential of ['not json', '[1,2]', '"text"', `{"a":"${'x'.repeat(70_000)}"}`]) {
+      const bad = await relay(task.id, { credential });
+      assert.equal(bad.ok, false, credential.slice(0, 12));
+    }
+    const { tools } = ok(await api.get('/api/ai', owner)) as { tools: Json[] };
+    assert.equal(tools.find((t) => t.tool === 'codex')?.connected, false);
   });
 });

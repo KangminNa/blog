@@ -300,7 +300,7 @@ export class TaskService extends BaseService {
         const worker = task.agentId
           ? ready.find((a) => a.id === task.agentId)
           : ready.find((a) => task.doableWith(a.scopes));
-        const agent = task.isAiTest ? null : worker;
+        const agent = task.agentless ? null : worker;
         if (agent === undefined) continue;
         task.lease(runnerId, agent?.id ?? null, now);
         await tasks.save(task);

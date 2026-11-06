@@ -10,7 +10,7 @@ export class AiLoginRepository extends BaseRepository<AiLogin> {
       String(row.space_id),
       String(row.tool),
       new SealedSecret(Buffer.from(row.secret), Buffer.from(row.nonce)),
-      new Date(row.expires_at),
+      row.expires_at === null ? null : new Date(row.expires_at),
       row.checked_at === null ? null : new Date(row.checked_at),
       row.last_error === null ? null : String(row.last_error),
       new Date(row.created_at),

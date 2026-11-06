@@ -4,15 +4,28 @@ import { RunnerRepository } from '../runner/runner.repository';
 import { Task } from '../task/task';
 import { TaskRepository } from '../task/task.repository';
 import { AiLogin } from './ai-login';
-import type { AiLoginInput, AiTokenInput } from './ai-login.input';
+import type {
+  AiLoginInput,
+  AiSigninCodeInput,
+  AiSigninInput,
+  AiSigninStepInput,
+  AiTokenInput,
+} from './ai-login.input';
 import { AiLoginQuery } from './ai-login.query';
 import { AiLoginRepository } from './ai-login.repository';
-import type { AiTokenView } from './ai-login.view';
+import { AiSigninRelayView, type AiTokenView } from './ai-login.view';
+import { AiSigninPolicy } from './ai-signin.policy';
 
-// AI 로그인 쓰기: 토큰 넣기, 연결 확인 맡기기(주인), 서버 키를 바꾼 뒤 다시 잠그기, 러너에게 건네기(ai_login).
+// AI 로그인 쓰기: 토큰 넣기, 연결 확인 맡기기(주인), 서버 키를 바꾼 뒤 다시 잠그기, 러너에게 건네기(ai_login),
+// 웹 로그인(주인이 시작하고 코드를 넣고, 러너가 로그인 명령을 대신 돌려 주소를 알리고 자격을 넘긴다).
+// 웹 로그인은 서버 본체에 CLI가 없어서(원칙 6) 연결 확인처럼 러너에게 작업으로 맡긴다. 웹 터미널은 아니다:
+// 오가는 것은 로그인 주소, 사람이 붙여 넣은 코드 하나, 받은 자격뿐이다.
 // 확인 결과는 작업이 끝날 때 TaskService가 같은 트랜잭션에서 적는다. 잠그는 순서는 작업 → 로그인.
 @Injectable()
 export class AiLoginService extends BaseService {
+  /** 사람이 붙여 넣은 코드는 러너가 가져갈 때까지 이만큼만 (암호화해 작업에 둔다) */
+  private static readonly CODE_SECONDS = 600;
+
   constructor(
     db: Database,
     private readonly box: SecretBox,
@@ -68,6 +81,78 @@ export class AiLoginService extends BaseService {
       await tasks.insertOnce(task);
       return task;
     });
+  }
+
+  /** 웹 로그인을 시작한다. 도구마다 하나: 진행 중인 로그인이 있으면 그 작업을 돌려준다 */
+  async startSignin(actor: Actor, req: AiSigninInput): Promise<Task> {
+    actor.assertOwner();
+    const spaceId = AiLoginService.spaceOf(actor);
+    AiLogin.assertTool(req.tool);
+    return this.transaction(async (tx) => {
+      const tasks = new TaskRepository(tx);
+      const pending = await tasks.findPendingAiSignin(spaceId, req.tool);
+      if (pending) return pending;
+      const task = Task.aiSignin(spaceId, req.tool, new Date());
+      await tasks.insertOnce(task);
+      return task;
+    });
+  }
+
+  /** 주인이 브라우저에서 받은 코드 (Claude). 암호화해서 러너가 가져갈 때까지만 둔다 */
+  async submitSigninCode(actor: Actor, req: AiSigninCodeInput): Promise<Task> {
+    actor.assertOwner();
+    const spaceId = AiLoginService.spaceOf(actor);
+    AiSigninPolicy.assertBrowserCode(req.code);
+    const sealed = this.box.pack(req.code, AiLoginService.CODE_SECONDS);
+    return this.transaction(async (tx) => {
+      const tasks = new TaskRepository(tx);
+      const task = await tasks.lock(spaceId, req.taskId);
+      if (task.signinTool !== AiLogin.CLAUDE)
+        throw new RuleViolation('코드를 붙여 넣는 로그인이 아니에요');
+      task.acceptSigninCode(sealed);
+      await tasks.save(task);
+      return task;
+    });
+  }
+
+  /**
+   * ai_signin (러너): 로그인 주소를 알리고, 사람이 붙여 넣은 코드를 가져가고, 받은 자격을 넘긴다.
+   * 그 작업의 임대를 쥔 러너만. 자격을 받으면 같은 트랜잭션에서 로그인에 저장하고 작업을 끝낸다 (잠그는 순서는 작업 → 로그인).
+   * 주인이 취소했으면 cancelled로 알린다
+   */
+  async relaySignin(actor: Actor, req: AiSigninStepInput): Promise<AiSigninRelayView> {
+    actor.assertCan(Actor.RUN);
+    const { spaceId, id: runnerId } = actor;
+    if (actor.kind !== 'device' || !spaceId || !runnerId) throw new Forbidden(Actor.RUN);
+    const now = new Date();
+    const sealedCode = await this.transaction(async (tx) => {
+      const tasks = new TaskRepository(tx);
+      const task = await tasks.lock(spaceId, req.taskId);
+      const tool = task.signinTool;
+      if (tool === null) throw new RuleViolation('웹 로그인 작업이 아니에요');
+      if (task.cancelled) return { cancelled: true, code: null, status: task.status };
+      task.assertHeldBy(runnerId, now);
+      if (req.url !== null) {
+        AiSigninPolicy.assertUrl(tool, req.url);
+        AiSigninPolicy.assertUserCode(tool, req.userCode);
+        task.showSignin(req.url, req.userCode);
+      }
+      if (req.credential !== null) {
+        AiSigninPolicy.assertCredential(tool, req.credential);
+        const logins = new AiLoginRepository(tx);
+        const found = await logins.lock(spaceId, tool);
+        const sealed = this.box.seal(req.credential);
+        found?.replace(sealed, now);
+        await logins.save(found ?? AiLogin.open(spaceId, tool, sealed, now));
+        task.finish({}, now);
+      }
+      const code = task.takeSigninCode();
+      await tasks.save(task);
+      return { cancelled: false, code, status: task.status };
+    });
+    // 암호문은 10분짜리다. 지났으면 풀리지 않아 null: 러너는 더 기다리다 시간이 다 되면 실패로 끝낸다
+    const code = sealedCode.code === null ? null : this.box.unpack(sealedCode.code, now);
+    return new AiSigninRelayView(code, sealedCode.cancelled, sealedCode.status);
   }
 
   /** 지금 서버 키로 다시 잠근다 (pnpm secret:rotate). 바꾼 수를 돌려준다 */

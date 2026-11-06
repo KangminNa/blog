@@ -69,7 +69,7 @@ export class TaskRepository extends BaseRepository<Task> {
   /**
    * 빌려 줄 작업을 잠근다. 다른 러너가 잡은 행은 건너뛰고, 담당이 없거나 일을 받을 수 있는 에이전트(ready)의 일만,
    * 우선순위 → 오래된 순. 멈췄거나 쉬는 에이전트의 일과 맡을 권한이 없는 일은 대기열에 남아 뒤의 일을 막지 않는다.
-   * 연결 확인은 에이전트가 필요 없어 일을 받을 에이전트가 없어도 빌려 준다.
+   * 연결 확인과 웹 로그인은 에이전트가 필요 없어 일을 받을 에이전트가 없어도 빌려 준다.
    */
   async lockNext(
     spaceId: string,
@@ -80,7 +80,7 @@ export class TaskRepository extends BaseRepository<Task> {
     const rows = await this.sql`
       SELECT * FROM task.tasks
       WHERE space_id = ${spaceId} AND status = ${Task.QUEUED}
-        AND (kind = ${Task.AI_TEST}
+        AND (kind = ANY(${Task.AGENTLESS as string[]}::text[])
           OR agent_id = ANY(${agentIds}::uuid[])
           OR (agent_id IS NULL AND ${agentIds.length > 0}))
         ${this.scoped(ready)}
@@ -157,6 +157,17 @@ export class TaskRepository extends BaseRepository<Task> {
       ORDER BY id
       FOR UPDATE`;
     return rows.map((r) => this.toEntity(r));
+  }
+
+  /** 도구의 끝나지 않은 웹 로그인 (도구마다 하나) */
+  async findPendingAiSignin(spaceId: string, tool: string): Promise<Task | null> {
+    return this.maybeOne(
+      await this.sql`
+        SELECT * FROM task.tasks
+        WHERE space_id = ${spaceId} AND kind = ${Task.AI_SIGNIN} AND payload->>'tool' = ${tool}
+          AND status IN (${Task.QUEUED}, ${Task.RUNNING})
+        ORDER BY id DESC LIMIT 1`,
+    );
   }
 
   /** 도구의 끝나지 않은 연결 확인 */

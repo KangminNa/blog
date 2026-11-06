@@ -58,6 +58,18 @@ export class Task extends TrackedEntity {
   static readonly RUN_TOKEN_SECONDS = 24 * 60 * 60;
   /** AI 로그인 연결 확인. 에이전트도 작업 토큰도 없이 러너가 돌린다 */
   static readonly AI_TEST = 'ai_test';
+  /**
+   * 웹 AI 로그인. 러너가 로그인 명령을 대신 돌리고, 로그인 주소와 사람이 붙여 넣은 코드는 payload로 오간다.
+   * 에이전트도 작업 토큰도 없다 (연결 확인과 같다)
+   */
+  static readonly AI_SIGNIN = 'ai_signin';
+  /** 에이전트 없이 러너가 바로 도는 일 */
+  static readonly AGENTLESS: readonly string[] = [Task.AI_TEST, Task.AI_SIGNIN];
+  /** 웹 로그인의 단계 (payload.step) */
+  static readonly SIGNIN_STARTING = 'starting';
+  static readonly SIGNIN_OPEN_URL = 'open_url';
+  static readonly SIGNIN_WAITING_CODE = 'waiting_code';
+  static readonly SIGNIN_VERIFYING = 'verifying';
   static readonly GENERAL = 'general';
   static readonly WAIT_APPROVAL = 'approval';
   static readonly WAIT_SUBTASKS = 'subtasks';
@@ -162,6 +174,28 @@ export class Task extends TrackedEntity {
     );
     task.announce();
     return task;
+  }
+
+  /**
+   * 웹 AI 로그인 (tool: claude · codex). 러너가 로그인 명령을 PTY 안에서 돌리고 주소를 알린다.
+   * Claude는 사람이 브라우저의 코드를 붙여 넣어야 하고, Codex는 주소와 코드만 보여 주면 된다
+   */
+  static aiSignin(spaceId: string, tool: string, now: Date): Task {
+    return Task.open(
+      spaceId,
+      null,
+      Task.AI_SIGNIN,
+      `${tool} 로그인`,
+      '',
+      { tool, step: Task.SIGNIN_STARTING },
+      null,
+      null,
+      null,
+      Task.AI_TEST_PRIORITY,
+      BaseEntity.newId(),
+      null,
+      now,
+    );
   }
 
   /** AI 로그인의 연결 확인. 어느 판의 로그인을 보는지 함께 적어 둔다 */
@@ -311,6 +345,58 @@ export class Task extends TrackedEntity {
     return this.kind === Task.AI_TEST;
   }
 
+  get isAiSignin(): boolean {
+    return this.kind === Task.AI_SIGNIN;
+  }
+
+  /** 에이전트 없이 러너가 바로 도는 일인가 (연결 확인, 웹 로그인) */
+  get agentless(): boolean {
+    return Task.AGENTLESS.includes(this.kind);
+  }
+
+  /** 웹 로그인의 도구 (claude · codex). 웹 로그인이 아니면 null */
+  get signinTool(): string | null {
+    return this.isAiSignin ? String(this.payloadValue.tool) : null;
+  }
+
+  /**
+   * 러너가 로그인 주소를 찾았다. Claude는 이제 사람이 브라우저의 코드를 붙여 넣을 차례고,
+   * Codex는 사람이 주소에서 코드를 입력하면 CLI가 스스로 끝난다
+   */
+  showSignin(url: string, userCode: string | null): void {
+    this.assertSigninRunning();
+    // 주소는 한 번만 정한다. 러너가 같은 것을 다시 보내면(응답을 못 받은 재시도) 그대로 둔다
+    if (this.payloadValue.step !== Task.SIGNIN_STARTING) {
+      if (this.payloadValue.url === url && (this.payloadValue.userCode ?? null) === userCode)
+        return;
+      throw new Conflict('이미 로그인 주소를 알렸어요');
+    }
+    const claude = this.signinTool === 'claude';
+    this.setPayload({
+      ...this.payloadValue,
+      url,
+      userCode,
+      step: claude ? Task.SIGNIN_WAITING_CODE : Task.SIGNIN_OPEN_URL,
+    });
+  }
+
+  /** 사람이 붙여 넣은 코드를 받는다 (암호화한 값). 러너가 가져갈 때까지만 둔다 */
+  acceptSigninCode(sealedCode: string): void {
+    this.assertSigninRunning();
+    if (this.payloadValue.step !== Task.SIGNIN_WAITING_CODE)
+      throw new RuleViolation('코드를 붙여 넣을 차례가 아니에요');
+    this.setPayload({ ...this.payloadValue, code: sealedCode, step: Task.SIGNIN_VERIFYING });
+  }
+
+  /** 러너가 코드를 가져간다. 한 번만 돌려주고 지운다 */
+  takeSigninCode(): string | null {
+    const code = this.payloadValue.code;
+    if (typeof code !== 'string') return null;
+    const { code: _taken, ...rest } = this.payloadValue;
+    this.setPayload(rest);
+    return code;
+  }
+
   /** 결과를 내고 끝났는가. 취소는 결과가 없어서 뺀다 */
   get ended(): boolean {
     return this.statusValue === Task.DONE || this.statusValue === Task.FAILED;
@@ -346,6 +432,17 @@ export class Task extends TrackedEntity {
     return typeof note === 'string' ? note : null;
   }
 
+  private assertSigninRunning(): void {
+    if (!this.isAiSignin) throw new RuleViolation('웹 로그인 작업이 아니에요');
+    if (this.statusValue !== Task.RUNNING)
+      throw new Conflict(`진행 중인 로그인이 아니에요 (${this.statusValue})`);
+  }
+
+  private setPayload(payload: Readonly<Record<string, unknown>>): void {
+    this.payloadValue = payload;
+    this.track('payload', payload);
+  }
+
   /** 이번에 쌓인 실행 기록 (Repository가 저장한다) */
   get addedLog(): readonly TaskLogEntry[] {
     return this.logged;
@@ -361,6 +458,9 @@ export class Task extends TrackedEntity {
     this.holdLease(runnerId, new Date(now.getTime() + Task.LEASE_MS));
     this.tries += 1;
     this.track('attempts', this.tries);
+    // 웹 로그인을 다시 빌리면(앞 러너가 사라짐) 앞 시도의 주소와 코드는 쓸모가 없다
+    if (this.isAiSignin && this.payloadValue.step !== Task.SIGNIN_STARTING)
+      this.setPayload({ tool: this.payloadValue.tool, step: Task.SIGNIN_STARTING });
   }
 
   /**

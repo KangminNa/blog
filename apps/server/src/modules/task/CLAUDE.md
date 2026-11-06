@@ -12,7 +12,8 @@
 - `approval/`: 결재 (`Approval`). `pending → approved · rejected · revision_requested · cancelled`.
   `api/approvals`, MCP `request_approval`
 - `usage/`: 구독 사용률 (`PlanUsage`)과 사용량 읽기 (`UsageQuery`). `api/usage`. 쓰기는 `report_progress`의 `plan_usage`로만 들어온다
-- `ai/`: AI 도구의 로그인 (`AiLogin`). 콘솔에 넣은 토큰을 서버 키로 잠가 두고 서버 러너에게 건넨다. `api/ai`, MCP `ai_login`
+- `ai/`: AI 도구의 로그인 (`AiLogin`, 도구는 claude · codex). 콘솔에 넣거나 웹 로그인으로 받은 자격을 서버 키로 잠가 두고 서버 러너에게 건넨다.
+  `api/ai`, MCP `ai_login` · `ai_signin`(러너가 로그인 명령을 대신 돌린다), 받는 값의 모양은 `AiSigninPolicy`
 - `runner/`: 러너의 상태 (`Runner`). 마지막으로 닿은 때, 일 받기 켜기·끄기. `api/runners`. 기기 이름·종류는 account의 것이라 화면이 합친다
 
 파일 구조는 새 규칙의 시범이다 (객체설계 6장): `<이름>.ts` · `.view.ts` · `.input.ts` · `.service.ts` · `.query.ts` · `.api.ts` · `.tool.ts` · `.repository.ts`.
@@ -75,6 +76,8 @@ platform
 - `plan_usage`의 도구는 러너의 입력이 아니라 작업의 에이전트로 정한다. 저장은 에이전트 잠금 뒤에, 늘 같은 창 순서로 (서로 막지 않게). 진행 보고처럼 `task.tasks.version`을 올리지 않는다
 
 - AI 토큰은 REST로 돌려주지 않고 로그에 남기지 않는다. 나가는 길은 `ai_login` 하나고, `run` 권한과 함께 기기인지도 본다 (`AiLoginQuery.token`)
+- 웹 로그인(`ai_signin`)도 에이전트·작업 토큰 없이 빌려 주고(`Task.AGENTLESS`), 도구마다 하나다. 러너가 다시 빌리면 단계가 처음(`starting`)으로 돌아간다. 주인이 붙여 넣은 코드는 `SecretBox.pack`(10분)으로 작업에 두고 러너가 한 번 가져가면 지운다. 러너가 알리는 주소·코드·자격은 믿지 않는 입력이라 `AiSigninPolicy`로 거르고, 그 작업의 임대를 쥔 러너만 부를 수 있다. 자격을 받으면 같은 트랜잭션에서 로그인을 저장하고 작업을 끝낸다 (작업 → 로그인). 주소·코드·자격은 실행 기록에 쓰지 않는다
+- Codex의 자격(`auth.json`)은 갱신 토큰이라 만료가 없다 (`expires_at` null)
 - 연결 확인(`ai_test`)은 에이전트도 작업 토큰도 없다. 일을 받을 에이전트가 없어도 빌려 주고, 기다리는 확인은 도구마다 하나다. 결과는 작업이 끝날 때 같은 트랜잭션에서 로그인에 적는다 (잠그는 순서는 작업 → 로그인). 작업에 적힌 로그인의 판이 다르면 옛 토큰의 결과라 버린다
 
 ## 하지 말 것
