@@ -200,6 +200,17 @@ export class AddRunnerInput extends BaseRequest {
   }
 }
 
+/** POST /api/devices/server-runner: 서버 러너가 내미는 연결 값 (볼륨의 파일) */
+export class PairServerRunnerInput extends BaseRequest {
+  private constructor(readonly secret: string) {
+    super();
+  }
+
+  static from(raw: unknown): PairServerRunnerInput {
+    return BaseRequest.read(raw, (f) => new PairServerRunnerInput(f.text('secret', 200)));
+  }
+}
+
 export class UpdateDeviceInput extends BaseRequest {
   private constructor(
     readonly name: string | null,

@@ -5,6 +5,8 @@ import { DeviceController } from './device/device.api';
 import { DeviceQuery } from './device/device.query';
 import { DeviceService } from './device/device.service';
 import { OAuthController } from './device/oauth.api';
+import { ServerRunnerGateway } from './device/server-runner.gateway';
+import { ServerRunnerPolicy } from './device/server-runner.policy';
 import { ActorGuard } from './guard/actor.guard';
 import { ExternalLoginController } from './owner/external-login.api';
 import { ExternalLoginQuery } from './owner/external-login.query';
@@ -26,6 +28,18 @@ import { SpaceService } from './space/space.service';
       useFactory: (box: SecretBox) => new InstallPolicy(box),
       inject: [SecretBox],
     },
+    {
+      provide: ServerRunnerPolicy,
+      useFactory: (box: SecretBox) => new ServerRunnerPolicy(box),
+      inject: [SecretBox],
+    },
+    {
+      // 서버 러너의 연결 값을 쓸 파일. 러너를 두지 않는 배포와 테스트에는 없다
+      provide: ServerRunnerGateway,
+      useFactory: (policy: ServerRunnerPolicy) =>
+        new ServerRunnerGateway(policy, process.env.CAIRN_RUNNER_PAIRING_FILE?.trim() || null),
+      inject: [ServerRunnerPolicy],
+    },
     { provide: PasswordHasher, useValue: new PasswordHasher() },
     { provide: PasswordPolicy, useValue: new PasswordPolicy() },
     SpaceQuery,
@@ -45,6 +59,6 @@ import { SpaceService } from './space/space.service';
     OAuthController,
     DeviceController,
   ],
-  exports: [InstallPolicy, SpaceQuery, OwnerService, DeviceQuery],
+  exports: [InstallPolicy, SpaceQuery, OwnerService, DeviceQuery, ServerRunnerGateway],
 })
 export class AccountModule {}

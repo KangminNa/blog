@@ -65,9 +65,12 @@ export class Device extends BaseEntity {
 
   /** 러너의 도구 이름 (기기 목록에 보인다) */
   private static readonly RUNNER_CLIENT = '러너';
+  /** 배포 서버 안의 러너: 이름과 도구 이름. 공간마다 살아 있는 것은 하나 (살아 있는 기기 이름의 유일 인덱스) */
+  static readonly SERVER_RUNNER = '서버 러너';
 
   private readonly issued: DeviceCredential[] = [];
   private readonly retired: string[] = [];
+  private retireDeviceTokens = false;
 
   private constructor(
     id: string,
@@ -141,6 +144,36 @@ export class Device extends BaseEntity {
         deviceId: device.id,
         name: device.name,
         client: Device.RUNNER_CLIENT,
+      }),
+    );
+    return device;
+  }
+
+  /**
+   * 서버 러너: 배포 서버의 러너 컨테이너가 연결 값으로 스스로 연결한다 (ServerRunnerPolicy).
+   * 사람이 승인하지 않아서 주인(user)이 없고, 일을 빌리는 권한만 갖는다
+   */
+  static forServerRunner(spaceId: string, now: Date): Device {
+    const device = new Device(
+      BaseEntity.newId(),
+      1,
+      spaceId,
+      null,
+      Device.SERVER_RUNNER,
+      [Actor.RUN],
+      null,
+      Device.SERVER_RUNNER,
+      now,
+      null,
+      null,
+      true,
+    );
+    device.issueDeviceToken(now);
+    device.record(
+      new DomainEvent('account.device.connected', 1, spaceId, {
+        deviceId: device.id,
+        name: device.name,
+        client: Device.SERVER_RUNNER,
       }),
     );
     return device;
@@ -236,6 +269,21 @@ export class Device extends BaseEntity {
   issueDeviceToken(now: Date): void {
     this.assertConnected();
     this.issued.push(DeviceCredential.issue(DeviceCredential.DEVICE, null, now));
+  }
+
+  get isServerRunner(): boolean {
+    return this.clientName === Device.SERVER_RUNNER;
+  }
+
+  /** 기기 토큰을 새로 바꾼다: 지금까지의 기기 토큰은 모두 무효, 새 토큰 하나 (서버 러너가 다시 연결할 때) */
+  rotateDeviceToken(now: Date): void {
+    this.retireDeviceTokens = true;
+    this.issueDeviceToken(now);
+  }
+
+  /** 저장할 때 이 기기의 기기 토큰을 모두 무효로 하는가 (새 토큰을 넣기 전에) */
+  get retiresDeviceTokens(): boolean {
+    return this.retireDeviceTokens;
   }
 
   rename(name: string): void {

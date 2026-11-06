@@ -13,7 +13,7 @@ DB는 [docs/테이블설계.md](docs/테이블설계.md), 서버 코드 구조�
 apps/server/   NestJS. src/modules/<모듈>/ (platform · account · vault · blog · task · mcp), 지도는 modules.json
                모듈마다 CLAUDE.md에 그 모듈의 규칙이 있다
 apps/web/      Next.js (App Router). app/(blog)/ 공개 화면, app/admin/<메뉴>/ 콘솔, app/_task/ 작업·결재·에이전트 공용
-apps/runner/   러너. 서버에서 일을 빌려 AI CLI로 처리한다. MCP로만 서버와 이야기하고 DB에 닿지 않는다
+apps/runner/   러너. 서버에서 일을 빌려 AI CLI로 처리한다. MCP로만 서버와 이야기하고 DB에 닿지 않는다 (서버 러너의 첫 연결만 REST)
 db/            DB 이미지(Postgres 17 + pgvector + pg_bigm)와 SQL 마이그레이션(dbmate)
 packages/cli/  연결 명령 cairn connect · status (스킬 넣기 + MCP 등록 + 로그인). 배포 전에는 pnpm cairn
 plugins/       플러그인 (comments-giscus · sync-github · login-github · office). 규칙은 plugins/CLAUDE.md, 객체설계 12장
@@ -36,7 +36,7 @@ docs/          기획 문서 (기획서 · MVP 기획서 · 테이블 설계 · 
 | `pnpm run owner reset-password` | 주인 비밀번호 다시 정하기 (표준 입력으로). 모든 로그인이 끝난다 |
 | `pnpm plugin …` | 플러그인 상태·켜기·끄기·설정·동작 (`plugins/CLAUDE.md`). 관리 화면 전까지 쓰는 길 |
 | `pnpm cairn connect <블로그 주소>` | 이 컴퓨터의 Claude Code(`--tool codex`면 Codex)를 블로그에 연결 (스킬·검토자 넣기 · MCP 등록 · 브라우저 로그인 · 연결 확인). `pnpm cairn status`로 상태 |
-| `pnpm runner start` | 이 컴퓨터에서 러너 실행. 설정은 `apps/runner/.env` (`.env.example` 참고). 서버 러너는 운영 compose의 `runner` 프로필 |
+| `pnpm runner start` | 이 컴퓨터에서 러너 실행. 설정은 `apps/runner/.env` (`.env.example` 참고). 서버 러너는 compose에 함께 뜨고 스스로 연결한다 |
 | `pnpm run restore` | 표준 입력의 백업 zip을 빈 Cairn에 복원. 기본은 미리 보기, `--apply`로 반영 (`docs/보관형식.md`) |
 | `pnpm secret:new` | 서버 키(`CAIRN_SECRET_KEY`) 만들기. 비밀값 암호화에 씀 |
 | `pnpm secret:rotate` | 서버 키를 바꾼 뒤 저장된 비밀값을 새 키로 다시 암호화 (순서는 `.env.example`) |

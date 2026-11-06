@@ -1,7 +1,7 @@
 # Cairn 운영 환경. 컴파일한 이미지만 돌린다 (감시 모드 없음, 소스 마운트 없음, root가 아닌 사용자)
 #   서버의 .env에 COMPOSE_FILE=docker-compose.prod.yml 을 적으면 docker compose 명령이 모두 이 파일을 쓴다
 #   docker compose up -d --build   →  db → migrate(마이그레이션 적용 후 종료) → server · worker → web
-#   서버 러너는 runner 프로필일 때만 뜬다. 켜는 법은 .env.example
+#   서버 러너는 함께 뜨고 스스로 연결한다 (볼륨 runner-pairing의 연결 값). 콘솔 AI 메뉴에 Claude 토큰을 넣으면 일한다
 #
 # 프록시 네트워크에 붙이는 docker-compose.override.yml은 파일을 직접 고르면 저절로 합쳐지지 않으므로 함께 적는다:
 #   COMPOSE_FILE=docker-compose.prod.yml:docker-compose.override.yml
@@ -66,10 +66,12 @@ services:
       PORT: 4000
       CAIRN_WEB_URL: ${CAIRN_WEB_URL:-http://localhost:${WEB_PORT:-3000}}   # 사람이 여는 웹 주소 (설치 코드 안내에 씀)
       CAIRN_BLOBS_DIR: /data/blobs   # 올린 사진. DB와 함께 백업한다
+      CAIRN_RUNNER_PAIRING_FILE: /run/cairn-runner/pairing   # 서버 러너의 연결 값. 서버가 시작할 때 쓴다
     ports:
       - "127.0.0.1:${SERVER_PORT:-4000}:4000"   # 이 컴퓨터에서만. 밖에는 앞의 https 프록시만 연다
     volumes:
       - blob-data:/data/blobs   # 이미지가 node 사용자의 폴더로 만들어 둔다 (Dockerfile)
+      - runner-pairing:/run/cairn-runner   # 서버와 러너만 붙는다
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
       interval: 10s
@@ -118,11 +120,12 @@ services:
       server:
         condition: service_healthy
 
-  # 서버 러너: 일을 빌려 Claude CLI로 처리한다. 토큰이 없는 서버가 깨지지 않게 프로필로 켠다.
-  # 서버 키와 DB 주소를 주지 않는다. 받는 포트도 볼륨도 없고, 나가는 요청으로 서버의 /mcp만 부른다.
+  # 서버 러너: 일을 빌려 Claude CLI로 처리한다. 함께 뜨고, 사람이 토큰을 옮기지 않는다:
+  # 서버가 볼륨에 쓴 연결 값을 내밀고 토큰을 받아 메모리에만 둔다 (끊기면 다시 받는다). Claude 토큰이 없으면 일을 빌리지 않고 기다린다.
+  # 서버 키와 DB 주소를 주지 않는다. 받는 포트가 없고, 볼륨은 연결 값을 읽기만 한다. 나가는 요청으로 서버만 부른다.
   # 쓸 수 있는 곳은 메모리에 있는 /tmp와 홈뿐이고 컨테이너가 끝나면 사라진다. 일의 자리도 /tmp 안에 만들고 지운다
+  # 서버 러너를 쓰지 않으려면 콘솔의 러너 메뉴에서 일 받기를 끈다 (docker compose up -d --scale runner=0도 된다)
   runner:
-    profiles: [runner]
     build:
       context: .
       target: runner
@@ -139,7 +142,10 @@ services:
       - no-new-privileges:true
     environment:
       CAIRN_RUNNER_URL: http://cairn-server:4000
-      CAIRN_RUNNER_TOKEN: ${CAIRN_RUNNER_TOKEN:-}   # 프로필을 켠 서버에만 있다. 없으면 러너가 빠진 설정을 로그에 남기고 끝난다
+      CAIRN_RUNNER_PAIRING_FILE: /run/cairn-runner/pairing
+      CAIRN_RUNNER_TOKEN: ${CAIRN_RUNNER_TOKEN:-}   # 넣으면 연결 값 대신 이 토큰을 쓴다 (예전 방식)
+    volumes:
+      - runner-pairing:/run/cairn-runner:ro
     depends_on:
       server:
         condition: service_healthy
@@ -147,3 +153,4 @@ services:
 volumes:
   db-data:
   blob-data:
+  runner-pairing:   # 서버 러너의 연결 값 (서버가 쓰고 러너가 읽는다). 지워도 서버가 다시 뜰 때 다시 쓴다

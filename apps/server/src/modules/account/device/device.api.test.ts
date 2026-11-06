@@ -3,6 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { ApiClient, TestUser } from '../../../testing/api-client';
 import { Database } from '../../platform';
+import { ServerRunnerPolicy } from './server-runner.policy';
 
 // 기기 연결 (M1 B, MCP OAuth 2.1). AI 도구가 하는 순서 그대로 끝까지 돌린다:
 //   /mcp 401 → 안내 문서 → 스스로 등록 → 승인 요청 → 주인이 승인 화면에서 연결 → 코드를 토큰으로(PKCE) → /mcp
@@ -469,6 +470,78 @@ describe('러너 추가', () => {
     };
     await api.request('POST', `/api/devices/${runner.id}/revoke`, owner);
     assert.equal((await api.mcp(runner.token, 'tools/list')).status, 401);
+  });
+});
+
+describe('서버 러너 (연결 값으로 스스로 연결)', () => {
+  const pair = (secret: string, headers: Record<string, string> = {}) =>
+    api.request('POST', '/api/devices/server-runner', TestUser.visitor, { secret }, headers);
+  const secret = () => api.service(ServerRunnerPolicy).secret();
+
+  test('맞는 연결 값이면 run 권한만 가진 "서버 러너"와 토큰을 준다. 다시 연결하면 같은 기기에 새 토큰, 앞 토큰은 무효', async () => {
+    const first = await pair(secret());
+    assert.equal(first.status, 200, first.text);
+    const runner = first.json() as { id: string; name: string; scopes: string[]; token: string };
+    assert.equal(runner.name, '서버 러너');
+    assert.deepEqual(runner.scopes, ['run']);
+    assert.match(runner.token, /^cairn_dt_/);
+    assert.equal((await api.mcp(runner.token, 'tools/list')).status, 200);
+
+    const again = (await pair(secret())).json() as { id: string; token: string };
+    assert.equal(again.id, runner.id, '서버 러너는 하나');
+    assert.notEqual(again.token, runner.token);
+    assert.equal((await api.mcp(runner.token, 'tools/list')).status, 401, '앞 토큰은 바로 무효');
+    assert.equal((await api.mcp(again.token, 'tools/list')).status, 200);
+
+    const { devices } = (await api.get('/api/devices', owner)).json() as {
+      devices: { id: string; name: string }[];
+    };
+    assert.equal(devices.filter((d) => d.name === '서버 러너').length, 1);
+  });
+
+  test('주인이 끊으면 토큰은 바로 막히고, 러너가 다시 연결하면 새 서버 러너가 생긴다', async () => {
+    const before = (await pair(secret())).json() as { id: string; token: string };
+    await api.request('POST', `/api/devices/${before.id}/revoke`, owner);
+    assert.equal((await api.mcp(before.token, 'tools/list')).status, 401);
+    const after = (await pair(secret())).json() as { id: string; token: string };
+    assert.notEqual(after.id, before.id);
+    assert.equal((await api.mcp(after.token, 'tools/list')).status, 200);
+  });
+
+  test('연결 값이 틀리면 403, 모양이 틀리면 400. 토큰을 주지 않는다', async () => {
+    const wrong = await pair('wrong-secret');
+    assert.equal(wrong.status, 403, wrong.text);
+    assert.equal(wrong.json().token, undefined);
+    const empty = await api.request('POST', '/api/devices/server-runner', TestUser.visitor, {});
+    assert.equal(empty.status, 400);
+  });
+
+  test('다른 기기가 "서버 러너" 이름을 쓰고 있으면 409로 알린다', async () => {
+    const current = (await pair(secret())).json() as { id: string };
+    await api.request('POST', `/api/devices/${current.id}/revoke`, owner);
+    const imposter = await api.request('POST', '/api/devices/runner', owner, {
+      requestId: randomUUID(),
+      name: '서버 러너',
+    });
+    assert.equal(imposter.status, 201, imposter.text);
+    const blocked = await pair(secret());
+    assert.equal(blocked.status, 409, blocked.text);
+    await api.request('POST', `/api/devices/${imposter.json().id}/revoke`, owner);
+    assert.equal((await pair(secret())).status, 200);
+  });
+
+  test('한 곳(IP)에서 1시간에 30번까지. 넘으면 429', async () => {
+    const fresh = await ApiClient.start();
+    try {
+      await fresh.signIn();
+      const box = fresh.service(ServerRunnerPolicy).secret();
+      const call = () =>
+        fresh.request('POST', '/api/devices/server-runner', TestUser.visitor, { secret: box });
+      for (let i = 0; i < 30; i++) assert.equal((await call()).status, 200);
+      assert.equal((await call()).status, 429);
+    } finally {
+      await fresh.close();
+    }
   });
 });
 

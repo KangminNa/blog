@@ -1,9 +1,20 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
-import { type Actor, BaseResponse, CurrentActor, SecretBox } from '../../platform';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import {
+  type Actor,
+  BaseResponse,
+  CurrentActor,
+  type HttpRequest,
+  SecretBox,
+} from '../../platform';
 import { AuthorizationPolicy } from './authorization.policy';
 import type { AuthorizationCode } from './authorization-code';
 import { type Device, DeviceCredential } from './device';
-import { AddRunnerInput, ConsentInput, UpdateDeviceInput } from './device.input';
+import {
+  AddRunnerInput,
+  ConsentInput,
+  PairServerRunnerInput,
+  UpdateDeviceInput,
+} from './device.input';
 import { DeviceQuery } from './device.query';
 import { DeviceService } from './device.service';
 import type { ConsentView, DeviceView } from './device.view';
@@ -127,6 +138,22 @@ export class DeviceController {
   @Post('devices/runner')
   async addRunner(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<DeviceResponse> {
     return DeviceResponse.of(await this.service.addRunner(actor, AddRunnerInput.from(body)));
+  }
+
+  /**
+   * 서버 러너의 연결: { secret } → 서버 러너 기기와 새 토큰 (원문은 이번 응답에만).
+   * 로그인 없이 부른다. 서버와 러너만 보는 볼륨의 연결 값이 곧 권한이다 (ServerRunnerPolicy)
+   */
+  @HttpCode(200)
+  @Post('devices/server-runner')
+  async pairServerRunner(
+    @CurrentActor() actor: Actor,
+    @Req() req: HttpRequest,
+    @Body() body: unknown,
+  ): Promise<DeviceResponse> {
+    return DeviceResponse.of(
+      await this.service.pairServerRunner(actor, PairServerRunnerInput.from(body), req.ip ?? ''),
+    );
   }
 
   /** 이름·권한 바꾸기: { name?, scopes?, version } */

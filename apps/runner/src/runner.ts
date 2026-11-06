@@ -10,6 +10,9 @@ import type { RunnerConfig } from './runner-config';
 /** 다시 시도해도 소용없음: 토큰이나 설치를 사람이 고쳐야 한다 */
 export class RunnerHalted extends Error {}
 
+/** 서버가 기기 토큰을 거절함 (끊겼거나 바뀜). 서버 러너는 연결 값으로 다시 받고, 그 밖의 러너는 멈춘다 */
+export class TokenRejected extends RunnerHalted {}
+
 // 러너의 고리: 일을 하나 빌리고, 끝까지 처리하고, 다시 빌린다. 한 번에 일 하나.
 // 서버에 닿지 못하면 간격을 늘려 다시 묻는다. 들어오는 포트 없이 나가는 요청만 쓴다 (객체설계 13장 임대 큐).
 // 쓸 AI 토큰이 없으면 빌리지 않는다: 빌렸다가 돌려주면 작업 기록에 오류가 한 줄씩 쌓인다.
@@ -37,9 +40,11 @@ export class Runner {
   private readonly logins: AiLogins;
 
   constructor(private readonly config: RunnerConfig) {
-    this.redactor = new Redactor([config.deviceToken, config.claudeToken]);
+    const token = config.deviceToken;
+    if (!token) throw new RunnerHalted('기기 토큰 없이 러너를 시작할 수 없어요');
+    this.redactor = new Redactor([token, config.claudeToken]);
     this.log = new RunLog(this.redactor);
-    this.server = new CairnServer(new McpClient(config.mcpUrl, config.deviceToken));
+    this.server = new CairnServer(new McpClient(config.mcpUrl, token));
     this.logins = new AiLogins(this.server, config.claudeToken);
   }
 
@@ -80,6 +85,7 @@ export class Runner {
       } catch (error) {
         this.polling = false;
         if (stop.aborted) break;
+        if (error instanceof AccessDenied) throw new TokenRejected(error.message);
         if (Runner.fatal(error)) throw new RunnerHalted((error as Error).message);
         this.log.info(`다시 시도해요: ${(error as Error).message}`);
         await this.backoff.wait(stop);

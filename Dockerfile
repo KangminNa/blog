@@ -50,7 +50,7 @@ COPY skills /app/skills
 COPY --from=server-build /repo/apps/server/dist /app
 RUN printf '#!/bin/sh\nexec node /app/apps/server/src/main.cli.js "$@"\n' > /usr/local/bin/cairn-admin \
     && chmod +x /usr/local/bin/cairn-admin \
-    && mkdir -p /data/blobs && chown node:node /data/blobs
+    && mkdir -p /data/blobs /run/cairn-runner && chown node:node /data/blobs /run/cairn-runner
 USER node
 CMD ["node", "src/main.api.js"]
 

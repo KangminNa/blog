@@ -58,4 +58,20 @@ describe('러너 설정', () => {
     for (const url of ['blog.example', 'ftp://blog.example', 'https://'])
       assert.throws(() => RunnerConfig.fromEnv({ ...env, CAIRN_RUNNER_URL: url }), ConfigProblem);
   });
+
+  test('서버 러너는 토큰 대신 연결 값 파일로 시작한다. 토큰이 있으면 파일은 쓰지 않는다', () => {
+    const { CAIRN_RUNNER_TOKEN: _token, ...rest } = env;
+    const paired = RunnerConfig.fromEnv({
+      ...rest,
+      CAIRN_RUNNER_PAIRING_FILE: '/run/cairn/pairing',
+    });
+    assert.equal(paired.deviceToken, null);
+    assert.equal(paired.pairingFile, '/run/cairn/pairing');
+    assert.equal(paired.withToken('got').deviceToken, 'got');
+    assert.equal(paired.withToken('got').pairingFile, '/run/cairn/pairing');
+
+    const both = RunnerConfig.fromEnv({ ...env, CAIRN_RUNNER_PAIRING_FILE: '/run/cairn/pairing' });
+    assert.equal(both.deviceToken, 'device-secret');
+    assert.equal(both.pairingFile, null, '사람이 넣은 토큰이 먼저');
+  });
 });

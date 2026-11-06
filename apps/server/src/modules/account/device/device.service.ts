@@ -3,7 +3,9 @@ import {
   Actor,
   AttemptLimiter,
   BaseService,
+  Conflict,
   Database,
+  Forbidden,
   Idempotency,
   NotFound,
   RuleViolation,
@@ -15,6 +17,7 @@ import { Device, DeviceCredential } from './device';
 import {
   type AddRunnerInput,
   type ConsentInput,
+  type PairServerRunnerInput,
   type RegisterClientInput,
   type RevokeTokenInput,
   TokenInput,
@@ -24,6 +27,7 @@ import { DeviceRepository } from './device.repository';
 import { OAuthClient } from './oauth-client';
 import { OAuthClientRepository } from './oauth-client.repository';
 import { OAuthError } from './oauth-error';
+import { ServerRunnerPolicy } from './server-runner.policy';
 
 // 기기 연결 쓰기 (MCP OAuth 2.1): 클라이언트 등록 → 주인 승인(코드) → 코드를 토큰으로(기기 생성) → 갱신 → 무효.
 // 그리고 관리 화면의 기기 이름·권한 바꾸기, 끊기, 예비 기기 토큰.
@@ -31,6 +35,8 @@ import { OAuthError } from './oauth-error';
 export class DeviceService extends BaseService {
   /** 스스로 등록은 한 곳(IP)에서 1시간에 20번까지 */
   private readonly registrations = new AttemptLimiter(20, 3_600_000);
+  /** 서버 러너의 연결은 한 곳(IP)에서 1시간에 30번까지. 러너가 다시 뜰 때마다 한 번이라 넉넉하다 */
+  private readonly pairings = new AttemptLimiter(30, 3_600_000);
   private static readonly ADD_RUNNER = 'add_runner';
   /** 하루가 지나도록 토큰을 한 번도 받지 않은 등록은 새 등록이 들어올 때 지운다 */
   private static readonly UNUSED_MS = 86_400_000;
@@ -38,8 +44,37 @@ export class DeviceService extends BaseService {
   constructor(
     db: Database,
     private readonly spaces: SpaceQuery,
+    private readonly serverRunner: ServerRunnerPolicy,
   ) {
     super(db);
+  }
+
+  /**
+   * 서버 러너가 연결 값을 내밀고 토큰을 받는다 (공개 경로: 연결 값이 곧 권한).
+   * 서버 러너 기기는 공간마다 하나다. 없으면 만들고, 있으면 토큰을 바꾼다: 앞 토큰은 바로 무효.
+   * 주인이 끊었으면 새로 만든다. 설치가 끝나기 전에는 409 (러너는 기다렸다 다시 묻는다)
+   */
+  async pairServerRunner(actor: Actor, req: PairServerRunnerInput, ip: string): Promise<Device> {
+    this.pairings.hit(ip);
+    if (!this.serverRunner.matches(req.secret))
+      throw new Forbidden('server_runner', '서버 러너의 연결 값이 맞지 않아요');
+    const status = await this.spaces.installStatus(actor, null);
+    if (!status.installed || !status.spaceId)
+      throw new Conflict('설치가 끝나면 서버 러너가 연결돼요');
+    const spaceId = status.spaceId;
+    const now = new Date();
+    return this.transaction(async (tx) => {
+      const devices = new DeviceRepository(tx);
+      const live = await devices.lockLiveByName(spaceId, Device.SERVER_RUNNER);
+      if (live && !live.isServerRunner)
+        throw new Conflict(
+          `다른 기기가 "${Device.SERVER_RUNNER}" 이름을 쓰고 있어요. 그 기기의 이름을 바꿔 주세요`,
+        );
+      const device = live ?? Device.forServerRunner(spaceId, now);
+      if (live) live.rotateDeviceToken(now);
+      await devices.save(device);
+      return device;
+    });
   }
 
   /** AI 도구가 스스로 등록한다 (누구나). 설치가 끝난 블로그만, 한 곳에서 1시간에 20번까지 */

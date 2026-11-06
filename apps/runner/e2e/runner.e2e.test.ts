@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
+import { ServerRunnerPolicy } from '../../server/src/modules/account/device/server-runner.policy';
 import { Database, OutboxWorker } from '../../server/src/modules/platform';
 import { ApiClient, type ApiResult, type TestUser } from '../../server/src/testing/api-client';
 
@@ -73,8 +74,8 @@ class RunnerProcess {
     return this.output;
   }
 
-  logged(text: string): Promise<boolean> {
-    return until(`로그: ${text}`, () => (this.output.includes(text) ? true : null));
+  logged(text: string, waitMs?: number): Promise<boolean> {
+    return until(`로그: ${text}`, () => (this.output.includes(text) ? true : null), waitMs);
   }
 
   exited(): Promise<number | null> {
@@ -186,8 +187,12 @@ const cancelTask = async (task: Json): Promise<void> => {
   ok(await api.request('POST', `/api/tasks/${task.id}/cancel`, owner, { version }));
 };
 
-async function until<T>(what: string, read: () => Promise<T | null> | T | null): Promise<T> {
-  const deadline = Date.now() + 20_000;
+async function until<T>(
+  what: string,
+  read: () => Promise<T | null> | T | null,
+  waitMs = 20_000,
+): Promise<T> {
+  const deadline = Date.now() + waitMs;
   for (;;) {
     const value = await read();
     if (value !== null) return value;
@@ -669,6 +674,42 @@ describe('기다리는 연결 확인의 토큰이 사라진다', () => {
     runner.signal('SIGTERM');
     await newTask(await newAgent(), ''); // 긴 폴링을 깨워 바로 끝나게 한다
     assert.equal(await runner.exited(), 0);
+  });
+});
+
+// 배포 서버 안의 러너: 토큰 없이 서버와 함께 보는 볼륨의 연결 값으로 스스로 연결한다.
+describe('서버 러너는 연결 값으로 스스로 연결한다', () => {
+  test('토큰 없이 연결해 일하고, 주인이 끊으면 다시 연결해 이어 간다', async () => {
+    const file = join(spyDir, 'pairing');
+    writeFileSync(file, api.service(ServerRunnerPolicy).secret());
+    const runner = RunnerProcess.start(api.baseUrl, {
+      CAIRN_RUNNER_TOKEN: '',
+      CAIRN_RUNNER_PAIRING_FILE: file,
+    });
+    try {
+      await runner.logged('서버 러너로 연결했어요');
+
+      const agent = await newAgent();
+      const first = await newTask(agent, '');
+      await taskIn(first.id, 'done');
+
+      const { devices } = ok(await api.get('/api/devices', owner)) as {
+        devices: { id: string; name: string }[];
+      };
+      const device = devices.find((d) => d.name === '서버 러너');
+      ok(await api.request('POST', `/api/devices/${device?.id}/revoke`, owner));
+      // 러너는 기다리던 next_jobs(25초)가 끝난 뒤의 다음 요청에서 거절을 알고 다시 연결한다
+      await runner.logged('서버가 토큰을 거절해 다시 연결해요', 40_000);
+      await until('다시 연결', () =>
+        runner.logs.split('서버 러너로 연결했어요').length - 1 === 2 ? true : null,
+      );
+
+      const second = await newTask(agent, '');
+      await taskIn(second.id, 'done');
+      assert.equal(runner.logs.includes(api.service(ServerRunnerPolicy).secret()), false);
+    } finally {
+      assert.equal(await runner.stop('SIGTERM'), 0);
+    }
   });
 });
 

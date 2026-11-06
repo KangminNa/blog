@@ -12,25 +12,47 @@ export class RunnerConfig {
   constructor(
     /** 끝 슬래시 없는 블로그 주소 */
     readonly serverUrl: string,
-    /** run 권한을 준 기기의 토큰. AI CLI에게 주지 않는다 */
-    readonly deviceToken: string,
+    /** run 권한을 준 기기의 토큰. AI CLI에게 주지 않는다. 서버 러너는 비워 두고 연결 값으로 받는다 */
+    readonly deviceToken: string | null,
     /** 이 컴퓨터의 AI CLI 로그인. 없으면 콘솔에 넣은 토큰을 일마다 서버에서 받는다 */
     readonly claudeToken: string | null,
     readonly cliPath: string,
     readonly skillsDir: string,
+    /**
+     * 서버 러너의 연결 값 파일 (서버와 러너만 보는 볼륨). 기기 토큰이 없으면 이 값을 내밀고 토큰을 받는다.
+     * 토큰이 있으면 쓰지 않는다
+     */
+    readonly pairingFile: string | null = null,
   ) {}
 
   static fromEnv(env: Readonly<Record<string, string | undefined>>): RunnerConfig {
-    const required = ['CAIRN_RUNNER_URL', 'CAIRN_RUNNER_TOKEN'];
-    const missing = required.filter((name) => !env[name]?.trim());
+    const token = env.CAIRN_RUNNER_TOKEN?.trim() || null;
+    const pairingFile = env.CAIRN_RUNNER_PAIRING_FILE?.trim() || null;
+    const missing = [
+      ...(env.CAIRN_RUNNER_URL?.trim() ? [] : ['CAIRN_RUNNER_URL']),
+      ...(token || pairingFile ? [] : ['CAIRN_RUNNER_TOKEN']),
+    ];
     if (missing.length > 0)
       throw new ConfigProblem(`러너 설정이 빠졌어요: ${missing.join(', ')} (.env.example 참고)`);
     return new RunnerConfig(
       RunnerConfig.address(env.CAIRN_RUNNER_URL ?? ''),
-      (env.CAIRN_RUNNER_TOKEN ?? '').trim(),
+      token,
       env.CLAUDE_CODE_OAUTH_TOKEN?.trim() || null,
       env.CAIRN_RUNNER_CLI?.trim() || RunnerConfig.DEFAULT_CLI,
       env.CAIRN_SKILLS_DIR?.trim() || RunnerConfig.DEFAULT_SKILLS,
+      token ? null : pairingFile,
+    );
+  }
+
+  /** 받은 기기 토큰으로 일하는 설정 (서버 러너가 연결 값으로 토큰을 받은 뒤) */
+  withToken(token: string): RunnerConfig {
+    return new RunnerConfig(
+      this.serverUrl,
+      token,
+      this.claudeToken,
+      this.cliPath,
+      this.skillsDir,
+      this.pairingFile,
     );
   }
 

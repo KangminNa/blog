@@ -1140,9 +1140,10 @@ describe('위임', () => {
     const waiting = await getTask(parent.id);
     assert.equal(waiting.status, 'waiting');
     assert.equal(waiting.waitReason, 'subtasks');
+    // 같은 때 만든 둘의 id 순서는 정해지지 않는다 (UUIDv7은 같은 밀리초 안에서 순서가 없다)
     assert.deepEqual(
-      (waiting.children as Json[]).map((c) => c.id),
-      made.map((m) => m.task_id),
+      (waiting.children as Json[]).map((c) => String(c.id)).sort(),
+      made.map((m) => String(m.task_id)).sort(),
     );
     // 러너는 진행 보고의 답으로 AI를 끄고 제출하지 않는다 (결재 대기와 같다)
     const progress = await tool(runner, 'report_progress', { task_id: parent.id, events: [] });

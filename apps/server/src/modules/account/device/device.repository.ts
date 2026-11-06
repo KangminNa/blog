@@ -35,6 +35,15 @@ export class DeviceRepository extends BaseRepository<Device> {
   }
 
   /** 트랜잭션 안에서 잠그고 읽는다 */
+  /** 이름으로 살아 있는 기기를 잠근다 (이름은 살아 있는 기기끼리 겹치지 않는다) */
+  async lockLiveByName(spaceId: string, name: string): Promise<Device | null> {
+    return this.maybeOne(
+      await this.sql`
+        SELECT * FROM account.devices
+        WHERE space_id = ${spaceId} AND name = ${name} AND revoked_at IS NULL FOR UPDATE`,
+    );
+  }
+
   async lock(id: string): Promise<Device | null> {
     return this.maybeOne(await this.sql`SELECT * FROM account.devices WHERE id = ${id} FOR UPDATE`);
   }
@@ -92,6 +101,10 @@ export class DeviceRepository extends BaseRepository<Device> {
         UPDATE account.device_tokens SET revoked_at = now()
         WHERE token_hash = ${hash} AND revoked_at IS NULL`;
     }
+    if (device.retiresDeviceTokens)
+      await this.sql`
+        UPDATE account.device_tokens SET revoked_at = now()
+        WHERE device_id = ${device.id} AND revoked_at IS NULL`;
     if (device.revokedAt) {
       await this.sql`
         UPDATE account.oauth_tokens SET revoked_at = now()
