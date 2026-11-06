@@ -209,7 +209,7 @@ function GoalTasks({ goalId }: { goalId: string }) {
               <b>{t.title}</b>
               <small>{when(t.createdAt)}</small>
             </div>
-            <TaskPill status={t.status} />
+            <TaskPill status={t.status} waitReason={t.waitReason} />
           </Link>
         </li>
       ))}

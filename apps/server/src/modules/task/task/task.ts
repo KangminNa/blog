@@ -2,10 +2,13 @@ import {
   Actor,
   AgentActor,
   BaseEntity,
+  Conflict,
   DomainEvent,
+  Forbidden,
   RuleViolation,
   TrackedEntity,
 } from '../../platform';
+import type { Agent } from '../agent/agent';
 
 /** 실행 기록 한 줄 (추가만). 작업과 함께 저장한다 */
 export class TaskLogEntry {
@@ -30,6 +33,8 @@ export class TaskLogEntry {
 
 // 작업 하나. 러너가 임대로 빌려 가고, 에이전트가 결재를 올리고, 결재 뒤 실행 결과로 끝난다.
 //   queued → running → waiting → running → done, 그리고 failed · cancelled
+// waiting은 무엇을 기다리는지(waitReason)를 함께 적는다: 결재(approval)면 승인 뒤 running, 하위 작업(subtasks)이면
+// 하위 작업이 모두 끝난 뒤 queued로 돌아가 같은 에이전트가 결과를 모은다 (위임).
 // 상태는 아래 메서드로만 바꾼다. 허용되지 않은 변경은 RuleViolation.
 export class Task extends TrackedEntity {
   static readonly QUEUED = 'queued';
@@ -53,6 +58,16 @@ export class Task extends TrackedEntity {
   static readonly RUN_TOKEN_SECONDS = 24 * 60 * 60;
   /** AI 로그인 연결 확인. 에이전트도 작업 토큰도 없이 러너가 돌린다 */
   static readonly AI_TEST = 'ai_test';
+  static readonly GENERAL = 'general';
+  static readonly WAIT_APPROVAL = 'approval';
+  static readonly WAIT_SUBTASKS = 'subtasks';
+  /** 위임할 수 있는 일의 종류. 받는 에이전트의 권한으로 할 수 있어야 한다 (SCOPES) */
+  static readonly DELEGABLE: readonly string[] = [Task.GENERAL, 'draft_post', 'tidy_session'];
+  /** 위임 한도: 깊이(주인이 맡긴 작업이 0), 작업 하나가 위임하는 횟수, 한 번에, 작업 하나에 */
+  static readonly DEPTH_MAX = 3;
+  static readonly ROUNDS_MAX = 3;
+  static readonly DELEGATE_AT_ONCE = 5;
+  static readonly SUBTASKS_MAX = 10;
   /** 연결 확인은 쌓인 일보다 먼저 돈다 */
   private static readonly AI_TEST_PRIORITY = 1000;
   private static readonly AI_TEST_PROMPT = 'ok라고만 답하세요.';
@@ -89,6 +104,12 @@ export class Task extends TrackedEntity {
     readonly requestId: string | null,
     /** 이 작업이 향하는 목표. 만들 때 정하고 바꾸지 않는다 */
     readonly goalId: string | null,
+    /** 이 작업을 맡긴 위 작업 (위임). 주인이 맡긴 작업은 null */
+    readonly parentId: string | null,
+    /** 위임 깊이. 주인이 맡긴 작업이 0 */
+    readonly depth: number,
+    private waitReasonValue: string | null,
+    private roundsValue: number,
     readonly createdAt: Date,
     private finishedOn: Date | null,
     readonly isNew: boolean,
@@ -131,6 +152,10 @@ export class Task extends TrackedEntity {
       0,
       requestId,
       goalId,
+      null,
+      0,
+      null,
+      0,
       now,
       null,
       true,
@@ -178,6 +203,10 @@ export class Task extends TrackedEntity {
     attempts: number,
     requestId: string | null,
     goalId: string | null,
+    parentId: string | null,
+    depth: number,
+    waitReason: string | null,
+    rounds: number,
     createdAt: Date,
     finishedAt: Date | null,
   ): Task {
@@ -201,6 +230,10 @@ export class Task extends TrackedEntity {
       attempts,
       requestId,
       goalId,
+      parentId,
+      depth,
+      waitReason,
+      rounds,
       createdAt,
       finishedAt,
       false,
@@ -251,6 +284,25 @@ export class Task extends TrackedEntity {
     return this.finishedOn;
   }
 
+  /** waiting이면 무엇을 기다리는지 (approval · subtasks). 아니면 null */
+  get waitReason(): string | null {
+    return this.waitReasonValue;
+  }
+
+  /** 이 작업이 위임한 횟수 */
+  get rounds(): number {
+    return this.roundsValue;
+  }
+
+  get waitingForSubtasks(): boolean {
+    return this.statusValue === Task.WAITING && this.waitReasonValue === Task.WAIT_SUBTASKS;
+  }
+
+  /** 끝났는가 (결과든 취소든). 하위 작업이 모두 이렇게 되면 위 작업이 깨어난다 */
+  get settled(): boolean {
+    return this.ended || this.cancelled;
+  }
+
   get cancelled(): boolean {
     return this.statusValue === Task.CANCELLED;
   }
@@ -273,6 +325,13 @@ export class Task extends TrackedEntity {
   /** 러너가 쓸 스킬. 없으면 지시만으로 일한다 */
   get skill(): string | null {
     return Task.SKILLS[this.kind] ?? null;
+  }
+
+  /** 이 권한을 가진 에이전트에게 위임할 수 있는 일의 종류 */
+  static delegableWith(scopes: readonly string[]): readonly string[] {
+    return Task.DELEGABLE.filter((kind) =>
+      (Task.SCOPES[kind] ?? []).every((scope) => scopes.includes(scope)),
+    );
   }
 
   /** 이 권한을 가진 에이전트가 맡을 수 있는 일인가 */
@@ -327,13 +386,117 @@ export class Task extends TrackedEntity {
   waitFor(now: Date): void {
     if (this.statusValue === Task.RUNNING && !this.leaseAlive(now))
       throw new RuleViolation('임대가 끝난 작업이에요');
-    this.move([Task.RUNNING], Task.WAITING);
+    this.move([Task.RUNNING], Task.WAITING, Task.WAIT_APPROVAL);
   }
 
   /** 결재 승인: waiting → running. 임대 없이 실행 결과 이벤트를 기다린다 */
   resume(): void {
+    this.assertWaitingFor(Task.WAIT_APPROVAL);
     this.move([Task.WAITING], Task.RUNNING);
     this.holdLease(null, null);
+  }
+
+  /** 위임에 쓰는 하위 작업의 request_id. AI가 만든 값을 작업마다 따로 센다 */
+  subtaskRequestId(requestId: string): string {
+    return `delegate:${this.id}:${requestId}`;
+  }
+
+  /**
+   * 이번에 count개를 맡길 수 있는가. 이 작업의 에이전트가 살아 있는 임대로 일하는 중이어야 하고,
+   * 한 번에 DELEGATE_AT_ONCE개, 작업 하나에 SUBTASKS_MAX개(made는 이미 맡긴 수), 깊이 DEPTH_MAX, 라운드 ROUNDS_MAX까지
+   */
+  assertCanDelegate(agentId: string, count: number, made: number, now: Date): void {
+    if (this.agent !== agentId) throw new Forbidden(Actor.AGENT, '이 에이전트의 작업이 아니에요');
+    if (this.statusValue !== Task.RUNNING || !this.leaseAlive(now))
+      throw new Conflict(`실행 중인 작업이 아니에요 (${this.statusValue})`);
+    if (count < 1 || count > Task.DELEGATE_AT_ONCE)
+      throw new RuleViolation(`한 번에 1~${Task.DELEGATE_AT_ONCE}개를 맡길 수 있어요 (한도)`);
+    if (made + count > Task.SUBTASKS_MAX)
+      throw new RuleViolation(
+        `작업 하나가 맡길 수 있는 하위 작업은 ${Task.SUBTASKS_MAX}개예요 (한도, 이미 ${made}개)`,
+      );
+    if (this.depth + 1 > Task.DEPTH_MAX)
+      throw new RuleViolation(`위임은 ${Task.DEPTH_MAX}단계까지예요 (한도)`);
+    if (this.roundsValue + 1 > Task.ROUNDS_MAX)
+      throw new RuleViolation(
+        `작업 하나가 위임할 수 있는 횟수는 ${Task.ROUNDS_MAX}번이에요 (한도)`,
+      );
+  }
+
+  /**
+   * 하위 작업 하나를 만든다. 받는 쪽은 manager의 바로 아래 팀원이어야 하고, 그 에이전트의 권한으로 할 수 있는 종류여야 한다.
+   * 하위 작업은 이 작업의 목표와 우선순위를 물려받고, 담당은 worker로 정해진다.
+   */
+  subtask(
+    manager: Agent,
+    worker: Agent | null,
+    requestId: string,
+    kind: string,
+    title: string,
+    instruction: string,
+    targetKind: string | null,
+    targetId: string | null,
+    baseVersion: number | null,
+    now: Date,
+  ): Task {
+    if (worker === null || !manager.manages(worker))
+      throw new Forbidden(Actor.AGENT, '바로 아래 팀원에게만 맡길 수 있어요');
+    if (!Task.DELEGABLE.includes(kind))
+      throw new RuleViolation(`맡길 수 있는 일은 ${Task.DELEGABLE.join(' · ')}예요: ${kind}`);
+    if (!Task.delegableWith(worker.scopes).includes(kind))
+      throw new RuleViolation(`${worker.name}의 권한으로는 할 수 없는 일이에요: ${kind}`);
+    return new Task(
+      BaseEntity.newId(),
+      1,
+      this.spaceId,
+      worker.id,
+      kind,
+      title,
+      instruction,
+      { delegatedBy: this.id },
+      null,
+      targetKind,
+      targetId,
+      baseVersion,
+      Task.QUEUED,
+      this.priority,
+      null,
+      null,
+      0,
+      this.subtaskRequestId(requestId),
+      this.goalId,
+      this.id,
+      this.depth + 1,
+      null,
+      0,
+      now,
+      null,
+      true,
+    ).announced();
+  }
+
+  /**
+   * 하위 작업을 맡겼다: running → waiting(subtasks). 임대는 결재 대기처럼 남은 시간까지 둔다:
+   * 러너는 진행 보고의 답으로 AI를 끄고 제출하지 않는다.
+   */
+  waitForSubtasks(count: number, now: Date): void {
+    this.move([Task.RUNNING], Task.WAITING, Task.WAIT_SUBTASKS);
+    this.roundsValue += 1;
+    this.track('rounds', this.roundsValue);
+    this.log(TaskLogEntry.WRITE, `하위 작업 ${count}개를 맡겼어요`, 0, now);
+  }
+
+  /**
+   * 하위 작업이 모두 끝났다: waiting(subtasks) → queued. 같은 에이전트가 결과를 받아 모은다.
+   * 다시 빌려 가는 일이라 시도 횟수는 새로 센다.
+   */
+  wakeAfterSubtasks(now: Date): void {
+    this.assertWaitingFor(Task.WAIT_SUBTASKS);
+    this.move([Task.WAITING], Task.QUEUED);
+    this.holdLease(null, null);
+    this.tries = 0;
+    this.track('attempts', 0);
+    this.log(TaskLogEntry.READ, '하위 작업이 모두 끝나 다시 대기열로 돌아갔어요', 0, now);
   }
 
   /**
@@ -346,6 +509,7 @@ export class Task extends TrackedEntity {
     targetId: string,
     targetVersion: number,
   ): void {
+    this.assertWaitingFor(Task.WAIT_APPROVAL);
     this.move([Task.WAITING], Task.QUEUED);
     this.holdLease(null, null);
     this.tries = 0;
@@ -462,13 +626,31 @@ export class Task extends TrackedEntity {
     this.track('finished_at', now);
   }
 
-  /** 메서드마다 어느 상태에서 올 수 있는지 적는다. 상태 쌍만 보면 lease()가 결재 대기를 가로챌 수 있다 */
-  private move(from: readonly string[], to: string): void {
+  private assertWaitingFor(reason: string): void {
+    if (this.statusValue === Task.WAITING && this.waitReasonValue !== reason)
+      throw new RuleViolation(`${reason}을(를) 기다리는 작업이 아니에요 (${this.waitReasonValue})`);
+  }
+
+  /**
+   * 메서드마다 어느 상태에서 올 수 있는지 적는다. 상태 쌍만 보면 lease()가 결재 대기를 가로챌 수 있다.
+   * waiting으로 갈 때만 무엇을 기다리는지 적고, 나머지 상태로 가면 지운다 (DB의 CHECK와 같다)
+   */
+  private move(from: readonly string[], to: string, waitReason: string | null = null): void {
     if (!from.includes(this.statusValue))
       throw new RuleViolation(`${this.statusValue} 상태의 작업은 ${to}(으)로 바꿀 수 없어요`);
     this.statusValue = to;
     this.track('status', to);
+    const reason = to === Task.WAITING ? waitReason : null;
+    if (reason !== this.waitReasonValue) {
+      this.waitReasonValue = reason;
+      this.track('wait_reason', reason);
+    }
     this.announce();
+  }
+
+  private announced(): Task {
+    this.announce();
+    return this;
   }
 
   private announce(): void {

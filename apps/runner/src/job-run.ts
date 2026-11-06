@@ -235,7 +235,8 @@ export class JobRun {
   /** 서버의 답으로 끝낼지 정한다. 계속해도 되면 null */
   private static decide(state: ProgressState): RunEnding | null {
     if (state.cancelled) return RunEnding.quiet('주인이 취소했어요');
-    if (state.status === ProgressState.WAITING) return RunEnding.quiet('결재를 기다려요');
+    if (state.status === ProgressState.WAITING)
+      return RunEnding.quiet('결재나 하위 작업을 기다려요');
     if (state.status !== ProgressState.RUNNING)
       return RunEnding.quiet(`이미 ${state.status} 상태예요`);
     return state.paused ? RunEnding.release(JobRun.PAUSED) : null;

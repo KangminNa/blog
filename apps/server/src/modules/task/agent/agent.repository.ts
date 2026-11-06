@@ -41,6 +41,12 @@ export class AgentRepository extends BaseRepository<Agent> {
     );
   }
 
+  /** 공간의 모든 에이전트 (만든 순서). 잠그지 않는다: 위임할 때 바로 아래 팀을 찾는다 */
+  async all(spaceId: string): Promise<readonly Agent[]> {
+    const rows = await this.sql`SELECT * FROM task.agents WHERE space_id = ${spaceId} ORDER BY id`;
+    return rows.map((r) => this.toEntity(r));
+  }
+
   /**
    * 공간의 모든 에이전트를 만든 순서대로 잠근다. 조직도를 바꿀 때: 둘이 동시에 서로에게 보고하게 바꾸면
    * 각자 본 조직도에는 순환이 없어 둘 다 통과하므로, 조직도 전체를 같은 순서로 잠가 한 번에 하나만 바꾼다.

@@ -11,6 +11,18 @@ export const TASK_STATUS: Record<string, string> = {
   cancelled: '취소',
 };
 
+/** 기다리는 작업이 무엇을 기다리는지 (서버의 Task.WAIT_*) */
+export const WAIT_LABELS: Record<string, string> = {
+  approval: '결재 대기',
+  subtasks: '하위 작업 대기',
+};
+
+/** 작업 상태의 이름. 기다리는 중이면 무엇을 기다리는지까지 */
+export function taskStatusLabel(status: string, waitReason: string | null = null): string {
+  if (status === 'waiting' && waitReason) return WAIT_LABELS[waitReason] ?? '결재 대기';
+  return TASK_STATUS[status] ?? status;
+}
+
 /** 취소할 수 있는 상태 (서버의 Task.cancel과 맞춘다) */
 export const CANCELLABLE: readonly string[] = ['queued', 'running', 'waiting'];
 

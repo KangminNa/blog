@@ -48,6 +48,18 @@ export class GoalRepository extends BaseRepository<Goal> {
     return Number(row?.depth ?? 0);
   }
 
+  /** 회사 목표부터 이 목표까지. 부모는 바뀌지 않아 잠그지 않는다 */
+  async chain(id: string): Promise<readonly Goal[]> {
+    const rows = await this.sql`
+      WITH RECURSIVE up AS (
+        SELECT g.*, 0 AS step FROM task.goals g WHERE id = ${id}
+        UNION ALL
+        SELECT g.*, up.step + 1 FROM task.goals g JOIN up ON g.id = up.parent_id
+      )
+      SELECT * FROM up ORDER BY step DESC`;
+    return rows.map((r) => this.toEntity(r));
+  }
+
   async save(goal: Goal): Promise<void> {
     if (goal.isNew) {
       await this.sql`

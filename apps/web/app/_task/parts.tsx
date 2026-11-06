@@ -1,9 +1,16 @@
-import { APPROVAL_STATUS, TASK_STATUS, tokens } from './labels';
+import { APPROVAL_STATUS, taskStatusLabel, tokens } from './labels';
 import type { Agent } from './types';
 
 // 상태는 색 없이 채움·테두리·굵기로 구분한다.
 
-export function TaskPill({ status }: { status: string }) {
+export function TaskPill({
+  status,
+  waitReason = null,
+}: {
+  status: string;
+  /** 기다리는 중이면 무엇을 (approval · subtasks) */
+  waitReason?: string | null;
+}) {
   const look =
     status === 'waiting'
       ? 'pill on'
@@ -15,7 +22,7 @@ export function TaskPill({ status }: { status: string }) {
   return (
     <span className={look}>
       {status === 'running' && <span className="dot run" aria-hidden="true" />}
-      {TASK_STATUS[status] ?? status}
+      {taskStatusLabel(status, waitReason)}
     </span>
   );
 }

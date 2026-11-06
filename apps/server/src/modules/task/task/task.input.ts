@@ -276,3 +276,55 @@ export class ReleaseJobInput extends BaseRequest {
     );
   }
 }
+
+/** delegate_task의 하위 작업 하나. 받는 에이전트와 일의 뜻(종류, 권한)은 Task.subtask가 검사한다 */
+export class SubtaskOrder extends BaseRequest {
+  private constructor(
+    readonly requestId: string,
+    readonly toAgentId: string,
+    readonly kind: string,
+    readonly title: string,
+    readonly instruction: string,
+    readonly targetKind: string | null,
+    readonly targetId: string | null,
+    readonly baseVersion: number | null,
+  ) {
+    super();
+  }
+
+  static from(f: RequestFields): SubtaskOrder {
+    const targetKind = f.optionalText('target_kind', 40);
+    return new SubtaskOrder(
+      f.text('request_id', 200),
+      f.uuid('to_agent_id'),
+      f.optionalText('kind', 100) ?? 'general',
+      f.text('title', 200),
+      f.text('instruction', 20_000),
+      targetKind,
+      targetKind === null ? null : f.uuid('target_id'),
+      targetKind === null ? null : f.optionalInteger('target_version', 0, VERSION_MAX),
+    );
+  }
+}
+
+/**
+ * delegate_task. 어느 작업 · 어느 에이전트인지는 작업 토큰에서 나온다.
+ * 몇 개까지 맡길 수 있는지는 한도라 도메인(Task.assertCanDelegate)이 정하고, 여기서는 모양만 넉넉히 막는다.
+ */
+export class DelegateTaskInput extends BaseRequest {
+  private static readonly SHAPE_MAX = 20;
+
+  private constructor(readonly subtasks: readonly SubtaskOrder[]) {
+    super();
+  }
+
+  static from(raw: unknown): DelegateTaskInput {
+    return BaseRequest.read(
+      raw,
+      (f) =>
+        new DelegateTaskInput(
+          f.nestedList('subtasks', DelegateTaskInput.SHAPE_MAX).map((s) => SubtaskOrder.from(s)),
+        ),
+    );
+  }
+}

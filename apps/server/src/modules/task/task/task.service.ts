@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
   Actor,
+  AgentActor,
   BaseService,
   ChangeStream,
+  Conflict,
   Database,
   Forbidden,
   Idempotency,
@@ -21,15 +23,17 @@ import { Task } from './task';
 import type {
   CancelTaskInput,
   CreateTaskInput,
+  DelegateTaskInput,
   NextJobsInput,
   ReleaseJobInput,
   ReportProgressInput,
   SubmitResultInput,
 } from './task.input';
 import { TaskRepository } from './task.repository';
-import { JobView, ProgressView } from './task.view';
+import { JobSubtaskResultView, JobTeamMemberView, JobView, ProgressView } from './task.view';
 
-// 작업 쓰기: 만들기와 취소(주인), 일 요청(이벤트), 빌리기·진행·끝내기·돌려주기(러너), 끝난 임대 되돌리기(일꾼).
+// 작업 쓰기: 만들기와 취소(주인), 일 요청(이벤트), 빌리기·진행·끝내기·돌려주기(러너), 끝난 임대 되돌리기(일꾼),
+// 위임(에이전트가 작업 토큰으로)과 하위 작업이 끝났을 때 위 작업 깨우기(일꾼).
 // 한도 초과처럼 작업과 함께 바뀌는 에이전트·결재는 같은 트랜잭션에서 쓴다 (객체설계 9장).
 // 잠그는 순서는 어디서나 작업 → 결재 → 에이전트.
 @Injectable()
@@ -39,6 +43,8 @@ export class TaskService extends BaseService {
   /** 신호를 놓쳤거나 임대가 끝났을 때를 위해 이 간격으로도 다시 찾는다 */
   private static readonly RECHECK_MS = 5_000;
   private static readonly RECLAIM_BATCH = 50;
+  /** 깨어난 위 작업에게 보내는 하위 작업 결과의 길이 */
+  private static readonly SUMMARY_MAX = 2000;
 
   constructor(
     db: Database,
@@ -142,23 +148,99 @@ export class TaskService extends BaseService {
     });
   }
 
-  /** 주인이 멈춘다. 기다리던 결재도 닫는다 */
+  /** 주인이 멈춘다. 기다리던 결재도 닫고, 끝나지 않은 아래 작업(위임)도 함께 멈춘다 */
   async cancel(actor: Actor, req: CancelTaskInput): Promise<Task> {
     actor.assertOwner();
     const spaceId = TaskService.spaceOf(actor);
+    const now = new Date();
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
       const task = await tasks.lock(spaceId, req.id);
       task.assertVersion(req.version);
-      task.cancel(new Date());
-      await tasks.save(task);
+      // 잠그는 순서는 위 작업 → 아래 작업 → 결재
+      const below = await tasks.lockOpenDescendants(task.id);
+      for (const one of [task, ...below]) {
+        one.cancel(now);
+        await tasks.save(one);
+      }
       const approvals = new ApprovalRepository(tx);
-      const pending = await approvals.lockPending(task.id);
-      if (pending) {
+      for (const one of [task, ...below]) {
+        const pending = await approvals.lockPending(one.id);
+        if (!pending) continue;
         pending.cancel();
         await approvals.save(pending);
       }
       return task;
+    });
+  }
+
+  /**
+   * 에이전트가 바로 아래 팀에게 하위 작업을 맡긴다 (delegate_task). 작업은 하위 작업을 기다리고,
+   * 러너는 결재 대기처럼 AI를 끄고 제출하지 않는다. 같은 request_id들로 다시 보내면 처음 만든 하위 작업을 돌려준다.
+   */
+  async delegate(actor: Actor, req: DelegateTaskInput): Promise<readonly Task[]> {
+    actor.assertCan(Actor.AGENT);
+    if (!(actor instanceof AgentActor) || !actor.spaceId) throw new Forbidden(Actor.AGENT);
+    const { spaceId, agentId, taskId } = actor;
+    const now = new Date();
+    return this.transaction(async (tx) => {
+      const tasks = new TaskRepository(tx);
+      const parent = await tasks.lock(spaceId, taskId);
+      const keys = req.subtasks.map((s) => parent.subtaskRequestId(s.requestId));
+      const before = await tasks.findByRequests(spaceId, keys);
+      if (before.length > 0) {
+        // 응답을 놓쳐 같은 호출을 다시 보냈다: 그때 만든 것을 그대로. 일부만 겹치면 다른 호출이다
+        if (before.length === keys.length)
+          return keys.map((k) => before.find((t) => t.requestId === k) as Task);
+        throw new Conflict('이미 쓴 request_id예요. 새 하위 작업에는 새 request_id를 써 주세요');
+      }
+      parent.assertCanDelegate(
+        agentId,
+        req.subtasks.length,
+        (await tasks.children(parent.id)).length,
+        now,
+      );
+      const org = await new AgentRepository(tx).all(spaceId);
+      const manager = org.find((a) => a.id === agentId);
+      if (!manager) throw new Forbidden(Actor.AGENT);
+      const made = req.subtasks.map((s) =>
+        parent.subtask(
+          manager,
+          org.find((a) => a.id === s.toAgentId) ?? null,
+          s.requestId,
+          s.kind,
+          s.title,
+          s.instruction,
+          s.targetKind,
+          s.targetId,
+          s.baseVersion,
+          now,
+        ),
+      );
+      for (const child of made)
+        if (!(await tasks.insertOnce(child)))
+          throw new Conflict('같은 하위 작업이 동시에 만들어졌어요. 다시 보내 주세요');
+      parent.waitForSubtasks(made.length, now);
+      await tasks.save(parent);
+      return made;
+    });
+  }
+
+  /**
+   * 하위 작업 하나가 끝났다 (일꾼이 task.task.changed로 부른다). 형제가 모두 끝났으면 위 작업을 대기열로 돌린다.
+   * 위 작업만 잠그고 세므로, 둘이 동시에 끝나도 늦게 커밋한 쪽이 깨운다. 두 번 불려도 같다
+   */
+  async settleSubtask(actor: Actor, taskId: string): Promise<void> {
+    actor.assertCan(Actor.RUN);
+    await this.transaction(async (tx) => {
+      const tasks = new TaskRepository(tx);
+      const parentId = await tasks.parentOf(taskId);
+      if (parentId === null) return;
+      const parent = await tasks.lockById(parentId);
+      if (!parent?.waitingForSubtasks) return;
+      if ((await tasks.openChildren(parent.id)) > 0) return;
+      parent.wakeAfterSubtasks(new Date());
+      await tasks.save(parent);
     });
   }
 
@@ -213,13 +295,29 @@ export class TaskService extends BaseService {
         if (agent === undefined) continue;
         task.lease(runnerId, agent?.id ?? null, now);
         await tasks.save(task);
-        jobs.push(this.jobOf(task, agent));
+        jobs.push(
+          await this.jobOf(
+            tx,
+            task,
+            agent,
+            usage.map((u) => u.agent),
+          ),
+        );
       }
       return jobs;
     });
   }
 
-  private jobOf(task: Task, agent: Agent | null): JobView {
+  /** 빌려 준 일 하나. 목표 사슬, 바로 아래 팀, 깨어난 일이면 하위 작업의 결과를 함께 싣는다 */
+  private async jobOf(
+    tx: Sql,
+    task: Task,
+    agent: Agent | null,
+    org: readonly Agent[],
+  ): Promise<JobView> {
+    const goals = task.goalId === null ? [] : await new GoalRepository(tx).chain(task.goalId);
+    const team = agent ? org.filter((a) => agent.manages(a)) : [];
+    const children = await new TaskRepository(tx).children(task.id);
     return new JobView(
       task.id,
       task.kind,
@@ -237,7 +335,29 @@ export class TaskService extends BaseService {
       agent?.tool ?? null,
       task.leaseUntil,
       agent && task.actorFor(agent.id, agent.scopes).seal(this.box, Task.RUN_TOKEN_SECONDS),
+      goals.map((g) => g.title),
+      team.map(
+        (a) => new JobTeamMemberView(a.id, a.name, a.role, a.status, Task.delegableWith(a.scopes)),
+      ),
+      children.map(
+        (c) =>
+          new JobSubtaskResultView(
+            c.id,
+            c.title,
+            org.find((a) => a.id === c.agentId)?.name ?? null,
+            c.status,
+            TaskService.summaryOf(c),
+            c.failure,
+          ),
+      ),
+      Math.max(0, Task.ROUNDS_MAX - task.rounds),
     );
+  }
+
+  /** 하위 작업의 결과 글 앞부분. 러너는 결과를 { text }로 낸다 */
+  private static summaryOf(task: Task): string | null {
+    const text = task.result?.text;
+    return typeof text === 'string' ? text.slice(0, TaskService.SUMMARY_MAX) : null;
   }
 
   private async expire(tx: Sql, now: Date): Promise<number> {

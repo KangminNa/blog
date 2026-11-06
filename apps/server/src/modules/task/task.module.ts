@@ -15,7 +15,9 @@ import { ApprovalResultHandler } from './approval/approval-result.handler';
 import { GoalController } from './goal/goal.api';
 import { GoalQuery } from './goal/goal.query';
 import { GoalService } from './goal/goal.service';
+import { DelegateTaskTool } from './task/delegate.tool';
 import { LeaseJob } from './task/lease.job';
+import { SubtaskSettledHandler } from './task/subtask-settled.handler';
 import { Task } from './task/task';
 import { TaskController } from './task/task.api';
 import { TaskQuery } from './task/task.query';
@@ -52,8 +54,10 @@ import { UsageQuery } from './usage/usage.query';
     SubmitResultTool,
     ReleaseJobTool,
     RequestApprovalTool,
+    DelegateTaskTool,
     TaskTools,
     TaskRequestedHandler,
+    SubtaskSettledHandler,
     ApprovalResultHandler,
     LeaseJob,
   ],
@@ -73,6 +77,7 @@ export class TaskModule implements OnModuleInit {
   constructor(
     private readonly workers: CoreWorkers,
     private readonly requested: TaskRequestedHandler,
+    private readonly settled: SubtaskSettledHandler,
     private readonly results: ApprovalResultHandler,
     private readonly leases: LeaseJob,
     private readonly rotation: SecretRotation,
@@ -81,6 +86,7 @@ export class TaskModule implements OnModuleInit {
 
   onModuleInit(): void {
     this.workers.on(Task.REQUESTED, this.requested);
+    this.workers.on(Task.CHANGED, this.settled);
     this.workers.on('*', this.results);
     this.workers.every(this.leases, TaskModule.LEASE_CHECK_MS);
     this.rotation.register('task.ai_logins', (actor) => this.logins.resealSecrets(actor));

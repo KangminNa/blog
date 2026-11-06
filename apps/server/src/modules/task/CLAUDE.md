@@ -7,7 +7,7 @@
 - `agent/`: 에이전트 (`Agent`). 권한, 결재로 맡길 동작, 토큰 한도(한 달 · 5시간), 구독 사용률 멈춤값, 보고 대상(조직도). `api/agents`
 - `goal/`: 목표 (`Goal`). 회사 목표부터 이어지는 나무. 작업이 목표 하나에 이어진다. `api/goals`
 - `task/`: 작업 (`Task` + `TaskLogEntry`). `queued → running → waiting → running → done`, `failed`, `cancelled`.
-  `api/tasks`, MCP `next_jobs` · `report_progress` · `submit_result` · `release_job`
+  `api/tasks`, MCP `next_jobs` · `report_progress` · `submit_result` · `release_job`, 위임 `delegate_task`(작업 토큰)
 - `approval/`: 결재 (`Approval`). `pending → approved · rejected · revision_requested · cancelled`.
   `api/approvals`, MCP `request_approval`
 - `usage/`: 구독 사용률 (`PlanUsage`)과 사용량 읽기 (`UsageQuery`). `api/usage`. 쓰기는 `report_progress`의 `plan_usage`로만 들어온다
@@ -42,6 +42,7 @@
 변경 신호(SSE)만 있고 이벤트가 아닌 것: `task.event.added` (실행 기록이 쌓임, id는 작업), `task.usage.changed` (구독 사용률이 옴, id는 도구).
 
 ## 받는 이벤트
+- `task.task.changed`(자기 이벤트): 끝난 하위 작업이면 형제가 모두 끝났는지 보고 위 작업을 깨운다 (`SubtaskSettledHandler`)
 - `task.task.requested`: 어느 모듈이든 일을 요청한다. 내용 `requestId, kind, title, instruction?, payload?, targetKind?, targetId?, baseVersion?, agentId?, priority?`. 같은 `requestId`는 작업 하나 (`TaskRequestedHandler`)
 - 실행 결과: 주제는 묻지 않는다. 어느 이벤트든 내용에 `approvalId`와 `outcome`(`done` · `failed`)을 실으면 결과다. 실패면 `error`에 이유 (`ApprovalResultHandler`, `*`로 받는다). 두 번 와도 같다
 
@@ -58,7 +59,8 @@ platform
 - 보고 대상은 `Agent.reportTo`로만 바꾼다 (순환 · 깊이 4). 바꿀 때는 공간의 에이전트를 모두 잠근다(`lockAll`): 하나만 잠그면 동시에 서로에게 보고하게 바꾸는 둘이 모두 통과한다. 결재는 조직도와 상관없이 늘 주인에게
 - 목표는 지우지 않고 상태로 닫는다. 부모는 만들 때 정하고 바꾸지 않는다 (그래서 목표 사슬은 잠그지 않고 읽는다). 진행 중인 목표에만 작업과 하위 목표를 더한다. 목표를 정하는 건 주인만이고 AI는 읽기만 한다
 - 진행 보고는 version을 올리지 않는다 (`saveLease`). 보고가 잦아도 주인의 취소가 막히면 안 된다
-- 잠그는 순서는 어디서나 작업 → 결재 → 에이전트
+- 잠그는 순서는 어디서나 작업 → 결재 → 에이전트. 작업끼리는 위 작업 → 아래 작업 (취소 전파). 위 작업을 깨우는 쪽은 위 작업만 잠근다
+- 위임: `waiting`에는 늘 기다리는 것(`wait_reason`: approval · subtasks)이 있다 (DB CHECK). 결재 승인 · 고쳐 달라는 말은 결재를 기다리는 작업에만, 깨우기는 하위 작업을 기다리는 작업에만. 받는 쪽 · 종류 · 한도는 `Task`가 막고 LLM에게 맡기지 않는다
 - 한도 올리기 결재는 서버만 올린다. 승인은 같은 트랜잭션에서 한도를 두 배로 하고 에이전트를 다시 움직인다
 - 쉬기(`Agent.holds`)는 저장하지 않고 그때마다 계산한다. 5시간 토큰이나 구독 사용률에 닿으면 새 일만 안 빌려주고, 달리는 작업은 끝까지 간다. 결재도 `paused`도 없다: `report_progress`가 `paused: true`를 돌려주면 러너가 작업을 돌려주므로 쉬기에는 쓰지 않는다
 - 일의 종류마다 필요한 권한은 `Task.SCOPES`에 적는다 (`tidy_session` → `tidy`). `lockNext`가 SQL에서 거르므로 빌렸다가 돌려주지 않고, 맡을 에이전트가 없는 일은 대기열에 남아 뒤의 일을 막지 않는다

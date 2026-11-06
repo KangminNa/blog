@@ -7,7 +7,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { Database } from '../../server/src/modules/platform';
+import { Database, OutboxWorker } from '../../server/src/modules/platform';
 import { ApiClient, type ApiResult, type TestUser } from '../../server/src/testing/api-client';
 
 // 러너 전체: 실제 서버, 실제 러너 프로세스, 표준 입출력만 흉내 낸 가짜 AI CLI (fake-claude.mjs).
@@ -264,7 +264,7 @@ before(async () => {
 
 beforeEach(async () => {
   await db.sql`
-    UPDATE task.tasks SET status = 'cancelled', lease_until = NULL
+    UPDATE task.tasks SET status = 'cancelled', lease_until = NULL, wait_reason = NULL
     WHERE status IN ('queued', 'running', 'waiting')`;
 });
 
@@ -490,7 +490,7 @@ describe('러너가 일을 처리한다', () => {
 
     await taskIn(created.id, 'waiting');
     await gone(seen.pid);
-    await runner.logged(`${created.id}: 결재를 기다려요`);
+    await runner.logged(`${created.id}: 결재나 하위 작업을 기다려요`);
     const task = await getTask(created.id);
     assert.equal(task.status, 'waiting');
     assert.equal(task.result, null);
@@ -501,11 +501,40 @@ describe('러너가 일을 처리한다', () => {
   test('결재를 올리고 바로 끝난 실행도 done으로 보내지 않는다', async () => {
     const agent = await newAgent();
     const created = await newTask(agent, '[fake:approval]');
-    await runner.logged(`${created.id}: 결재를 기다려요`);
+    await runner.logged(`${created.id}: 결재나 하위 작업을 기다려요`);
     const task = await getTask(created.id);
     assert.equal(task.status, 'waiting');
     assert.equal(kinds(task).filter((k) => k === 'result').length, 1);
     assert.equal(task.result, null);
+  });
+
+  test('팀장이 팀에게 맡기면 팀원의 일이 돌고, 모두 끝나면 결과를 받아 팀장이 끝낸다', async () => {
+    const lead = await newAgent({ name: '팀장' });
+    const members = [
+      await newAgent({ name: '조사 1', reportsTo: lead.id }),
+      await newAgent({ name: '조사 2', reportsTo: lead.id }),
+    ];
+    const spy = new Spy();
+    const created = await newTask(lead, `[fake:delegate] ${spy.mark}`);
+
+    await runner.logged(`${created.id}: 결재나 하위 작업을 기다려요`);
+    // 팀장을 깨우는 일은 일꾼(outbox)이 한다. 이 테스트에는 일꾼 프로세스가 없어 직접 돌린다
+    const worker = api.service(OutboxWorker);
+    const done = await until('팀장이 깨어나 끝남', async () => {
+      await worker.tick();
+      const task = await getTask(created.id);
+      return task.status === 'done' ? task : null;
+    });
+    const children = done.children as Json[];
+    assert.deepEqual(
+      children.map((c) => [c.agentId, c.status]).sort(),
+      members.map((m) => [m.id, 'done']).sort(),
+    );
+    // 마지막 실행(깨어난 팀장)의 지시문에 팀원의 결과가 있다
+    const { prompt } = await spy.seen();
+    assert.ok(String(prompt).includes('# 맡긴 하위 작업의 결과'));
+    assert.ok(String(prompt).includes('## [완료] 조사 1에게 맡긴 조사 (조사 1)'));
+    assert.ok(String(prompt).includes('남은 위임 횟수: 2'));
   });
 
   test('에이전트가 멈추면 AI CLI를 끄고 일을 돌려준다', async () => {

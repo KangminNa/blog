@@ -122,7 +122,9 @@ function TaskBoard({ agents }: { agents: readonly Agent[] }) {
 }
 
 function TaskCard({ task, agent }: { task: Task; agent: string | undefined }) {
-  const ended = task.status === 'failed' || task.status === 'cancelled';
+  // 끝난 상태와, 결재가 아니라 하위 작업을 기다리는 카드는 상태를 따로 보인다
+  const marked =
+    task.status === 'failed' || task.status === 'cancelled' || task.waitReason === 'subtasks';
   return (
     <Link
       className={task.status === 'waiting' ? 't-card wait' : 't-card'}
@@ -136,7 +138,7 @@ function TaskCard({ task, agent }: { task: Task; agent: string | undefined }) {
       <small>
         {task.lastEvent ?? (task.status === 'queued' ? '러너 배정 대기' : when(task.createdAt))}
       </small>
-      {ended && <TaskPill status={task.status} />}
+      {marked && <TaskPill status={task.status} waitReason={task.waitReason} />}
     </Link>
   );
 }
@@ -169,7 +171,7 @@ function TaskList({ filter, agents }: { filter: string; agents: readonly Agent[]
                     {nameOf(t.agentId)} · {when(t.createdAt)}
                   </small>
                 </div>
-                <TaskPill status={t.status} />
+                <TaskPill status={t.status} waitReason={t.waitReason} />
               </Link>
             </li>
           ))}

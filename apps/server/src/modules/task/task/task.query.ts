@@ -41,6 +41,8 @@ export class TaskQuery extends BaseQuery {
         SELECT * FROM task.task_events WHERE task_id = ${req.id} ORDER BY id DESC LIMIT ${TaskQuery.EVENTS}
       ) e ORDER BY id`;
     const goals = row.goal_id === null ? [] : await this.goalChain(String(row.goal_id));
+    const children = await this.sql`
+      SELECT * FROM task.tasks WHERE parent_id = ${req.id} ORDER BY id`;
     return new TaskDetailView(
       TaskQuery.view(row),
       String(row.instruction),
@@ -57,6 +59,7 @@ export class TaskQuery extends BaseQuery {
           ),
       ),
       goals,
+      children.map((c) => TaskQuery.view(c)),
     );
   }
 
@@ -104,6 +107,8 @@ export class TaskQuery extends BaseQuery {
       r.finished_at === null ? null : new Date(r.finished_at),
       r.last_event === undefined || r.last_event === null ? null : String(r.last_event),
       r.goal_id === null ? null : String(r.goal_id),
+      r.parent_id === null ? null : String(r.parent_id),
+      r.wait_reason === null ? null : String(r.wait_reason),
     );
   }
 }

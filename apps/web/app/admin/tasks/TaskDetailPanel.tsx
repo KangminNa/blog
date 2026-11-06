@@ -81,9 +81,12 @@ export function TaskDetailPanel({ id }: { id: string }) {
             {agent ? `${agent.name} 에이전트` : '자동 배정'} · {when(t.createdAt)}
           </p>
         </div>
-        <TaskPill status={t.status} />
+        <TaskPill status={t.status} waitReason={t.waitReason} />
       </div>
       {paused && <p className="warn">담당 에이전트 중지됨. 재개하면 실행돼요</p>}
+      {t.waitReason === 'subtasks' && (
+        <p className="warn">하위 작업을 기다리는 중. 모두 끝나면 결과를 받아 다시 실행돼요</p>
+      )}
       {executing && <p className="warn">결재 승인됨. 실행 결과를 기다리는 중</p>}
       <section className="panel" aria-labelledby="task-instruction">
         <h2 id="task-instruction">지시</h2>
@@ -91,6 +94,37 @@ export function TaskDetailPanel({ id }: { id: string }) {
         <Facts task={t} />
       </section>
       <Result result={t.result} />
+      {(t.parentId || t.children.length > 0) && (
+        <section className="panel" aria-labelledby="task-family">
+          <h2 id="task-family">위임</h2>
+          {t.parentId && (
+            <p className="note">
+              맡긴 작업: <Link href={`/admin/tasks/${t.parentId}`}>위 작업 열기</Link>
+            </p>
+          )}
+          {t.children.length > 0 && (
+            <ul className="list" aria-label="하위 작업">
+              {t.children.map((c) => (
+                <li key={c.id}>
+                  <Link className="item" href={`/admin/tasks/${c.id}`}>
+                    <div className="item-main">
+                      <b>{c.title}</b>
+                      <small>
+                        {agents.data?.agents.find((a) => a.id === c.agentId)?.name ?? '자동 배정'}
+                        {c.lastEvent ? ` · ${c.lastEvent}` : ''}
+                      </small>
+                    </div>
+                    <TaskPill status={c.status} waitReason={c.waitReason} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          {CANCELLABLE.includes(t.status) && t.children.length > 0 && (
+            <p className="note">취소하면 끝나지 않은 하위 작업도 함께 취소돼요</p>
+          )}
+        </section>
+      )}
       <section className="panel" aria-labelledby="task-log">
         <div className="sec-title flat">
           <h2 id="task-log">실행 로그</h2>
@@ -100,7 +134,7 @@ export function TaskDetailPanel({ id }: { id: string }) {
       </section>
       {problem && <p className="error">{problem}</p>}
       <div className="row">
-        {t.status === 'waiting' && (
+        {t.waitReason === 'approval' && (
           <Link
             className="cta small"
             href={approval ? `/admin/approvals/${approval.id}` : '/admin/approvals'}

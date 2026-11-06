@@ -186,6 +186,53 @@ describe('지시문', () => {
     assert.equal(skilled.prompt(false).includes('cairn-write'), false);
   });
 
+  test('목표 사슬, 내 팀과 위임하는 법, 하위 작업의 결과를 담는다', () => {
+    const prompt = job({
+      goal_chain: [{ title: '회사' }, { title: '이번 달 글 4편' }],
+      team: [
+        {
+          agent_id: 'w1',
+          name: '글쓰기 팀원',
+          role: '초안을 쓴다\n둘째 줄',
+          status: 'active',
+          kinds: ['general', 'draft_post'],
+        },
+      ],
+      subtask_results: [
+        { title: '초안', agent: '글쓰기 팀원', status: 'done', summary: '썼어요', error: null },
+        {
+          title: '정리',
+          agent: '정리 팀원',
+          status: 'failed',
+          summary: null,
+          error: '세션이 없어요',
+        },
+      ],
+      rounds_left: 2,
+    }).prompt(false);
+    assert.ok(prompt.includes('회사 › 이번 달 글 4편'));
+    assert.ok(
+      prompt.includes(
+        '글쓰기 팀원 (agent_id: w1): 초안을 쓴다 · 맡길 수 있는 일: general, draft_post',
+      ),
+    );
+    assert.equal(prompt.includes('둘째 줄'), false);
+    assert.ok(prompt.includes('delegate_task'));
+    assert.ok(prompt.includes('남은 위임 횟수: 2'));
+    assert.ok(prompt.includes('## [완료] 초안 (글쓰기 팀원)\n썼어요'));
+    assert.ok(prompt.includes('## [실패] 정리 (정리 팀원)\n세션이 없어요'));
+  });
+
+  test('팀이 없으면 위임을 말하지 않고, 횟수를 다 쓰면 직접 마무리한다', () => {
+    assert.equal(job().prompt(false).includes('delegate_task'), false);
+    const spent = job({
+      team: [{ agent_id: 'w1', name: '팀원', role: '', status: 'active', kinds: ['general'] }],
+      rounds_left: 0,
+    }).prompt(false);
+    assert.equal(spent.includes('delegate_task'), false);
+    assert.ok(spent.includes('더 맡길 수 없습니다'));
+  });
+
   test('임대 끝을 시각으로 읽는다', () => {
     assert.equal(job().leaseUntil?.toISOString(), '2026-11-01T00:15:00.000Z');
   });

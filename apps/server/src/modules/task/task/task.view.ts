@@ -21,6 +21,10 @@ export class TaskView {
     readonly lastEvent: string | null,
     /** 이 작업이 향하는 목표 */
     readonly goalId: string | null,
+    /** 이 작업을 맡긴 위 작업 (위임). 주인이 맡긴 작업은 null */
+    readonly parentId: string | null,
+    /** waiting이면 무엇을 기다리는지: approval · subtasks */
+    readonly waitReason: string | null,
   ) {}
 
   toJSON() {
@@ -42,6 +46,8 @@ export class TaskView {
       finishedAt: this.finishedAt?.toISOString() ?? null,
       lastEvent: this.lastEvent,
       goalId: this.goalId,
+      parentId: this.parentId,
+      waitReason: this.waitReason,
     };
   }
 }
@@ -90,6 +96,8 @@ export class TaskDetailView {
     readonly events: readonly TaskEventView[],
     /** 회사 목표부터 이 작업의 목표까지. 목표가 없으면 비어 있다 */
     readonly goalChain: readonly TaskGoalView[],
+    /** 이 작업이 맡긴 하위 작업 (맡긴 순서) */
+    readonly children: readonly TaskView[],
   ) {}
 
   toJSON() {
@@ -100,6 +108,7 @@ export class TaskDetailView {
       result: this.result,
       events: this.events.map((e) => e.toJSON()),
       goalChain: this.goalChain.map((g) => g.toJSON()),
+      children: this.children.map((c) => c.toJSON()),
     };
   }
 }
@@ -113,6 +122,52 @@ export class TaskPageView {
 
   toJSON() {
     return { tasks: this.tasks.map((t) => t.toJSON()), next: this.next };
+  }
+}
+
+/** next_jobs의 팀원 한 명: 이 에이전트가 일을 맡길 수 있는 바로 아래 팀원 */
+export class JobTeamMemberView {
+  constructor(
+    readonly agentId: string,
+    readonly name: string,
+    readonly role: string,
+    readonly status: string,
+    /** 이 팀원에게 맡길 수 있는 일의 종류 */
+    readonly kinds: readonly string[],
+  ) {}
+
+  toJSON() {
+    return {
+      agent_id: this.agentId,
+      name: this.name,
+      role: this.role,
+      status: this.status,
+      kinds: this.kinds,
+    };
+  }
+}
+
+/** next_jobs의 하위 작업 결과 하나. 깨어난 위 작업이 결과를 모을 때 */
+export class JobSubtaskResultView {
+  constructor(
+    readonly taskId: string,
+    readonly title: string,
+    readonly agent: string | null,
+    readonly status: string,
+    /** 러너가 낸 결과 글의 앞부분 */
+    readonly summary: string | null,
+    readonly error: string | null,
+  ) {}
+
+  toJSON() {
+    return {
+      task_id: this.taskId,
+      title: this.title,
+      agent: this.agent,
+      status: this.status,
+      summary: this.summary,
+      error: this.error,
+    };
   }
 }
 
@@ -138,6 +193,14 @@ export class JobView {
     readonly agentTool: string | null,
     readonly leaseUntil: Date | null,
     readonly runToken: string | null,
+    /** 회사 목표부터 이 작업의 목표까지 (제목) */
+    readonly goalChain: readonly string[],
+    /** 바로 아래 팀. 팀이 없으면 비어 있다 */
+    readonly team: readonly JobTeamMemberView[],
+    /** 맡긴 하위 작업의 결과. 하위 작업이 끝나 깨어난 일에만 있다 */
+    readonly subtaskResults: readonly JobSubtaskResultView[],
+    /** 앞으로 위임할 수 있는 횟수 */
+    readonly roundsLeft: number,
   ) {}
 
   toJSON() {
@@ -166,6 +229,10 @@ export class JobView {
               tool: this.agentTool,
             },
       run_token: this.runToken,
+      goal_chain: this.goalChain.map((title) => ({ title })),
+      team: this.team.map((m) => m.toJSON()),
+      subtask_results: this.subtaskResults.map((r) => r.toJSON()),
+      rounds_left: this.roundsLeft,
     };
   }
 }

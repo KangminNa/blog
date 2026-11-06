@@ -28,6 +28,10 @@ export class TaskRepository extends BaseRepository<Task> {
       Number(row.attempts),
       row.request_id === null ? null : String(row.request_id),
       row.goal_id === null ? null : String(row.goal_id),
+      row.parent_id === null ? null : String(row.parent_id),
+      Number(row.depth),
+      row.wait_reason === null ? null : String(row.wait_reason),
+      Number(row.rounds),
       new Date(row.created_at),
       row.finished_at === null ? null : new Date(row.finished_at),
     );
@@ -97,6 +101,54 @@ export class TaskRepository extends BaseRepository<Task> {
     }, this.sql``);
   }
 
+  /** 이 request_id들로 이미 만든 작업 (위임을 다시 보냈을 때) */
+  async findByRequests(spaceId: string, requestIds: readonly string[]): Promise<readonly Task[]> {
+    const rows = await this.sql`
+      SELECT * FROM task.tasks
+      WHERE space_id = ${spaceId} AND request_id = ANY(${requestIds as string[]}::text[])`;
+    return rows.map((r) => this.toEntity(r));
+  }
+
+  /** 이 작업을 맡긴 위 작업의 id. 없으면 null */
+  async parentOf(id: string): Promise<string | null> {
+    const [row] = await this.sql`SELECT parent_id FROM task.tasks WHERE id = ${id}`;
+    return row?.parent_id ? String(row.parent_id) : null;
+  }
+
+  /** 위 작업이 맡긴 하위 작업 전부 (id 순서. 한 번에 맡긴 것끼리는 순서가 정해지지 않는다). 잠그지 않는다 */
+  async children(parentId: string): Promise<readonly Task[]> {
+    const rows = await this.sql`
+      SELECT * FROM task.tasks WHERE parent_id = ${parentId} ORDER BY id`;
+    return rows.map((r) => this.toEntity(r));
+  }
+
+  /** 끝나지 않은 하위 작업의 수 */
+  async openChildren(parentId: string): Promise<number> {
+    const [row] = await this.sql`
+      SELECT count(*) AS n FROM task.tasks
+      WHERE parent_id = ${parentId} AND status IN (${Task.QUEUED}, ${Task.RUNNING}, ${Task.WAITING})`;
+    return Number(row?.n ?? 0);
+  }
+
+  /**
+   * 끝나지 않은 아래 작업(하위의 하위까지)을 잠근다. 위 작업을 취소할 때 함께 취소한다.
+   * 위 작업을 먼저 잠근 뒤에 부른다 (위 → 아래 순서. 하위 작업이 끝날 때 깨우는 쪽은 위 작업만 잠근다)
+   */
+  async lockOpenDescendants(parentId: string): Promise<readonly Task[]> {
+    const rows = await this.sql`
+      WITH RECURSIVE below AS (
+        SELECT id FROM task.tasks WHERE parent_id = ${parentId}
+        UNION ALL
+        SELECT t.id FROM task.tasks t JOIN below ON t.parent_id = below.id
+      )
+      SELECT * FROM task.tasks
+      WHERE id IN (SELECT id FROM below)
+        AND status IN (${Task.QUEUED}, ${Task.RUNNING}, ${Task.WAITING})
+      ORDER BY id
+      FOR UPDATE`;
+    return rows.map((r) => this.toEntity(r));
+  }
+
   /** 도구의 끝나지 않은 연결 확인 */
   async findPendingAiTest(spaceId: string, tool: string): Promise<Task | null> {
     return this.maybeOne(
@@ -125,10 +177,11 @@ export class TaskRepository extends BaseRepository<Task> {
   async insertOnce(task: Task): Promise<boolean> {
     const inserted = await this.sql`
       INSERT INTO task.tasks (id, space_id, agent_id, kind, title, instruction, payload, target_kind,
-        target_id, base_version, status, priority, request_id, goal_id, created_at)
+        target_id, base_version, status, priority, request_id, goal_id, parent_id, depth, created_at)
       VALUES (${task.id}, ${task.spaceId}, ${task.agentId}, ${task.kind}, ${task.title}, ${task.instruction},
         ${this.sql.json(task.payload as never)}, ${task.targetKind}, ${task.targetId}, ${task.baseVersion},
-        ${task.status}, ${task.priority}, ${task.requestId}, ${task.goalId}, ${task.createdAt})
+        ${task.status}, ${task.priority}, ${task.requestId}, ${task.goalId}, ${task.parentId},
+        ${task.depth}, ${task.createdAt})
       ON CONFLICT (space_id, request_id) DO NOTHING
       RETURNING id`;
     if (inserted.length === 0) return false;

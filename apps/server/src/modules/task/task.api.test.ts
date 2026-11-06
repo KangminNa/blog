@@ -146,7 +146,7 @@ async function spaceId(): Promise<string> {
 /** 이 테스트의 일만 보이게 앞 테스트가 남긴 일을 치운다 */
 beforeEach(async () => {
   await db.sql`
-    UPDATE task.tasks SET status = 'cancelled', lease_until = NULL
+    UPDATE task.tasks SET status = 'cancelled', lease_until = NULL, wait_reason = NULL
     WHERE status IN ('queued', 'running', 'waiting')`;
 });
 
@@ -847,6 +847,7 @@ describe('작업 토큰', () => {
       'get_wiki',
       'neighbors',
       'request_approval',
+      'delegate_task',
     ]);
     assert.equal((await tool(reader.run_token, 'save_session')).body.scope, 'upload');
     assert.equal((await tool(reader.run_token, 'next_jobs')).body.scope, 'run');
@@ -855,6 +856,7 @@ describe('작업 토큰', () => {
     const uploader = await take();
     assert.deepEqual((await toolNames(uploader.run_token)).sort(), [
       'check_session',
+      'delegate_task',
       'request_approval',
       'save_session',
     ]);
@@ -1053,6 +1055,219 @@ describe('에이전트', () => {
       title: '일',
     });
     assert.equal(res.status, 404);
+  });
+});
+
+describe('위임', () => {
+  /** 팀장과 바로 아래 팀원 둘 (글쓰기, 정리). 정리 팀원만 세션 정리 권한이 있다 */
+  async function team(): Promise<{ lead: Json; writer: Json; tidier: Json }> {
+    const lead = await newAgent({ name: '팀장', scopes: ['read_public'], approvalActions: [] });
+    const writer = await newAgent({ name: '글쓰기 팀원', reportsTo: lead.id });
+    const tidier = await newAgent({
+      name: '정리 팀원',
+      scopes: ['tidy', 'read_all'],
+      approvalActions: ['blog.post.publish'],
+      reportsTo: lead.id,
+    });
+    return { lead, writer, tidier };
+  }
+
+  const order = (requestId: string, agent: Json, more: Json = {}) => ({
+    request_id: requestId,
+    to_agent_id: agent.id,
+    title: `${agent.name}의 일`,
+    instruction: '맡은 부분을 해 주세요',
+    ...more,
+  });
+
+  test('팀장 → 팀원 둘 → 모두 끝나면 결과를 싣고 팀장에게 돌아온다', async () => {
+    const { lead, writer, tidier } = await team();
+    const company = ok(
+      await api.request('POST', '/api/goals', owner, { requestId: randomUUID(), title: '회사' }),
+      201,
+    );
+    const goal = ok(
+      await api.request('POST', '/api/goals', owner, {
+        requestId: randomUUID(),
+        title: '이번 달 글 4편',
+        parentId: company.id,
+      }),
+      201,
+    );
+    const parent = await newTask(lead, { kind: 'general', goalId: goal.id });
+
+    const job = (await take()) as Awaited<ReturnType<typeof take>> & Json;
+    assert.equal(job.task.id, parent.id);
+    assert.deepEqual(job.goal_chain, [{ title: '회사' }, { title: '이번 달 글 4편' }]);
+    assert.deepEqual(
+      (job.team as Json[]).map((m) => [m.name, m.kinds]),
+      [
+        ['글쓰기 팀원', ['general', 'draft_post']],
+        ['정리 팀원', ['general', 'draft_post', 'tidy_session']],
+      ],
+    );
+    assert.deepEqual(job.subtask_results, []);
+    assert.equal(job.rounds_left, 3);
+
+    const subtasks = [
+      order('draft', writer, { kind: 'draft_post' }),
+      order('tidy', tidier, { kind: 'tidy_session' }),
+    ];
+    const delegated = await tool(job.run_token, 'delegate_task', { subtasks });
+    assert.equal(delegated.ok, true, JSON.stringify(delegated.body));
+    assert.equal(delegated.body.waiting, 'subtasks');
+    const made = delegated.body.subtasks as Json[];
+    assert.deepEqual(
+      made.map((m) => [m.to_agent_id, m.status]),
+      [
+        [writer.id, 'queued'],
+        [tidier.id, 'queued'],
+      ],
+    );
+    // 응답을 놓쳐 다시 보내도 하위 작업은 그대로 둘이다
+    const again = await tool(job.run_token, 'delegate_task', { subtasks });
+    assert.deepEqual(
+      (again.body.subtasks as Json[]).map((m) => m.task_id),
+      made.map((m) => m.task_id),
+    );
+
+    const waiting = await getTask(parent.id);
+    assert.equal(waiting.status, 'waiting');
+    assert.equal(waiting.waitReason, 'subtasks');
+    assert.deepEqual(
+      (waiting.children as Json[]).map((c) => c.id),
+      made.map((m) => m.task_id),
+    );
+    // 러너는 진행 보고의 답으로 AI를 끄고 제출하지 않는다 (결재 대기와 같다)
+    const progress = await tool(runner, 'report_progress', { task_id: parent.id, events: [] });
+    assert.equal(progress.body.status, 'waiting');
+
+    // 팀원의 일: 목표를 물려받고, 글쓰기는 끝내고 정리는 실패한다. 같은 때 만든 둘은 어느 쪽이 먼저 나올지 정하지 않는다
+    const first = (await take()) as Awaited<ReturnType<typeof take>> & Json;
+    assert.deepEqual(first.goal_chain, job.goal_chain);
+    assert.deepEqual(first.team, [], '팀원에게는 팀이 없다');
+    const finish = (child: Awaited<ReturnType<typeof take>>) =>
+      child.agent.name === '글쓰기 팀원'
+        ? tool(runner, 'submit_result', {
+            task_id: child.task.id,
+            request_id: randomUUID(),
+            status: 'done',
+            result: { text: '초안을 썼어요' },
+          })
+        : tool(runner, 'submit_result', {
+            task_id: child.task.id,
+            request_id: randomUUID(),
+            status: 'failed',
+            error: '세션이 없어요',
+          });
+    assert.equal((await finish(first)).ok, true);
+    await drain();
+    assert.equal((await getTask(parent.id)).status, 'waiting', '하나가 남아 아직 기다린다');
+
+    const second = await take();
+    assert.deepEqual(
+      [first.task.id, second.task.id].sort(),
+      made.map((m) => String(m.task_id)).sort(),
+    );
+    assert.equal((await finish(second)).ok, true);
+    await drain();
+    const woke = await getTask(parent.id);
+    assert.equal(woke.status, 'queued');
+    assert.equal(woke.waitReason, null);
+
+    const back = (await take()) as Awaited<ReturnType<typeof take>> & Json;
+    assert.equal(back.task.id, parent.id);
+    assert.equal(back.agent.name, '팀장');
+    assert.deepEqual(
+      (back.subtask_results as Json[])
+        .map((r) => [r.title, r.agent, r.status, r.summary, r.error])
+        .sort(),
+      [
+        ['글쓰기 팀원의 일', '글쓰기 팀원', 'done', '초안을 썼어요', null],
+        ['정리 팀원의 일', '정리 팀원', 'failed', null, '세션이 없어요'],
+      ],
+    );
+    assert.equal(back.rounds_left, 2);
+    const done = await tool(runner, 'submit_result', {
+      task_id: parent.id,
+      request_id: randomUUID(),
+      status: 'done',
+      result: { text: '모아서 보고' },
+    });
+    assert.equal(done.body.status, 'done');
+  });
+
+  test('바로 아래 팀이 아니면 forbidden, 권한으로 못 하는 일은 rule_violation, 기다리는 중이면 conflict', async () => {
+    const { lead, writer } = await team();
+    const outsider = await newAgent({ name: '다른 팀' });
+    await newTask(lead, { kind: 'general' });
+    const job = await take();
+
+    const notMine = await tool(job.run_token, 'delegate_task', {
+      subtasks: [order('x', outsider)],
+    });
+    assert.equal(notMine.ok, false);
+    assert.equal(notMine.body.code, 'forbidden');
+    const cannot = await tool(job.run_token, 'delegate_task', {
+      subtasks: [order('y', writer, { kind: 'tidy_session' })],
+    });
+    assert.equal(cannot.body.code, 'rule_violation');
+    const tooMany = await tool(job.run_token, 'delegate_task', {
+      subtasks: ['1', '2', '3', '4', '5', '6'].map((id) => order(id, writer)),
+    });
+    assert.equal(tooMany.body.code, 'rule_violation', '한 번에 5개까지');
+
+    const once = await tool(job.run_token, 'delegate_task', { subtasks: [order('z', writer)] });
+    assert.equal(once.ok, true, JSON.stringify(once.body));
+    const twice = await tool(job.run_token, 'delegate_task', { subtasks: [order('w', writer)] });
+    assert.equal(twice.body.code, 'conflict', '하위 작업을 기다리는 중');
+    const approval = await askApproval(job.run_token);
+    assert.equal(approval.ok, false, '하위 작업을 기다리는 중에는 결재도 올리지 못한다');
+  });
+
+  test('팀원은 자기 팀이 없으면 맡기지 못하고, 기기에게는 위임 도구가 보이지 않는다', async () => {
+    const { writer } = await team();
+    await newTask(writer, { kind: 'general' });
+    const job = await take();
+    assert.ok((await toolNames(job.run_token)).includes('delegate_task'));
+    const none = await tool(job.run_token, 'delegate_task', {
+      subtasks: [order('a', { id: randomUUID(), name: '없는 에이전트' })],
+    });
+    assert.equal(none.body.code, 'forbidden');
+    assert.equal((await toolNames(runner)).includes('delegate_task'), false);
+    assert.equal((await toolNames(laptop)).includes('delegate_task'), false);
+  });
+
+  test('위 작업을 취소하면 끝나지 않은 아래 작업도 함께 취소되고 기다리던 결재도 닫힌다', async () => {
+    const { lead, writer, tidier } = await team();
+    const parent = await newTask(lead, { kind: 'general' });
+    const job = await take();
+    const made = (
+      await tool(job.run_token, 'delegate_task', {
+        subtasks: [order('a', writer), order('b', tidier)],
+      })
+    ).body.subtasks as Json[];
+    // 먼저 나온 팀원은 일을 시작해 결재를 올린다 (둘 다 글 공개를 맡을 수 있다)
+    const child = await take();
+    assert.equal((await askApproval(child.run_token)).ok, true);
+
+    const before = await getTask(parent.id);
+    const cancelled = ok(
+      await api.request('POST', `/api/tasks/${parent.id}/cancel`, owner, {
+        version: before.version,
+      }),
+    );
+    assert.equal(cancelled.status, 'cancelled');
+    for (const m of made) assert.equal((await getTask(m.task_id)).status, 'cancelled');
+    const pending = ok(await api.get('/api/approvals?status=pending', owner)) as {
+      approvals: Json[];
+    };
+    assert.equal(
+      pending.approvals.some((a) => a.taskId === child.task.id),
+      false,
+    );
+    await drain();
+    assert.equal((await getTask(parent.id)).status, 'cancelled', '취소된 위 작업은 깨우지 않는다');
   });
 });
 

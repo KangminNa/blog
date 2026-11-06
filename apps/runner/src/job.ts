@@ -9,6 +9,67 @@ export class JobTarget {
   ) {}
 }
 
+/** 일을 맡길 수 있는 바로 아래 팀원 한 명 (위임) */
+export class TeamMember {
+  constructor(
+    readonly agentId: string,
+    readonly name: string,
+    readonly role: string,
+    readonly status: string,
+    readonly kinds: readonly string[],
+  ) {}
+
+  static from(raw: Json): TeamMember {
+    return new TeamMember(
+      raw.text('agent_id'),
+      raw.text('name'),
+      raw.text('role'),
+      raw.text('status'),
+      raw.texts('kinds'),
+    );
+  }
+
+  /** 지시문의 한 줄. 역할은 첫 줄만 */
+  get line(): string {
+    const role = this.role.split('\n')[0]?.trim();
+    const paused = this.status === 'paused' ? ' (중지됨: 맡겨도 재개될 때까지 기다림)' : '';
+    return `- ${this.name} (agent_id: ${this.agentId})${role ? `: ${role}` : ''} · 맡길 수 있는 일: ${this.kinds.join(', ')}${paused}`;
+  }
+}
+
+/** 맡긴 하위 작업 하나의 결과. 하위 작업이 모두 끝나 깨어난 일에만 온다 */
+export class SubtaskResult {
+  private static readonly STATUS: Readonly<Record<string, string>> = {
+    done: '완료',
+    failed: '실패',
+    cancelled: '취소',
+  };
+
+  constructor(
+    readonly title: string,
+    readonly agent: string,
+    readonly status: string,
+    readonly summary: string | null,
+    readonly error: string | null,
+  ) {}
+
+  static from(raw: Json): SubtaskResult {
+    return new SubtaskResult(
+      raw.text('title'),
+      raw.text('agent'),
+      raw.text('status'),
+      raw.optionalText('summary'),
+      raw.optionalText('error'),
+    );
+  }
+
+  get line(): string {
+    const status = SubtaskResult.STATUS[this.status] ?? this.status;
+    const body = this.error ?? this.summary ?? '결과 글 없음';
+    return `## [${status}] ${this.title} (${this.agent || '담당 없음'})\n${body}`;
+  }
+}
+
 // next_jobs가 빌려 준 일 하나. run_token은 AI CLI의 MCP 설정에만 쓴다.
 // 연결 확인(ai_test)에는 에이전트도 run_token도 없다. 도구는 작업의 payload에 있고, MCP 없이 지시만 돌린다.
 export class Job {
@@ -28,6 +89,14 @@ export class Job {
     readonly tool: string,
     readonly runToken: string | null,
     readonly leaseUntil: Date | null,
+    /** 회사 목표부터 이 일의 목표까지 (제목) */
+    readonly goalChain: readonly string[] = [],
+    /** 바로 아래 팀. 있으면 delegate_task로 일을 나눠 맡길 수 있다 */
+    readonly team: readonly TeamMember[] = [],
+    /** 맡긴 하위 작업의 결과 (깨어난 일) */
+    readonly subtaskResults: readonly SubtaskResult[] = [],
+    /** 앞으로 위임할 수 있는 횟수 */
+    readonly roundsLeft = 0,
   ) {}
 
   static from(raw: Json): Job {
@@ -50,6 +119,13 @@ export class Job {
       agent.text('tool') || task.child('payload').text('tool'),
       raw.optionalText('run_token'),
       lease === null ? null : new Date(lease),
+      raw
+        .list('goal_chain')
+        .map((g) => g.text('title'))
+        .filter(Boolean),
+      raw.list('team').map((m) => TeamMember.from(m)),
+      raw.list('subtask_results').map((r) => SubtaskResult.from(r)),
+      raw.number('rounds_left'),
     );
   }
 
@@ -70,7 +146,19 @@ export class Job {
       const edition = version === null ? '' : `, 판 ${version}`;
       parts.push(`# 대상\n${kind} ${id}${edition}`);
     }
+    if (this.goalChain.length > 0)
+      parts.push(`# 목표\n${this.goalChain.join(' › ')}\n이 일은 위 목표를 위한 것입니다.`);
     if (this.revisionNote) parts.push(`# 주인이 고쳐 달라고 한 말\n${this.revisionNote}`);
+    if (this.subtaskResults.length > 0)
+      parts.push(
+        [
+          '# 맡긴 하위 작업의 결과',
+          ...this.subtaskResults.map((r) => r.line),
+          '',
+          '결과를 모아 할 일을 마무리하고, 무엇을 했는지 짧게 보고하며 끝냅니다.',
+        ].join('\n'),
+      );
+    if (this.team.length > 0) parts.push(this.teamPart());
     if (this.skill && skillReady) parts.push(`# 스킬\n${this.skill} 스킬을 따릅니다.`);
     parts.push(
       [
@@ -80,5 +168,18 @@ export class Job {
       ].join('\n'),
     );
     return parts.join('\n\n');
+  }
+
+  /** 내 팀과 위임하는 법. 맡길지는 AI가 정하고, 받는 쪽 · 종류 · 한도는 서버가 막는다 */
+  private teamPart(): string {
+    const how =
+      this.roundsLeft > 0
+        ? [
+            '나눠 맡기는 편이 나을 때만 delegate_task로 한 번에 맡기고, 이 실행은 바로 끝냅니다.',
+            '팀원은 내가 쓴 지시와 목표만 보고 일하므로 지시에 필요한 것을 모두 적습니다.',
+            `하위 작업이 모두 끝나면 결과와 함께 이 일이 다시 옵니다. 남은 위임 횟수: ${this.roundsLeft}.`,
+          ]
+        : ['더 맡길 수 없습니다. 직접 마무리합니다.'];
+    return ['# 내 팀 (바로 아래)', ...this.team.map((m) => m.line), '', ...how].join('\n');
   }
 }

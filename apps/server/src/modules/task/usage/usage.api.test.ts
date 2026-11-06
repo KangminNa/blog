@@ -118,7 +118,7 @@ async function spent(agent: Json, tokens: number, ago: string): Promise<void> {
 /** 이 테스트의 에이전트와 일만 보이게 앞 테스트가 남긴 것을 치운다 */
 beforeEach(async () => {
   await db.sql`
-    UPDATE task.tasks SET status = 'cancelled', lease_until = NULL
+    UPDATE task.tasks SET status = 'cancelled', lease_until = NULL, wait_reason = NULL
     WHERE status IN ('queued', 'running', 'waiting')`;
   await db.sql`UPDATE task.agents SET status = 'paused' WHERE status = 'active'`;
   await db.sql`DELETE FROM task.plan_usage`;

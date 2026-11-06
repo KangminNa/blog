@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
-import { AgentActor, RuleViolation, SecretBox } from '../../platform';
+import { AgentActor, Conflict, Forbidden, RuleViolation, SecretBox } from '../../platform';
+import { Agent } from '../agent/agent';
 import { Task } from './task';
 
 // 작업의 상태 기계: 허용된 변경만 메서드로 받고, 나머지는 RuleViolation. DB 없이 돈다.
@@ -195,12 +196,17 @@ describe('작업 상태', () => {
       1,
       null,
       null,
+      null,
+      0,
+      null,
+      0,
       NOW,
       null,
     );
     assert.equal(task.changed, false);
     task.waitFor(NOW);
-    assert.deepEqual(Object.keys(task.changes), ['status']);
+    assert.deepEqual(Object.keys(task.changes), ['status', 'wait_reason']);
+    assert.equal(task.waitReason, Task.WAIT_APPROVAL);
   });
 
   test('kind로 스킬을 고른다', () => {
@@ -239,5 +245,179 @@ describe('작업 토큰', () => {
 
   test('서버 키가 없으면 풀지 않는다', () => {
     assert.equal(AgentActor.open(SecretBox.fromEnv({}), 'cairn_run_abc'), null);
+  });
+});
+
+describe('위임', () => {
+  /** 팀장과 바로 아래 팀원 둘(글쓰기, 정리), 팀 밖의 에이전트 하나 */
+  function org() {
+    const make = (name: string, scopes: string[]) =>
+      Agent.open('space', name, '', 'claude', scopes, [], null, null, null, NOW);
+    const lead = make('팀장', ['read_public']);
+    const writer = make('글쓰기', ['read_public', 'write']);
+    const tidier = make('정리', ['tidy', 'read_all']);
+    const outsider = make('남', ['write']);
+    const all = [lead, writer, tidier, outsider];
+    writer.reportTo(lead.id, all);
+    tidier.reportTo(lead.id, all);
+    return { lead, writer, tidier, outsider };
+  }
+
+  function leadTask(lead: Agent): Task {
+    const task = Task.open(
+      'space',
+      lead.id,
+      'general',
+      '이번 달 글',
+      '',
+      {},
+      null,
+      null,
+      null,
+      7,
+      randomUUID(),
+      'goal-1',
+      NOW,
+    );
+    task.lease(RUNNER, lead.id, NOW);
+    return task;
+  }
+
+  const order = (task: Task, lead: Agent, worker: Agent | null, kind = 'general') =>
+    task.subtask(
+      lead,
+      worker,
+      randomUUID(),
+      kind,
+      '조사',
+      '자료를 모아 주세요',
+      null,
+      null,
+      null,
+      NOW,
+    );
+
+  test('바로 아래 팀원에게 맡기면 목표 · 우선순위 · 깊이를 물려받은 대기 작업이 생긴다', () => {
+    const { lead, writer } = org();
+    const parent = leadTask(lead);
+    parent.assertCanDelegate(lead.id, 1, 0, NOW);
+    const child = order(parent, lead, writer, 'draft_post');
+    assert.equal(child.status, Task.QUEUED);
+    assert.equal(child.agentId, writer.id);
+    assert.equal(child.parentId, parent.id);
+    assert.equal(child.depth, 1);
+    assert.equal(child.goalId, 'goal-1');
+    assert.equal(child.priority, 7);
+    assert.match(String(child.requestId), new RegExp(`^delegate:${parent.id}:`));
+
+    parent.waitForSubtasks(1, NOW);
+    assert.equal(parent.status, Task.WAITING);
+    assert.equal(parent.waitReason, Task.WAIT_SUBTASKS);
+    assert.equal(parent.rounds, 1);
+    assert.throws(() => parent.resume(), RuleViolation, '결재 승인으로 깨울 수 없다');
+  });
+
+  test('팀이 아니거나 없는 에이전트, 권한으로 못 하는 일, 맡길 수 없는 종류는 막는다', () => {
+    const { lead, writer, tidier, outsider } = org();
+    const parent = leadTask(lead);
+    assert.throws(() => order(parent, lead, outsider), Forbidden);
+    assert.throws(() => order(parent, lead, null), Forbidden);
+    assert.throws(() => order(parent, writer, tidier), Forbidden, '팀원끼리는 맡기지 못한다');
+    assert.throws(() => order(parent, lead, writer, 'tidy_session'), RuleViolation);
+    assert.throws(() => order(parent, lead, writer, 'ai_test'), RuleViolation);
+    assert.equal(order(parent, lead, tidier, 'tidy_session').kind, 'tidy_session');
+    assert.deepEqual(Task.delegableWith(writer.scopes), ['general', 'draft_post']);
+  });
+
+  test('한도: 한 번에 5개, 작업 하나에 10개, 깊이 3, 라운드 3. 실행 중이 아니면 conflict', () => {
+    const { lead } = org();
+    const parent = leadTask(lead);
+    assert.throws(() => parent.assertCanDelegate(lead.id, 6, 0, NOW), RuleViolation);
+    assert.throws(() => parent.assertCanDelegate(lead.id, 0, 0, NOW), RuleViolation);
+    assert.throws(() => parent.assertCanDelegate(lead.id, 2, 9, NOW), RuleViolation);
+    parent.assertCanDelegate(lead.id, 1, 9, NOW);
+    assert.throws(() => parent.assertCanDelegate('someone-else', 1, 0, NOW), Forbidden);
+    assert.throws(() => parent.assertCanDelegate(lead.id, 1, 0, LATER), Conflict, '임대가 끝남');
+
+    const deep = Task.restore(
+      't',
+      1,
+      'space',
+      lead.id,
+      'general',
+      't',
+      '',
+      {},
+      null,
+      null,
+      null,
+      null,
+      Task.RUNNING,
+      0,
+      LATER,
+      RUNNER,
+      1,
+      'r',
+      null,
+      'p',
+      Task.DEPTH_MAX,
+      null,
+      0,
+      NOW,
+      null,
+    );
+    assert.throws(() => deep.assertCanDelegate(lead.id, 1, 0, NOW), RuleViolation);
+    const tired = Task.restore(
+      't',
+      1,
+      'space',
+      lead.id,
+      'general',
+      't',
+      '',
+      {},
+      null,
+      null,
+      null,
+      null,
+      Task.RUNNING,
+      0,
+      LATER,
+      RUNNER,
+      1,
+      'r',
+      null,
+      null,
+      0,
+      null,
+      Task.ROUNDS_MAX,
+      NOW,
+      null,
+    );
+    assert.throws(() => tired.assertCanDelegate(lead.id, 1, 0, NOW), RuleViolation);
+
+    parent.waitForSubtasks(1, NOW);
+    assert.throws(() => parent.assertCanDelegate(lead.id, 1, 0, NOW), Conflict);
+  });
+
+  test('하위 작업이 끝나면 깨어나 대기열로: 시도 횟수는 새로, 기다리는 이유는 지운다', () => {
+    const { lead } = org();
+    const parent = leadTask(lead);
+    parent.waitForSubtasks(2, NOW);
+    parent.clearChanges();
+    parent.wakeAfterSubtasks(NOW);
+    assert.equal(parent.status, Task.QUEUED);
+    assert.equal(parent.waitReason, null);
+    assert.equal(parent.attempts, 0);
+    assert.equal(parent.leaseUntil, null);
+    assert.equal(parent.changes.wait_reason, null);
+  });
+
+  test('결재를 기다리는 작업은 하위 작업으로 깨울 수 없고, 취소하면 기다리는 이유가 지워진다', () => {
+    const task = waiting();
+    assert.throws(() => task.wakeAfterSubtasks(NOW), RuleViolation);
+    task.cancel(NOW);
+    assert.equal(task.waitReason, null);
+    assert.equal(task.settled, true);
   });
 });

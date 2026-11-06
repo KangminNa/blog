@@ -7,6 +7,7 @@
 //   [fake:fail]         오류를 내고 코드 3으로 끝난다
 //   [fake:error-result] 코드 0으로 끝나지만 결과가 실패다
 //   [fake:approval]     작업 토큰으로 결재를 올린다 (MCP 설정 파일을 읽어서)
+//   [fake:delegate]     지시문의 "내 팀"에게 하위 작업을 하나씩 맡기고 끝난다. 결과를 받아 깨어난 실행은 맡기지 않고 끝낸다
 //   [fake:stray]        허락하지 않은 MCP 서버가 붙은 것처럼 보인다
 // 연결 확인(MCP 설정 없음)은 ok라고 답한다. 토큰에 wrong이 들어 있으면 로그인 실패처럼 끝난다
 import { randomUUID } from 'node:crypto';
@@ -143,6 +144,42 @@ assistant(
   },
 );
 toolResult('toolu_2', `토큰 ${process.env.CLAUDE_CODE_OAUTH_TOKEN} 때문에 실패`, true);
+
+/** 작업 토큰으로 cairn 도구 하나를 부른다. 실패하면 코드 4로 끝난다 */
+async function callTool(name, args) {
+  const res = await fetch(cairn.url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      ...cairn.headers,
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name, arguments: args },
+    }),
+  });
+  const body = await res.json();
+  if (res.status !== 200 || body.result?.isError) {
+    process.stderr.write(`${name}을(를) 부르지 못했어요: ${JSON.stringify(body)}\n`);
+    process.exit(4);
+  }
+  return body.result.structuredContent;
+}
+
+if (has('delegate') && !prompt.includes('# 맡긴 하위 작업의 결과')) {
+  const team = [...prompt.matchAll(/^- (.+?) \(agent_id: ([0-9a-f-]+)\)/gm)];
+  await callTool('delegate_task', {
+    subtasks: team.map(([, name, id]) => ({
+      request_id: randomUUID(),
+      to_agent_id: id,
+      title: `${name}에게 맡긴 조사`,
+      instruction: '자료를 모아 주세요',
+    })),
+  });
+}
 
 if (has('approval')) {
   const res = await fetch(cairn.url, {
