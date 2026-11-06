@@ -43,6 +43,7 @@ export class AgentResponse extends BaseResponse {
       monthlyLimit: a.monthlyLimit,
       fiveHourLimit: a.fiveHourLimit,
       planStopPercent: a.planStopPercent,
+      reportsTo: a.reportsTo,
       status: a.status,
       version: a.version,
       createdAt: a.createdAt.toISOString(),

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { type Actor, AgentActor, BaseQuery, NotFound, type Row } from '../../platform';
 import { Task } from './task';
 import type { ListTasksInput, TaskIdInput } from './task.input';
-import { TaskDetailView, TaskEventView, TaskPageView, TaskView } from './task.view';
+import { TaskDetailView, TaskEventView, TaskGoalView, TaskPageView, TaskView } from './task.view';
 
 // 작업 읽기. 목록과 상세는 주인만. mcp 모듈은 작업 토큰이 아직 살아 있는지 여기에 묻는다.
 @Injectable()
@@ -23,6 +23,7 @@ export class TaskQuery extends BaseQuery {
       ) e ON true
       WHERE t.space_id = ${actor.spaceId}
         ${req.status === null ? this.sql`` : this.sql`AND t.status = ${req.status}`}
+        ${req.goalId === null ? this.sql`` : this.sql`AND t.goal_id = ${req.goalId}`}
         ${req.cursor === null ? this.sql`` : this.sql`AND t.id < ${req.cursor}`}
       ORDER BY t.id DESC
       LIMIT ${TaskQuery.PAGE + 1}`;
@@ -39,6 +40,7 @@ export class TaskQuery extends BaseQuery {
       SELECT * FROM (
         SELECT * FROM task.task_events WHERE task_id = ${req.id} ORDER BY id DESC LIMIT ${TaskQuery.EVENTS}
       ) e ORDER BY id`;
+    const goals = row.goal_id === null ? [] : await this.goalChain(String(row.goal_id));
     return new TaskDetailView(
       TaskQuery.view(row),
       String(row.instruction),
@@ -54,7 +56,21 @@ export class TaskQuery extends BaseQuery {
             Number(e.tokens),
           ),
       ),
+      goals,
     );
+  }
+
+  /** 회사 목표부터 이 목표까지. 목표의 부모는 바뀌지 않는다 */
+  private async goalChain(goalId: string): Promise<readonly TaskGoalView[]> {
+    const rows = await this.sql`
+      WITH RECURSIVE up AS (
+        SELECT id, parent_id, title, status, 0 AS step FROM task.goals WHERE id = ${goalId}
+        UNION ALL
+        SELECT g.id, g.parent_id, g.title, g.status, up.step + 1 FROM task.goals g
+        JOIN up ON g.id = up.parent_id
+      )
+      SELECT * FROM up ORDER BY step DESC`;
+    return rows.map((r) => new TaskGoalView(String(r.id), String(r.title), String(r.status)));
   }
 
   /**
@@ -87,6 +103,7 @@ export class TaskQuery extends BaseQuery {
       new Date(r.created_at),
       r.finished_at === null ? null : new Date(r.finished_at),
       r.last_event === undefined || r.last_event === null ? null : String(r.last_event),
+      r.goal_id === null ? null : String(r.goal_id),
     );
   }
 }

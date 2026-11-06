@@ -14,6 +14,7 @@ import { AgentRepository } from '../agent/agent.repository';
 import { AiLoginRepository } from '../ai/ai-login.repository';
 import { Approval } from '../approval/approval';
 import { ApprovalRepository } from '../approval/approval.repository';
+import { GoalRepository } from '../goal/goal.repository';
 import { PlanUsage } from '../usage/plan-usage';
 import { PlanUsageRepository } from '../usage/plan-usage.repository';
 import { Task } from './task';
@@ -171,6 +172,9 @@ export class TaskService extends BaseService {
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
       if (req.agentId !== null) await new AgentRepository(tx).load(spaceId, req.agentId);
+      // 목표는 진행 중이어야 한다. 잠그지 않는다: 그사이 끝나도 이어진 작업은 그대로 가는 것과 같다
+      if (req.goalId !== null)
+        (await new GoalRepository(tx).load(spaceId, req.goalId)).assertActive();
       const task = Task.open(
         spaceId,
         req.agentId,
@@ -183,6 +187,7 @@ export class TaskService extends BaseService {
         req.baseVersion,
         req.priority,
         req.requestId,
+        req.goalId,
         new Date(),
       );
       return (await tasks.insertOnce(task)) ? task : tasks.findByRequest(spaceId, req.requestId);

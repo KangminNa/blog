@@ -993,6 +993,58 @@ describe('에이전트', () => {
     assert.equal(saved?.version, Number(agent.version) + 1);
   });
 
+  test('조직도: 보고 대상을 정하고 주인에게 되돌린다. 순환과 없는 대상은 422', async () => {
+    const lead = await newAgent({ name: '팀장' });
+    const member = await newAgent({ name: '담당', reportsTo: lead.id });
+    assert.equal(member.reportsTo, lead.id, '만들 때 정할 수 있다');
+
+    const cycle = await api.request('PATCH', `/api/agents/${lead.id}`, owner, {
+      reportsTo: member.id,
+      version: lead.version,
+    });
+    assert.equal(cycle.status, 422, '자기 팀원에게 보고할 수 없다');
+    const self = await api.request('PATCH', `/api/agents/${lead.id}`, owner, {
+      reportsTo: lead.id,
+      version: lead.version,
+    });
+    assert.equal(self.status, 422);
+    const nobody = await api.request('PATCH', `/api/agents/${member.id}`, owner, {
+      reportsTo: randomUUID(),
+      version: member.version,
+    });
+    assert.equal(nobody.status, 422, nobody.text);
+
+    const back = ok(
+      await api.request('PATCH', `/api/agents/${member.id}`, owner, {
+        reportsTo: null,
+        version: member.version,
+      }),
+    );
+    assert.equal(back.reportsTo, null, 'null이면 주인에게 보고');
+    const kept = ok(
+      await api.request('PATCH', `/api/agents/${member.id}`, owner, {
+        name: '담당 2',
+        version: back.version,
+      }),
+    );
+    assert.equal(kept.reportsTo, null, '보내지 않으면 그대로');
+    const { agents } = ok(await api.get('/api/agents', owner)) as { agents: Json[] };
+    assert.equal(agents.find((a) => a.id === lead.id)?.reportsTo, null);
+  });
+
+  test('조직도는 4단계까지', async () => {
+    let boss = await newAgent({ name: '1단계' });
+    for (const name of ['2단계', '3단계', '4단계'])
+      boss = await newAgent({ name, reportsTo: boss.id });
+    const deep = await api.request('POST', '/api/agents', owner, {
+      requestId: randomUUID(),
+      name: '5단계',
+      tool: 'claude',
+      reportsTo: boss.id,
+    });
+    assert.equal(deep.status, 422, deep.text);
+  });
+
   test('없는 에이전트에게 일을 시킬 수 없다', async () => {
     const res = await api.request('POST', '/api/tasks', owner, {
       requestId: randomUUID(),

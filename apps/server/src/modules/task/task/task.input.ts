@@ -7,7 +7,7 @@ const VERSION_MAX = 2_147_483_647;
 const PRIORITY_MAX = 1000;
 
 /**
- * 작업 하나를 만드는 입력. 콘솔(POST /api/tasks)은 requestId · instruction · agentId?만 보내고,
+ * 작업 하나를 만드는 입력. 콘솔(POST /api/tasks)은 requestId · instruction · agentId? · goalId?만 보내고,
  * 일 요청 이벤트(task.task.requested)는 종류, 제목, 대상까지 적는다.
  */
 export class CreateTaskInput extends BaseRequest {
@@ -25,6 +25,8 @@ export class CreateTaskInput extends BaseRequest {
     readonly targetId: string | null,
     readonly baseVersion: number | null,
     readonly priority: number,
+    /** 이 작업이 향하는 목표 (진행 중이어야 한다) */
+    readonly goalId: string | null,
   ) {
     super();
   }
@@ -43,6 +45,7 @@ export class CreateTaskInput extends BaseRequest {
         CreateTaskInput.optionalUuid(f, raw, 'targetId'),
         f.optionalInteger('baseVersion', 0, VERSION_MAX),
         f.optionalInteger('priority', -PRIORITY_MAX, PRIORITY_MAX) ?? 0,
+        CreateTaskInput.optionalUuid(f, raw, 'goalId'),
       );
     });
   }
@@ -66,10 +69,12 @@ export class CreateTaskInput extends BaseRequest {
   }
 }
 
-/** GET /api/tasks */
+/** GET /api/tasks: ?status= · ?goalId= · ?cursor= */
 export class ListTasksInput extends BaseRequest {
   private constructor(
     readonly status: string | null,
+    /** 이 목표에 이어진 작업만 */
+    readonly goalId: string | null,
     /** 앞 응답의 next */
     readonly cursor: string | null,
   ) {
@@ -77,12 +82,14 @@ export class ListTasksInput extends BaseRequest {
   }
 
   static from(raw: unknown): ListTasksInput {
+    const query = raw as Record<string, unknown>;
     return BaseRequest.read(
       raw,
       (f) =>
         new ListTasksInput(
           f.optionalText('status', 20),
-          (raw as Record<string, unknown>).cursor ? f.uuid('cursor') : null,
+          query.goalId ? f.uuid('goalId') : null,
+          query.cursor ? f.uuid('cursor') : null,
         ),
     );
   }

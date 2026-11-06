@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { type ApiReply, api } from '../_lib/client-api';
 import { useLiveValue } from '../_lib/use-live';
-import type { AgentList, ApprovalPage, TaskPage, Usage } from './types';
+import type { AgentList, ApprovalPage, GoalList, TaskPage, Usage } from './types';
 
 // 여러 화면이 함께 쓰는 읽기.
 
@@ -20,6 +20,11 @@ const USAGE_REREAD_MS = 60_000;
 
 export function useAgents() {
   return useLiveValue('agents', () => api<AgentList>('GET', '/api/agents'), AGENT_TOPICS);
+}
+
+/** 목표 나무. 목표마다 이어진 작업 수가 있어 작업이 바뀔 때도 다시 읽는다 */
+export function useGoals() {
+  return useLiveValue('goals', () => api<GoalList>('GET', '/api/goals'), TASK_TOPICS);
 }
 
 export function useUsage() {

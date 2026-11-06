@@ -46,6 +46,38 @@ export const EVENT_KINDS: Record<string, string> = {
 
 export const TOOL_LABELS: Record<string, string> = { claude: 'Claude Code', codex: 'Codex' };
 
+/** 목표 상태 (서버의 Goal.STATUSES와 맞춘다) */
+export const GOAL_STATUS: Record<string, string> = {
+  active: '진행 중',
+  done: '달성',
+  dropped: '중단',
+};
+
+/**
+ * 나무를 위에서부터 펼친다 (목표, 조직도). 형제는 받은 순서 그대로, 부모를 찾을 수 없는 것은 맨 위로.
+ * depth는 맨 위가 0
+ */
+export function flatTree<T extends { id: string }>(
+  items: readonly T[],
+  parentOf: (item: T) => string | null,
+): { item: T; depth: number }[] {
+  const ids = new Set(items.map((i) => i.id));
+  const out: { item: T; depth: number }[] = [];
+  const seen = new Set<string>();
+  const visit = (parent: string | null, depth: number) => {
+    for (const item of items) {
+      const up = parentOf(item);
+      const top = up === null || !ids.has(up);
+      if ((parent === null ? !top : up !== parent) || seen.has(item.id)) continue;
+      seen.add(item.id);
+      out.push({ item, depth });
+      visit(item.id, depth + 1);
+    }
+  };
+  visit(null, 0);
+  return out;
+}
+
 /** 구독 사용률의 창 */
 export const WINDOW_LABELS: Record<string, string> = { five_hour: '5시간', seven_day: '7일' };
 

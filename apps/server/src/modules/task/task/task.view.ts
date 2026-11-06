@@ -19,6 +19,8 @@ export class TaskView {
     readonly finishedAt: Date | null,
     /** 마지막 실행 기록 앞부분. 목록에서만 채운다 */
     readonly lastEvent: string | null,
+    /** 이 작업이 향하는 목표 */
+    readonly goalId: string | null,
   ) {}
 
   toJSON() {
@@ -39,6 +41,7 @@ export class TaskView {
       createdAt: this.createdAt.toISOString(),
       finishedAt: this.finishedAt?.toISOString() ?? null,
       lastEvent: this.lastEvent,
+      goalId: this.goalId,
     };
   }
 }
@@ -64,7 +67,20 @@ export class TaskEventView {
   }
 }
 
-/** 작업 하나: 목록 정보 + 지시, 입력, 결과, 실행 기록 */
+/** 목표 사슬의 한 칸 */
+export class TaskGoalView {
+  constructor(
+    readonly id: string,
+    readonly title: string,
+    readonly status: string,
+  ) {}
+
+  toJSON() {
+    return { id: this.id, title: this.title, status: this.status };
+  }
+}
+
+/** 작업 하나: 목록 정보 + 지시, 입력, 결과, 실행 기록, 목표 사슬 */
 export class TaskDetailView {
   constructor(
     readonly task: TaskView,
@@ -72,6 +88,8 @@ export class TaskDetailView {
     readonly payload: unknown,
     readonly result: unknown,
     readonly events: readonly TaskEventView[],
+    /** 회사 목표부터 이 작업의 목표까지. 목표가 없으면 비어 있다 */
+    readonly goalChain: readonly TaskGoalView[],
   ) {}
 
   toJSON() {
@@ -81,6 +99,7 @@ export class TaskDetailView {
       payload: this.payload,
       result: this.result,
       events: this.events.map((e) => e.toJSON()),
+      goalChain: this.goalChain.map((g) => g.toJSON()),
     };
   }
 }

@@ -27,6 +27,7 @@ export class TaskRepository extends BaseRepository<Task> {
       row.leased_by === null ? null : String(row.leased_by),
       Number(row.attempts),
       row.request_id === null ? null : String(row.request_id),
+      row.goal_id === null ? null : String(row.goal_id),
       new Date(row.created_at),
       row.finished_at === null ? null : new Date(row.finished_at),
     );
@@ -124,10 +125,10 @@ export class TaskRepository extends BaseRepository<Task> {
   async insertOnce(task: Task): Promise<boolean> {
     const inserted = await this.sql`
       INSERT INTO task.tasks (id, space_id, agent_id, kind, title, instruction, payload, target_kind,
-        target_id, base_version, status, priority, request_id, created_at)
+        target_id, base_version, status, priority, request_id, goal_id, created_at)
       VALUES (${task.id}, ${task.spaceId}, ${task.agentId}, ${task.kind}, ${task.title}, ${task.instruction},
         ${this.sql.json(task.payload as never)}, ${task.targetKind}, ${task.targetId}, ${task.baseVersion},
-        ${task.status}, ${task.priority}, ${task.requestId}, ${task.createdAt})
+        ${task.status}, ${task.priority}, ${task.requestId}, ${task.goalId}, ${task.createdAt})
       ON CONFLICT (space_id, request_id) DO NOTHING
       RETURNING id`;
     if (inserted.length === 0) return false;

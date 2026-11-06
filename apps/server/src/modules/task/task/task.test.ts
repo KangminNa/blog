@@ -25,6 +25,7 @@ function queued(): Task {
     null,
     0,
     randomUUID(),
+    null,
     NOW,
   );
 }
@@ -193,6 +194,7 @@ describe('작업 상태', () => {
       RUNNER,
       1,
       null,
+      null,
       NOW,
       null,
     );
@@ -203,7 +205,7 @@ describe('작업 상태', () => {
 
   test('kind로 스킬을 고른다', () => {
     assert.equal(queued().skill, 'cairn-write');
-    const unknown = Task.open('s', null, 'other', 't', '', {}, null, null, null, 0, 'r', NOW);
+    const unknown = Task.open('s', null, 'other', 't', '', {}, null, null, null, 0, 'r', null, NOW);
     assert.equal(unknown.skill, null);
   });
 });

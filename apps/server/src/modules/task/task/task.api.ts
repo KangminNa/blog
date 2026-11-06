@@ -64,6 +64,7 @@ export class TaskResponse extends BaseResponse {
       t.createdAt,
       t.finishedAt,
       null,
+      t.goalId,
     ).toJSON();
   }
 }

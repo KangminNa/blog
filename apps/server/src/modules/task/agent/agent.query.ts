@@ -30,6 +30,7 @@ export class AgentQuery extends BaseQuery {
       r.monthly_limit === null ? null : Number(r.monthly_limit),
       r.five_hour_limit === null ? null : Number(r.five_hour_limit),
       r.plan_stop_percent === null ? null : Number(r.plan_stop_percent),
+      r.reports_to === null ? null : String(r.reports_to),
       Number(r.used),
       String(r.status),
       Number(r.version),

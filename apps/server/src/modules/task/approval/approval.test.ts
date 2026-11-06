@@ -28,6 +28,7 @@ function runningTask(who: Agent): Task {
     null,
     0,
     'request',
+    null,
     NOW,
   );
   task.lease('runner', who.id, NOW);
@@ -175,6 +176,7 @@ describe('에이전트', () => {
       'claude',
       [],
       [],
+      null,
       null,
       null,
       null,

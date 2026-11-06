@@ -3,9 +3,11 @@
 import Link from 'next/link';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { api, describe } from '../_lib/client-api';
+import { flatTree } from './labels';
+import { useGoals } from './live';
 import type { Agent, Task } from './types';
 
-// 작업 입력 (홈, 작업). 담당을 고르지 않으면 활성 에이전트가 맡는다.
+// 작업 입력 (홈, 작업). 담당을 고르지 않으면 활성 에이전트가 맡는다. 목표를 고르면 에이전트가 목표의 사슬을 함께 받는다.
 export function AskForm({
   agents,
   onCreated,
@@ -21,6 +23,12 @@ export function AskForm({
   const box = useRef<HTMLTextAreaElement>(null);
   const [instruction, setInstruction] = useState('');
   const [agentId, setAgentId] = useState('');
+  const [goalId, setGoalId] = useState('');
+  const goals = useGoals();
+  // 진행 중인 목표에만 작업을 더할 수 있다. 나무 순서대로, 깊이만큼 들여 쓴다
+  const goalRows = flatTree(goals.data?.goals ?? [], (g) => g.parentId).filter(
+    ({ item }) => item.status === 'active',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sending = useRef(false);
@@ -43,6 +51,7 @@ export function AskForm({
       requestId: requestId.current,
       instruction: instruction.trim(),
       ...(agentId ? { agentId } : {}),
+      ...(goalId ? { goalId } : {}),
     });
     sending.current = false;
     setBusy(false);
@@ -50,6 +59,7 @@ export function AskForm({
     requestId.current = null;
     setInstruction('');
     setAgentId('');
+    setGoalId('');
     onCreated(reply.data);
   }
 
@@ -85,6 +95,24 @@ export function AskForm({
             </option>
           ))}
         </select>
+        {goalRows.length > 0 && (
+          <>
+            <label htmlFor={`${id}-goal`}>목표</label>
+            <select
+              id={`${id}-goal`}
+              className="input"
+              value={goalId}
+              onChange={(e) => edit(() => setGoalId(e.target.value))}
+            >
+              <option value="">없음</option>
+              {goalRows.map(({ item, depth }) => (
+                <option key={item.id} value={item.id}>
+                  {`${'  '.repeat(depth)}${item.title}`}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
         <span className="note">발행·전송·삭제는 결재 후 실행</span>
         <span className="spacer" />
         <button type="submit" className="cta small" disabled={busy || !instruction.trim()}>

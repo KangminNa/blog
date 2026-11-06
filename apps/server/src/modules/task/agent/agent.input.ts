@@ -1,4 +1,4 @@
-import { BaseRequest } from '../../platform';
+import { BaseRequest, type RequestFields } from '../../platform';
 
 // 에이전트 입력의 모양. 뜻(도구 이름, 권한 목록)은 Agent가 검사한다.
 
@@ -18,6 +18,8 @@ export class CreateAgentInput extends BaseRequest {
     readonly monthlyLimit: number | null,
     readonly fiveHourLimit: number | null,
     readonly planStopPercent: number | null,
+    /** 보고 대상. 없으면 주인에게 보고한다 */
+    readonly reportsTo: string | null,
   ) {
     super();
   }
@@ -36,12 +38,20 @@ export class CreateAgentInput extends BaseRequest {
           f.optionalInteger('monthlyLimit', 1, LIMIT_MAX),
           f.optionalInteger('fiveHourLimit', 1, LIMIT_MAX),
           f.optionalInteger('planStopPercent', 1, PLAN_PERCENT_MAX),
+          CreateAgentInput.reportsToOf(f, raw) ?? null,
         ),
     );
   }
+
+  /** 보고 대상 칸 (만들기 · 고치기가 함께 쓴다): 보내지 않으면 undefined, null이면 주인에게 보고 */
+  static reportsToOf(f: RequestFields, raw: unknown): string | null | undefined {
+    const body = (raw ?? {}) as Record<string, unknown>;
+    if (!('reportsTo' in body)) return undefined;
+    return body.reportsTo === null ? null : f.uuid('reportsTo');
+  }
 }
 
-/** PATCH /api/agents/:id. 보내지 않은 칸은 그대로, 한도에 null을 보내면 한도를 없앤다 */
+/** PATCH /api/agents/:id. 보내지 않은 칸은 그대로, 한도에 null을 보내면 한도를 없앤다. reportsTo에 null이면 주인에게 보고 */
 export class UpdateAgentInput extends BaseRequest {
   private constructor(
     readonly id: string,
@@ -54,6 +64,7 @@ export class UpdateAgentInput extends BaseRequest {
     readonly monthlyLimit: number | null | undefined,
     readonly fiveHourLimit: number | null | undefined,
     readonly planStopPercent: number | null | undefined,
+    readonly reportsTo: string | null | undefined,
   ) {
     super();
   }
@@ -76,6 +87,7 @@ export class UpdateAgentInput extends BaseRequest {
           'planStopPercent' in body
             ? f.optionalInteger('planStopPercent', 1, PLAN_PERCENT_MAX)
             : undefined,
+          CreateAgentInput.reportsToOf(f, body),
         ),
     );
   }

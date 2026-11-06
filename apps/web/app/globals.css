@@ -1359,6 +1359,16 @@ a.chip {
   gap: 12px;
 }
 
+.org {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
 .perm {
   display: flex;
   flex-wrap: wrap;

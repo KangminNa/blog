@@ -31,14 +31,32 @@ function percentOf(text: string): number | null | undefined {
   return Number.isInteger(percent) && percent >= 1 && percent <= 100 ? percent : undefined;
 }
 
+/** 보고 대상으로 고를 수 있는 에이전트: 자기 자신과 자기 아래 팀원은 뺀다 (서버의 Agent.reportTo가 원본) */
+function bossesFor(agent: Agent | null, agents: readonly Agent[]): readonly Agent[] {
+  if (!agent) return agents;
+  const below = new Set([agent.id]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const a of agents)
+      if (a.reportsTo && below.has(a.reportsTo) && !below.has(a.id)) {
+        below.add(a.id);
+        grew = true;
+      }
+  }
+  return agents.filter((a) => !below.has(a.id));
+}
+
 // 에이전트 추가·편집. agent가 있으면 편집이다.
 export function AgentForm({
   agent,
+  agents,
   onSaved,
   onClose,
   reload,
 }: {
   agent: Agent | null;
+  /** 공간의 모든 에이전트 (보고 대상 고르기) */
+  agents: readonly Agent[];
   onSaved: (message: string) => void;
   onClose: () => void;
   reload: () => Promise<void>;
@@ -47,6 +65,7 @@ export function AgentForm({
   const [name, setName] = useState(agent?.name ?? '');
   const [role, setRole] = useState(agent?.role ?? '');
   const [tool, setTool] = useState(agent?.tool ?? 'claude');
+  const [reportsTo, setReportsTo] = useState(agent?.reportsTo ?? '');
   const [scopes, setScopes] = useState<readonly string[]>(agent?.scopes ?? []);
   const [actions, setActions] = useState<readonly string[]>(agent?.approvalActions ?? []);
   const [limit, setLimit] = useState(agent?.monthlyLimit?.toString() ?? '');
@@ -92,6 +111,7 @@ export function AgentForm({
       monthlyLimit,
       fiveHourLimit,
       planStopPercent,
+      reportsTo: reportsTo || null,
     };
     requestId.current ??= crypto.randomUUID();
     const reply = agent
@@ -149,6 +169,26 @@ export function AgentForm({
             </option>
           ))}
         </select>
+      </div>
+      <div className="field">
+        <label htmlFor={`${id}-boss`}>보고 대상</label>
+        <select
+          id={`${id}-boss`}
+          className="input"
+          value={reportsTo}
+          aria-describedby={`${id}-boss-help`}
+          onChange={(e) => change(() => setReportsTo(e.target.value))}
+        >
+          <option value="">주인</option>
+          {bossesFor(agent, agents).map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+        <small id={`${id}-boss-help`}>
+          보고 대상은 이 에이전트에게 일을 나눠 맡길 수 있어요. 조직도는 4단계까지, 결재는 늘 주인
+        </small>
       </div>
       <fieldset className="checks">
         <legend>권한</legend>

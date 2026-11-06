@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
 import { SCOPE_LABELS } from '../../_lib/types';
-import { actionLabel, holdLabel, TASK_STATUS, TOOL_LABELS } from '../../_task/labels';
+import { actionLabel, flatTree, holdLabel, TASK_STATUS, TOOL_LABELS } from '../../_task/labels';
 import { useAgents, useTasksIn, useUsage } from '../../_task/live';
 import { AgentUsage } from '../../_task/parts';
 import type { Agent } from '../../_task/types';
@@ -12,7 +12,7 @@ import { AgentForm } from './AgentForm';
 
 const NEW = 'new';
 
-// 에이전트: 사용량과 한도, 추가, 편집, 중지, 재개.
+// 에이전트: 조직도, 사용량과 한도, 추가, 편집, 중지, 재개.
 export function AgentsPanel({ adding }: { adding: boolean }) {
   const notify = useNotify();
   const agents = useAgents();
@@ -67,9 +67,11 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
         )}
       </header>
       {(agents.error ?? problem) && <p className="error">{agents.error ?? problem}</p>}
+      {list && list.length > 0 && <OrgChart agents={list} />}
       {open === NEW && (
         <AgentForm
           agent={null}
+          agents={list ?? []}
           onSaved={saved}
           onClose={() => setOpen(null)}
           reload={agents.reload}
@@ -96,6 +98,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
               <AgentForm
                 key={a.id}
                 agent={a}
+                agents={list}
                 onSaved={saved}
                 onClose={() => setOpen(null)}
                 reload={agents.reload}
@@ -106,6 +109,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
                 agent={a}
                 work={workOf(a)}
                 hold={holdLabel(usage.data?.agents.find((u) => u.id === a.id))}
+                boss={list.find((b) => b.id === a.reportsTo)?.name ?? null}
                 busy={busy === a.id}
                 onFlip={() => flip(a)}
                 onEdit={() => setOpen(a.id)}
@@ -118,10 +122,33 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
   );
 }
 
+/** 조직도: 맨 위는 주인. 보고 대상이 없는 에이전트는 주인에게 보고한다. 위임은 바로 아래 팀에게만 */
+function OrgChart({ agents }: { agents: readonly Agent[] }) {
+  const rows = flatTree(agents, (a) => a.reportsTo);
+  return (
+    <section className="panel" aria-labelledby="org-chart">
+      <h2 id="org-chart">조직도</h2>
+      <ol className="org" aria-label="보고 순서">
+        <li>
+          <b>주인</b> <small className="note">결재 · 발행</small>
+        </li>
+        {rows.map(({ item, depth }) => (
+          <li key={item.id} style={{ paddingLeft: (depth + 1) * 20 }}>
+            └ {item.name}
+            {item.role && <small className="note"> · {item.role.split('\n')[0]}</small>}
+            {item.status === 'paused' && <small className="note"> · 중지</small>}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function AgentCard({
   agent,
   work,
   hold,
+  boss,
   busy,
   onFlip,
   onEdit,
@@ -129,6 +156,8 @@ function AgentCard({
   agent: Agent;
   work: string | null;
   hold: string | null;
+  /** 보고 대상의 이름. null이면 주인 */
+  boss: string | null;
   busy: boolean;
   onFlip: () => void;
   onEdit: () => void;
@@ -141,7 +170,7 @@ function AgentCard({
           <b>{agent.name}</b>
           <small>
             {agent.role ? `${agent.role} · ` : ''}
-            {TOOL_LABELS[agent.tool] ?? agent.tool}
+            {TOOL_LABELS[agent.tool] ?? agent.tool} · 보고: {boss ?? '주인'}
           </small>
         </div>
         {!paused && hold && <span className="pill strong">{hold}</span>}

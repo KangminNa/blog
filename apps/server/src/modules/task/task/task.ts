@@ -87,6 +87,8 @@ export class Task extends TrackedEntity {
     private leaseHolder: string | null,
     private tries: number,
     readonly requestId: string | null,
+    /** 이 작업이 향하는 목표. 만들 때 정하고 바꾸지 않는다 */
+    readonly goalId: string | null,
     readonly createdAt: Date,
     private finishedOn: Date | null,
     readonly isNew: boolean,
@@ -106,6 +108,7 @@ export class Task extends TrackedEntity {
     baseVersion: number | null,
     priority: number,
     requestId: string,
+    goalId: string | null,
     now: Date,
   ): Task {
     const task = new Task(
@@ -127,6 +130,7 @@ export class Task extends TrackedEntity {
       null,
       0,
       requestId,
+      goalId,
       now,
       null,
       true,
@@ -149,6 +153,7 @@ export class Task extends TrackedEntity {
       null,
       Task.AI_TEST_PRIORITY,
       BaseEntity.newId(),
+      null,
       now,
     );
   }
@@ -172,6 +177,7 @@ export class Task extends TrackedEntity {
     leasedBy: string | null,
     attempts: number,
     requestId: string | null,
+    goalId: string | null,
     createdAt: Date,
     finishedAt: Date | null,
   ): Task {
@@ -194,6 +200,7 @@ export class Task extends TrackedEntity {
       leasedBy,
       attempts,
       requestId,
+      goalId,
       createdAt,
       finishedAt,
       false,

@@ -18,6 +18,7 @@ export class AgentRepository extends BaseRepository<Agent> {
       row.monthly_limit === null ? null : Number(row.monthly_limit),
       row.five_hour_limit === null ? null : Number(row.five_hour_limit),
       row.plan_stop_percent === null ? null : Number(row.plan_stop_percent),
+      row.reports_to === null ? null : String(row.reports_to),
       String(row.status),
       new Date(row.created_at),
     );
@@ -38,6 +39,16 @@ export class AgentRepository extends BaseRepository<Agent> {
         .sql`SELECT * FROM task.agents WHERE id = ${id} AND space_id = ${spaceId} FOR UPDATE`,
       '에이전트',
     );
+  }
+
+  /**
+   * 공간의 모든 에이전트를 만든 순서대로 잠근다. 조직도를 바꿀 때: 둘이 동시에 서로에게 보고하게 바꾸면
+   * 각자 본 조직도에는 순환이 없어 둘 다 통과하므로, 조직도 전체를 같은 순서로 잠가 한 번에 하나만 바꾼다.
+   */
+  async lockAll(spaceId: string): Promise<readonly Agent[]> {
+    const rows = await this.sql`
+      SELECT * FROM task.agents WHERE space_id = ${spaceId} ORDER BY id FOR UPDATE`;
+    return rows.map((r) => this.toEntity(r));
   }
 
   /**
@@ -88,10 +99,11 @@ export class AgentRepository extends BaseRepository<Agent> {
     if (agent.isNew) {
       await this.sql`
         INSERT INTO task.agents (id, space_id, name, role, tool, scopes, approval_actions, monthly_limit,
-          five_hour_limit, plan_stop_percent, status, created_at)
+          five_hour_limit, plan_stop_percent, reports_to, status, created_at)
         VALUES (${agent.id}, ${agent.spaceId}, ${agent.name}, ${agent.role}, ${agent.tool},
           ${agent.scopes as string[]}, ${agent.approvalActions as string[]}, ${agent.monthlyLimit},
-          ${agent.fiveHourLimit}, ${agent.planStopPercent}, ${agent.status}, ${agent.createdAt})`;
+          ${agent.fiveHourLimit}, ${agent.planStopPercent}, ${agent.reportsTo}, ${agent.status},
+          ${agent.createdAt})`;
     } else if (agent.changed) {
       const result = await this.sql`
         UPDATE task.agents SET ${this.sql(agent.changes)}, version = version + 1

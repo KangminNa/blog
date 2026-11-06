@@ -141,6 +141,14 @@ function Facts({ task }: { task: TaskDetail }) {
           '없음'
         )}
       </dd>
+      {task.goalChain.length > 0 && (
+        <>
+          <dt>목표</dt>
+          <dd>
+            <Link href="/admin/goals">{task.goalChain.map((g) => g.title).join(' › ')}</Link>
+          </dd>
+        </>
+      )}
       <dt>시도</dt>
       <dd>{task.attempts}회</dd>
       {task.finishedAt && (

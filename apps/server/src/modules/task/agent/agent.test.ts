@@ -99,3 +99,64 @@ describe('한도 칸', () => {
     assert.deepEqual(agent.changes, { five_hour_limit: null, plan_stop_percent: 90 });
   });
 });
+
+describe('조직도 (Agent.reportTo)', () => {
+  /** 이름만 다른 에이전트. 보고 대상은 reportTo로 잇는다 */
+  function named(name: string): Agent {
+    return Agent.open('space', name, '', 'claude', [], [], null, null, null, NOW);
+  }
+
+  test('보고 대상이 없으면 주인에게 보고한다. 정하면 바뀐 열로 남는다', () => {
+    const lead = named('팀장');
+    const member = named('담당');
+    const all = [lead, member];
+    assert.equal(member.reportsTo, null);
+    member.clearChanges();
+    member.reportTo(lead.id, all);
+    assert.equal(member.reportsTo, lead.id);
+    assert.deepEqual(member.changes, { reports_to: lead.id });
+    assert.equal(lead.manages(member), true);
+    assert.equal(member.manages(lead), false);
+    member.reportTo(null, all);
+    assert.equal(member.reportsTo, null, '주인에게 돌아갈 수 있다');
+  });
+
+  test('자기 자신이나 자기 팀원에게 보고하면 순환이라 막는다', () => {
+    const a = named('가');
+    const b = named('나');
+    const c = named('다');
+    const all = [a, b, c];
+    b.reportTo(a.id, all);
+    c.reportTo(b.id, all);
+    assert.throws(() => a.reportTo(a.id, all), RuleViolation);
+    assert.throws(() => a.reportTo(c.id, all), RuleViolation, '손자에게도');
+    assert.equal(a.reportsTo, null, '막히면 그대로');
+  });
+
+  test('없는 에이전트에게는 보고하지 못한다', () => {
+    const a = named('가');
+    assert.throws(() => a.reportTo('no-such', [a]), RuleViolation);
+  });
+
+  test(`깊이는 ${Agent.ORG_DEPTH_MAX}단계까지: 아래 팀째로 옮겨도 가장 깊은 팀원을 센다`, () => {
+    const [a, b, c, d, e] = ['1', '2', '3', '4', '5'].map(named) as [
+      Agent,
+      Agent,
+      Agent,
+      Agent,
+      Agent,
+    ];
+    const all = [a, b, c, d, e];
+    b.reportTo(a.id, all);
+    c.reportTo(b.id, all);
+    d.reportTo(c.id, all);
+    assert.throws(() => e.reportTo(d.id, all), RuleViolation, '5단계');
+
+    // d 아래에 e가 있는 두 단계짜리 팀을 c 아래(4단계부터)로 옮기면 5단계가 된다
+    d.reportTo(null, all);
+    e.reportTo(d.id, all);
+    assert.throws(() => d.reportTo(c.id, all), RuleViolation);
+    d.reportTo(b.id, all);
+    assert.equal(d.reportsTo, b.id, '3단계 + 팀원 하나는 4단계라 된다');
+  });
+});

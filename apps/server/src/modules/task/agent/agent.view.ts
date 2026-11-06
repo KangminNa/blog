@@ -12,6 +12,8 @@ export class AgentView {
     readonly monthlyLimit: number | null,
     readonly fiveHourLimit: number | null,
     readonly planStopPercent: number | null,
+    /** 보고 대상 에이전트. null이면 주인에게 보고한다 */
+    readonly reportsTo: string | null,
     /** 이번 달에 쓴 토큰 */
     readonly usedThisMonth: number,
     readonly status: string,
@@ -30,6 +32,7 @@ export class AgentView {
       monthlyLimit: this.monthlyLimit,
       fiveHourLimit: this.fiveHourLimit,
       planStopPercent: this.planStopPercent,
+      reportsTo: this.reportsTo,
       usedThisMonth: this.usedThisMonth,
       status: this.status,
       version: this.version,

@@ -40,9 +40,10 @@
 
 | 메뉴 | 경로 | 단계 |
 |---|---|---|
-| 작업 | `GET /api/tasks?status=&cursor=`, `POST /api/tasks { requestId, instruction, agentId? }`, `GET /api/tasks/:id`, `POST /api/tasks/:id/cancel { version }` | 3 |
+| 작업 | `GET /api/tasks?status=&goalId=&cursor=`, `POST /api/tasks { requestId, instruction, agentId?, goalId? }`, `GET /api/tasks/:id` (+ `goalChain`: 회사 목표부터 이 작업의 목표까지), `POST /api/tasks/:id/cancel { version }` | 3 |
 | 결재 | `GET /api/approvals`, `GET /api/approvals/:id`, `POST /api/approvals/:id/decide { version, decision: approve·revise·reject, note? }` | 3 |
-| 에이전트 | `GET·POST /api/agents`, `PATCH /api/agents/:id`, `POST /api/agents/:id/pause`, `POST /api/agents/:id/resume`. 한도 칸은 `monthlyLimit`, `fiveHourLimit`, `planStopPercent` | 3 |
+| 에이전트 | `GET·POST /api/agents`, `PATCH /api/agents/:id`, `POST /api/agents/:id/pause`, `POST /api/agents/:id/resume`. 한도 칸은 `monthlyLimit`, `fiveHourLimit`, `planStopPercent`. 보고 대상은 `reportsTo` (null이면 주인, 순환·4단계 초과는 422) | 3 |
+| 목표 | `GET /api/goals` → `{ goals: [{ id, parentId, title, description, status, sort, openTasks, doneTasks, version }] }`, `POST /api/goals { requestId, title, parentId?, description?, sort? }`, `PATCH /api/goals/:id { version, title?, description?, sort? }`, `POST /api/goals/:id/status { version, status: active·done·dropped }` (주인만. 지우지 않는다. 진행 중인 목표에만 작업과 하위 목표를 더하고, 5단계까지) | 조직 |
 | 사용량 | `GET /api/usage` → `{ agents: [{ id, fiveHourTokens, monthTokens, fiveHourLimit, monthlyLimit, planStopPercent, holding }], plan: [{ tool, window, percent, resetsAt, seenAt }] }` (주인만). 확인 전이거나 초기화 시각이 지난 창은 `percent`가 null | 3 |
 | AI | `GET /api/ai` → `{ tools: [{ tool, connected, expiresAt, checkedAt, lastError }] }`, `PUT /api/ai/claude/token { token }`, `POST /api/ai/claude/test` → `{ taskId, status }` (주인만. 쓸 수 있는 토큰이 없으면 422). Codex 로그인은 첫 완성 뒤 | 4 |
 | 기기 | `POST /api/devices/runner { requestId, name }` (주인만. `run` 권한만 가진 기기, 토큰은 이 응답에 한 번) | 3 |

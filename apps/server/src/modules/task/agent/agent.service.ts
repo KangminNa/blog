@@ -5,6 +5,7 @@ import type { AgentVersionInput, CreateAgentInput, UpdateAgentInput } from './ag
 import { AgentRepository } from './agent.repository';
 
 // 에이전트 쓰기: 만들기, 고치기, 멈추기, 다시 시작. 모두 주인만.
+// 보고 대상을 정할 때는 조직도 전체를 잠근다 (AgentRepository.lockAll): 동시에 바꿔도 순환이 생기지 않게.
 @Injectable()
 export class AgentService extends BaseService {
   private static readonly CREATE = 'create_agent';
@@ -30,6 +31,7 @@ export class AgentService extends BaseService {
         req.planStopPercent,
         new Date(),
       );
+      if (req.reportsTo !== null) agent.reportTo(req.reportsTo, await agents.lockAll(spaceId));
       await agents.save(agent);
       await once.remember({ agentId: agent.id });
       return agent;
@@ -37,7 +39,9 @@ export class AgentService extends BaseService {
   }
 
   async update(actor: Actor, req: UpdateAgentInput): Promise<Agent> {
-    return this.change(actor, req.id, req.version, (agent) => {
+    const org = req.reportsTo !== undefined;
+    return this.change(actor, req.id, req.version, org, (agent, all) => {
+      if (req.reportsTo !== undefined) agent.reportTo(req.reportsTo, all);
       if (req.name !== null) agent.name = req.name;
       if (req.role !== undefined) agent.role = req.role;
       if (req.tool !== null) agent.tool = req.tool;
@@ -50,26 +54,29 @@ export class AgentService extends BaseService {
   }
 
   async pause(actor: Actor, req: AgentVersionInput): Promise<Agent> {
-    return this.change(actor, req.id, req.version, (agent) => agent.pause());
+    return this.change(actor, req.id, req.version, false, (agent) => agent.pause());
   }
 
   async resume(actor: Actor, req: AgentVersionInput): Promise<Agent> {
-    return this.change(actor, req.id, req.version, (agent) => agent.resume());
+    return this.change(actor, req.id, req.version, false, (agent) => agent.resume());
   }
 
+  /** org면 조직도 전체를 잠그고 apply에 넘긴다 (보고 대상을 바꿀 때). 아니면 그 에이전트만 */
   private async change(
     actor: Actor,
     id: string,
     version: number,
-    apply: (agent: Agent) => void,
+    org: boolean,
+    apply: (agent: Agent, all: readonly Agent[]) => void,
   ): Promise<Agent> {
     actor.assertOwner();
     const spaceId = AgentService.spaceOf(actor);
     return this.transaction(async (tx) => {
       const agents = new AgentRepository(tx);
-      const agent = await agents.lock(spaceId, id);
+      const all = org ? await agents.lockAll(spaceId) : [];
+      const agent = all.find((a) => a.id === id) ?? (await agents.lock(spaceId, id));
       agent.assertVersion(version);
-      apply(agent);
+      apply(agent, all);
       await agents.save(agent);
       return agent;
     });
