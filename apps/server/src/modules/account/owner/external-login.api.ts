@@ -1,7 +1,6 @@
 import { Controller, Delete, Get, Param, Req, Res } from '@nestjs/common';
 import {
   type Actor,
-  BaseResponse,
   Cookies,
   CurrentActor,
   DomainError,
@@ -11,46 +10,13 @@ import {
 } from '../../platform';
 import { ExternalCallbackInput, ExternalStartInput } from './external-login.input';
 import { ExternalLoginQuery } from './external-login.query';
-import type { LoginLinkView, LoginMethodView } from './external-login.view';
+import {
+  type LoginLinkListView,
+  type LoginMethodListView,
+  UnlinkedView,
+} from './external-login.view';
 import { WebSession } from './owner';
 import { OwnerService } from './owner.service';
-
-/** 로그인 화면의 버튼들 (켜진 로그인 플러그인) */
-export class LoginMethodsResponse extends BaseResponse {
-  private constructor(private readonly methods: readonly LoginMethodView[]) {
-    super();
-  }
-
-  static of(methods: readonly LoginMethodView[]): LoginMethodsResponse {
-    return new LoginMethodsResponse(methods);
-  }
-
-  toJSON(): object {
-    return { methods: this.methods.map((m) => m.toJSON()) };
-  }
-}
-
-/** 주인에게 연결된 외부 계정들 (계정 화면) */
-export class LoginLinksResponse extends BaseResponse {
-  private constructor(private readonly links: readonly LoginLinkView[]) {
-    super();
-  }
-
-  static of(links: readonly LoginLinkView[]): LoginLinksResponse {
-    return new LoginLinksResponse(links);
-  }
-
-  toJSON(): object {
-    return { links: this.links.map((l) => l.toJSON()) };
-  }
-}
-
-/** 연결을 끊음 */
-export class UnlinkedResponse extends BaseResponse {
-  toJSON(): object {
-    return { unlinked: true };
-  }
-}
 
 // 외부 로그인 (로그인 플러그인: GitHub 등). 코어가 경로·확인값·로그인 쿠키를 맡고, 플러그인은 누구인지만 알려준다.
 //   GET    api/auth/methods                    로그인 화면의 버튼들
@@ -67,9 +33,10 @@ export class ExternalLoginController {
     private readonly box: SecretBox,
   ) {}
 
+  /** 로그인 화면의 버튼들 (켜진 로그인 플러그인) */
   @Get('methods')
-  methods(@CurrentActor() actor: Actor): LoginMethodsResponse {
-    return LoginMethodsResponse.of(this.external.methods(actor));
+  methods(@CurrentActor() actor: Actor): LoginMethodListView {
+    return this.external.methods(actor);
   }
 
   @Get('login/:method/start')
@@ -138,18 +105,19 @@ export class ExternalLoginController {
     }
   }
 
+  /** 주인에게 연결된 외부 계정들 (계정 화면) */
   @Get('links')
-  async links(@CurrentActor() actor: Actor): Promise<LoginLinksResponse> {
-    return LoginLinksResponse.of(await this.external.links(actor));
+  links(@CurrentActor() actor: Actor): Promise<LoginLinkListView> {
+    return this.external.links(actor);
   }
 
   @Delete('links/:method')
   async unlink(
     @CurrentActor() actor: Actor,
     @Param('method') method: string,
-  ): Promise<UnlinkedResponse> {
+  ): Promise<UnlinkedView> {
     await this.owners.unlink(actor, method);
-    return new UnlinkedResponse();
+    return new UnlinkedView();
   }
 
   private async start(

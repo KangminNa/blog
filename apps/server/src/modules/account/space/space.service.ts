@@ -48,28 +48,27 @@ export class SpaceService extends BaseService {
     return this.install.issuePass(space.id);
   }
 
-  async rename(actor: Actor, req: RenameSpaceInput): Promise<Space> {
-    actor.assertOwner();
-    return this.transaction(async (tx) => {
-      const repo = new SpaceRepository(tx);
-      const space = await repo.lockCurrent();
-      if (!space) throw new NotFound('블로그 공간부터 만들어 주세요 (설치 코드)');
-      space.assertVersion(req.version);
-      space.rename(req.name, req.description, req.siteUrl);
-      await repo.save(space);
-      return space;
+  rename(actor: Actor, req: RenameSpaceInput): Promise<Space> {
+    return this.change(actor, req.version, (space) => {
+      space.edit(req.changes);
+      space.describe(req.description, req.siteUrl);
     });
   }
 
-  async setHostedApps(actor: Actor, req: HostedAppsInput): Promise<Space> {
+  setHostedApps(actor: Actor, req: HostedAppsInput): Promise<Space> {
+    return this.change(actor, req.version, (space) => space.allowHostedApps(req.on));
+  }
+
+  /** 주인만. 공간은 하나뿐이라 id 없이 잠근다. 나머지 순서는 EntityService.change와 같다 */
+  private change(actor: Actor, version: number, apply: (space: Space) => void): Promise<Space> {
     actor.assertOwner();
     return this.transaction(async (tx) => {
-      const repo = new SpaceRepository(tx);
-      const space = await repo.lockCurrent();
+      const spaces = new SpaceRepository(tx);
+      const space = await spaces.lockCurrent();
       if (!space) throw new NotFound('블로그 공간부터 만들어 주세요 (설치 코드)');
-      space.assertVersion(req.version);
-      space.allowHostedApps(req.on);
-      await repo.save(space);
+      space.assertVersion(version);
+      apply(space);
+      await spaces.save(space);
       return space;
     });
   }

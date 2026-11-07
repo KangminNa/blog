@@ -1,4 +1,5 @@
-import { BaseRequest, InvalidRequest, type SecretBox } from '../../platform';
+import { BaseRequest, type ColumnReaders, InvalidRequest, type SecretBox } from '../../platform';
+import type { DeviceRow } from '../account.tables';
 import { OAuthError } from './oauth-error';
 
 /** BaseRequest가 모은 모양 오류를 OAuth 오류 모양으로 (AI 도구는 OAuth 모양만 읽는다) */
@@ -183,7 +184,7 @@ export class ConsentInput extends BaseRequest {
   }
 }
 
-/** 기기 이름·권한 바꾸기. version은 화면이 불러올 때 받은 값 */
+/** 러너 추가: { requestId, name } */
 export class AddRunnerInput extends BaseRequest {
   private constructor(
     readonly requestId: string,
@@ -211,24 +212,23 @@ export class PairServerRunnerInput extends BaseRequest {
   }
 }
 
+/** 주인이 바꾸는 칸. 칸 하나에 한 줄이다. 보내지 않거나 비운 칸은 그대로 둔다 */
+const COLUMNS: ColumnReaders<DeviceRow> = {
+  name: (f, n) => f.optionalText(n, 60) ?? undefined,
+  scopes: (f, n) => f.optionalTextList(n, 10, 40) ?? undefined,
+};
+
+/** PATCH /api/devices/:id: 기기 이름·권한 바꾸기. version은 화면이 불러올 때 받은 값 */
 export class UpdateDeviceInput extends BaseRequest {
   private constructor(
-    readonly name: string | null,
-    readonly scopes: readonly string[] | null,
+    readonly id: string,
+    readonly changes: Partial<DeviceRow>,
     readonly version: number,
   ) {
     super();
   }
 
-  static from(raw: unknown): UpdateDeviceInput {
-    return BaseRequest.read(
-      raw,
-      (f) =>
-        new UpdateDeviceInput(
-          f.optionalText('name', 60),
-          f.optionalTextList('scopes', 10, 40),
-          f.integer('version', 1, 2_147_483_647),
-        ),
-    );
+  static from(id: string, raw: unknown): UpdateDeviceInput {
+    return BaseRequest.read(raw, (f) => new UpdateDeviceInput(id, f.columns(COLUMNS), f.version()));
   }
 }

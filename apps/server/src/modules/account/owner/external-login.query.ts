@@ -10,9 +10,16 @@ import {
   RuleViolation,
   SecretBox,
 } from '../../platform';
+import type { LoginLinkRow } from '../account.tables';
 import { SpaceQuery } from '../space/space.query';
 import { ExternalCallbackInput, ExternalStartInput } from './external-login.input';
-import { ExternalStartView, LoginLinkView, LoginMethodView } from './external-login.view';
+import {
+  ExternalStartView,
+  LoginLinkListView,
+  LoginLinkView,
+  LoginMethodListView,
+  LoginMethodView,
+} from './external-login.view';
 
 // 외부 로그인 읽기: 켜진 로그인 방법(로그인 플러그인), 주인이 연결한 계정, 시작 주소 만들기.
 @Injectable()
@@ -26,18 +33,17 @@ export class ExternalLoginQuery extends BaseQuery {
     super(db);
   }
 
-  methods(_actor: Actor): readonly LoginMethodView[] {
-    return this.registry.logins().map((l) => new LoginMethodView(l.name, l.login.label));
+  methods(_actor: Actor): LoginMethodListView {
+    return new LoginMethodListView(
+      this.registry.logins().map((l) => new LoginMethodView(l.name, l.login.label)),
+    );
   }
 
-  async links(actor: Actor): Promise<readonly LoginLinkView[]> {
+  async links(actor: Actor): Promise<LoginLinkListView> {
     actor.assertOwner();
-    const rows = await this.sql`
-      SELECT method, label, created_at FROM account.login_links WHERE user_id = ${actor.id}
-      ORDER BY method`;
-    return rows.map(
-      (r) => new LoginLinkView(String(r.method), String(r.label ?? ''), new Date(r.created_at)),
-    );
+    const rows = await this.sql<LoginLinkRow[]>`
+      SELECT * FROM account.login_links WHERE user_id = ${actor.id} ORDER BY method`;
+    return new LoginLinkListView(rows.map((r) => new LoginLinkView(r)));
   }
 
   /** 연결(link)은 로그인한 주인만. 돌아올 주소는 사이트 주소 아래 /api/auth/login/<방법>/callback */

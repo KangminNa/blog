@@ -1,21 +1,18 @@
 import { randomBytes } from 'node:crypto';
 import { BaseEntity } from '../../platform';
+import type { OauthClientNew, OauthClientRow } from '../account.tables';
+import { OAuthClientView } from './device.view';
 import { OAuthError } from './oauth-error';
 
 // AI 도구(Claude Code 등)가 스스로 등록한 OAuth 클라이언트 (동적 등록, RFC 7591). 비밀값이 없는 공개 클라이언트다.
 // 돌려보낼 주소는 둘만 받는다.
 //   이 컴퓨터(localhost · 127.0.0.1 · [::1]): Claude Code · Codex 등. 남이 보낸 승인 링크를 눌러도 열쇠(승인 코드)는
 //     내 컴퓨터로만 가서 그 사람이 가져갈 수 없다.
-//   ChatGPT · Claude 앱의 정해진 주소: 블로그에서 "앱 연결 허용"을 켰을 때만 (Space.hostedApps).
+//   ChatGPT · Claude 앱의 정해진 주소: 블로그에서 "앱 연결 허용"을 켰을 때만 (SpaceView.hostedApps).
+// 열쇠가 id가 아니라 client_id이고 고치지 않는 행이라 TableEntity가 아니라 BaseEntity다.
 export class OAuthClient extends BaseEntity {
-  private constructor(
-    readonly clientId: string,
-    readonly spaceId: string,
-    readonly clientName: string,
-    readonly redirectUris: readonly string[],
-    readonly isNew: boolean,
-  ) {
-    super(clientId, 1);
+  private constructor(private readonly row: OauthClientNew) {
+    super(row.client_id, 1);
   }
 
   /** [앱 이름, 그 앱이 열쇠를 돌려받는 주소]. 공식 문서의 주소 그대로 */
@@ -43,28 +40,39 @@ export class OAuthClient extends BaseEntity {
         '돌려보낼 주소(redirect_uris)는 1~10개여야 해요',
       );
     for (const uri of redirectUris) OAuthClient.checkRedirect(uri, hostedApps);
-    const name = clientName.trim().slice(0, 80) || 'AI 도구';
-    return new OAuthClient(
-      `cairn_${randomBytes(16).toString('hex')}`,
-      spaceId,
-      name,
-      redirectUris,
-      true,
-    );
+    return new OAuthClient({
+      client_id: `cairn_${randomBytes(16).toString('hex')}`,
+      space_id: spaceId,
+      client_name: clientName.trim().slice(0, 80) || 'AI 도구',
+      redirect_uris: redirectUris,
+    });
   }
 
-  static restore(
-    clientId: string,
-    spaceId: string,
-    clientName: string,
-    redirectUris: readonly string[],
-  ): OAuthClient {
-    return new OAuthClient(clientId, spaceId, clientName, redirectUris, false);
+  static restore(row: OauthClientRow): OAuthClient {
+    return new OAuthClient(row);
+  }
+
+  get clientId(): string {
+    return this.row.client_id;
+  }
+
+  get clientName(): string {
+    return this.row.client_name ?? '';
+  }
+
+  /** 저장할 행. Repository가 부른다 */
+  get unsaved(): Readonly<OauthClientNew> {
+    return this.row;
   }
 
   /** 등록할 때 적은 주소와 글자 하나까지 같아야 한다 */
   allows(redirectUri: string): boolean {
-    return this.redirectUris.includes(redirectUri);
+    return (this.row.redirect_uris ?? []).includes(redirectUri);
+  }
+
+  /** 등록 결과 */
+  view(): OAuthClientView {
+    return new OAuthClientView(this.row);
   }
 
   /** 앱의 주소인데 블로그가 앱 연결을 허용하지 않았으면 */

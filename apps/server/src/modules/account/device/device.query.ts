@@ -1,10 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseQuery, Database, DeviceActor, RuleViolation, SecretBox } from '../../platform';
+import type { DeviceRow } from '../account.tables';
 import { SpaceQuery } from '../space/space.query';
 import { AuthorizationPolicy } from './authorization.policy';
 import { Device, DeviceCredential } from './device';
 import type { AuthorizeInput, ConsentInput } from './device.input';
-import { ConsentView, DeviceView, OAuthAddressView } from './device.view';
+import {
+  AuthorizationServerView,
+  ConsentResultView,
+  ConsentView,
+  DeviceListView,
+  DeviceView,
+  OAuthAddressView,
+  ProtectedResourceView,
+} from './device.view';
 import { OAuthClient } from './oauth-client';
 import { OAuthClientRepository } from './oauth-client.repository';
 
@@ -25,7 +34,7 @@ export class DeviceQuery extends BaseQuery {
   /** Guard가 부른다: 끊지 않은 기기의 살아 있는 토큰(OAuth access 또는 예비 기기 토큰)이면 기기, 아니면 null */
   async actorFor(token: string): Promise<DeviceActor | null> {
     const hash = DeviceCredential.hash(token);
-    const [row] = await this.sql`
+    const [row] = await this.sql<Pick<DeviceRow, 'id' | 'space_id' | 'scopes'>[]>`
       SELECT d.id, d.space_id, d.scopes FROM account.devices d
       WHERE d.revoked_at IS NULL AND d.id IN (
         SELECT device_id FROM account.oauth_tokens
@@ -33,30 +42,17 @@ export class DeviceQuery extends BaseQuery {
         UNION
         SELECT device_id FROM account.device_tokens
         WHERE token_hash = ${hash} AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()))`;
-    return row
-      ? new DeviceActor(String(row.space_id), String(row.id), new Set(row.scopes as string[]))
-      : null;
+    return row ? new DeviceActor(row.space_id, row.id, new Set(row.scopes)) : null;
   }
 
-  async list(actor: Actor): Promise<readonly DeviceView[]> {
+  /** 살아 있는 기기부터, 새로 연결한 순서로. 마지막으로 OAuth 토큰을 받은 때를 함께 */
+  async list(actor: Actor): Promise<DeviceListView> {
     actor.assertOwner();
-    const rows = await this.sql`
+    const rows = await this.sql<(DeviceRow & { last_used: Date | null })[]>`
       SELECT d.*, (SELECT max(created_at) FROM account.oauth_tokens t WHERE t.device_id = d.id) AS last_used
       FROM account.devices d
       ORDER BY d.revoked_at IS NOT NULL, d.created_at DESC`;
-    return rows.map(
-      (r) =>
-        new DeviceView(
-          String(r.id),
-          String(r.name),
-          String(r.meta?.clientName ?? ''),
-          (r.scopes as string[]) ?? [],
-          new Date(r.created_at),
-          r.last_used === null ? null : new Date(r.last_used),
-          r.revoked_at === null ? null : new Date(r.revoked_at),
-          Number(r.version),
-        ),
-    );
+    return new DeviceListView(rows.map((r) => new DeviceView(r, r.last_used)));
   }
 
   /** 주소들. 사이트 주소(블로그 정보)가 정해져 있어야 AI 도구가 찾아올 수 있다 */
@@ -64,6 +60,16 @@ export class DeviceQuery extends BaseQuery {
     const { siteUrl } = await this.spaces.info(actor);
     if (!siteUrl) throw new RuleViolation('사이트 주소부터 정해 주세요 (관리 화면의 블로그 정보)');
     return new OAuthAddressView(siteUrl);
+  }
+
+  /** 인가 서버 안내 (RFC 8414): 기기에 줄 수 있는 권한까지 */
+  async authorizationServer(actor: Actor): Promise<AuthorizationServerView> {
+    return new AuthorizationServerView(await this.addresses(actor), Device.ALL_SCOPES);
+  }
+
+  /** 보호된 자원 안내 (RFC 9728) */
+  async protectedResource(actor: Actor): Promise<ProtectedResourceView> {
+    return new ProtectedResourceView(await this.addresses(actor));
   }
 
   /** 승인 요청을 승인 화면으로 보낼 주소, 또는 오류를 붙여 돌려보낼 주소 */
@@ -87,8 +93,8 @@ export class DeviceQuery extends BaseQuery {
   }
 
   /** 거절: 오류를 붙여 AI 도구에게 돌려보낼 주소 */
-  deniedRedirect(actor: Actor, req: ConsentInput): string {
+  deniedRedirect(actor: Actor, req: ConsentInput): ConsentResultView {
     actor.assertOwner();
-    return this.policy.deniedRedirect(req);
+    return new ConsentResultView(this.policy.deniedRedirect(req));
   }
 }

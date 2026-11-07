@@ -2,13 +2,14 @@ import { Injectable } from '@nestjs/common';
 import {
   Actor,
   AttemptLimiter,
-  BaseService,
   Conflict,
   Database,
+  EntityService,
   Forbidden,
   Idempotency,
   NotFound,
   RuleViolation,
+  type Sql,
   TooManyRequests,
 } from '../../platform';
 import { SpaceQuery } from '../space/space.query';
@@ -32,7 +33,7 @@ import { ServerRunnerPolicy } from './server-runner.policy';
 // 기기 연결 쓰기 (MCP OAuth 2.1): 클라이언트 등록 → 주인 승인(코드) → 코드를 토큰으로(기기 생성) → 갱신 → 무효.
 // 그리고 관리 화면의 기기 이름·권한 바꾸기, 끊기, 예비 기기 토큰.
 @Injectable()
-export class DeviceService extends BaseService {
+export class DeviceService extends EntityService<Device> {
   /** 스스로 등록은 한 곳(IP)에서 1시간에 20번까지 */
   private readonly registrations = new AttemptLimiter(20, 3_600_000);
   /** 서버 러너의 연결은 한 곳(IP)에서 1시간에 30번까지. 러너가 다시 뜰 때마다 한 번이라 넉넉하다 */
@@ -47,6 +48,10 @@ export class DeviceService extends BaseService {
     private readonly serverRunner: ServerRunnerPolicy,
   ) {
     super(db);
+  }
+
+  protected store(tx: Sql): DeviceRepository {
+    return new DeviceRepository(tx);
   }
 
   /**
@@ -149,22 +154,19 @@ export class DeviceService extends BaseService {
     });
   }
 
-  async update(actor: Actor, id: string, req: UpdateDeviceInput): Promise<Device> {
-    return this.change(actor, id, (device) => {
-      device.assertVersion(req.version);
-      if (req.name !== null) device.rename(req.name);
-      if (req.scopes !== null) device.grant(req.scopes);
-    });
+  /** 이름·권한 바꾸기. 본 version이 지금과 다르면 409 */
+  update(actor: Actor, req: UpdateDeviceInput): Promise<Device> {
+    return this.changeAsOwner(actor, req, (device) => device.edit(req.changes));
   }
 
   /** 끊기: 모든 토큰이 바로 무효. 기기 기록은 남는다 */
-  async revoke(actor: Actor, id: string): Promise<Device> {
-    return this.change(actor, id, (device) => device.revoke(new Date()));
+  revoke(actor: Actor, id: string): Promise<Device> {
+    return this.changeAnyVersion(actor, id, (device) => device.revoke(new Date()));
   }
 
   /** 예비 기기 토큰: OAuth를 못 쓰는 도구용. 원문은 이번 응답에만 */
-  async issueDeviceToken(actor: Actor, id: string): Promise<Device> {
-    return this.change(actor, id, (device) => device.issueDeviceToken(new Date()));
+  issueDeviceToken(actor: Actor, id: string): Promise<Device> {
+    return this.changeAnyVersion(actor, id, (device) => device.issueDeviceToken(new Date()));
   }
 
   /**
@@ -179,7 +181,7 @@ export class DeviceService extends BaseService {
       const devices = new DeviceRepository(tx);
       const once = new Idempotency(tx, userId, req.requestId, DeviceService.ADD_RUNNER);
       const before = await once.previous();
-      const first = before ? await devices.lock(String(before.deviceId)) : null;
+      const first = before ? await devices.lockOrNull(spaceId, String(before.deviceId)) : null;
       if (first) return first;
       const device = Device.forRunner(spaceId, userId, req.name, new Date());
       await devices.save(device);
@@ -197,14 +199,7 @@ export class DeviceService extends BaseService {
         throw new OAuthError('invalid_grant', '승인 코드가 맞지 않거나, 이미 썼거나, 만료됐어요');
       code.redeem(req.clientId, req.redirectUri ?? '', req.codeVerifier ?? '', now);
       await clients.saveCode(code);
-      const device = Device.connect(
-        code.spaceId,
-        code.userId,
-        code.deviceName,
-        code.clientId,
-        code.clientName,
-        now,
-      );
+      const device = code.connect(now);
       device.issueTokens(now);
       await new DeviceRepository(tx).save(device);
       return device;
@@ -217,7 +212,7 @@ export class DeviceService extends BaseService {
     const reused = await this.transaction(async (tx) => {
       const devices = new DeviceRepository(tx);
       const device = await devices.lockByRefresh(hash);
-      if (!device || device.revokedAt || (req.clientId && req.clientId !== device.clientId))
+      if (!device || device.revoked || (req.clientId && req.clientId !== device.clientId))
         throw new OAuthError('invalid_grant', '맞지 않거나 끊긴 기기의 갱신 토큰이에요');
       if (device.refreshWasReused()) {
         // 이미 쓴 갱신 토큰이 다시 왔다 = 누군가 훔쳐 먼저 썼을 수 있다. 기기를 끊고 저장한 뒤 거절한다
@@ -237,12 +232,17 @@ export class DeviceService extends BaseService {
     return reused;
   }
 
-  private async change(actor: Actor, id: string, apply: (device: Device) => void): Promise<Device> {
+  /** 화면이 version을 보내지 않는 관리 일 (끊기, 예비 기기 토큰). 주인만 */
+  private changeAnyVersion(
+    actor: Actor,
+    id: string,
+    apply: (device: Device) => void,
+  ): Promise<Device> {
     actor.assertOwner();
+    const spaceId = actor.requireSpace();
     return this.transaction(async (tx) => {
-      const devices = new DeviceRepository(tx);
-      const device = await devices.lock(id);
-      if (!device || device.spaceId !== actor.spaceId) throw new NotFound('기기를 찾을 수 없어요');
+      const devices = this.store(tx);
+      const device = await devices.lock(spaceId, id);
       apply(device);
       await devices.save(device);
       return device;

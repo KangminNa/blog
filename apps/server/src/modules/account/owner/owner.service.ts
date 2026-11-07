@@ -52,8 +52,9 @@ export class OwnerService extends BaseService {
     const hash = await this.hasher.hash(req.password);
     return this.transaction(async (tx) => {
       const owners = new OwnerRepository(tx);
-      const owner = Owner.create(spaceId, req.login, hash);
-      const session = owner.startSession(ip, userAgent, new Date());
+      const now = new Date();
+      const owner = Owner.create(spaceId, req.login, hash, now);
+      const session = owner.startSession(ip, userAgent, now);
       await owners.save(owner);
       return session;
     });
@@ -77,7 +78,7 @@ export class OwnerService extends BaseService {
     return this.transaction(async (tx) => {
       const owners = new OwnerRepository(tx);
       const owner = (await owners.findByLogin(req.login)) ?? found;
-      if (rehash) owner.setPassword(rehash, null, true);
+      if (rehash) owner.rehashPassword(rehash);
       const session = owner.startSession(ip, userAgent, new Date());
       await owners.save(owner);
       return session;
@@ -90,7 +91,7 @@ export class OwnerService extends BaseService {
       const owners = new OwnerRepository(tx);
       const owner = await owners.findBySession(WebSession.hash(token));
       if (!owner) return;
-      owner.endSession(WebSession.hash(token));
+      owner.endSession(WebSession.hash(token), new Date());
       await owners.save(owner);
     });
   }
@@ -116,7 +117,7 @@ export class OwnerService extends BaseService {
       const owners = new OwnerRepository(tx);
       const owner = await owners.findBySession(tokenHash);
       if (!owner) throw new Unauthenticated('로그인해 주세요');
-      owner.setPassword(hash, owner.session(tokenHash));
+      owner.setPassword(hash, owner.session(tokenHash), new Date());
       await owners.save(owner);
     });
   }
@@ -183,7 +184,7 @@ export class OwnerService extends BaseService {
     return this.transaction(async (tx) => {
       const owners = new OwnerRepository(tx);
       const owner = (await owners.findOnly()) ?? found;
-      owner.setPassword(hash, null);
+      owner.setPassword(hash, null, new Date());
       await owners.save(owner);
       return owner;
     });

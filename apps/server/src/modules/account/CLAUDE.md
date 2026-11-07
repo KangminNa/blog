@@ -14,6 +14,12 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
 - 서버 러너는 스스로 연결한다 (`POST api/devices/server-runner`, `Device.forServerRunner`): 서버 키에서 만든 연결 값(`ServerRunnerPolicy`)을 서버가 시작할 때 볼륨에 쓰고(`ServerRunnerGateway`, `CAIRN_RUNNER_PAIRING_FILE`), 러너가 그 값을 내밀면 토큰을 준다
 - `guard/`: `ActorGuard` (모든 요청: 작업 토큰 → `AgentActor`(작업이 살아 있는지는 mcp 모듈이 묻는다), 그 밖의 Bearer 토큰 → `DeviceActor`. 둘 다 `/mcp`에서만 요청자가 되고 REST에서는 방문자와 같다. 로그인 쿠키 → `OwnerActor`. 로그인 쿠키로 오는 쓰기 요청은 출처가 사이트 주소일 때만, 아니면 403 `origin`)
 
+엔티티는 `TableEntity`(platform)로 표 한 줄을 들고, Repository(`TableRepository`)는 바뀐 칸만 저장한다 (객체설계 6장). 칼럼을 아는 곳은 `account.tables.ts`, Entity의 `RULES`, Input의 `COLUMNS`, View의 `toJSON`이다.
+- `Space`는 이름만 칸이고 소개 · 사이트 주소 · 앱 연결 허용은 settings의 값이다(`LoadedSpace`, 키는 `SpaceView`). 저장할 때 `saveParts`가 설정을 모두 다시 적는다
+- `Space` · `Device`는 칸이 그대로여도(설정 · 토큰만 바뀌어도) 저장하면 version이 오른다. `Owner`는 users에 version · space_id가 없어 `BaseRepository`로 바뀐 칸만 저장하고, 칸이 그대로여도 계정 행을 고친다 (같은 주인의 저장이 그 행에서 차례를 기다린다)
+- `OAuthClient` · `AuthorizationCode`는 열쇠가 id가 아니라(client_id · code_hash) `BaseEntity`로 새 행을 들고 저장한다
+- 토큰 · 해시 · 비밀번호 해시는 어떤 View에도 없다. 원문은 만든 순간의 응답에만 실린다 (`DeviceSavedView`의 token, `TokenView`, 로그인 쿠키)
+
 ## 소유 데이터
 스키마 `account`: spaces, users, login_links, space_members, settings, secrets, devices, oauth_clients, oauth_codes, oauth_tokens, device_tokens, web_sessions
 

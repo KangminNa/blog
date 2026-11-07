@@ -16,14 +16,8 @@ export class SpaceQuery extends BaseQuery {
 
   async info(_actor: Actor): Promise<SpaceView> {
     const space = await new SpaceRepository(this.sql).current();
-    return new SpaceView(
-      space?.name ?? '',
-      space?.description ?? '',
-      space?.siteUrl ?? null,
-      await this.hasOwner(),
-      space?.version ?? 0,
-      space?.hostedApps ?? false,
-    );
+    const installed = await this.hasOwner();
+    return space?.view(installed) ?? new SpaceView(null, installed);
   }
 
   /** pass: 이 브라우저가 가진 설치 통행증 쿠키 */
