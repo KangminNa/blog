@@ -13,7 +13,7 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 알림(notifications + push_subscriptions). 아직 코드 없음
 
 ## 공개 API (`index.ts`)
-- 기반 클래스: `BaseService` · `BaseQuery` · `BaseRepository` · `BaseEntity` · `TrackedEntity` · `BaseRequest`(+`RequestFields`) · `BaseResponse` · `BaseGateway` · `BaseTool`
+- 기반 클래스: `BaseService` · `EntityService` · `BaseQuery` · `BaseRepository` · `TableRepository` · `BaseEntity` · `TableEntity` · `BaseRequest`(+`RequestFields` · `VersionInput`) · `BaseResponse` · `BaseGateway` · `BaseTool`
 - `Database`, `Sql`·`Row`(라이브러리 타입 별칭), `Actor`와 `OwnerActor`·`DeviceActor`·`AgentActor`·`ApprovedActor`·`SystemActor`·`VisitorActor`.
   권한은 `assertCan(권한)`(기기·에이전트가 받은 권한), 관리 일은 종류로 묻는다: `assertOwner()`(주인만), `assertOwnerOrSystem()`(주인과 명령줄·일꾼: 플러그인, 서버 키 교체, 복원)
 - 같은 트랜잭션에 들어가는 것: `Outbox`(이벤트, 변경 신호, 일꾼 깨우기), `ChangeSignal`(내용 없는 신호), `Idempotency`(같은 request_id는 한 번만)
