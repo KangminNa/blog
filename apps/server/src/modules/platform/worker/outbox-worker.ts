@@ -2,6 +2,7 @@ import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { Database } from '../base/database';
 import { DomainEvent } from '../base/event';
 import { Outbox } from '../base/outbox';
+import type { OutboxRow } from '../platform.tables';
 import type { ScheduledJob } from '../plugin/plugin-context';
 import { PluginRegistry } from '../plugin/plugin-registry';
 import { CoreWorkers } from './core-workers';
@@ -63,7 +64,9 @@ export class OutboxWorker implements OnApplicationShutdown {
 
   /** 한 번 돌린다. 처리한 이벤트 수를 돌려준다 (테스트에서 직접 부른다) */
   async tick(): Promise<number> {
-    const rows = await this.db.sql`
+    const rows = await this.db.sql<
+      Pick<OutboxRow, 'id' | 'space_id' | 'topic' | 'payload' | 'attempts'>[]
+    >`
       UPDATE platform.outbox o
          SET attempts = o.attempts + 1, next_attempt_at = now() + interval '2 minutes'
        WHERE o.id IN (
@@ -75,7 +78,9 @@ export class OutboxWorker implements OnApplicationShutdown {
       RETURNING o.id, o.space_id, o.topic, o.payload, o.attempts`;
     for (const row of rows) {
       try {
-        const event = DomainEvent.fromOutbox(String(row.topic), String(row.space_id), row.payload);
+        // Outbox.publish가 적은 객체 ({ v, ...data })
+        const payload = row.payload as Record<string, unknown>;
+        const event = DomainEvent.fromOutbox(row.topic, row.space_id, payload);
         // 플러그인을 켜거나 끄거나 설정을 바꾸면: 재시작 없이 다시 등록하고 일정을 다시 짠다
         if (event.name === 'platform.plugin.changed') {
           await this.registry.reload();
@@ -86,7 +91,7 @@ export class OutboxWorker implements OnApplicationShutdown {
         await this.db
           .sql`UPDATE platform.outbox SET processed_at = now(), last_error = NULL WHERE id = ${row.id}`;
       } catch (error) {
-        await this.fail(Number(row.id), Number(row.attempts), error);
+        await this.fail(row.id, row.attempts, error);
       }
     }
     return rows.length;

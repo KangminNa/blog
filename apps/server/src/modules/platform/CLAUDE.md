@@ -6,11 +6,13 @@
 **비즈니스 규칙을 두지 않는다.** 세션·글 같은 단어가 여기 코드에 나오면 잘못 들어온 것이다.
 
 ## 소유 데이터
-스키마 `platform`: blobs, idempotency, notifications, push_subscriptions, embedding_models, outbox
+스키마 `platform`: blobs, idempotency, notifications, push_subscriptions, embedding_models, outbox, plugins, plugin_settings
 DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모듈의 테이블이 씀)
 
 ## 데이터 묶음
-알림(notifications + push_subscriptions). 아직 코드 없음
+- 플러그인(plugins + plugin_settings, `plugin/`): `PluginState`는 열쇠가 이름이고 version 칸이 없어 `BaseEntity`로 두 표의 행(`platform.tables.ts`)을 들고, `PluginRepository`가 늘 덮어쓴다 (ON CONFLICT). 비밀값은 암호화된 칸으로만 들고 View에는 채워졌는지(`isSet`)만 나간다. 목록은 Query가 보는 사람에 맞는 View를 고른다 (주인과 서버 자신 `PluginListView`, 그 밖 `PluginSummaryListView`)
+- 서버 상태(`health/`): 표가 아니라 DB 카탈로그를 읽는다. 누구에게나 DB를 읽어 본 뒤 답하고, 방문자는 status만(`HealthView`), 주인과 서버 자신은 확장 · 마이그레이션 · 표 수까지(`HealthDetailView`)
+- 알림(notifications + push_subscriptions). 아직 코드 없음
 
 ## 공개 API (`index.ts`)
 - 기반 클래스: `BaseService` · `EntityService` · `BaseQuery` · `BaseRepository` · `TableRepository` · `BaseEntity` · `TableEntity` · `BaseRequest`(+`RequestFields` · `VersionInput`) · `BaseResponse` · `BaseGateway` · `BaseTool`

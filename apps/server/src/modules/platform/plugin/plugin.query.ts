@@ -9,6 +9,8 @@ import {
   PluginListView,
   PluginSettingsView,
   PluginSettingView,
+  PluginSummaryListView,
+  PluginSummaryView,
   PluginView,
 } from './plugin.view';
 import { PluginManifest } from './plugin-manifest';
@@ -25,15 +27,17 @@ export class PluginQuery extends BaseQuery {
     super(db);
   }
 
-  /** 주인에게는 들어 있는 플러그인 전부, 방문자에게는 동작 중인 것만 */
-  async list(actor: Actor): Promise<PluginListView> {
+  /**
+   * 주인과 서버 자신에게는 들어 있는 플러그인 전부와 관리 정보(설정 칸·권한·관리 동작),
+   * 그 밖의 요청자(방문자, REST의 기기 토큰)에게는 동작 중인 것의 이름과 화면 자리만
+   */
+  async list(actor: Actor): Promise<PluginListView | PluginSummaryListView> {
     const states = new Map((await new PluginRepository(this.sql).all()).map((s) => [s.name, s]));
-    return new PluginListView(
-      this.registry
-        .installed()
-        .map((m) => this.view(m, states.get(m.name) ?? null))
-        .filter((v) => actor.canManage() || v.active),
-    );
+    const installed = this.registry.installed();
+    if (actor.canManage())
+      return new PluginListView(installed.map((m) => this.view(m, states.get(m.name) ?? null)));
+    const active = installed.filter((m) => states.get(m.name)?.isActiveFor(m));
+    return new PluginSummaryListView(active.map((m) => PluginQuery.summary(m)));
   }
 
   async publicSettings(_actor: Actor, name: string): Promise<PluginSettingsView> {
@@ -48,6 +52,10 @@ export class PluginQuery extends BaseQuery {
       state.publicValues(manifest),
       state.missingRequired(manifest).length === 0,
     );
+  }
+
+  private static summary(m: PluginManifest): PluginSummaryView {
+    return new PluginSummaryView(m.name, m.version, m.description, [...m.webSlots.keys()]);
   }
 
   private view(m: PluginManifest, state: PluginState | null): PluginView {
@@ -65,10 +73,7 @@ export class PluginQuery extends BaseQuery {
       );
     });
     return new PluginView(
-      m.name,
-      m.version,
-      m.description,
-      [...m.webSlots.keys()],
+      PluginQuery.summary(m),
       state?.enabled ?? false,
       state?.isActiveFor(m) ?? false,
       [...m.uses],
