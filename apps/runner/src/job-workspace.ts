@@ -21,10 +21,13 @@ export class JobWorkspace {
     readonly skillReady: boolean,
   ) {}
 
-  /** mcpConfig: mcp.json에 쓸 글, 없으면 MCP 없이. settings: config/settings.json에 쓸 글. skill이 없거나 폴더에 없으면 스킬 없이 만든다 */
+  /**
+   * mcpConfig: mcp.json에 쓸 글, 없으면 MCP 없이. settings: config/settings.json에 쓸 글, 없으면 쓰지 않는다 (Claude만 쓴다).
+   * skill이 없거나 폴더에 없으면 스킬 없이 만든다. 도구마다 다른 설정은 도구가 config/에 더 쓴다 (CodexCli)
+   */
   static async open(
     mcpConfig: string | null,
-    settings: string,
+    settings: string | null,
     skill: string | null,
     skillsDir: string,
   ): Promise<JobWorkspace> {
@@ -35,7 +38,8 @@ export class JobWorkspace {
       await writeFile(join(root, 'mcp.json'), mcpConfig, { mode: 0o600, flag: 'wx' });
       await chmod(join(root, 'mcp.json'), 0o600);
     }
-    await writeFile(join(root, 'config', 'settings.json'), settings, { flag: 'wx' });
+    if (settings !== null)
+      await writeFile(join(root, 'config', 'settings.json'), settings, { flag: 'wx' });
     const skillReady = skill !== null && JobWorkspace.install(skill, skillsDir, root);
     return new JobWorkspace(root, mcpConfig !== null, skillReady);
   }
@@ -58,6 +62,13 @@ export class JobWorkspace {
 
   async remove(): Promise<void> {
     await rm(this.root, { recursive: true, force: true });
+  }
+
+  /** 스킬의 SKILL.md 글. 이름의 모양이 틀렸거나 없으면 null (스킬 폴더를 읽지 못하는 CLI에게 지시문으로 준다) */
+  static skillText(skill: string, skillsDir: string): string | null {
+    const file = join(skillsDir, skill, 'SKILL.md');
+    if (!JobWorkspace.SKILL_NAME.test(skill) || !existsSync(file)) return null;
+    return readFileSync(file, 'utf8');
   }
 
   /** 이름은 서버가 보낸 값이라 경로로 쓰기 전에 모양을 본다. 스킬은 저장소에 든 것만 넣는다 */

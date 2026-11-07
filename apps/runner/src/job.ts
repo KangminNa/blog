@@ -141,8 +141,11 @@ export class Job {
     return this.kind === Job.AI_SIGNIN;
   }
 
-  /** AI CLI에게 줄 글. skillReady: 스킬을 넣어 두었는가 */
-  prompt(skillReady: boolean): string {
+  /**
+   * AI CLI에게 줄 글. skillReady: 스킬을 CLI의 스킬 폴더에 넣어 두었는가 (Claude).
+   * skillText: 스킬 폴더를 읽지 못하는 CLI(셸이 없는 Codex)에게 지시문으로 넣을 SKILL.md
+   */
+  prompt(skillReady: boolean, skillText: string | null = null): string {
     if (this.isAiTest) return this.instruction;
     const parts = [
       `당신은 Cairn의 에이전트 "${this.agentName}"입니다.${this.agentRole ? `\n${this.agentRole}` : ''}`,
@@ -167,6 +170,8 @@ export class Job {
       );
     if (this.team.length > 0) parts.push(this.teamPart());
     if (this.skill && skillReady) parts.push(`# 스킬\n${this.skill} 스킬을 따릅니다.`);
+    else if (this.skill && skillText)
+      parts.push(`# 스킬: ${this.skill}\n아래 스킬을 따릅니다.\n\n${skillText.trim()}`);
     parts.push(
       [
         '# 일하는 법',

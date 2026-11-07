@@ -1,9 +1,8 @@
 import type { AiLogin } from './ai-login';
 import type { AiProcess, ChildExit } from './ai-process';
+import { type AiStream, type AiTool, AiTools } from './ai-tool';
 import { Backoff, pause } from './backoff';
 import type { CairnServer } from './cairn-server';
-import { ClaudeCli } from './claude-cli';
-import { ClaudeStream } from './claude-stream';
 import type { Job } from './job';
 import { JobWorkspace } from './job-workspace';
 import { AccessDenied, ServerUnreachable, ToolRefused } from './mcp-client';
@@ -57,6 +56,8 @@ export class JobRun {
 
   private readonly redactor: Redactor;
   private readonly reporter: ProgressReporter;
+  /** 일의 도구 어댑터. 토큰이 없거나 모르는 도구면 null (perform이 시작 전에 끝낸다) */
+  private readonly tool: AiTool | null;
 
   constructor(
     private readonly job: Job,
@@ -67,7 +68,12 @@ export class JobRun {
     redactor: Redactor,
     private readonly stop: AbortSignal,
   ) {
-    this.redactor = redactor.with(job.runToken).with(login.token);
+    this.tool = login.token === null ? null : AiTools.for(job.tool, login.token, config);
+    // 자격 안의 토큰까지 (Codex auth.json의 access · refresh) 로그와 기록에서 지운다
+    this.redactor = (this.tool?.secrets ?? []).reduce(
+      (r, secret) => r.with(secret),
+      redactor.with(job.runToken).with(login.token),
+    );
     this.reporter = new ProgressReporter(server, job.taskId, this.redactor, job.leaseUntil);
   }
 
@@ -76,19 +82,13 @@ export class JobRun {
     try {
       const unfit = this.refusal();
       if (unfit) return await this.conclude(unfit);
-      const { token, problem } = this.login;
       // 토큰이 없는 것은 일의 실패가 아니다. 돌려주고, 주인이 토큰을 넣으면 다시 맡는다
-      if (token === null) return await this.conclude(RunEnding.release(problem));
-      const { runToken } = this.job;
-      workspace = await JobWorkspace.open(
-        runToken === null ? null : ClaudeCli.mcpConfig(this.config.mcpUrl, runToken),
-        ClaudeCli.settings(process.env.HOME),
-        this.job.skill,
-        this.config.skillsDir,
-      );
-      if (this.job.skill && !workspace.skillReady)
-        this.log.info(`스킬 ${this.job.skill}이 없어 지시만으로 해요`);
-      await this.supervise(workspace, new ClaudeCli(this.config.cliPath, token));
+      if (this.tool === null) return await this.conclude(RunEnding.release(this.login.problem));
+      workspace = await this.tool.open(this.job);
+      const { skill } = this.job;
+      if (skill && JobWorkspace.skillText(skill, this.config.skillsDir) === null)
+        this.log.info(`스킬 ${skill}이 없어 지시만으로 해요`);
+      await this.supervise(workspace, this.tool);
     } catch (error) {
       if (!(error instanceof CliUnavailable))
         await this.conclude(RunEnding.release(`러너 오류: ${(error as Error).message}`));
@@ -101,18 +101,18 @@ export class JobRun {
   /** 시작도 하지 않고 끝낼 일 */
   private refusal(): RunEnding | null {
     if (this.stop.aborted) return RunEnding.release(JobRun.STOPPING);
-    if (this.job.tool === ClaudeCli.TOOL) return null;
+    if (AiTools.SUPPORTED.includes(this.job.tool)) return null;
     const error = `${this.job.tool}는 아직 러너가 지원하지 않아요`;
     return RunEnding.submit(error, RunResult.failed(error, this.redactor));
   }
 
-  private async supervise(workspace: JobWorkspace, cli: ClaudeCli): Promise<void> {
-    const stream = new ClaudeStream();
+  private async supervise(workspace: JobWorkspace, tool: AiTool): Promise<void> {
+    const stream = tool.stream();
     const wake = new AbortController();
-    const child = cli.start(this.job, workspace, (line) => {
+    const child = tool.start(this.job, workspace, (line) => {
       this.reporter.add(stream.read(line));
       this.reporter.notePlan(stream.takePlanUsage());
-      if (stream.stray.length > 0) wake.abort();
+      if (stream.breach !== null) wake.abort();
     });
     void child.exited.then(() => wake.abort());
     const decided = await this.watch(stream, wake.signal);
@@ -121,8 +121,9 @@ export class JobRun {
     this.reporter.add(stream.finish());
     if (exit.spawnError !== null) {
       await this.conclude(RunEnding.release(`AI CLI를 실행하지 못했어요: ${exit.spawnError}`));
-      throw new CliUnavailable(`AI CLI를 실행하지 못했어요 (${this.config.cliPath})`);
+      throw new CliUnavailable(`AI CLI를 실행하지 못했어요 (${tool.bin})`);
     }
+    await this.writeBack(tool, workspace);
     const ending = decided
       ? ((await this.flush()) ?? decided)
       : ((await this.flushForSubmit()) ?? this.fromExit(exit, stream, child));
@@ -133,11 +134,11 @@ export class JobRun {
    * 끝낼 이유가 생기거나 AI CLI가 끝날 때까지 기록을 보낸다. 조용해도 빈 보고를 보내 임대를 늘리고 서버의 답을 듣는다.
    * wake는 AI CLI가 끝났거나 격리가 깨졌을 때 울린다. 스스로 끝났으면 null
    */
-  private async watch(stream: ClaudeStream, wake: AbortSignal): Promise<RunEnding | null> {
+  private async watch(stream: AiStream, wake: AbortSignal): Promise<RunEnding | null> {
     const alarm = AbortSignal.any([wake, this.stop]);
     for (;;) {
       await pause(JobRun.REPORT_MS, alarm);
-      if (stream.stray.length > 0) return this.breached(stream);
+      if (stream.breach !== null) return this.breached(stream);
       if (this.stop.aborted) return RunEnding.release(JobRun.STOPPING);
       if (wake.aborted) return null;
       const ending = await this.reportOnce();
@@ -145,9 +146,9 @@ export class JobRun {
     }
   }
 
-  /** 다른 MCP 서버가 보이면 사용자의 연결을 물려받은 것이다. 쓰기 전에 끈다 */
-  private breached(stream: ClaudeStream): RunEnding {
-    const error = `격리가 깨져 멈췄어요. 허락하지 않은 MCP 서버: ${stream.stray.join(', ')}`;
+  /** 다른 MCP 서버나 열린 셸이 보이면 격리가 깨진 것이다. 쓰기 전에 끈다 */
+  private breached(stream: AiStream): RunEnding {
+    const error = `격리가 깨져 멈췄어요. ${stream.breach}`;
     return RunEnding.submit(error, RunResult.failed(error, this.redactor));
   }
 
@@ -193,7 +194,29 @@ export class JobRun {
     }
   }
 
-  private fromExit(exit: ChildExit, stream: ClaudeStream, child: AiProcess): RunEnding {
+  /**
+   * 실행하는 동안 CLI가 갱신한 자격(Codex auth.json)을 서버에 되돌려 쓴다. 끝내는 길(성공 · 실패 · 취소)과 상관없이:
+   * 버리면 다음 실행이 이미 쓴 갱신 토큰을 내밀어 로그인이 깨진다. 이 컴퓨터의 로그인(판 없음)은 서버에 쓰지 않는다.
+   * 판이 다르면(주인이 그사이 다시 로그인) 서버가 거절하고 새 로그인이 이긴다
+   */
+  private async writeBack(tool: AiTool, workspace: JobWorkspace): Promise<void> {
+    const { version } = this.login;
+    if (version === null) return;
+    const credential = await tool.changedCredential(workspace);
+    if (credential === null) return;
+    try {
+      await this.persist(() =>
+        this.server.aiLoginRefresh(this.job.taskId, tool.id, version, credential),
+      );
+      this.log.info(`${this.job.taskId}: 갱신된 ${tool.id} 로그인을 서버에 저장했어요`);
+    } catch (error) {
+      this.log.info(
+        `${this.job.taskId}: 갱신된 로그인을 저장하지 못했어요: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  private fromExit(exit: ChildExit, stream: AiStream, child: AiProcess): RunEnding {
     if (exit.code === 0 && stream.failure === null)
       return RunEnding.submit('끝났어요', RunResult.done(stream.finalText, this.redactor));
     const how = exit.signal ? `신호 ${exit.signal}` : `코드 ${exit.code}`;

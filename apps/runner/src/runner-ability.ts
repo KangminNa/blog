@@ -1,6 +1,8 @@
 import { accessSync, constants } from 'node:fs';
 import { delimiter, join } from 'node:path';
+import { AiTools } from './ai-tool';
 import { ClaudeCli } from './claude-cli';
+import { CodexCli } from './codex-cli';
 import type { RunnerConfig } from './runner-config';
 import { SigninTerminal } from './signin-terminal';
 
@@ -11,10 +13,6 @@ import { SigninTerminal } from './signin-terminal';
 //   ownLogins    러너가 스스로 가진 로그인 (환경 변수의 Claude 토큰)
 // 설치는 시작할 때 한 번 본다. CLI를 새로 깔면 러너를 다시 켠다.
 export class RunnerAbility {
-  private static readonly CODEX = 'codex';
-  /** 러너가 일할 줄 아는 도구. Codex 실행은 다음 단계에서 더한다 */
-  private static readonly WORKS_WITH: readonly string[] = [ClaudeCli.TOOL];
-
   constructor(
     readonly tools: readonly string[],
     readonly signinTools: readonly string[],
@@ -28,7 +26,7 @@ export class RunnerAbility {
     const has = (bin: string) => RunnerAbility.installed(bin, env.PATH ?? '');
     const clis = [
       [ClaudeCli.TOOL, config.cliPath],
-      [RunnerAbility.CODEX, config.codexCliPath],
+      [CodexCli.TOOL, config.codexCliPath],
     ]
       .filter(([, bin]) => has(bin as string))
       .map(([tool]) => tool as string);
@@ -36,7 +34,7 @@ export class RunnerAbility {
     const pty =
       SigninTerminal.supported && has('script') && (process.platform !== 'linux' || has('timeout'));
     return new RunnerAbility(
-      clis.filter((tool) => RunnerAbility.WORKS_WITH.includes(tool)),
+      clis.filter((tool) => AiTools.SUPPORTED.includes(tool)),
       pty ? clis : [],
       config.claudeToken === null ? [] : [ClaudeCli.TOOL],
     );

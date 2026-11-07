@@ -95,7 +95,9 @@ function ToolCard({ tool, reload }: { tool: AiTool; reload: () => Promise<void> 
           <TokenForm tool={tool} reload={reload} />
         </details>
       ) : (
-        <p className="note">로그인만 저장돼요. Codex로 일하기는 준비 중이에요</p>
+        <p className="note">
+          에이전트의 AI 도구를 Codex로 고르면 이 로그인으로 일해요. 셸 없이 cairn 도구만 써요
+        </p>
       )}
     </section>
   );

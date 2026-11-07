@@ -30,12 +30,12 @@ after(async () => {
 });
 
 describe('러너가 할 수 있는 것', () => {
-  test('설치된 CLI만, 일은 아직 Claude만 한다. 웹 로그인은 둘 다', async () => {
+  test('설치된 CLI만 알린다. 일과 웹 로그인 모두 Claude · Codex', async () => {
     const claude = await tool('claude');
     const codex = await tool('codex');
     const path = `${bin}:${process.env.PATH}`;
     const ability = RunnerAbility.detect(config(claude, codex), { PATH: path });
-    assert.deepEqual(ability.tools, ['claude']);
+    assert.deepEqual(ability.tools, ['claude', 'codex']);
     if (process.platform === 'linux') assert.deepEqual(ability.signinTools, ['claude', 'codex']);
     assert.deepEqual(ability.ownLogins, []);
   });
@@ -45,7 +45,7 @@ describe('러너가 할 수 있는 것', () => {
     const plain = await tool('not-executable', 0o644);
     const path = `${bin}:${process.env.PATH}`;
     const ability = RunnerAbility.detect(config('/없는/claude', 'codex'), { PATH: path });
-    assert.deepEqual(ability.tools, []);
+    assert.deepEqual(ability.tools, ['codex']);
     if (process.platform === 'linux') assert.deepEqual(ability.signinTools, ['codex']);
     assert.equal(RunnerAbility.installed(plain, ''), false);
     assert.equal(RunnerAbility.installed('codex', path), true);

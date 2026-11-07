@@ -1,0 +1,158 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { AiProcess } from './ai-process';
+import type { AiStream, AiTool } from './ai-tool';
+import { CodexStream } from './codex-stream';
+import type { Job } from './job';
+import { JobWorkspace } from './job-workspace';
+
+// Codex CLI를 부르는 법: 공식 `codex exec --json`을 ChatGPT 구독 로그인(auth.json)으로 그대로 띄운다.
+//
+// 격리: CODEX_HOME은 작업마다 새 설정 폴더(config/)라 사용자의 설정 · MCP · 규칙 · 기록을 물려받지 않는다.
+// 권한: 셸을 끈다 (features.shell_tool · unified_exec). 남는 것은 작업 폴더 안 파일 고치기(apply_patch)와 cairn MCP뿐이다.
+//       sandbox는 workspace-write(작업 폴더만 쓰기, 네트워크 없음)로 둔다: 셸이 다시 열려도 두 번째 벽이 되게.
+//       읽기는 sandbox가 막지 않아서(실험으로 확인) 셸을 끄는 것이 첫 벽이다.
+//       --strict-config: 설정 이름이 바뀐 버전이면 셸이 조용히 열리지 않고 시작부터 실패한다.
+// 스킬: 셸이 없어 SKILL.md를 스스로 읽지 못하므로 지시문에 넣는다.
+// MCP: cairn 하나. 작업 토큰은 환경 변수(CAIRN_RUN_TOKEN)로만 넘기고, 셸 명령에는 기본만 넘긴다(shell_environment_policy).
+// 자격: auth.json은 쓸 때 갱신 토큰이 바뀐다. 끝난 뒤 바뀌었으면 서버에 되돌려 쓴다 (changedCredential → ai_login_refresh).
+// 설정 값은 Codex 0.164.0의 --strict-config로 이름을 확인했다.
+export class CodexCli implements AiTool {
+  static readonly TOOL = 'codex';
+  private static readonly TOKEN_ENV = 'CAIRN_RUN_TOKEN';
+  /** 사용자 환경에서 넘기는 것. 나머지(기기 토큰, 다른 API 키 포함)는 Codex에게 가지 않는다 */
+  private static readonly PASSED_ENV = [
+    'PATH',
+    'LANG',
+    'LC_ALL',
+    'LC_CTYPE',
+    'TZ',
+    'TMPDIR',
+    'USER',
+  ];
+  /** auth.json 안에서 로그에서 지울 만큼 긴 값 (토큰) */
+  private static readonly SECRET_MIN = 16;
+
+  readonly id = CodexCli.TOOL;
+
+  constructor(
+    readonly bin: string,
+    /** auth.json 원문 */
+    private readonly authJson: string,
+    private readonly mcpUrl: string,
+    private readonly skillsDir: string,
+  ) {}
+
+  /** CODEX_HOME/config.toml. 이 코드의 고정된 값과 서버 주소뿐이다. mcpUrl이 없으면 MCP 없이 (연결 확인) */
+  static configToml(mcpUrl: string | null): string {
+    const lines = [
+      '# Cairn 러너가 작업마다 만든 설정. 작업이 끝나면 지운다',
+      'cli_auth_credentials_store = "file"',
+      'approval_policy = "never"',
+      'sandbox_mode = "workspace-write"',
+      'web_search = "disabled"',
+      '',
+      '[sandbox_workspace_write]',
+      'network_access = false',
+      '',
+      '[shell_environment_policy]',
+      'inherit = "core"',
+      '',
+      '[features]',
+      'shell_tool = false',
+      'unified_exec = false',
+      'view_image = false',
+    ];
+    if (mcpUrl !== null)
+      lines.push(
+        '',
+        `[mcp_servers.${CodexStream.SERVER}]`,
+        `url = ${JSON.stringify(mcpUrl)}`,
+        `bearer_token_env_var = "${CodexCli.TOKEN_ENV}"`,
+      );
+    return `${lines.join('\n')}\n`;
+  }
+
+  async open(job: Job): Promise<JobWorkspace> {
+    const workspace = await JobWorkspace.open(null, null, null, this.skillsDir);
+    const mcp = job.runToken === null ? null : this.mcpUrl;
+    await writeFile(join(workspace.configDir, 'config.toml'), CodexCli.configToml(mcp), {
+      mode: 0o600,
+    });
+    await writeFile(join(workspace.configDir, 'auth.json'), this.authJson, { mode: 0o600 });
+    return workspace;
+  }
+
+  args(workspace: JobWorkspace): readonly string[] {
+    return [
+      'exec',
+      '--json',
+      '--strict-config',
+      '--skip-git-repo-check',
+      '--ephemeral',
+      '--sandbox',
+      'workspace-write',
+      '--cd',
+      workspace.workDir,
+      '-',
+    ];
+  }
+
+  env(
+    job: Job,
+    workspace: JobWorkspace,
+    parent: Readonly<Record<string, string | undefined>>,
+  ): Readonly<Record<string, string>> {
+    const passed = CodexCli.PASSED_ENV.flatMap((name) => {
+      const value = parent[name];
+      return value === undefined ? [] : [[name, value] as const];
+    });
+    return {
+      ...Object.fromEntries(passed),
+      HOME: workspace.homeDir,
+      CODEX_HOME: workspace.configDir,
+      ...(job.runToken === null ? {} : { [CodexCli.TOKEN_ENV]: job.runToken }),
+    };
+  }
+
+  start(job: Job, workspace: JobWorkspace, onLine: (line: string) => void): AiProcess {
+    const skill = job.skill === null ? null : JobWorkspace.skillText(job.skill, this.skillsDir);
+    return new AiProcess(
+      this.bin,
+      this.args(workspace),
+      workspace.workDir,
+      this.env(job, workspace, process.env),
+      job.prompt(false, skill),
+      onLine,
+    );
+  }
+
+  stream(): AiStream {
+    return new CodexStream();
+  }
+
+  async changedCredential(workspace: JobWorkspace): Promise<string | null> {
+    try {
+      const now = await readFile(join(workspace.configDir, 'auth.json'), 'utf8');
+      return now.trim() !== '' && now !== this.authJson ? now : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** auth.json 안의 토큰들 (access · refresh · id). 모양이 바뀌어도 긴 문자열은 모두 지운다 */
+  get secrets(): readonly string[] {
+    const found: string[] = [];
+    const walk = (value: unknown): void => {
+      if (typeof value === 'string' && value.length >= CodexCli.SECRET_MIN) found.push(value);
+      else if (Array.isArray(value)) value.forEach(walk);
+      else if (typeof value === 'object' && value !== null) Object.values(value).forEach(walk);
+    };
+    try {
+      walk(JSON.parse(this.authJson));
+    } catch {
+      found.push(this.authJson);
+    }
+    return found;
+  }
+}

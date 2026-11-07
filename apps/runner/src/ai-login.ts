@@ -1,4 +1,5 @@
 import type { CairnServer } from './cairn-server';
+import { ClaudeCli } from './claude-cli';
 import type { Job } from './job';
 import { ServerUnreachable, ToolRefused } from './mcp-client';
 
@@ -34,7 +35,9 @@ export class AiLogins {
 
   /** 받지 못하면 왜 못 받았는지 담아 돌려준다. 기기 토큰이 틀린 것처럼 사람이 고쳐야 하는 오류만 던진다 */
   async forJob(job: Job): Promise<AiLogin> {
-    if (this.envToken !== null && !job.isAiTest) return AiLogin.of(this.envToken);
+    // 환경 변수의 토큰은 Claude의 것이다 (CLAUDE_CODE_OAUTH_TOKEN). 다른 도구의 일에는 서버의 로그인을 받는다
+    if (this.envToken !== null && job.tool === ClaudeCli.TOOL && !job.isAiTest)
+      return AiLogin.of(this.envToken);
     try {
       const { token, version } = await this.server.aiLogin(job.tool);
       return token ? AiLogin.of(token, version) : AiLogin.missing(AiLogins.EMPTY);

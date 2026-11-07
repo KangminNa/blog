@@ -1,3 +1,4 @@
+import type { AiStream } from './ai-tool';
 import { Json } from './json';
 import { PlanWindow, RunEvent } from './progress';
 
@@ -11,7 +12,7 @@ import { PlanWindow, RunEvent } from './progress';
 // 토큰: input + cache_creation + output. cache_read는 값이 매우 싸고 턴마다 다시 세어져 한도에 넣지 않는다.
 // assistant 줄은 내용 블록마다 하나씩 나오고 같은 message.id에 같은 usage를 싣는다. 그래서 id별로 늘어난 만큼만 센다.
 // 하위 에이전트까지 든 정확한 합은 result의 modelUsage에 있어서, 끝에서 모자란 만큼을 더한다.
-export class ClaudeStream {
+export class ClaudeStream implements AiStream {
   /** 허락한 단 하나의 MCP 서버 */
   static readonly SERVER = 'cairn';
   private static readonly SERVER_PREFIX = `mcp__${ClaudeStream.SERVER}__`;
@@ -52,6 +53,12 @@ export class ClaudeStream {
   /** 허락하지 않은 MCP 서버 이름들. 있으면 격리가 깨진 것이다 */
   get stray(): readonly string[] {
     return this.strayServers;
+  }
+
+  get breach(): string | null {
+    return this.strayServers.length > 0
+      ? `허락하지 않은 MCP 서버: ${this.strayServers.join(', ')}`
+      : null;
   }
 
   /** 가장 최근에 본 구독 사용률을 꺼낸다. 새로 본 것이 없으면 비어 있다 */

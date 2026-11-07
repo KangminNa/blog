@@ -190,7 +190,7 @@ docker compose logs server | grep 설치     # 설치 코드
 
 `COMPOSE_FILE=docker-compose.prod.yml`이 있으면 `docker compose` 명령이 모두 운영 구성을 씁니다. 컴파일한 이미지를 root가 아닌 사용자로 돌리고, 소스 마운트와 감시 모드가 없습니다.
 프로젝트 이름과 볼륨이 개발 구성과 같아서, 개발 구성으로 돌리던 서버에 이 줄을 넣고 다시 올려도 DB를 그대로 이어 씁니다.
-서버 안의 러너는 서버와 함께 뜨고 스스로 연결합니다. 콘솔의 AI 메뉴에서 "브라우저로 로그인"을 누르면 러너가 로그인 명령을 대신 열고, 로그인 페이지에서 받은 코드를 붙여 넣으면 일합니다. 서버에 브라우저가 없어도 됩니다 (`claude setup-token`으로 만든 토큰을 직접 넣어도 됩니다).
+서버 안의 러너는 서버와 함께 뜨고 스스로 연결합니다. 콘솔의 AI 메뉴에서 "브라우저로 로그인"(Claude · Codex 구독)을 누르면 러너가 로그인 명령을 대신 열고, 로그인 페이지에서 받은 코드를 붙여 넣으면 일합니다. 에이전트마다 AI 도구(Claude Code · Codex)를 고릅니다. 서버에 브라우저가 없어도 됩니다 (`claude setup-token`으로 만든 토큰을 직접 넣어도 됩니다).
 GitHub 동기화 플러그인이 백업을 맡습니다. 서버가 고장 나면 새 Cairn에서 플러그인의 `저장소에서 복원`으로 되살립니다. 기기와 토큰은 다시 연결합니다.
 올린 사진은 `blob-data` 볼륨에 있습니다. DB(`db-data`)와 함께 백업합니다. 앞의 프록시는 10MB 본문을 받을 수 있어야 합니다.
 아래의 `docker-compose.override.yml`을 쓰면 `COMPOSE_FILE=docker-compose.prod.yml:docker-compose.override.yml`처럼 함께 적습니다. 파일을 직접 고르면 저절로 합쳐지지 않습니다.

@@ -51,6 +51,14 @@ describe('AI 토큰 고르기', () => {
     assert.deepEqual(server.asked, ['claude']);
   });
 
+  test('환경 변수의 토큰은 Claude의 것이라 Codex 일에는 서버의 로그인을 받는다', async () => {
+    const server = new FakeServer(() => '{"tokens":{}}');
+    const codexJob = job('general', { agent: { name: '글쓰기', role: '', tool: 'codex' } });
+    const login = await new AiLogins(server, 'env-token').forJob(codexJob);
+    assert.equal(login.token, '{"tokens":{}}');
+    assert.deepEqual(server.asked, ['codex']);
+  });
+
   test('연결 확인은 콘솔의 토큰을 보는 일이라 환경 변수가 있어도 서버에서 받는다', async () => {
     const server = new FakeServer(() => 'console-token');
     const login = await new AiLogins(server, 'env-token').forJob(aiTest);

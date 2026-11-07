@@ -814,6 +814,126 @@ describe('웹 AI 로그인', () => {
   });
 });
 
+// Codex 구독으로 일하기: 공식 codex exec를 셸 없이 띄우고, 실행 중에 갱신된 auth.json을 서버에 되돌려 쓴다.
+describe('Codex로 일한다', () => {
+  let runner: RunnerProcess;
+  const codexLogin = async (): Promise<Json> => {
+    const { tools } = ok(await api.get('/api/ai', owner)) as { tools: Json[] };
+    return tools.find((t) => t.tool === 'codex') as Json;
+  };
+  const codexAgent = () => newAgent({ tool: 'codex', name: 'Codex 글쓰기' });
+  /** 서버에 저장된 Codex 자격 (러너가 받는 그대로) */
+  const storedAuth = async (): Promise<Json> => {
+    const name = `codex-reader-${randomUUID().slice(0, 8)}`;
+    const device = await api.connectDevice(owner, name);
+    const { devices } = ok(await api.get('/api/devices', owner)) as {
+      devices: { id: string; name: string; version: number }[];
+    };
+    const row = devices.find((d) => d.name === name);
+    ok(
+      await api.request('PATCH', `/api/devices/${row?.id}`, owner, {
+        scopes: ['run'],
+        version: row?.version,
+      }),
+    );
+    const res = await api.mcp(device, 'tools/call', {
+      name: 'ai_login',
+      arguments: { tool: 'codex' },
+    });
+    const body = (res.json().result as { structuredContent: Json }).structuredContent;
+    return { ...JSON.parse(String(body.token)), version: body.version };
+  };
+
+  before(async () => {
+    await db.sql`DELETE FROM task.ai_logins WHERE tool = 'codex'`;
+    runner = RunnerProcess.start(api.baseUrl);
+    await runner.logged('일할 수 있는 AI: claude, codex');
+    const { taskId } = ok(await api.request('POST', '/api/ai/codex/signin', owner));
+    await taskIn(taskId, 'done');
+    assert.equal((await codexLogin()).connected, true);
+  });
+
+  after(async () => {
+    assert.equal(await runner.stop(), 0);
+  });
+
+  test('공식 CLI를 셸 없이 띄워 결과와 토큰을 남기고, 스킬은 지시문에 넣는다', async () => {
+    const spy = new Spy();
+    const created = await newTask(await codexAgent(), spy.mark, {
+      kind: 'draft_post',
+      title: '초안',
+    });
+    const seen = await spy.seen();
+    const task = await taskIn(created.id, 'done');
+    assert.deepEqual(task.result, { text: 'codex 끝' });
+    assert.equal(tokens(task), 220, '300 - 캐시 100 + 20');
+    const env = seen.env as Json;
+    assert.ok(String(env.CODEX_HOME).length > 0);
+    assert.notEqual(env.HOME, process.env.HOME, '빈 홈');
+    assert.ok(String(env.CAIRN_RUN_TOKEN).length > 0, '작업 토큰은 환경 변수로만');
+    assert.equal(env.CAIRN_RUNNER_TOKEN, undefined);
+    assert.equal(env.CLAUDE_CODE_OAUTH_TOKEN, undefined);
+    assert.ok(String(seen.config).includes('shell_tool = false'));
+    assert.ok(String(seen.config).includes('[mcp_servers.cairn]'));
+    assert.ok(String(seen.prompt).includes('# 스킬: cairn-write'), '셸이 없어 스킬은 지시문으로');
+  });
+
+  test('실행 중에 갱신된 auth.json은 서버에 되돌려 쓰고, 다음 실행은 새 자격으로 돈다', async () => {
+    const before = await storedAuth();
+    const first = await newTask(await codexAgent(), '[fake:rotate]');
+    await taskIn(first.id, 'done');
+    await runner.logged(`${first.id}: 갱신된 codex 로그인을 서버에 저장했어요`);
+    const after = await storedAuth();
+    assert.notEqual(
+      (after.tokens as Json).refresh_token,
+      (before.tokens as Json).refresh_token,
+      '바뀐 갱신 토큰이 저장됐다',
+    );
+    assert.equal(after.version, Number(before.version) + 1);
+
+    const spy = new Spy();
+    const second = await newTask(await codexAgent(), spy.mark);
+    const seen = await spy.seen();
+    await taskIn(second.id, 'done');
+    const home = String((seen.env as Json).CODEX_HOME);
+    assert.ok(home.length > 0);
+    const record = `${JSON.stringify(await getTask(second.id))}\n${runner.logs}`;
+    assert.equal(
+      record.includes(String((after.tokens as Json).refresh_token)),
+      false,
+      '자격은 어디에도 남지 않는다',
+    );
+  });
+
+  test('주인이 취소해도 그사이 갱신된 자격은 저장한다', async () => {
+    const before = await storedAuth();
+    const created = await newTask(await codexAgent(), '[fake:rotate] [fake:hang]');
+    await taskIn(created.id, 'running');
+    await new Promise((done) => setTimeout(done, 1_500)); // 가짜 CLI가 auth.json을 바꿀 시간
+    await cancelTask(created);
+    await runner.logged(`${created.id}: 갱신된 codex 로그인을 서버에 저장했어요`);
+    const after = await storedAuth();
+    assert.notEqual((after.tokens as Json).refresh_token, (before.tokens as Json).refresh_token);
+  });
+
+  test('작업 토큰(환경 변수)으로 cairn MCP에 결재를 올린다', async () => {
+    const created = await newTask(await codexAgent(), '[fake:approval]');
+    await taskIn(created.id, 'waiting');
+  });
+
+  test('셸 명령이 보이면 끄고 failed, 답에 섞인 자격은 지운다', async () => {
+    const shell = await newTask(await codexAgent(), '[fake:shell]');
+    const failed = await taskIn(shell.id, 'failed');
+    assert.match(String((failed.result as Json).error), /격리가 깨져 멈췄어요. 셸이 열려 있어요/);
+
+    const leak = await newTask(await codexAgent(), '[fake:leak]');
+    const done = await taskIn(leak.id, 'done');
+    const refresh = String(((await storedAuth()).tokens as Json).refresh_token);
+    assert.equal(JSON.stringify(done).includes(refresh), false);
+    assert.ok(JSON.stringify(done).includes('[지움: 토큰]'));
+  });
+});
+
 describe('러너를 멈춘다', () => {
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     test(`${signal}이면 AI CLI를 끄고 일을 돌려준 뒤 0으로 끝난다`, async () => {
@@ -866,14 +986,15 @@ describe('러너를 멈춘다', () => {
     assert.equal(await bare.exited(), 0);
   });
 
-  test('일할 줄 모르는 도구의 일은 받지 않고, 다른 일은 계속 한다', async () => {
+  test('로그인이 없는 도구의 일은 받지 않고, 다른 일은 계속 한다', async () => {
+    await db.sql`DELETE FROM task.ai_logins WHERE tool = 'codex'`;
     const codexWork = await newTask(await newAgent({ tool: 'codex' }), '');
     const runner = RunnerProcess.start(api.baseUrl);
     const next = await newTask(await newAgent(), '');
     await taskIn(next.id, 'done');
     await runner.logged(`${next.id}: 끝났어요`);
     const held = await getTask(codexWork.id);
-    assert.equal(held.status, 'queued', 'Codex 일은 그 도구를 가진 러너를 기다린다');
+    assert.equal(held.status, 'queued', 'Codex 일은 로그인이 생길 때까지 기다린다');
     assert.equal(held.attempts, 0);
     runner.signal('SIGTERM');
     await newTask(await newAgent(), ''); // 긴 폴링을 깨워 바로 끝나게 한다

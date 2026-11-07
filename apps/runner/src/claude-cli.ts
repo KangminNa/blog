@@ -1,7 +1,8 @@
 import { AiProcess } from './ai-process';
+import type { AiStream, AiTool } from './ai-tool';
 import { ClaudeStream } from './claude-stream';
 import type { Job } from './job';
-import type { JobWorkspace } from './job-workspace';
+import { JobWorkspace } from './job-workspace';
 
 // Claude Code를 부르는 법. Codex가 들어올 때 공통 모양을 뽑는다 (객체설계 13장: 추상화는 둘째 구현이 생길 때).
 //
@@ -12,7 +13,7 @@ import type { JobWorkspace } from './job-workspace';
 // 그래도 주인의 홈은 settings.json의 deny로 막는다 (ClaudeCli.settings): 거절이 더 확실하고 권한 모드가 바뀌어도 남는다.
 // 주인의 컴퓨터나 서버의 러너 컨테이너에서 돌아가므로 AI가 지시문에 속아도 이 안에 머문다.
 // 로그인 토큰은 일마다 정해지고 (AiLogins), 파일에 쓰지 않고 환경 변수로만 넘긴다.
-export class ClaudeCli {
+export class ClaudeCli implements AiTool {
   static readonly TOOL = 'claude';
   private static readonly FILE_TOOLS = ['Read', 'Write', 'Edit'];
   private static readonly SKILL_TOOL = 'Skill';
@@ -34,10 +35,38 @@ export class ClaudeCli {
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
   };
 
+  readonly id = ClaudeCli.TOOL;
+
   constructor(
-    private readonly bin: string,
+    readonly bin: string,
     private readonly oauthToken: string,
+    private readonly mcpUrl: string = '',
+    private readonly skillsDir: string = '',
   ) {}
+
+  /** 작업 자리: work 밖의 mcp.json(작업 토큰), 설정 폴더의 권한 설정과 스킬 */
+  open(job: Job): Promise<JobWorkspace> {
+    const { runToken } = job;
+    return JobWorkspace.open(
+      runToken === null ? null : ClaudeCli.mcpConfig(this.mcpUrl, runToken),
+      ClaudeCli.settings(process.env.HOME),
+      job.skill,
+      this.skillsDir,
+    );
+  }
+
+  stream(): AiStream {
+    return new ClaudeStream();
+  }
+
+  /** setup-token의 토큰은 쓰는 동안 바뀌지 않는다 */
+  async changedCredential(): Promise<string | null> {
+    return null;
+  }
+
+  get secrets(): readonly string[] {
+    return [this.oauthToken];
+  }
 
   /** mcp.json의 내용. 이 파일에만 작업 토큰을 쓴다 */
   static mcpConfig(url: string, runToken: string): string {
