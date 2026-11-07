@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ChildExit } from './ai-process';
@@ -46,6 +46,11 @@ class SigninEnding {
 export class SigninRun {
   private static readonly POLL_MS = 2_000;
   private static readonly TIMEOUT_MS = 5 * 60_000;
+  /** 러너가 먼저 끄도록 터미널의 제한 시간은 조금 더 길게 */
+  private static readonly LIMIT_SLACK_SECONDS = 30;
+  private static readonly DIR_PREFIX = 'cairn-signin-';
+  /** 이보다 오래된 로그인 폴더는 러너가 갑자기 죽어 남은 것이다 (로그인은 길어야 5분 반) */
+  private static readonly STALE_MS = 10 * 60_000;
   /** 코드를 넣고 Enter를 따로 친다. 함께 보내면 붙여 넣기로 읽혀 제출되지 않는다 (Paperclip) */
   private static readonly ENTER_DELAY_MS = 150;
   private static readonly AUTH_JSON_MAX = 64 * 1024;
@@ -63,6 +68,23 @@ export class SigninRun {
     private readonly stop: AbortSignal,
   ) {}
 
+  /**
+   * 러너가 갑자기 죽어 남은 로그인 폴더를 치운다 (Codex auth.json이 남아 있을 수 있다). 러너가 시작할 때 한 번.
+   * 다른 러너가 지금 쓰는 폴더는 새것이라 건드리지 않는다
+   */
+  static async sweep(now = Date.now()): Promise<number> {
+    let removed = 0;
+    for (const name of await readdir(tmpdir()).catch(() => [] as string[])) {
+      if (!name.startsWith(SigninRun.DIR_PREFIX)) continue;
+      const path = join(tmpdir(), name);
+      const info = await stat(path).catch(() => null);
+      if (!info?.isDirectory() || now - info.mtimeMs < SigninRun.STALE_MS) continue;
+      await rm(path, { recursive: true, force: true });
+      removed += 1;
+    }
+    return removed;
+  }
+
   async perform(): Promise<void> {
     const tool = this.job.tool;
     this.log.info(`${this.job.taskId}: ${tool} 로그인을 시작해요`);
@@ -73,7 +95,7 @@ export class SigninRun {
       return this.conclude(
         SigninEnding.failed('이 러너의 운영체제에서는 웹 로그인을 할 수 없어요'),
       );
-    const dir = await mkdtemp(join(tmpdir(), 'cairn-signin-'));
+    const dir = await mkdtemp(join(tmpdir(), SigninRun.DIR_PREFIX));
     try {
       await this.conclude(await this.drive(tool, bin, dir));
     } catch (error) {
@@ -108,6 +130,7 @@ export class SigninRun {
       tool === 'claude' ? ['setup-token'] : ['login', '--device-auth'],
       this.env(tool, home, config),
       (text) => screen.add(text),
+      SigninRun.TIMEOUT_MS / 1000 + SigninRun.LIMIT_SLACK_SECONDS,
     );
     void terminal.exited.then((done) => {
       exit = done;
@@ -178,7 +201,7 @@ export class SigninRun {
     config: string,
     exit: ChildExit | null,
   ): Promise<string | null> {
-    if (tool === 'claude') return screen.claudeToken(exit !== null);
+    if (tool === 'claude') return screen.claudeToken(exit?.code === 0);
     if (exit?.code !== 0) return null;
     try {
       const text = await readFile(join(config, 'auth.json'), 'utf8');

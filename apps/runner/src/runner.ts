@@ -74,6 +74,8 @@ export class Runner {
   async run(): Promise<void> {
     const stop = this.stopper.signal;
     this.log.info(`러너를 시작했어요: ${this.config.serverUrl}`);
+    const swept = await SigninRun.sweep();
+    if (swept > 0) this.log.info(`지난번에 남은 로그인 폴더 ${swept}개를 지웠어요`);
     if (this.config.claudeToken === null)
       this.log.info('AI 토큰은 콘솔의 AI 메뉴에 넣은 값을 써요');
     while (!stop.aborted) {

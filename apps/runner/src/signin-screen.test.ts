@@ -92,8 +92,15 @@ describe('claude setup-token', () => {
     assert.equal(screen.claudeToken(true), TOKEN);
   });
 
-  test('표시가 없으면 토큰 모양이 있어도 꺼내지 않는다', () => {
-    assert.equal(screenOf('claude', `${TOKEN}\r\n`).claudeToken(true), null);
+  test('표시 문구가 바뀌어도 잘 끝났으면 화면의 마지막 토큰을 쓴다. 끝나기 전에는 꺼내지 않는다', () => {
+    const screen = screenOf(
+      'claude',
+      'Paste code here if prompted > pasted-code#state\r\n',
+      `Here is your long-lived token:\r\n${TOKEN}\r\n`,
+    );
+    assert.equal(screen.claudeToken(false), null, '다 왔는지 모른다');
+    assert.equal(screen.claudeToken(true), TOKEN);
+    assert.equal(screenOf('claude', 'pasted-code#state\r\n').claudeToken(true), null);
   });
 });
 

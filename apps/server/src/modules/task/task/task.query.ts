@@ -46,7 +46,7 @@ export class TaskQuery extends BaseQuery {
     return new TaskDetailView(
       TaskQuery.view(row),
       String(row.instruction),
-      row.payload,
+      Task.shownPayload(String(row.kind), row.payload),
       row.result,
       events.map(
         (e) =>

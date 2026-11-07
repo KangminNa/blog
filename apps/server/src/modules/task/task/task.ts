@@ -388,13 +388,25 @@ export class Task extends TrackedEntity {
     this.setPayload({ ...this.payloadValue, code: sealedCode, step: Task.SIGNIN_VERIFYING });
   }
 
-  /** 러너가 코드를 가져간다. 한 번만 돌려주고 지운다 */
-  takeSigninCode(): string | null {
+  /**
+   * 사람이 붙여 넣은 코드 (암호화한 값). 로그인이 끝날 때까지 물을 때마다 같은 것을 준다:
+   * 응답을 잃어도 러너가 다시 받을 수 있게. 러너는 한 번만 쳐 넣는다. 끝나면 지운다 (forgetSignin)
+   */
+  get signinCode(): string | null {
     const code = this.payloadValue.code;
-    if (typeof code !== 'string') return null;
-    const { code: _taken, ...rest } = this.payloadValue;
-    this.setPayload(rest);
-    return code;
+    return typeof code === 'string' ? code : null;
+  }
+
+  /** 이 러너가 자격을 넘겨 이미 끝난 웹 로그인인가. 응답을 잃은 러너가 다시 보내도 같은 답을 준다 */
+  signinDoneBy(runnerId: string): boolean {
+    return this.isAiSignin && this.statusValue === Task.DONE && this.leaseHolder === runnerId;
+  }
+
+  /** 작업 상세에 보일 payload. 웹 로그인의 코드는 암호문이어도 내보내지 않는다 */
+  static shownPayload(kind: string, payload: unknown): unknown {
+    if (kind !== Task.AI_SIGNIN || typeof payload !== 'object' || payload === null) return payload;
+    const { code: _sealed, ...rest } = payload as Record<string, unknown>;
+    return rest;
   }
 
   /** 결과를 내고 끝났는가. 취소는 결과가 없어서 뺀다 */
@@ -683,6 +695,7 @@ export class Task extends TrackedEntity {
     this.tries = Math.max(0, this.tries - 1);
     this.track('attempts', this.tries);
     this.log(TaskLogEntry.ERROR, `돌려줌: ${reason}`, 0, now);
+    this.forgetSignin();
   }
 
   /** 임대가 끝남 (러너가 죽음): 다시 대기열로, MAX_ATTEMPTS번째면 실패로 */
@@ -695,6 +708,7 @@ export class Task extends TrackedEntity {
     this.move([Task.RUNNING], Task.QUEUED);
     this.holdLease(null, null);
     this.log(TaskLogEntry.ERROR, '임대가 끝나 다시 대기열로 돌아갔어요', 0, now);
+    this.forgetSignin();
   }
 
   log(kind: string, body: string, tokens: number, now: Date): void {
@@ -731,7 +745,7 @@ export class Task extends TrackedEntity {
     this.forgetSignin();
   }
 
-  /** 끝난 웹 로그인에는 주소도 가져가지 않은 코드도 남기지 않는다. 어느 도구였는지만 */
+  /** 끝나거나 대기열로 돌아간 웹 로그인에는 주소도 코드도 남기지 않는다. 어느 도구였는지만 */
   private forgetSignin(): void {
     if (this.isAiSignin && Object.keys(this.payloadValue).some((key) => key !== 'tool'))
       this.setPayload({ tool: this.payloadValue.tool });

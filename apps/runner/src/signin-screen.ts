@@ -65,12 +65,14 @@ export class SigninScreen {
 
   /**
    * setup-token이 그린 1년 토큰. "Your OAuth token"과 "Store this token" 사이의 마지막 것.
-   * 끝 표시가 아직 없으면 토큰이 다 오지 않았을 수 있어, 명령이 끝났을 때(ended)만 앞 표시 뒤에서 찾는다
+   * 끝 표시가 아직 없으면 토큰이 다 오지 않았을 수 있어, 명령이 잘 끝났을 때(ended)만 앞 표시 뒤에서 찾는다.
+   * 표시 문구가 CLI 버전에 따라 바뀌어도 토큰은 한 번만 보이므로, 잘 끝났으면 화면 전체의 마지막 토큰을 쓴다
+   * (로그인 전 화면과 붙여 넣은 코드의 메아리에는 이 모양이 없다)
    */
   claudeToken(ended: boolean): string | null {
     const text = this.text;
     const start = text.lastIndexOf(SigninScreen.TOKEN_START);
-    if (start < 0) return null;
+    if (start < 0) return ended ? (text.match(SigninScreen.CLAUDE_TOKEN)?.at(-1) ?? null) : null;
     const end = text.indexOf(SigninScreen.TOKEN_END, start);
     if (end < 0 && !ended) return null;
     const between = text.slice(start, end < 0 ? undefined : end);

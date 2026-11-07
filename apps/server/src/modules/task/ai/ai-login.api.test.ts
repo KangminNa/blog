@@ -603,7 +603,7 @@ describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () =>
     );
   });
 
-  test('Claude: 주소를 보이고, 붙여 넣은 코드를 러너가 한 번 가져가고, 받은 토큰을 저장한다', async () => {
+  test('Claude: 주소를 보이고, 붙여 넣은 코드를 러너에게 주고, 받은 토큰을 저장한다', async () => {
     const begun = await start('claude');
     assert.equal((await start('claude')).taskId, begun.taskId, '도구마다 하나');
     assert.equal((await signinOf('claude'))?.step, 'starting');
@@ -632,12 +632,27 @@ describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () =>
       '코드는 암호화해 둔다',
     );
 
+    const detail = await getTask(task.id);
+    assert.equal(
+      'code' in (detail.payload as Json),
+      false,
+      '작업 상세에는 암호문도 내보내지 않는다',
+    );
+
     assert.equal((await relay(task.id)).body.code, 'code#state');
-    assert.equal((await relay(task.id)).body.code, null, '한 번만 온다');
+    assert.equal(
+      (await relay(task.id)).body.code,
+      'code#state',
+      '응답을 잃어도 다시 받는다 (끝날 때까지)',
+    );
 
     const token = newToken().replace(/-/g, '_');
     const saved = await relay(task.id, { credential: `sk-ant-oat01-${token}` });
     assert.equal(saved.body.status, 'done');
+    const again = await relay(task.id, { credential: `sk-ant-oat01-${token}` });
+    assert.equal(again.ok, true, '응답을 잃고 다시 보내도 같은 답');
+    assert.equal(again.body.status, 'done');
+    assert.equal(again.body.code, null);
     const claudeNow = await claude();
     assert.equal(claudeNow.connected, true);
     assert.equal(claudeNow.signin, null);
@@ -776,6 +791,54 @@ describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () =>
       [work.id],
       'kinds가 없으면 남아 있던 일을 빌린다',
     );
+  });
+
+  test('동시에 두 번 시작해도 로그인 작업은 하나다', async () => {
+    const [a, b] = await Promise.all([start('codex'), start('codex')]);
+    assert.equal(a.taskId, b.taskId);
+    const [row] = await db.sql`
+      SELECT count(*)::int AS n FROM task.tasks
+      WHERE kind = 'ai_signin' AND payload->>'tool' = 'codex' AND status IN ('queued', 'running')`;
+    assert.equal(row?.n, 1);
+  });
+
+  test('러너가 돌려준 로그인은 주소를 비우고 처음부터 다시 돈다', async () => {
+    await start('claude');
+    const task = await takeSignin('claude');
+    assert.equal((await relay(task.id, { url: CLAUDE_URL })).ok, true);
+    ok(await pasteCode(task.id, 'code#state'));
+    const released = await tool(runner, 'release_job', { task_id: task.id, reason: '멈춰요' });
+    assert.equal(released.ok, true, JSON.stringify(released.body));
+    const [row] = await db.sql`SELECT payload FROM task.tasks WHERE id = ${String(task.id)}`;
+    assert.deepEqual(row?.payload, { tool: 'claude' }, '주소도 코드도 남지 않는다');
+    assert.deepEqual(await signinOf('claude'), {
+      taskId: task.id,
+      step: 'starting',
+      url: null,
+      userCode: null,
+    });
+  });
+
+  test('로그인하는 동안 러너가 닿은 때를 남긴다', async () => {
+    await start('claude');
+    const task = await takeSignin('claude');
+    await db.sql`UPDATE task.runners SET last_seen_at = now() - interval '10 minutes'`;
+    assert.equal((await relay(task.id)).ok, true);
+    const [row] = await db.sql`
+      SELECT count(*)::int AS n FROM task.runners WHERE last_seen_at > now() - interval '1 minute'`;
+    assert.ok(Number(row?.n) >= 1);
+  });
+
+  test('이 용도로 싼 코드가 아니면 러너에게 주지 않는다', async () => {
+    await start('claude');
+    const task = await takeSignin('claude');
+    assert.equal((await relay(task.id, { url: CLAUDE_URL })).ok, true);
+    // 다른 용도로 싼 값(예: 작업 토큰 모양)이 코드 자리에 있어도 풀어 주지 않는다
+    const foreign = SecretBox.fromEnv(process.env).pack('agent:{"spaceId":"x"}', 600);
+    await db.sql`
+      UPDATE task.tasks SET payload = payload || ${db.sql.json({ code: foreign, step: 'verifying' })}
+      WHERE id = ${String(task.id)}`;
+    assert.equal((await relay(task.id)).body.code, null);
   });
 
   test('Codex auth.json이 JSON 객체가 아니면 받지 않는다', async () => {

@@ -23,8 +23,13 @@ import { AiSigninPolicy } from './ai-signin.policy';
 // 확인 결과는 작업이 끝날 때 TaskService가 같은 트랜잭션에서 적는다. 잠그는 순서는 작업 → 로그인.
 @Injectable()
 export class AiLoginService extends BaseService {
-  /** 사람이 붙여 넣은 코드는 러너가 가져갈 때까지 이만큼만 (암호화해 작업에 둔다) */
+  /** 사람이 붙여 넣은 코드는 이만큼만 (암호화해 작업에 둔다) */
   private static readonly CODE_SECONDS = 600;
+  /**
+   * 코드를 쌀 때 앞에 붙이는 용도. SecretBox.pack은 작업 토큰 · 설치 통행증과 열쇠가 같아서,
+   * 주인이 고른 글을 그대로 싸면 다른 용도의 값으로 풀릴 수 있다
+   */
+  private static readonly CODE_PURPOSE = 'ai-signin-code:';
 
   constructor(
     db: Database,
@@ -90,6 +95,7 @@ export class AiLoginService extends BaseService {
     AiLogin.assertTool(req.tool);
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
+      await tasks.lockSigninSlot(spaceId, req.tool);
       const pending = await tasks.findPendingAiSignin(spaceId, req.tool);
       if (pending) return pending;
       const task = Task.aiSignin(spaceId, req.tool, new Date());
@@ -103,7 +109,10 @@ export class AiLoginService extends BaseService {
     actor.assertOwner();
     const spaceId = AiLoginService.spaceOf(actor);
     AiSigninPolicy.assertBrowserCode(req.code);
-    const sealed = this.box.pack(req.code, AiLoginService.CODE_SECONDS);
+    const sealed = this.box.pack(
+      `${AiLoginService.CODE_PURPOSE}${req.code}`,
+      AiLoginService.CODE_SECONDS,
+    );
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
       const task = await tasks.lock(spaceId, req.taskId);
@@ -116,7 +125,7 @@ export class AiLoginService extends BaseService {
   }
 
   /**
-   * ai_signin (러너): 로그인 주소를 알리고, 사람이 붙여 넣은 코드를 가져가고, 받은 자격을 넘긴다.
+   * ai_signin (러너): 로그인 주소를 알리고, 사람이 붙여 넣은 코드를 받고(끝날 때까지 물을 때마다), 받은 자격을 넘긴다.
    * 그 작업의 임대를 쥔 러너만. 자격을 받으면 같은 트랜잭션에서 로그인에 저장하고 작업을 끝낸다 (잠그는 순서는 작업 → 로그인).
    * 주인이 취소했으면 cancelled로 알린다
    */
@@ -125,12 +134,16 @@ export class AiLoginService extends BaseService {
     const { spaceId, id: runnerId } = actor;
     if (actor.kind !== 'device' || !spaceId || !runnerId) throw new Forbidden(Actor.RUN);
     const now = new Date();
+    // 로그인하는 동안 러너는 이것만 부른다. 러너 메뉴에 연결 안 됨으로 보이지 않게 닿은 때를 남긴다
+    await this.transaction((tx) => new RunnerRepository(tx).seen(spaceId, runnerId, now));
     const sealedCode = await this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
       const task = await tasks.lock(spaceId, req.taskId);
       const tool = task.signinTool;
       if (tool === null) throw new RuleViolation('웹 로그인 작업이 아니에요');
       if (task.cancelled) return { cancelled: true, code: null, status: task.status };
+      // 자격을 넘긴 응답을 잃고 다시 보냈다: 이미 저장했으니 같은 답을 준다
+      if (task.signinDoneBy(runnerId)) return { cancelled: false, code: null, status: task.status };
       task.assertHeldBy(runnerId, now);
       if (req.url !== null) {
         AiSigninPolicy.assertUrl(tool, req.url);
@@ -146,13 +159,25 @@ export class AiLoginService extends BaseService {
         await logins.save(found ?? AiLogin.open(spaceId, tool, sealed, now));
         task.finish({}, now);
       }
-      const code = task.takeSigninCode();
+      const code = task.signinCode;
       await tasks.save(task);
       return { cancelled: false, code, status: task.status };
     });
-    // 암호문은 10분짜리다. 지났으면 풀리지 않아 null: 러너는 더 기다리다 시간이 다 되면 실패로 끝낸다
-    const code = sealedCode.code === null ? null : this.box.unpack(sealedCode.code, now);
-    return new AiSigninRelayView(code, sealedCode.cancelled, sealedCode.status);
+    return new AiSigninRelayView(
+      this.openCode(sealedCode.code, now),
+      sealedCode.cancelled,
+      sealedCode.status,
+    );
+  }
+
+  /**
+   * 작업에 둔 코드를 푼다. 10분이 지났거나 이 용도로 싼 값이 아니면 null:
+   * 러너는 더 기다리다 시간이 다 되면 실패로 끝낸다
+   */
+  private openCode(sealed: string | null, now: Date): string | null {
+    const opened = sealed === null ? null : this.box.unpack(sealed, now);
+    if (!opened?.startsWith(AiLoginService.CODE_PURPOSE)) return null;
+    return opened.slice(AiLoginService.CODE_PURPOSE.length);
   }
 
   /** 지금 서버 키로 다시 잠근다 (pnpm secret:rotate). 바꾼 수를 돌려준다 */

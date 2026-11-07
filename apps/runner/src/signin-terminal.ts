@@ -19,11 +19,16 @@ export class SigninTerminal {
   private readonly pid: number | undefined;
   private readonly input: NodeJS.WritableStream;
 
+  /**
+   * limitSeconds: 이 시간이 지나면 러너와 상관없이 끝난다 (리눅스, coreutils의 timeout).
+   * 러너가 SIGKILL로 죽으면 따로 떠 있는(detached) 명령을 끌 사람이 없어서다. 평소에는 러너가 먼저 끈다
+   */
   constructor(
     bin: string,
     args: readonly string[],
     env: Readonly<Record<string, string>>,
     onOutput: (text: string) => void,
+    limitSeconds: number,
   ) {
     if (!args.every((arg) => SigninTerminal.WORD.test(arg)))
       throw new Error('로그인 명령의 인자는 고정된 낱말이어야 해요');
@@ -31,7 +36,8 @@ export class SigninTerminal {
       `stty cols ${SigninTerminal.COLUMNS} rows ${SigninTerminal.ROWS} 2>/dev/null`,
       `exec "$${SigninTerminal.BIN_ENV}" ${args.join(' ')}`,
     ].join('; ');
-    const child = spawn('script', SigninTerminal.scriptArgs(command), {
+    const [program, ...programArgs] = SigninTerminal.commandLine(command, limitSeconds);
+    const child = spawn(program as string, programArgs, {
       env: { ...env, [SigninTerminal.BIN_ENV]: bin, SHELL: '/bin/sh' },
       detached: true,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -65,10 +71,11 @@ export class SigninTerminal {
     clearTimeout(timer);
   }
 
-  private static scriptArgs(command: string): string[] {
-    return process.platform === 'darwin'
-      ? ['-q', '/dev/null', '/bin/sh', '-c', command]
-      : ['-q', '-e', '-c', command, '/dev/null'];
+  private static commandLine(command: string, limitSeconds: number): string[] {
+    if (process.platform === 'darwin')
+      return ['script', '-q', '/dev/null', '/bin/sh', '-c', command];
+    const limit = String(Math.max(1, Math.ceil(limitSeconds)));
+    return ['timeout', '-k', '5', limit, 'script', '-q', '-e', '-c', command, '/dev/null'];
   }
 
   private signal(name: NodeJS.Signals): void {

@@ -162,6 +162,15 @@ export class TaskRepository extends BaseRepository<Task> {
     return rows.map((r) => this.toEntity(r));
   }
 
+  /**
+   * 공간과 도구의 웹 로그인 자리를 트랜잭션이 끝날 때까지 잠근다. 동시에 두 번 눌러도 로그인 작업은 하나다
+   * (아직 로그인 줄이 없을 수 있어 행 대신 advisory 잠금)
+   */
+  async lockSigninSlot(spaceId: string, tool: string): Promise<void> {
+    await this
+      .sql`SELECT pg_advisory_xact_lock(hashtextextended(${`ai_signin:${spaceId}:${tool}`}, 0))`;
+  }
+
   /** 도구의 끝나지 않은 웹 로그인 (도구마다 하나) */
   async findPendingAiSignin(spaceId: string, tool: string): Promise<Task | null> {
     return this.maybeOne(
