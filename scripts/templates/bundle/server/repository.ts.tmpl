@@ -1,37 +1,14 @@
-import { BaseRepository, type Row } from '../../platform';
+import { TableRepository } from '../../platform';
+import type { __Table__Row } from '../__module__.tables';
 import { __Name__ } from './__bundle__';
 
-// __schema__.__table__ ↔ __Name__. 바뀐 칸만 저장하고 version으로 늦은 쓰기를 막는다.
-export class __Name__Repository extends BaseRepository<__Name__> {
-  protected toEntity(row: Row): __Name__ {
-    return __Name__.restore(
-      String(row.id),
-      Number(row.version),
-      String(row.space_id),
-      String(row.name),
-      new Date(row.created_at),
-    );
-  }
+// __schema__.__table__ ↔ __Name__. 불러오기 · 잠그기 · 저장(바뀐 칸만, version으로 늦은 쓰기를 막는다)은 기반이 한다.
+// 여기에는 이 표만의 SQL을 더한다.
+export class __Name__Repository extends TableRepository<__Table__Row, __Name__> {
+  protected readonly table = '__schema__.__table__';
+  protected readonly noun = '__label__';
 
-  /** 고칠 것을 잠근다. 없으면 NotFound */
-  async lock(spaceId: string, id: string): Promise<__Name__> {
-    const rows = await this.sql`
-      SELECT * FROM __schema__.__table__ WHERE id = ${id} AND space_id = ${spaceId} FOR UPDATE`;
-    return this.one(rows, '__label__');
-  }
-
-  async save(item: __Name__): Promise<void> {
-    if (item.isNew) {
-      await this.sql`
-        INSERT INTO __schema__.__table__ (id, space_id, name, created_at)
-        VALUES (${item.id}, ${item.spaceId}, ${item.name}, ${item.createdAt})`;
-    } else if (item.changed) {
-      const result = await this.sql`
-        UPDATE __schema__.__table__ SET ${this.sql(item.changes)}, version = version + 1
-        WHERE id = ${item.id} AND version = ${item.version}`;
-      this.expectUpdated(result.count, item);
-    }
-    item.clearChanges();
-    await this.publishEvents(item);
+  protected toEntity(row: __Table__Row): __Name__ {
+    return __Name__.restore(row);
   }
 }

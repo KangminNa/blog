@@ -6,6 +6,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import { rowTypeOf } from './table-name.mjs';
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const map = JSON.parse(readFileSync(join(root, 'apps/server/modules.json'), 'utf8'));
@@ -74,7 +75,7 @@ function render(found) {
 }
 
 function renderTable(name, cols) {
-  const base = pascal(name.split('.')[1]);
+  const base = rowTypeOf(name.split('.')[1]);
   const fields = cols.map((c) => `  ${c.column}: ${tsType(c)};`);
   const required = cols.filter((c) => c.column === 'id' || (!c.nullable && !c.filled));
   const keys = required.map((c) => `'${c.column}'`).join(' | ') || 'never';
@@ -93,18 +94,4 @@ function tsType({ type, nullable }) {
     ? `readonly ${TS_TYPES[type.slice(1)] ?? 'string'}[]`
     : (TS_TYPES[type] ?? 'string');
   return nullable ? `${value} | null` : value;
-}
-
-/** task_events → TaskEvent, categories → Category, wiki_aliases → WikiAlias */
-function pascal(table) {
-  const words = table.split('_');
-  words[words.length - 1] = singular(words.at(-1));
-  return words.map((w) => w[0].toUpperCase() + w.slice(1)).join('');
-}
-
-function singular(word) {
-  if (word === 'series') return word;
-  if (word.endsWith('ies')) return `${word.slice(0, -3)}y`;
-  if (word.endsWith('ases')) return word.slice(0, -2);
-  return word.endsWith('s') ? word.slice(0, -1) : word;
 }

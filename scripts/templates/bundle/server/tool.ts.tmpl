@@ -1,28 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseResponse, BaseTool } from '../../platform';
+import { Actor, BaseTool } from '../../platform';
 import { __Name__Query } from './__bundle__.query';
-import type { __Name__ListView } from './__bundle__.view';
-
-/** __tool__의 답. MCP는 snake_case */
-export class Tool__Name__Response extends BaseResponse {
-  private constructor(private readonly view: __Name__ListView) {
-    super();
-  }
-
-  static of(view: __Name__ListView): Tool__Name__Response {
-    return new Tool__Name__Response(view);
-  }
-
-  toJSON(): object {
-    return {
-      items: this.view.items.map((i) => ({
-        id: i.id,
-        name: i.name,
-        created_at: i.createdAt.toISOString(),
-      })),
-    };
-  }
-}
+import type { Tool__Name__View } from './__bundle__.view';
 
 // AI 도구가 읽는 __label__. 비공개면 read_all로만 연다. 입력 모양을 바꾸면 쓰는 스킬도 함께 고친다 (AGENTS.md).
 @Injectable()
@@ -37,7 +16,7 @@ export class List__Name__Tool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor): Promise<Tool__Name__Response> {
-    return Tool__Name__Response.of(await this.query.forTool(actor));
+  handle(actor: Actor): Promise<Tool__Name__View> {
+    return this.query.forTool(actor);
   }
 }

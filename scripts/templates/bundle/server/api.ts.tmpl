@@ -1,43 +1,12 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
-import { type Actor, BaseResponse, CurrentActor } from '../../platform';
-import type { __Name__ } from './__bundle__';
-import { __Name__IdInput, Create__Name__Input, Update__Name__Input } from './__bundle__.input';
+import { type Actor, CurrentActor } from '../../platform';
+import { Create__Name__Input, Update__Name__Input } from './__bundle__.input';
 import { __Name__Query } from './__bundle__.query';
 import { __Name__Service } from './__bundle__.service';
-import { type __Name__ListView, __Name__View } from './__bundle__.view';
+import type { __Name__ListView, __Name__View } from './__bundle__.view';
 
-/** __label__ 목록 */
-export class __Name__ListResponse extends BaseResponse {
-  private constructor(private readonly view: __Name__ListView) {
-    super();
-  }
-
-  static of(view: __Name__ListView): __Name__ListResponse {
-    return new __Name__ListResponse(view);
-  }
-
-  toJSON(): object {
-    return this.view.toJSON();
-  }
-}
-
-/** 만들거나 고친 __label__ 하나. 화면은 이 version으로 다음 변경을 보낸다 */
-export class __Name__Response extends BaseResponse {
-  private constructor(private readonly item: __Name__) {
-    super();
-  }
-
-  static of(item: __Name__): __Name__Response {
-    return new __Name__Response(item);
-  }
-
-  toJSON(): object {
-    const i = this.item;
-    return new __Name__View(i.id, i.name, i.createdAt, i.version).toJSON();
-  }
-}
-
-// __label__ API. Request 만들기 → Service·Query 메서드 하나 → Response. 권한은 Service·Query 첫 줄에서.
+// __label__ API. Input 만들기 → Service·Query 메서드 하나 → View. 권한은 Service·Query 첫 줄에서.
+// 만들거나 고친 뒤에는 하나를 돌려주고, 화면은 그 version으로 다음 변경을 보낸다.
 @Controller('api/__plural__')
 export class __Name__Controller {
   constructor(
@@ -46,13 +15,13 @@ export class __Name__Controller {
   ) {}
 
   @Get()
-  async list(@CurrentActor() actor: Actor): Promise<__Name__ListResponse> {
-    return __Name__ListResponse.of(await this.query.list(actor));
+  list(@CurrentActor() actor: Actor): Promise<__Name__ListView> {
+    return this.query.list(actor);
   }
 
   @Post()
-  async create(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<__Name__Response> {
-    return __Name__Response.of(await this.service.create(actor, Create__Name__Input.from(body)));
+  async create(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<__Name__View> {
+    return (await this.service.create(actor, Create__Name__Input.from(body))).view();
   }
 
   @Patch(':id')
@@ -60,10 +29,7 @@ export class __Name__Controller {
     @CurrentActor() actor: Actor,
     @Param('id') id: string,
     @Body() body: unknown,
-  ): Promise<__Name__Response> {
-    const target = __Name__IdInput.from(id);
-    return __Name__Response.of(
-      await this.service.update(actor, target.id, Update__Name__Input.from(body)),
-    );
+  ): Promise<__Name__View> {
+    return (await this.service.update(actor, Update__Name__Input.from(id, body))).view();
   }
 }

@@ -1,29 +1,45 @@
-// __label__의 읽기 모양. 웹이 `import type`으로 가져오므로 아무것도 import하지 않는다 (객체설계 6장).
+import type { __Table__Row } from '../__module__.tables';
+
+// __label__의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
+// 표의 칸 중 무엇을 내보내는지는 여기 한 곳에만 적는다. 보는 사람마다 다르면 View를 나눈다.
 
 /** __label__ 하나 */
 export class __Name__View {
-  constructor(
-    readonly id: string,
-    readonly name: string,
-    readonly createdAt: Date,
-    readonly version: number,
-  ) {}
+  constructor(private readonly row: Readonly<__Table__Row>) {}
 
   toJSON() {
+    const r = this.row;
     return {
-      id: this.id,
-      name: this.name,
-      createdAt: this.createdAt.toISOString(),
-      version: this.version,
+      id: r.id,
+      name: r.name,
+      createdAt: r.created_at.toISOString(),
+      version: r.version,
     };
   }
 }
 
 /** __label__ 목록 */
 export class __Name__ListView {
-  constructor(readonly items: readonly __Name__View[]) {}
+  constructor(private readonly items: readonly __Name__View[]) {}
 
   toJSON() {
     return { items: this.items.map((i) => i.toJSON()) };
   }
 }
+//#if tool
+
+/** __tool__의 답. MCP는 snake_case */
+export class Tool__Name__View {
+  constructor(private readonly rows: readonly Readonly<__Table__Row>[]) {}
+
+  toJSON() {
+    return {
+      items: this.rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        created_at: r.created_at.toISOString(),
+      })),
+    };
+  }
+}
+//#endif

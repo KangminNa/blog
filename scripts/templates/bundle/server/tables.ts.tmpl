@@ -1,0 +1,9 @@
+/** __schema__.__table__ */
+export interface __Table__Row {
+  id: string;
+  space_id: string;
+  name: string;
+  version: number;
+  created_at: Date;
+}
+export type __Table__New = Partial<__Table__Row> & Pick<__Table__Row, 'id' | 'space_id' | 'name'>;

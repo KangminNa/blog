@@ -1,25 +1,30 @@
 import { Injectable } from '@nestjs/common';
-import { type Actor, BaseService, Forbidden, Idempotency } from '../../platform';
+import { type Actor, EntityService, Idempotency, type Sql } from '../../platform';
 import { __Name__ } from './__bundle__';
 import type { Create__Name__Input, Update__Name__Input } from './__bundle__.input';
 import { __Name__Repository } from './__bundle__.repository';
 
 // __label__ 쓰기. 첫 줄에서 권한을 묻는다: 관리 일은 assertOwner() (assertCan(WRITE)는 write 기기도 통과한다).
 // 트랜잭션 하나 안에서 불러오기 → 엔티티에 시키기 → 저장. 외부 호출은 트랜잭션 밖에서.
+// 하나를 고치는 일은 기반의 changeAsOwner(잠그기 → version 확인 → 시키기 → 저장)로 한다.
 @Injectable()
-export class __Name__Service extends BaseService {
+export class __Name__Service extends EntityService<__Name__> {
   private static readonly CREATE = '__action__';
+
+  protected store(tx: Sql): __Name__Repository {
+    return new __Name__Repository(tx);
+  }
 
   /** 같은 requestId가 다시 오면 처음 만든 것을 돌려준다 */
   async create(actor: Actor, req: Create__Name__Input): Promise<__Name__> {
     actor.assertOwner();
-    const spaceId = __Name__Service.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     return this.transaction(async (tx) => {
-      const items = new __Name__Repository(tx);
+      const items = this.store(tx);
       const once = new Idempotency(tx, actor.id ?? spaceId, req.requestId, __Name__Service.CREATE);
       const before = await once.previous();
-      if (before) return items.lock(spaceId, String(before.id));
-      const item = __Name__.open(spaceId, req.name, new Date());
+      if (before) return items.load(spaceId, String(before.id));
+      const item = __Name__.open(spaceId, req.fields, new Date());
       await items.save(item);
       await once.remember({ id: item.id });
       return item;
@@ -27,21 +32,7 @@ export class __Name__Service extends BaseService {
   }
 
   /** 본 version이 지금과 다르면 409 */
-  async update(actor: Actor, id: string, req: Update__Name__Input): Promise<__Name__> {
-    actor.assertOwner();
-    const spaceId = __Name__Service.spaceOf(actor);
-    return this.transaction(async (tx) => {
-      const items = new __Name__Repository(tx);
-      const item = await items.lock(spaceId, id);
-      item.assertVersion(req.version);
-      item.name = req.name;
-      await items.save(item);
-      return item;
-    });
-  }
-
-  private static spaceOf(actor: Actor): string {
-    if (!actor.spaceId) throw new Forbidden('owner');
-    return actor.spaceId;
+  update(actor: Actor, req: Update__Name__Input): Promise<__Name__> {
+    return this.changeAsOwner(actor, req, (item) => item.edit(req.changes));
   }
 }

@@ -1,41 +1,43 @@
-import { BaseEntity, TrackedEntity } from '../../platform';
+import { BaseEntity, type ColumnRules, RuleViolation, TableEntity } from '../../platform';
+import type { __Table__New, __Table__Row } from '../__module__.tables';
+import { __Name__View } from './__bundle__.view';
 
 // __label__ 하나 (__schema__.__table__). 이 묶음이 지키는 규칙을 여기에 적는다.
-// 단순한 칸은 set으로, 상태는 규칙을 지키는 메서드로만 바꾼다. 둘 다 track으로 적는다 (객체설계 6장).
-export class __Name__ extends TrackedEntity {
+// 엔티티는 표 한 줄을 들고, 바뀐 칸만 저장된다 (객체설계 6장).
+// 주인이 정하는 칸은 RULES를 지나서만, 상태는 동사형 메서드(this.put)로만 바꾼다.
+export class __Name__ extends TableEntity<__Table__Row, __Table__New> {
   static readonly NAME_MAX = 100;
 
-  private constructor(
-    id: string,
-    version: number,
-    readonly spaceId: string,
-    private nameValue: string,
-    readonly createdAt: Date,
-    readonly isNew: boolean,
-  ) {
-    super(id, version);
+  /** 주인이 정하는 칸과 그 규칙 */
+  private static readonly RULES: ColumnRules<__Table__Row> = {
+    name: (value) => {
+      const name = value.trim();
+      if (name.length < 1 || name.length > __Name__.NAME_MAX)
+        throw new RuleViolation(`이름은 1~${__Name__.NAME_MAX}자예요`);
+      return name;
+    },
+  };
+
+  static open(spaceId: string, fields: Partial<__Table__Row>, now: Date): __Name__ {
+    const item = new __Name__(
+      { id: BaseEntity.newId(), space_id: spaceId, name: '', created_at: now },
+      true,
+    );
+    item.edit(fields);
+    return item;
   }
 
-  static open(spaceId: string, name: string, now: Date): __Name__ {
-    return new __Name__(BaseEntity.newId(), 1, spaceId, name, now, true);
+  static restore(row: __Table__Row): __Name__ {
+    return new __Name__(row);
   }
 
-  static restore(
-    id: string,
-    version: number,
-    spaceId: string,
-    name: string,
-    createdAt: Date,
-  ): __Name__ {
-    return new __Name__(id, version, spaceId, name, createdAt, false);
+  /** 주인이 고친 칸을 적는다 */
+  edit(changes: Partial<__Table__Row>): void {
+    this.accept(changes, __Name__.RULES);
   }
 
-  get name(): string {
-    return this.nameValue;
-  }
-
-  set name(value: string) {
-    this.nameValue = value;
-    this.track('name', value);
+  /** 만들거나 고친 __label__ 하나 */
+  view(): __Name__View {
+    return new __Name__View(this.row);
   }
 }
