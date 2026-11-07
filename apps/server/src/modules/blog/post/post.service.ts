@@ -135,7 +135,7 @@ export class PostService extends EntityService<Post> {
     const spaceId = Post.spaceOf(actor);
     await this.transaction(async (tx) => {
       const posts = new PostRepository(tx);
-      const post = await posts.lockIfAny(spaceId, postId);
+      const post = await posts.lockOrNull(spaceId, postId);
       const once = new Idempotency(tx, spaceId, approvalId, PostService.PUBLISH);
       const before = await once.previous();
       if (before) return posts.announce(Post.sameResult(spaceId, before));

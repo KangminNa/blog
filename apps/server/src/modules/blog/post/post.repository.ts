@@ -13,11 +13,6 @@ export class PostRepository extends TableRepository<PostRow, Post> {
     return Post.restore(row);
   }
 
-  /** 없을 수도 있는 글을 잠근다 (결재의 대상은 AI가 적은 값이다) */
-  async lockIfAny(spaceId: string, id: string): Promise<Post | null> {
-    return this.maybeOne(await this.select(spaceId, id, true));
-  }
-
   /** 이 주소이거나 "이 주소-숫자"인 다른 글의 주소들 (휴지통 글 포함). 주소에는 %·_가 없다 (SlugPolicy) */
   async takenSlugs(spaceId: string, base: string, exceptId: string | null): Promise<Set<string>> {
     const rows = await this.sql<Pick<PostRow, 'slug'>[]>`
