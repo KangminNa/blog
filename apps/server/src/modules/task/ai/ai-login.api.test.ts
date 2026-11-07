@@ -292,7 +292,7 @@ describe('ai_login', () => {
     const { ok: done, body } = await tool(runner, 'ai_login', { tool: 'claude' });
 
     assert.equal(done, true, JSON.stringify(body));
-    assert.deepEqual(body, { token, expires_at: saved.expiresAt });
+    assert.deepEqual(body, { token, expires_at: saved.expiresAt, version: 1 });
   });
 
   test('run 권한이 없는 기기에게는 보이지 않고 부를 수도 없다', async () => {
@@ -548,6 +548,11 @@ describe('서버 키 교체', () => {
 });
 
 describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () => {
+  // 같은 DB를 쓰는 다른 테스트 파일(사용량 등)에 Codex 에이전트가 보이지 않게 되돌린다
+  after(async () => {
+    await db.sql`UPDATE task.agents SET tool = 'claude' WHERE tool = 'codex'`;
+  });
+
   const CLAUDE_URL =
     'https://claude.ai/oauth/authorize?code=true&client_id=abc&response_type=code&state=s123';
   const CODEX_URL = 'https://auth.openai.com/codex/device';
@@ -770,27 +775,148 @@ describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () =>
     assert.notEqual((await start('claude')).taskId, task.id, '다시 시작하면 새 작업');
   });
 
-  test('토큰이 없는 러너는 kinds로 웹 로그인만 빌린다. 다른 일은 대기열에 남는다', async () => {
-    const agent = await newAgent();
-    const work = await newTask(agent);
-    const begun = await start('claude');
-    const only = await tool(runner, 'next_jobs', { kinds: ['ai_signin'], limit: 5 });
-    const jobs = only.body.jobs as Json[];
-    assert.deepEqual(
-      jobs.map((j) => (j.task as Json).id),
-      [begun.taskId],
+  /** 러너가 가진 것을 알리고 일을 빌린다 */
+  const leaseAs = async (ability: Json, limit = 5): Promise<Json[]> => {
+    const res = await tool(runner, 'next_jobs', { limit, ...ability });
+    assert.equal(res.ok, true, JSON.stringify(res.body));
+    return res.body.jobs as Json[];
+  };
+  const idsOf = (jobs: Json[]) => jobs.map((j) => (j.task as Json).id);
+  const NOTHING = { tools: [], signin_tools: [], own_logins: [] };
+
+  /** 웹 로그인으로 Codex 로그인을 만든다 */
+  async function codexLogin(credential = AUTH_JSON): Promise<void> {
+    await start('codex');
+    const task = await takeSignin('codex');
+    assert.equal((await relay(task.id, { url: CODEX_URL, user_code: 'ABCD-12345' })).ok, true);
+    assert.equal((await relay(task.id, { credential })).body.status, 'done');
+  }
+
+  async function codexAgent(): Promise<Json> {
+    return ok(
+      await api.request('POST', '/api/agents', owner, {
+        requestId: randomUUID(),
+        name: 'Codex 글쓰기',
+        tool: 'codex',
+        scopes: ['read_public', 'write'],
+      }),
+      201,
     );
-    assert.equal((await getTask(work.id)).status, 'queued', '글쓰기 일은 빌리지 않는다');
-    const none = await tool(runner, 'next_jobs', { kinds: ['ai_signin'] });
-    assert.deepEqual(none.body.jobs, []);
-    const bad = await tool(runner, 'next_jobs', { kinds: 'ai_signin' });
-    assert.equal(bad.ok, false, '목록이 아니면 거절');
-    const all = await lease(5);
+  }
+
+  test('러너가 알린 도구 중 쓸 수 있는 로그인이 있는 도구의 일만 준다', async () => {
+    const work = await newTask(await newAgent());
     assert.deepEqual(
-      all.map((j) => (j.task as Json).id),
-      [work.id],
-      'kinds가 없으면 남아 있던 일을 빌린다',
+      await leaseAs({ ...NOTHING, tools: ['claude'] }),
+      [],
+      'Claude 로그인이 없으면 빌려 주지 않는다 (빌렸다 돌려주지 않게)',
     );
+    assert.deepEqual(await leaseAs({ ...NOTHING, tools: ['codex'] }), [], '다른 도구만 가진 러너');
+    await saveToken(newToken());
+    assert.deepEqual(idsOf(await leaseAs({ ...NOTHING, tools: ['claude'] })), [work.id]);
+  });
+
+  test('러너가 스스로 로그인을 가졌으면 서버의 로그인이 없어도 준다', async () => {
+    const work = await newTask(await newAgent());
+    const jobs = await leaseAs({ ...NOTHING, tools: ['claude'], own_logins: ['claude'] });
+    assert.deepEqual(idsOf(jobs), [work.id]);
+  });
+
+  test('연결 확인은 그 도구를 가졌고 서버의 로그인을 쓸 수 있을 때만', async () => {
+    await saveToken(newToken());
+    const { taskId } = await startTest();
+    assert.deepEqual(await leaseAs(NOTHING), []);
+    await db.sql`UPDATE task.ai_logins SET expires_at = now() - interval '1 second'`;
+    assert.deepEqual(
+      await leaseAs({ ...NOTHING, tools: ['claude'] }),
+      [],
+      '만료된 로그인은 확인도 미룬다',
+    );
+    await db.sql`UPDATE task.ai_logins SET expires_at = now() + interval '1 day'`;
+    assert.deepEqual(idsOf(await leaseAs({ ...NOTHING, tools: ['claude'] })), [taskId]);
+  });
+
+  test('웹 로그인은 signin_tools의 도구만 준다', async () => {
+    const claudeSignin = await start('claude');
+    const codexSignin = await start('codex');
+    assert.deepEqual(await leaseAs(NOTHING), []);
+    assert.deepEqual(idsOf(await leaseAs({ ...NOTHING, signin_tools: ['codex'] })), [
+      codexSignin.taskId,
+    ]);
+    assert.equal((await signinOf('claude'))?.step, 'starting', 'Claude 로그인은 대기열에');
+    assert.deepEqual(idsOf(await leaseAs({ ...NOTHING, signin_tools: ['claude'] })), [
+      claudeSignin.taskId,
+    ]);
+  });
+
+  test('갱신 토큰이 바뀌는 Codex는 서버 로그인으로 한 번에 하나만 돈다', async () => {
+    await codexLogin();
+    const agent = await codexAgent();
+    const first = await newTask(agent);
+    const second = await newTask(agent);
+    const ability = { ...NOTHING, tools: ['codex'] };
+    assert.deepEqual(idsOf(await leaseAs(ability)), [first.id], '하나만');
+    assert.deepEqual(await leaseAs(ability), [], '앞의 것이 도는 동안은 주지 않는다');
+    assert.equal((await submit(first.id, 'done')).ok, true);
+    assert.deepEqual(idsOf(await leaseAs(ability)), [second.id]);
+  });
+
+  test('ai_login_refresh: 쥔 일과 받은 판으로만 Codex 자격을 되돌려 쓴다', async () => {
+    await codexLogin();
+    const task = await newTask(await codexAgent());
+    assert.deepEqual(idsOf(await leaseAs({ ...NOTHING, tools: ['codex'] })), [task.id]);
+    const handed = await tool(runner, 'ai_login', { tool: 'codex' });
+    const version = handed.body.version as number;
+    assert.equal(typeof version, 'number');
+
+    const rotated = JSON.stringify({ tokens: { refresh_token: 'r2', access_token: 'a2' } });
+    const refresh = (args: Json) =>
+      tool(runner, 'ai_login_refresh', {
+        task_id: task.id,
+        tool: 'codex',
+        version,
+        credential: rotated,
+        ...args,
+      });
+    assert.equal((await refresh({ credential: 'not json' })).body.code, 'rule_violation');
+    assert.equal(
+      (await refresh({ tool: 'claude' })).body.code,
+      'rule_violation',
+      'Claude 토큰은 바뀌지 않는다',
+    );
+    assert.equal((await refresh({ task_id: randomUUID() })).ok, false, '쥔 일이 아니면');
+
+    const saved = await refresh({});
+    assert.equal(saved.ok, true, JSON.stringify(saved.body));
+    assert.equal(saved.body.version, version + 1);
+    const after = await tool(runner, 'ai_login', { tool: 'codex' });
+    assert.equal(after.body.token, rotated);
+    assert.equal(after.body.version, version + 1);
+    assert.equal(after.body.expires_at ?? null, null, '만료는 그대로 없다');
+
+    const stale = await refresh({ credential: AUTH_JSON });
+    assert.equal(stale.body.code, 'conflict', '옛 판으로는 덮지 못한다');
+    assert.equal((await tool(runner, 'ai_login', { tool: 'codex' })).body.token, rotated);
+
+    // 주인이 취소해도 맡았던 러너의 되돌려 쓰기는 받는다: 버리면 다음 실행에서 로그인이 깨진다
+    const { version: taskVersion } = await getTask(task.id);
+    ok(await api.request('POST', `/api/tasks/${task.id}/cancel`, owner, { version: taskVersion }));
+    const afterCancel = await refresh({ version: version + 1, credential: AUTH_JSON });
+    assert.equal(afterCancel.ok, true, JSON.stringify(afterCancel.body));
+    const other = ok(
+      await api.request('POST', '/api/devices/runner', owner, {
+        requestId: randomUUID(),
+        name: `남의-러너-${randomUUID().slice(0, 8)}`,
+      }),
+      201,
+    ) as { token: string };
+    const foreign = await tool(other.token, 'ai_login_refresh', {
+      task_id: task.id,
+      tool: 'codex',
+      version: version + 2,
+      credential: rotated,
+    });
+    assert.equal(foreign.ok, false, '맡지 않았던 러너는 되돌려 쓰지 못한다');
   });
 
   test('동시에 두 번 시작해도 로그인 작업은 하나다', async () => {

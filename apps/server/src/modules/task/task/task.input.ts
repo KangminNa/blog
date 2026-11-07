@@ -128,13 +128,17 @@ export class NextJobsInput extends BaseRequest {
   static readonly WAIT_MAX = 25;
   static readonly LIMIT_MAX = 10;
 
-  static readonly KINDS_MAX = 10;
+  static readonly TOOLS_MAX = 10;
 
   private constructor(
     readonly waitSeconds: number,
     readonly limit: number,
-    /** 이 종류의 일만 빌린다. null이면 모두 (AI 토큰이 없는 러너는 웹 로그인만 받는다) */
-    readonly kinds: readonly string[] | null,
+    /** 실행할 수 있는 AI CLI. null이면 거르지 않는다 (알리기 전의 러너) */
+    readonly tools: readonly string[] | null,
+    /** 웹 로그인을 대신 돌릴 수 있는 CLI. null이면 거르지 않는다 */
+    readonly signinTools: readonly string[] | null,
+    /** 러너가 스스로 가진 로그인 (주인 컴퓨터의 환경 변수 등) */
+    readonly ownLogins: readonly string[],
   ) {
     super();
   }
@@ -146,7 +150,9 @@ export class NextJobsInput extends BaseRequest {
         new NextJobsInput(
           f.optionalInteger('wait_seconds', 0, NextJobsInput.WAIT_MAX) ?? 0,
           f.optionalInteger('limit', 1, NextJobsInput.LIMIT_MAX) ?? 1,
-          f.optionalTextList('kinds', NextJobsInput.KINDS_MAX, 40),
+          f.optionalTextList('tools', NextJobsInput.TOOLS_MAX, 40),
+          f.optionalTextList('signin_tools', NextJobsInput.TOOLS_MAX, 40),
+          f.optionalTextList('own_logins', NextJobsInput.TOOLS_MAX, 40) ?? [],
         ),
     );
   }

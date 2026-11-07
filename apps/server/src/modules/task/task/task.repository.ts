@@ -70,13 +70,13 @@ export class TaskRepository extends BaseRepository<Task> {
    * 빌려 줄 작업을 잠근다. 다른 러너가 잡은 행은 건너뛰고, 담당이 없거나 일을 받을 수 있는 에이전트(ready)의 일만,
    * 우선순위 → 오래된 순. 멈췄거나 쉬는 에이전트의 일과 맡을 권한이 없는 일은 대기열에 남아 뒤의 일을 막지 않는다.
    * 연결 확인과 웹 로그인은 에이전트가 필요 없어 일을 받을 에이전트가 없어도 빌려 준다.
-   * kinds가 있으면 그 종류만 (러너가 고른다: AI 토큰이 없으면 웹 로그인만)
+   * 그 둘은 도구로 거른다 (null이면 거르지 않는다): 연결 확인은 testTools, 웹 로그인은 signinTools의 도구만
    */
   async lockNext(
     spaceId: string,
     ready: readonly Agent[],
     limit: number,
-    kinds: readonly string[] | null,
+    tools: { testTools: readonly string[] | null; signinTools: readonly string[] | null },
   ): Promise<readonly Task[]> {
     const agentIds = ready.map((a) => a.id);
     const rows = await this.sql`
@@ -86,11 +86,27 @@ export class TaskRepository extends BaseRepository<Task> {
           OR agent_id = ANY(${agentIds}::uuid[])
           OR (agent_id IS NULL AND ${agentIds.length > 0}))
         ${this.scoped(ready)}
-        ${kinds === null ? this.sql`` : this.sql`AND kind = ANY(${kinds as string[]}::text[])`}
+        ${this.byTool(Task.AI_TEST, tools.testTools)}
+        ${this.byTool(Task.AI_SIGNIN, tools.signinTools)}
       ORDER BY priority DESC, id
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED`;
     return rows.map((r) => this.toEntity(r));
+  }
+
+  /** 에이전트 없는 일의 종류 하나를 payload의 도구로 거른다 */
+  private byTool(kind: string, tools: readonly string[] | null) {
+    return tools === null
+      ? this.sql``
+      : this.sql`AND (kind <> ${kind} OR payload->>'tool' = ANY(${tools as string[]}::text[]))`;
+  }
+
+  /** 지금 도는 에이전트 일의 도구들 (갱신 토큰이 바뀌는 도구를 한 번에 하나만 돌리려고) */
+  async runningAgentTools(spaceId: string): Promise<readonly string[]> {
+    const rows = await this.sql`
+      SELECT DISTINCT a.tool FROM task.tasks t JOIN task.agents a ON a.id = t.agent_id
+      WHERE t.space_id = ${spaceId} AND t.status = ${Task.RUNNING}`;
+    return rows.map((r) => String(r.tool));
   }
 
   /** 권한이 필요한 종류는 그 권한을 가진 에이전트의 일이거나, 담당이 없어도 맡을 에이전트가 있을 때만 */

@@ -52,10 +52,25 @@ export class AiTokenView {
   constructor(
     readonly token: string,
     readonly expiresAt: Date | null,
+    /** 로그인의 판. 바뀐 자격을 되돌려 쓸 때(ai_login_refresh) 함께 보낸다 */
+    readonly version: number,
   ) {}
 
   toJSON() {
-    return { token: this.token, expires_at: this.expiresAt?.toISOString() ?? null };
+    return {
+      token: this.token,
+      expires_at: this.expiresAt?.toISOString() ?? null,
+      version: this.version,
+    };
+  }
+}
+
+/** ai_login_refresh의 답: 저장한 뒤의 판 */
+export class AiLoginVersionView {
+  constructor(readonly version: number) {}
+
+  toJSON() {
+    return { version: this.version };
   }
 }
 

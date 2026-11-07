@@ -1,11 +1,20 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseService, Database, Forbidden, RuleViolation, SecretBox } from '../../platform';
+import {
+  Actor,
+  BaseService,
+  Database,
+  Forbidden,
+  NotFound,
+  RuleViolation,
+  SecretBox,
+} from '../../platform';
 import { RunnerRepository } from '../runner/runner.repository';
 import { Task } from '../task/task';
 import { TaskRepository } from '../task/task.repository';
 import { AiLogin } from './ai-login';
 import type {
   AiLoginInput,
+  AiLoginRefreshInput,
   AiSigninCodeInput,
   AiSigninInput,
   AiSigninStepInput,
@@ -41,7 +50,7 @@ export class AiLoginService extends BaseService {
 
   /**
    * ai_login: 러너에게 토큰을 건넨다 (읽기는 AiLoginQuery.token). 그 전에 러너가 닿은 때를 남긴다:
-   * 토큰이 없는 동안 러너는 일을 빌리지 않고 이것만 묻기 때문이다. 토큰이 없어 거절해도 닿은 때는 남는다
+   * 할 수 있는 것을 알리기 전의 러너는 토큰이 없는 동안 이것만 묻는다. 토큰이 없어 거절해도 닿은 때는 남는다
    */
   async handOver(actor: Actor, req: AiLoginInput): Promise<AiTokenView> {
     actor.assertCan(Actor.RUN);
@@ -178,6 +187,31 @@ export class AiLoginService extends BaseService {
     const opened = sealed === null ? null : this.box.unpack(sealed, now);
     if (!opened?.startsWith(AiLoginService.CODE_PURPOSE)) return null;
     return opened.slice(AiLoginService.CODE_PURPOSE.length);
+  }
+
+  /**
+   * ai_login_refresh (러너): 실행하는 동안 CLI가 갱신한 자격을 되돌려 쓴다 (Codex의 auth.json).
+   * 그 일을 맡았던 러너만(취소된 뒤에도), 받은 판일 때만. 잠그는 순서는 작업 → 로그인
+   */
+  async refresh(actor: Actor, req: AiLoginRefreshInput): Promise<AiLogin> {
+    actor.assertCan(Actor.RUN);
+    const { spaceId, id: runnerId } = actor;
+    if (actor.kind !== 'device' || !spaceId || !runnerId) throw new Forbidden(Actor.RUN);
+    AiLogin.assertRotating(req.tool);
+    AiSigninPolicy.assertCredential(req.tool, req.credential);
+    const sealed = this.box.seal(req.credential);
+    return this.transaction(async (tx) => {
+      // 지금 도는 일이 아니어도 된다 (주인이 취소했어도): 이 러너가 맡았던 일이면 받는다
+      const task = await new TaskRepository(tx).lock(spaceId, req.taskId);
+      task.assertWorkedBy(runnerId);
+      const logins = new AiLoginRepository(tx);
+      const login = await logins.lock(spaceId, req.tool);
+      if (!login) throw new NotFound(`${req.tool} 로그인이 없어요`);
+      login.assertVersion(req.version);
+      login.refresh(sealed);
+      await logins.save(login);
+      return (await logins.find(spaceId, req.tool)) ?? login;
+    });
   }
 
   /** 지금 서버 키로 다시 잠근다 (pnpm secret:rotate). 바꾼 수를 돌려준다 */

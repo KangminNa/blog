@@ -397,6 +397,14 @@ export class Task extends TrackedEntity {
     return typeof code === 'string' ? code : null;
   }
 
+  /**
+   * 이 러너가 맡았던 일인가 (지금 상태와 상관없이). 실행 중에 CLI가 갱신한 자격은 주인이 취소한 뒤에도
+   * 되돌려 써야 한다: 버리면 다음 실행이 이미 쓴 갱신 토큰을 내밀어 로그인이 깨진다
+   */
+  assertWorkedBy(runnerId: string): void {
+    this.assertLeasedBy(runnerId);
+  }
+
   /** 이 러너가 자격을 넘겨 이미 끝난 웹 로그인인가. 응답을 잃은 러너가 다시 보내도 같은 답을 준다 */
   signinDoneBy(runnerId: string): boolean {
     return this.isAiSignin && this.statusValue === Task.DONE && this.leaseHolder === runnerId;

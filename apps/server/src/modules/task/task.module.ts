@@ -6,7 +6,7 @@ import { AgentService } from './agent/agent.service';
 import { AiLoginController } from './ai/ai-login.api';
 import { AiLoginQuery } from './ai/ai-login.query';
 import { AiLoginService } from './ai/ai-login.service';
-import { AiLoginTool, AiSigninTool } from './ai/ai-login.tool';
+import { AiLoginRefreshTool, AiLoginTool, AiSigninTool } from './ai/ai-login.tool';
 import { ApprovalController } from './approval/approval.api';
 import { ApprovalQuery } from './approval/approval.query';
 import { ApprovalService } from './approval/approval.service';
@@ -59,6 +59,7 @@ import { UsageQuery } from './usage/usage.query';
     AiLoginQuery,
     AiLoginService,
     AiLoginTool,
+    AiLoginRefreshTool,
     AiSigninTool,
     NextJobsTool,
     ReportProgressTool,

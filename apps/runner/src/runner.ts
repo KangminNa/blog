@@ -1,13 +1,13 @@
 import { AiLogins } from './ai-login';
 import { Backoff } from './backoff';
 import { CairnServer } from './cairn-server';
-import { Job } from './job';
+import type { Job } from './job';
 import { CliUnavailable, JobRun } from './job-run';
 import { AccessDenied, McpClient, ToolRefused } from './mcp-client';
 import { Redactor, RunLog } from './redactor';
+import { RunnerAbility } from './runner-ability';
 import type { RunnerConfig } from './runner-config';
 import { SigninRun } from './signin-run';
-import { SigninTerminal } from './signin-terminal';
 
 /** 다시 시도해도 소용없음: 토큰이나 설치를 사람이 고쳐야 한다 */
 export class RunnerHalted extends Error {}
@@ -17,17 +17,12 @@ export class TokenRejected extends RunnerHalted {}
 
 // 러너의 고리: 일을 하나 빌리고, 끝까지 처리하고, 다시 빌린다. 한 번에 일 하나.
 // 서버에 닿지 못하면 간격을 늘려 다시 묻는다. 들어오는 포트 없이 나가는 요청만 쓴다 (객체설계 13장 임대 큐).
-// 쓸 AI 토큰이 없으면 웹 로그인(ai_signin)만 빌린다: 다른 일은 빌렸다가 돌려주면 작업 기록에 오류가 한 줄씩 쌓인다.
-// 웹 로그인은 토큰이 없을 때 하는 일이라 토큰 없이 돈다 (SigninRun).
+// 이 러너가 할 수 있는 것(가진 AI CLI, 웹 로그인, 스스로 가진 로그인)을 next_jobs로 알리면 서버가 할 수 있는 일만 준다:
+// 로그인이 없는 도구의 일은 빌렸다 돌려주지 않고 대기열에 남는다. 웹 로그인은 토큰 없이 돈다 (SigninRun).
 // 연결 확인은 우선순위가 가장 높아 토큰이 돌아오면 가장 먼저 빌려진다. 러너는 빌리지 않고는 대기열을 볼 수 없다.
 export class Runner {
   /** next_jobs가 기다리는 시간. 서버의 NextJobsInput.WAIT_MAX */
   private static readonly WAIT_SECONDS = 25;
-  /**
-   * 토큰이 없을 때 웹 로그인을 기다리는 시간. 콘솔에 토큰을 넣어도 기다리는 next_jobs는 깨지 않으므로 짧게 둔다:
-   * 웹 로그인은 생기는 대로 바로 오고, 붙여 넣은 토큰은 이 안에 알아챈다
-   */
-  private static readonly SIGNIN_WAIT_SECONDS = 5;
   private static readonly BACKOFF_FIRST_MS = 1_000;
   private static readonly BACKOFF_MAX_MS = 60_000;
   /** 일을 빌린 뒤에 토큰을 받지 못했을 때. 돌려준 일이 바로 다시 빌려지므로 쉬지 않으면 빌리고 돌려주기를 되풀이한다 */
@@ -40,12 +35,11 @@ export class Runner {
   private readonly backoff = new Backoff(Runner.BACKOFF_FIRST_MS, Runner.BACKOFF_MAX_MS);
   /** next_jobs가 되는 동안에도 늘어나야 해서 backoff와 따로 센다 */
   private readonly loginWait = new Backoff(Runner.LOGIN_WAIT_FIRST_MS, Runner.LOGIN_WAIT_MAX_MS);
-  /** 지금 토큰이 없는 이유. 같은 이유를 고리마다 되풀이해 적지 않는다 */
-  private loginProblem: string | null = null;
   private readonly redactor: Redactor;
   private readonly log: RunLog;
   private readonly server: CairnServer;
   private readonly logins: AiLogins;
+  private readonly ability: RunnerAbility;
 
   constructor(private readonly config: RunnerConfig) {
     const token = config.deviceToken;
@@ -54,6 +48,7 @@ export class Runner {
     this.log = new RunLog(this.redactor);
     this.server = new CairnServer(new McpClient(config.mcpUrl, token));
     this.logins = new AiLogins(this.server, config.claudeToken);
+    this.ability = RunnerAbility.detect(config);
   }
 
   /**
@@ -76,24 +71,21 @@ export class Runner {
     this.log.info(`러너를 시작했어요: ${this.config.serverUrl}`);
     const swept = await SigninRun.sweep();
     if (swept > 0) this.log.info(`지난번에 남은 로그인 폴더 ${swept}개를 지웠어요`);
+    this.log.info(this.ability.line);
+    if (this.ability.tools.length === 0 && this.ability.signinTools.length === 0)
+      this.log.info('이 컴퓨터에서 쓸 수 있는 AI CLI가 없어요. 설치한 뒤 러너를 다시 켜 주세요');
     if (this.config.claudeToken === null)
-      this.log.info('AI 토큰은 콘솔의 AI 메뉴에 넣은 값을 써요');
+      this.log.info(
+        'AI 로그인은 콘솔의 AI 메뉴에서 해요. 로그인이 없는 도구의 일은 서버가 주지 않아요',
+      );
     while (!stop.aborted) {
       try {
-        const problem = await this.logins.shortage(this.pollCutter.signal);
-        this.noteLogin(problem);
-        if (problem !== null && !SigninTerminal.supported) {
-          await this.backoff.wait(stop);
-          continue;
-        }
-        if (stop.aborted) break;
         this.polling = true;
-        const jobs =
-          problem === null
-            ? await this.server.nextJobs(Runner.WAIT_SECONDS, this.pollCutter.signal)
-            : await this.server.nextJobs(Runner.SIGNIN_WAIT_SECONDS, this.pollCutter.signal, [
-                Job.AI_SIGNIN,
-              ]);
+        const jobs = await this.server.nextJobs(
+          Runner.WAIT_SECONDS,
+          this.pollCutter.signal,
+          this.ability,
+        );
         this.polling = false;
         this.backoff.reset();
         for (const job of jobs) await this.perform(job);
@@ -107,17 +99,6 @@ export class Runner {
       }
     }
     this.log.info('러너를 멈췄어요');
-  }
-
-  /** 상태가 바뀔 때만 적는다. 토큰이 없어도 고리는 돌고, 토큰이 생기면 다시 켜지 않아도 이어 간다 */
-  private noteLogin(problem: string | null): void {
-    if (problem === this.loginProblem) return;
-    this.loginProblem = problem;
-    this.log.info(
-      problem === null
-        ? 'AI 토큰을 받아 일을 빌려요'
-        : `AI 토큰이 없어 웹 로그인만 받아요: ${problem}`,
-    );
   }
 
   private async perform(job: Job): Promise<void> {

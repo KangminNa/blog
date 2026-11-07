@@ -447,6 +447,7 @@ describe('러너 추가', () => {
       'submit_result',
       'release_job',
       'ai_login',
+      'ai_login_refresh',
       'ai_signin',
     ]);
 

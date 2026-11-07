@@ -7,6 +7,11 @@ import { RuleViolation, type SealedSecret, type SecretBox, TrackedEntity } from 
 export class AiLogin extends TrackedEntity {
   static readonly CLAUDE = 'claude';
   static readonly CODEX = 'codex';
+  /**
+   * 쓸 때마다 갱신 토큰이 바뀌는 자격의 도구. 러너가 실행 뒤 바뀐 자격을 되돌려 쓰고(ai_login_refresh),
+   * 서버는 이 도구의 일을 한 번에 하나만 빌려 준다 (LeasePolicy)
+   */
+  static readonly ROTATING: readonly string[] = [AiLogin.CODEX];
   /** 로그인을 받는 도구 (task.ai_logins의 CHECK와 같다) */
   static readonly TOOLS: readonly string[] = [AiLogin.CLAUDE, AiLogin.CODEX];
   /** setup-token의 토큰은 1년 간다. CLI가 남은 기간을 알려 주지 않아 저장한 날부터 센다 */
@@ -67,6 +72,12 @@ export class AiLogin extends TrackedEntity {
     );
   }
 
+  /** 실행 뒤 바뀐 자격을 되돌려 쓰는 도구인가. 아니면 RuleViolation */
+  static assertRotating(tool: string): void {
+    if (!AiLogin.ROTATING.includes(tool))
+      throw new RuleViolation(`${tool}의 자격은 실행해도 바뀌지 않아요`);
+  }
+
   /** 도구가 로그인을 받는가. 아니면 RuleViolation */
   static assertTool(tool: string): void {
     if (!AiLogin.TOOLS.includes(tool))
@@ -100,6 +111,14 @@ export class AiLogin extends TrackedEntity {
   /** 지금 쓸 수 있는가. 저장한 날부터 세므로 실제 토큰이 이보다 오래 가지는 않는다 */
   usableAt(now: Date): boolean {
     return this.expires === null || this.expires.getTime() > now.getTime();
+  }
+
+  /**
+   * 같은 로그인의 갱신된 자격으로 바꾼다 (CLI가 실행 중에 토큰을 갱신했다). 로그인은 그대로라
+   * 만료와 연결 확인 결과는 둔다. 판은 저장할 때 오른다: 늦게 온 옛 자격은 판이 맞지 않아 덮지 못한다
+   */
+  refresh(sealed: SealedSecret): void {
+    this.seal(sealed);
   }
 
   /** 새 토큰으로 바꾼다. 앞 토큰의 만료와 확인 결과는 새 토큰의 것이 아니다 */

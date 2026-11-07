@@ -31,6 +31,14 @@ export class AiLoginRepository extends BaseRepository<AiLogin> {
     );
   }
 
+  /** 지금 쓸 수 있는 로그인의 도구들 (만료가 없거나 지나지 않은 것) */
+  async usableTools(spaceId: string, now: Date): Promise<readonly string[]> {
+    const rows = await this.sql`
+      SELECT tool FROM task.ai_logins
+      WHERE space_id = ${spaceId} AND (expires_at IS NULL OR expires_at > ${now})`;
+    return rows.map((r) => String(r.tool));
+  }
+
   /** 서버 키를 바꿀 때 모두 잠근다 */
   async lockAll(): Promise<readonly AiLogin[]> {
     const rows = await this.sql`SELECT * FROM task.ai_logins ORDER BY id FOR UPDATE`;

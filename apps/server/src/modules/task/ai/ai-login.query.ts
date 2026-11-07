@@ -63,7 +63,7 @@ export class AiLoginQuery extends BaseQuery {
     const login = await new AiLoginRepository(this.sql).find(actor.spaceId, req.tool);
     if (!login)
       throw new RuleViolation('AI 토큰을 아직 넣지 않았어요. 콘솔의 AI 메뉴에서 넣어 주세요');
-    return new AiTokenView(login.tokenAt(new Date(), this.box), login.expiresAt);
+    return new AiTokenView(login.tokenAt(new Date(), this.box), login.expiresAt, login.version);
   }
 
   /** 진행 중인 웹 로그인. 러너가 아직 받지 않았으면 시작 중이다 */

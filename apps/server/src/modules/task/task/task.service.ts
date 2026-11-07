@@ -13,6 +13,7 @@ import {
 } from '../../platform';
 import type { Agent } from '../agent/agent';
 import { AgentRepository } from '../agent/agent.repository';
+import { AiLogin } from '../ai/ai-login';
 import { AiLoginRepository } from '../ai/ai-login.repository';
 import { Approval } from '../approval/approval';
 import { ApprovalRepository } from '../approval/approval.repository';
@@ -20,6 +21,7 @@ import { GoalRepository } from '../goal/goal.repository';
 import { RunnerRepository } from '../runner/runner.repository';
 import { PlanUsage } from '../usage/plan-usage';
 import { PlanUsageRepository } from '../usage/plan-usage.repository';
+import { LeasePolicy } from './lease.policy';
 import { Task } from './task';
 import type {
   CancelTaskInput,
@@ -80,7 +82,7 @@ export class TaskService extends BaseService {
       const accepting = await this.transaction((tx) =>
         new RunnerRepository(tx).seen(spaceId, runnerId, new Date()),
       );
-      const jobs = accepting ? await this.lease(spaceId, runnerId, req.limit, req.kinds) : [];
+      const jobs = accepting ? await this.lease(spaceId, runnerId, req) : [];
       const left = deadline - Date.now();
       if (jobs.length > 0 || left <= 0 || this.changes.closed) return jobs;
       await this.changes.wait(
@@ -288,25 +290,44 @@ export class TaskService extends BaseService {
   private lease(
     spaceId: string,
     runnerId: string,
-    limit: number,
-    kinds: readonly string[] | null,
+    req: NextJobsInput,
   ): Promise<readonly JobView[]> {
     const now = new Date();
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
       const agents = new AgentRepository(tx);
       await this.expire(tx, now);
+      // 러너가 할 수 있는 일만: 가진 CLI와 쓸 수 있는 로그인 (LeasePolicy). 빌렸다가 돌려주지 않는다
+      const usable = await new AiLoginRepository(tx).usableTools(spaceId, now);
+      const running = await tasks.runningAgentTools(spaceId);
+      const workTools = LeasePolicy.workTools(
+        req.tools,
+        req.ownLogins,
+        usable,
+        AiLogin.ROTATING,
+        running,
+      );
       // 쉬는지는 작업을 잠그기 전에 따진다: 쉬는 에이전트의 일은 빌렸다가 돌려주지 않고 처음부터 건너뛴다
       const usage = await agents.usage(spaceId, now);
-      const ready = usage.filter((u) => u.ready).map((u) => u.agent);
+      const ready = usage
+        .filter((u) => u.ready && (workTools === null || workTools.includes(u.agent.tool)))
+        .map((u) => u.agent);
       const jobs: JobView[] = [];
-      for (const task of await tasks.lockNext(spaceId, ready, limit, kinds)) {
+      const picked = await tasks.lockNext(spaceId, ready, req.limit, {
+        testTools: LeasePolicy.testTools(req.tools, usable),
+        signinTools: req.signinTools,
+      });
+      const busy = [...running];
+      for (const task of picked) {
         // 담당을 정하지 않은 일은 그 일의 권한이 있는 에이전트 중 가장 먼저 만든, 일을 받을 수 있는 에이전트가 맡는다
         const worker = task.agentId
           ? ready.find((a) => a.id === task.agentId)
           : ready.find((a) => task.doableWith(a.scopes));
         const agent = task.agentless ? null : worker;
         if (agent === undefined) continue;
+        if (agent && !LeasePolicy.canStart(agent.tool, req.ownLogins, AiLogin.ROTATING, busy))
+          continue;
+        if (agent) busy.push(agent.tool);
         task.lease(runnerId, agent?.id ?? null, now);
         await tasks.save(task);
         jobs.push(

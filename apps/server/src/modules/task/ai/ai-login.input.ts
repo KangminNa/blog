@@ -94,3 +94,33 @@ export class AiSigninStepInput extends BaseRequest {
     );
   }
 }
+
+/**
+ * ai_login_refresh (러너). 실행하는 동안 CLI가 갱신한 자격을 되돌려 쓴다.
+ * 받은 판(version)과 그 일을 함께 보낸다: 판이 다르면 다른 실행이 먼저 바꾼 것이라 덮지 않는다
+ */
+export class AiLoginRefreshInput extends BaseRequest {
+  private static readonly CREDENTIAL_MAX = 64 * 1024;
+
+  private constructor(
+    readonly taskId: string,
+    readonly tool: string,
+    readonly version: number,
+    readonly credential: string,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): AiLoginRefreshInput {
+    return BaseRequest.read(
+      raw,
+      (f) =>
+        new AiLoginRefreshInput(
+          f.uuid('task_id'),
+          f.text('tool', 40),
+          f.integer('version', 1, 2_147_483_647),
+          f.text('credential', AiLoginRefreshInput.CREDENTIAL_MAX),
+        ),
+    );
+  }
+}

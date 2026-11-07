@@ -106,7 +106,7 @@ describe('러너 (/api/runners)', () => {
     assert.ok(Date.now() - new Date(String(runner?.lastSeenAt)).getTime() < 60_000);
   });
 
-  test('AI 토큰이 없어 ai_login만 물어도 연결됨으로 보인다 (토큰이 없는 러너는 일을 빌리지 않는다)', async () => {
+  test('ai_login만 물어도 연결됨으로 보인다 (할 수 있는 것을 알리기 전의 러너는 토큰이 없으면 이것만 묻는다)', async () => {
     const device = await newRunner();
     await api.mcp(device.token, 'tools/call', { name: 'ai_login', arguments: { tool: 'claude' } });
     assert.equal((await runnerOf(device.id))?.online, true);

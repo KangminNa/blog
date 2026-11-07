@@ -83,11 +83,25 @@ export class NextJobsTool extends BaseTool {
         maximum: NextJobsInput.LIMIT_MAX,
         description: '한 번에 빌릴 일의 수. 기본 1',
       },
-      kinds: {
+      tools: {
         type: 'array',
         items: { type: 'string' },
-        maxItems: NextJobsInput.KINDS_MAX,
-        description: '이 종류의 일만 빌린다 (예: AI 토큰이 없으면 ["ai_signin"]). 없으면 모두',
+        maxItems: NextJobsInput.TOOLS_MAX,
+        description:
+          '실행할 수 있는 AI CLI (예: ["claude"]). 그 도구의 로그인이 쓸 수 있을 때만 그 도구의 일을 준다',
+      },
+      signin_tools: {
+        type: 'array',
+        items: { type: 'string' },
+        maxItems: NextJobsInput.TOOLS_MAX,
+        description: '웹 로그인을 대신 돌릴 수 있는 CLI (예: ["claude", "codex"])',
+      },
+      own_logins: {
+        type: 'array',
+        items: { type: 'string' },
+        maxItems: NextJobsInput.TOOLS_MAX,
+        description:
+          '러너가 스스로 가진 로그인 (환경 변수 등). 서버의 로그인이 없어도 그 도구의 일을 준다',
       },
     },
   };

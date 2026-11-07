@@ -579,26 +579,25 @@ describe('콘솔에 넣은 토큰으로 일한다', () => {
 
   before(async () => {
     runner = RunnerProcess.start(api.baseUrl, { CLAUDE_CODE_OAUTH_TOKEN: '' });
-    await runner.logged('AI 토큰은 콘솔의 AI 메뉴에 넣은 값을 써요');
+    await runner.logged('AI 로그인은 콘솔의 AI 메뉴에서 해요');
   });
 
   after(async () => {
     assert.equal(await runner.stop(), 0);
   });
 
-  test('토큰이 없으면 일을 빌리지 않고 기다렸다가, 넣으면 그 토큰으로 일한다', async () => {
+  test('토큰이 없으면 서버가 일을 주지 않고 기다렸다가, 넣으면 그 토큰으로 일한다', async () => {
     const agent = await newAgent();
     const spy = new Spy();
     const created = await newTask(agent, spy.mark);
 
-    await runner.logged('AI 토큰이 없어 웹 로그인만 받아요');
-    await new Promise((done) => setTimeout(done, 4_000)); // 토큰을 몇 번 더 물어볼 시간
+    await runner.logged('일할 수 있는 AI: claude');
+    await new Promise((done) => setTimeout(done, 4_000)); // 서버가 몇 번 더 살펴볼 시간
     const held = await getTask(created.id);
     assert.equal(held.status, 'queued', '실패로 끝내지 않는다');
     assert.equal(held.attempts, 0);
     assert.deepEqual(events(held), [], '오류 기록이 쌓이지 않는다');
-    assert.equal(runner.logs.split('AI 토큰이 없어').length - 1, 1, '로그는 한 번만');
-    assert.match(runner.logs, /AI 토큰이 없어 웹 로그인만 받아요: .*AI 메뉴/);
+    assert.match(runner.logs, /AI 로그인은 콘솔의 AI 메뉴에서/);
 
     const token = `sk-ant-oat01-${randomUUID()}`;
     await saveToken(token);
@@ -607,7 +606,6 @@ describe('콘솔에 넣은 토큰으로 일한다', () => {
     assert.equal((seen.env as Json).CLAUDE_CODE_OAUTH_TOKEN, token);
     const task = await taskIn(created.id, 'done');
     await runner.logged(`${created.id}: 끝났어요`);
-    assert.ok(runner.logs.includes('AI 토큰을 받아 일을 빌려요'));
     assert.equal(
       events(task).some((e) => String(e.body).startsWith('돌려줌')),
       false,
@@ -658,7 +656,7 @@ describe('기다리는 연결 확인의 토큰이 사라진다', () => {
     const other = await newTask(await newAgent(), '');
 
     const runner = RunnerProcess.start(api.baseUrl, { CLAUDE_CODE_OAUTH_TOKEN: '' });
-    await runner.logged('AI 토큰이 없어 웹 로그인만 받아요: 만료된 토큰');
+    await runner.logged('일할 수 있는 AI: claude');
     await new Promise((done) => setTimeout(done, 1_500));
     const held = await getTask(test.taskId);
     assert.equal(held.status, 'queued');
@@ -738,7 +736,7 @@ describe('웹 AI 로그인', () => {
   before(async () => {
     await db.sql`DELETE FROM task.ai_logins`;
     runner = RunnerProcess.start(api.baseUrl, { CLAUDE_CODE_OAUTH_TOKEN: '' });
-    await runner.logged('AI 토큰이 없어 웹 로그인만 받아요');
+    await runner.logged('웹 로그인: claude, codex');
   });
 
   after(async () => {
@@ -852,27 +850,31 @@ describe('러너를 멈춘다', () => {
     assert.ok(events(task).some((e) => e.body === '돌려줌: 러너가 멈춰요'));
   });
 
-  test('AI CLI를 실행하지 못하면 일을 돌려주고 멈춘다', async () => {
-    const agent = await newAgent();
-    const created = await newTask(agent, '');
-    const broken = RunnerProcess.start(api.baseUrl, { CAIRN_RUNNER_CLI: '/없는/claude' });
-    assert.equal(await broken.exited(), 1);
-    assert.ok(broken.logs.includes('AI CLI를 실행하지 못했어요'), broken.logs);
+  test('설치된 AI CLI가 없으면 일을 받지 않고 알린다. 일은 대기열에 그대로 남는다', async () => {
+    const created = await newTask(await newAgent(), '');
+    const bare = RunnerProcess.start(api.baseUrl, {
+      CAIRN_RUNNER_CLI: '/없는/claude',
+      CAIRN_RUNNER_CODEX_CLI: '/없는/codex',
+    });
+    await bare.logged('쓸 수 있는 AI CLI가 없어요');
+    await new Promise((done) => setTimeout(done, 1_500));
     const task = await getTask(created.id);
-    assert.equal(task.status, 'queued');
+    assert.equal(task.status, 'queued', '빌렸다 돌려주지 않는다');
     assert.equal(task.attempts, 0);
+    bare.signal('SIGTERM');
+    await newTask(await newAgent(), ''); // 긴 폴링을 깨워 바로 끝나게 한다
+    assert.equal(await bare.exited(), 0);
   });
 
-  test('지원하지 않는 도구의 에이전트 일은 실패로 끝내고 계속 돈다', async () => {
-    const agent = await newAgent({ tool: 'codex' });
-    const created = await newTask(agent, '');
+  test('일할 줄 모르는 도구의 일은 받지 않고, 다른 일은 계속 한다', async () => {
+    const codexWork = await newTask(await newAgent({ tool: 'codex' }), '');
     const runner = RunnerProcess.start(api.baseUrl);
-    const task = await taskIn(created.id, 'failed');
-    assert.ok(String((task.result as Json).error).includes('codex'));
-
     const next = await newTask(await newAgent(), '');
     await taskIn(next.id, 'done');
     await runner.logged(`${next.id}: 끝났어요`);
+    const held = await getTask(codexWork.id);
+    assert.equal(held.status, 'queued', 'Codex 일은 그 도구를 가진 러너를 기다린다');
+    assert.equal(held.attempts, 0);
     runner.signal('SIGTERM');
     await newTask(await newAgent(), ''); // 긴 폴링을 깨워 바로 끝나게 한다
     assert.equal(await runner.exited(), 0);
