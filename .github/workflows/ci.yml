@@ -28,16 +28,24 @@ jobs:
   migrations:
     name: DB · 테스트 (마이그레이션 왕복, 모듈 경계, 서버 테스트)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       MIGRATE: docker compose run --rm migrate --wait --no-dump-schema --migrations-dir /db/migrations
     steps:
       - uses: actions/checkout@v5
+      # 연결 명령과 러너 단위 테스트는 컨테이너 밖에서 돈다
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - run: docker compose up -d --build --wait db
       - run: $MIGRATE up
       - name: 전부 되돌리기
         run: for f in db/migrations/*.sql; do $MIGRATE rollback; done
       - run: $MIGRATE up
-      - name: 모듈 경계 (DB)
-        run: node scripts/check-boundaries.mjs --db
+      - name: 모듈 경계 (DB), 표 인터페이스
+        run: pnpm db:check
       - name: 서버 테스트 (테스트 전용 DB에서 단위 + API)
         run: node scripts/test.mjs

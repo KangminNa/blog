@@ -48,6 +48,12 @@ export abstract class Actor {
     return this.kind === 'owner' || this.kind === 'system';
   }
 
+  /** 요청자의 공간. 공간이 없는 요청자(방문자)는 Forbidden */
+  requireSpace(): string {
+    if (!this.spaceId) throw new Forbidden('owner');
+    return this.spaceId;
+  }
+
   /** 비공개 데이터까지 볼 수 있는가 */
   canSeePrivate(): boolean {
     return this.can(Actor.READ_ALL);

@@ -10,12 +10,14 @@ export type Row = postgres.Row;
 
 @Injectable()
 export class Database implements OnApplicationShutdown {
+  /** bigint도 number로 읽는다. 쓰는 값(토큰 수, 파일 크기, 순번)은 안전한 정수 범위 안이다 */
+  private static readonly BIGINT = { to: 20, from: [20], serialize: String, parse: Number };
   readonly sql: Sql;
 
   constructor() {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error('DATABASE_URL is not set');
-    this.sql = postgres(url, { max: 10 });
+    this.sql = postgres(url, { max: 10, types: { bigint: Database.BIGINT } });
   }
 
   /** 짧은 트랜잭션 하나. 안에서 외부 호출이나 AI 응답을 기다리지 않는다 */
