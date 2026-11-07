@@ -1,5 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, AgentActor, BaseService, Database, Idempotency } from '../../platform';
+import {
+  Actor,
+  AgentActor,
+  Database,
+  EntityService,
+  Idempotency,
+  type Sql,
+  type VersionTarget,
+} from '../../platform';
 import { PostWikiQuery } from '../../vault';
 import { Post } from './post';
 import type {
@@ -18,7 +26,7 @@ import { SlugPolicy } from './slug.policy';
 // AI 도구의 초안은 saveDraft 하나로 온다. 무엇을 할 수 있는지는 Post가 정한다: 공개된 글은 주인만 고친다.
 // 이을 wiki는 트랜잭션을 열기 전에 vault Query로 확인한다 (vault와 한 트랜잭션에 묶지 않는다).
 @Injectable()
-export class PostService extends BaseService {
+export class PostService extends EntityService<Post> {
   private static readonly CREATE = 'create_post';
   private static readonly DRAFT = 'blog_save_draft';
   private static readonly PUBLISH = 'publish_approved';
@@ -28,6 +36,10 @@ export class PostService extends BaseService {
     private readonly wikis: PostWikiQuery,
   ) {
     super(db);
+  }
+
+  protected store(tx: Sql): PostRepository {
+    return new PostRepository(tx);
   }
 
   /** 같은 requestId가 다시 오면 처음 만든 글을 그대로 돌려준다 (두 번 눌러도 글은 하나) */
@@ -107,17 +119,10 @@ export class PostService extends BaseService {
     });
   }
 
-  async changeStatus(actor: Actor, req: PostStatusInput): Promise<Post> {
-    actor.assertCan(Actor.WRITE);
-    const spaceId = Post.spaceOf(actor);
-    return this.transaction(async (tx) => {
-      const posts = new PostRepository(tx);
-      const post = await posts.lock(spaceId, req.id);
-      post.assertVersion(req.version);
-      post.changeStatus(req.status, actor, new Date());
-      await posts.save(post);
-      return post;
-    });
+  changeStatus(actor: Actor, req: PostStatusInput): Promise<Post> {
+    return this.changeAsWriter(actor, req, (post) =>
+      post.changeStatus(req.status, actor, new Date()),
+    );
   }
 
   /**
@@ -142,29 +147,21 @@ export class PostService extends BaseService {
     });
   }
 
-  async trash(actor: Actor, req: PostVersionInput): Promise<Post> {
-    actor.assertCan(Actor.WRITE);
-    const spaceId = Post.spaceOf(actor);
-    return this.transaction(async (tx) => {
-      const posts = new PostRepository(tx);
-      const post = await posts.lock(spaceId, req.id);
-      post.assertVersion(req.version);
-      post.trash(actor, new Date());
-      await posts.save(post);
-      return post;
-    });
+  trash(actor: Actor, req: PostVersionInput): Promise<Post> {
+    return this.changeAsWriter(actor, req, (post) => post.trash(actor, new Date()));
   }
 
-  async recover(actor: Actor, req: PostVersionInput): Promise<Post> {
+  recover(actor: Actor, req: PostVersionInput): Promise<Post> {
+    return this.changeAsWriter(actor, req, (post) => post.recover(actor, new Date()));
+  }
+
+  /** 글을 쓸 수 있는 요청자만 지나간다. 주인만 할 수 있는 일은 Post가 막는다 */
+  private changeAsWriter(
+    actor: Actor,
+    target: VersionTarget,
+    apply: (post: Post) => void,
+  ): Promise<Post> {
     actor.assertCan(Actor.WRITE);
-    const spaceId = Post.spaceOf(actor);
-    return this.transaction(async (tx) => {
-      const posts = new PostRepository(tx);
-      const post = await posts.lock(spaceId, req.id);
-      post.assertVersion(req.version);
-      post.recover(actor, new Date());
-      await posts.save(post);
-      return post;
-    });
+    return this.change(Post.spaceOf(actor), target, apply);
   }
 }

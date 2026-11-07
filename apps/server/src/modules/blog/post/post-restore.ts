@@ -11,6 +11,7 @@ import {
   type Sql,
 } from '../../platform';
 import { ImagePolicy } from '../asset/image.policy';
+import type { PostNew, PostRevisionNew } from '../blog.tables';
 import { Post } from './post';
 import { PostContent } from './post-content';
 import { PostRestoreRepository } from './post-restore.repository';
@@ -33,44 +34,65 @@ export class RestoredPost extends BaseEntity {
     'tags',
     'align',
   ]);
-  readonly revisionId = BaseEntity.newId();
+  /** 복원한 첫 판을 만든 쪽 (post_revisions.actor_type) */
+  private static readonly SYSTEM = 'system';
 
   private constructor(
-    id: string,
-    readonly slug: string,
-    readonly status: string,
-    readonly content: PostContent,
-    readonly tags: readonly string[],
-    readonly align: string,
-    readonly mainWikiId: string | null,
+    /** 글 행. 공간은 넣을 때 정해진다 */
+    private readonly fields: Omit<PostNew, 'space_id'>,
+    /** 첫 판 */
+    readonly revision: PostRevisionNew,
     readonly refWikiIds: readonly string[],
-    readonly publishedAt: Date | null,
-    /** 첫 판의 때. 임시 글의 연도 폴더가 이 값으로 정해지므로 내보낼 때 경로가 그대로다 */
-    readonly writtenAt: Date,
     /** 이 글에 붙은 사진의 해시 */
     readonly photos: readonly string[],
-    readonly meta: Readonly<Record<string, unknown>>,
   ) {
-    super(id, 1);
+    super(fields.id, 1);
   }
 
   static read(record: ArchiveRecord): RestoredPost {
     const content = record.attempt(() => PostContent.write(record.text('title'), record.body));
     const publishedAt = record.date('published');
+    const fields = {
+      id: record.id(),
+      slug: record.attempt(() => SlugPolicy.check(record.text('slug'))),
+      status: record.oneOf('status', Post.STATUSES),
+      title: content.title,
+      excerpt: content.excerpt,
+      head_text: content.searchText,
+      tags: record.texts('tags'),
+      align: record.has('align') ? record.oneOf('align', Post.ALIGNS) : 'left',
+      main_wiki_id: record.optionalId('cairn_main_wiki'),
+      published_at: publishedAt,
+    };
+    const refWikiIds = record.ids('cairn_ref_wikis');
+    // 첫 판의 때. 임시 글의 연도 폴더가 이 값으로 정해지므로 내보낼 때 경로가 그대로다
+    const writtenAt = publishedAt ?? record.createdAt;
+    const photos = RestoredPost.photosOf(record);
+    const meta = ArchiveFile.metaOf(record.unknownKeys(RestoredPost.KNOWN));
+    const revisionId = BaseEntity.newId();
     return new RestoredPost(
-      record.id(),
-      record.attempt(() => SlugPolicy.check(record.text('slug'))),
-      record.oneOf('status', Post.STATUSES),
-      content,
-      record.texts('tags'),
-      record.has('align') ? record.oneOf('align', Post.ALIGNS) : 'left',
-      record.optionalId('cairn_main_wiki'),
-      record.ids('cairn_ref_wikis'),
-      publishedAt,
-      publishedAt ?? record.createdAt,
-      RestoredPost.photosOf(record),
-      ArchiveFile.metaOf(record.unknownKeys(RestoredPost.KNOWN)),
+      { ...fields, head_revision_id: revisionId, updated_at: writtenAt, meta },
+      {
+        id: revisionId,
+        post_id: fields.id,
+        seq: 1,
+        title: content.title,
+        body_md: content.body,
+        actor_type: RestoredPost.SYSTEM,
+        created_at: writtenAt,
+      },
+      refWikiIds,
+      photos,
     );
+  }
+
+  get slug(): string {
+    return this.fields.slug;
+  }
+
+  /** 이 공간에 넣을 글 행 */
+  rowIn(spaceId: string): PostNew {
+    return { ...this.fields, space_id: spaceId };
   }
 
   /** 글에 붙은 사진. 목록이 없는 옛 백업은 본문이 쓰는 사진(/api/files/<해시>)으로 알아낸다 */

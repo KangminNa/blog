@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { type Actor, BaseService, Database, Forbidden, Idempotency } from '../../platform';
+import { type Actor, BaseService, Database, Idempotency } from '../../platform';
 import { GetSessionInput, SessionQuery } from '../../vault';
 import { ReadPostInput } from '../post/post.input';
 import { PostQuery } from '../post/post.query';
@@ -24,7 +24,7 @@ export class BasketService extends BaseService {
   /** 같은 requestId가 다시 오면 처음 담은 소재를 돌려준다. 첫 소재면 기본 상자를 만든다 */
   async add(actor: Actor, req: AddBasketItemInput): Promise<BasketItem> {
     actor.assertOwner();
-    const spaceId = BasketService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     const title = req.title ?? (await this.titleOf(actor, req));
     return this.transaction(async (tx) => {
       const items = new BasketRepository(tx);
@@ -50,7 +50,7 @@ export class BasketService extends BaseService {
   /** 소재만 지운다. 가리키던 세션·글은 그대로다 */
   async remove(actor: Actor, id: string): Promise<void> {
     actor.assertOwner();
-    const spaceId = BasketService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     await this.transaction(async (tx) => {
       const items = new BasketRepository(tx);
       await items.remove(await items.lock(spaceId, id));
@@ -65,13 +65,8 @@ export class BasketService extends BaseService {
     }
     if (req.kind === BasketItem.POST) {
       const post = ReadPostInput.from(req.refId ?? '');
-      return (await this.posts.editable(actor, post)).summary.title;
+      return (await this.posts.editable(actor, post)).title;
     }
     return null;
-  }
-
-  private static spaceOf(actor: Actor): string {
-    if (!actor.spaceId) throw new Forbidden('owner');
-    return actor.spaceId;
   }
 }

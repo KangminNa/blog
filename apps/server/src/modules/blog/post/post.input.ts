@@ -99,7 +99,7 @@ export class SavePostInput extends BaseRequest {
       (f) =>
         new SavePostInput(
           f.uuid('id'),
-          f.integer('version', 1, 2_147_483_647),
+          f.version(),
           f.text('title', PostContent.TITLE_MAX),
           f.optionalText('body', PostContent.BODY_MAX) ?? '',
           f.optionalTextList('tags', Post.TAGS_MAX, Post.TAG_MAX) ?? [],
@@ -125,17 +125,15 @@ export class PostStatusInput extends BaseRequest {
   static from(id: string, raw: unknown): PostStatusInput {
     return BaseRequest.read(
       withId(id, raw),
-      (f) =>
-        new PostStatusInput(
-          f.uuid('id'),
-          f.integer('version', 1, 2_147_483_647),
-          f.text('status', 20),
-        ),
+      (f) => new PostStatusInput(f.uuid('id'), f.version(), f.text('status', 20)),
     );
   }
 }
 
-/** 휴지통으로 보내기·되살리기 (DELETE /api/posts/:id, POST /api/posts/:id/restore) */
+/**
+ * 휴지통으로 보내기·되살리기 (DELETE /api/posts/:id, POST /api/posts/:id/restore).
+ * platform의 VersionInput은 본문이 없어도 펼쳐 읽어서, 본문 없는 DELETE의 "(본문) 객체여야 해요"가 사라지므로 따로 둔다.
+ */
 export class PostVersionInput extends BaseRequest {
   private constructor(
     readonly id: string,
@@ -147,7 +145,7 @@ export class PostVersionInput extends BaseRequest {
   static from(id: string, raw: unknown): PostVersionInput {
     return BaseRequest.read(
       withId(id, raw),
-      (f) => new PostVersionInput(f.uuid('id'), f.integer('version', 1, 2_147_483_647)),
+      (f) => new PostVersionInput(f.uuid('id'), f.version()),
     );
   }
 }
@@ -235,7 +233,7 @@ export class SaveDraftInput extends BaseRequest {
       return new SaveDraftInput(
         f.text('request_id', SaveDraftInput.REQUEST_ID_MAX),
         editing ? f.uuid('post_id') : null,
-        editing ? f.integer('base_version', 1, 2_147_483_647) : null,
+        editing ? f.version('base_version') : null,
         f.text('title', PostContent.TITLE_MAX),
         f.text('body_md', PostContent.BODY_MAX),
         f.optionalTextList('tags', Post.TAGS_MAX, Post.TAG_MAX),

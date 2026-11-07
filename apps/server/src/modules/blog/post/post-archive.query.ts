@@ -10,8 +10,21 @@ import {
   NotFound,
 } from '../../platform';
 import { ImagePolicy } from '../asset/image.policy';
+import type { AssetRow, PostRow } from '../blog.tables';
 import { Post } from './post';
 import { PostRestore } from './post-restore';
+
+/** 보관 파일로 쓰는 글 한 줄: 글의 칸 일부와 지금 판의 본문, 첫 판의 때, 참고 wiki, 붙은 사진 */
+interface ArchivedPost
+  extends Pick<
+    PostRow,
+    'id' | 'slug' | 'status' | 'title' | 'tags' | 'align' | 'main_wiki_id' | 'published_at' | 'meta'
+  > {
+  body_md: string;
+  first_at: Date;
+  refs: string[] | null;
+  assets: string[] | null;
+}
 
 // 글의 보관 파일 (docs/보관형식.md): blog/posts/<연도>/<주소>.md와 사진 assets/<sha256>.<확장자>.
 // 현재 판만, 휴지통 글과 휴지통 글에만 붙은 사진은 빼고. 글마다 붙은 사진 목록(cairn_assets)도 적어 복원 때 행이 그대로 돌아온다.
@@ -38,7 +51,7 @@ export class PostArchiveQuery extends BaseQuery implements OnModuleInit {
   }
 
   private async posts(actor: Actor): Promise<ArchiveFile[]> {
-    const rows = await this.sql`
+    const rows = await this.sql<ArchivedPost[]>`
       SELECT p.id, p.slug, p.status, p.title, p.tags, p.align, p.main_wiki_id, p.published_at, p.meta,
              r.body_md, first.created_at AS first_at,
              (SELECT array_agg(x.wiki_id ORDER BY x.wiki_id) FROM blog.post_wiki_refs x WHERE x.post_id = p.id) AS refs,
@@ -52,9 +65,8 @@ export class PostArchiveQuery extends BaseQuery implements OnModuleInit {
         ${actor.spaceId === null ? this.sql`` : this.sql`AND p.space_id = ${actor.spaceId}`}
       ORDER BY p.id`;
     return rows.map((r) => {
-      const year = new Date(r.published_at ?? r.first_at).getUTCFullYear();
-      const tags = (r.tags as string[] | null) ?? [];
-      const refs = (r.refs as string[] | null) ?? [];
+      const year = (r.published_at ?? r.first_at).getUTCFullYear();
+      const refs = r.refs ?? [];
       const file = ArchiveFile.markdown(
         `blog/posts/${year}/${r.slug}.md`,
         {
@@ -64,14 +76,14 @@ export class PostArchiveQuery extends BaseQuery implements OnModuleInit {
           title: r.title,
           slug: r.slug,
           status: r.status,
-          published: r.published_at === null ? null : new Date(r.published_at),
+          published: r.published_at,
           ...(r.main_wiki_id === null ? {} : { cairn_main_wiki: r.main_wiki_id }),
           ...(refs.length === 0 ? {} : { cairn_ref_wikis: refs }),
-          ...(tags.length === 0 ? {} : { tags }),
+          ...(r.tags.length === 0 ? {} : { tags: r.tags }),
           align: r.align,
-          cairn_assets: (r.assets as string[] | null) ?? [],
+          cairn_assets: r.assets ?? [],
         },
-        String(r.body_md),
+        r.body_md,
         ArchiveFile.keptIn(r.meta),
       );
       return r.status === Post.PUBLISHED ? file : file.keptPrivate();
@@ -80,7 +92,7 @@ export class PostArchiveQuery extends BaseQuery implements OnModuleInit {
 
   /** 남은 글이 쓰는 사진. 이름이 내용의 해시라 여러 글에 붙어도 한 번만. 공개 글에 쓰인 것만 공개 저장소로 나간다 */
   private async photos(actor: Actor): Promise<ArchiveFile[]> {
-    const rows = await this.sql`
+    const rows = await this.sql<(Pick<AssetRow, 'blob_hash'> & { open: boolean })[]>`
       SELECT a.blob_hash, bool_or(p.status = ${Post.PUBLISHED}) AS open
       FROM blog.assets a JOIN blog.posts p ON p.id = a.post_id
       WHERE p.deleted_at IS NULL
@@ -89,8 +101,8 @@ export class PostArchiveQuery extends BaseQuery implements OnModuleInit {
       ORDER BY a.blob_hash`;
     const files: ArchiveFile[] = [];
     for (const row of rows) {
-      const file = await this.photo(String(row.blob_hash));
-      if (file) files.push(row.open === true ? file : file.keptPrivate());
+      const file = await this.photo(row.blob_hash);
+      if (file) files.push(row.open ? file : file.keptPrivate());
     }
     return files;
   }

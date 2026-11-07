@@ -43,7 +43,7 @@ export class AssetQuery extends BaseQuery {
   }
 
   private async inOpenPost(hash: string): Promise<boolean> {
-    const [row] = await this.sql`
+    const [row] = await this.sql<{ open: boolean }[]>`
       SELECT EXISTS (
         SELECT 1 FROM blog.assets a JOIN blog.posts p ON p.id = a.post_id
         WHERE a.blob_hash = ${hash} AND p.deleted_at IS NULL

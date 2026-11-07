@@ -9,7 +9,7 @@ import {
   OwnerActor,
   RuleViolation,
 } from '../../platform';
-import { Post } from './post';
+import { type LoadedPost, Post } from './post';
 import { PostContent } from './post-content';
 import { SlugPolicy } from './slug.policy';
 
@@ -19,6 +19,40 @@ const SPACE = '0192d2a0-0000-7000-8000-000000000001';
 const owner = new OwnerActor(SPACE, '0192d2a0-0000-7000-8000-000000000002');
 const writer = new DeviceActor(SPACE, '0192d2a0-0000-7000-8000-000000000003', new Set(['write']));
 const now = new Date('2026-10-24T00:00:00Z');
+
+/** 저장되어 있던 글 (지금 판은 1판 '첫 글' · '본문'). 적은 칸만 바꾼다 */
+function stored(fields: Partial<LoadedPost>): Post {
+  return Post.restore({
+    id: 'id',
+    version: 3,
+    space_id: SPACE,
+    slug: 'first',
+    lang: 'ko',
+    status: Post.DRAFT,
+    title: '첫 글',
+    excerpt: '본문',
+    head_text: '첫 글\n본문',
+    head_revision_id: 'r1',
+    category_id: null,
+    series_id: null,
+    series_order: null,
+    tags: [],
+    cover_blob_hash: null,
+    align: 'left',
+    stone_count: 0,
+    published_at: null,
+    updated_at: now,
+    deleted_at: null,
+    purge_after: null,
+    meta: {},
+    main_wiki_id: null,
+    head_title: '첫 글',
+    head_body: '본문',
+    revision_count: 1,
+    ref_wiki_ids: [],
+    ...fields,
+  });
+}
 
 function draft(by: Actor = owner): Post {
   return Post.open(
@@ -89,23 +123,7 @@ describe('Post', () => {
   });
 
   test('고쳐 쓰기: 제목·본문이 같으면 판을 만들지 않고, 태그만 바뀌어도 저장할 것은 생긴다', () => {
-    const post = Post.restore(
-      'id',
-      3,
-      SPACE,
-      'first',
-      Post.DRAFT,
-      PostContent.restore('첫 글', '본문'),
-      ['mcp'],
-      'left',
-      'r1',
-      1,
-      null,
-      now,
-      null,
-      null,
-      [],
-    );
+    const post = stored({ tags: ['mcp'] });
     post.edit(PostContent.write('첫 글', '본문'), 'first', ['mcp'], 'left', owner, now);
     assert.equal(post.changed, false);
     post.edit(PostContent.write('첫 글', '본문'), 'first', ['db'], 'left', owner, now);
@@ -126,24 +144,7 @@ describe('Post', () => {
 
   test('에이전트도 공개된 글은 고칠 수 없고 공개 범위를 바꿀 수 없다', () => {
     const agent = new AgentActor(SPACE, 'a', 't', new Set(['write']));
-    const open = (status: string) =>
-      Post.restore(
-        'id',
-        3,
-        SPACE,
-        'first',
-        status,
-        PostContent.restore('첫 글', '본문'),
-        [],
-        'left',
-        'r1',
-        1,
-        now,
-        now,
-        null,
-        null,
-        [],
-      );
+    const open = (status: string) => stored({ status, published_at: now });
     for (const status of [Post.PUBLISHED, Post.UNLISTED])
       assert.throws(
         () => open(status).edit(PostContent.write('고침', ''), 'first', [], 'left', agent, now),
@@ -211,23 +212,7 @@ describe('글 → wiki 연결', () => {
   const C = '0192d2a0-0000-7000-8000-00000000000c';
   const agent = new AgentActor(SPACE, 'a', 't', new Set(['write']));
   const linked = (status: string, main: string | null = A, refs: readonly string[] = [B]) =>
-    Post.restore(
-      'id',
-      3,
-      SPACE,
-      'first',
-      status,
-      PostContent.restore('첫 글', '본문'),
-      [],
-      'left',
-      'r1',
-      1,
-      now,
-      now,
-      null,
-      main,
-      refs,
-    );
+    stored({ status, published_at: now, main_wiki_id: main, ref_wiki_ids: refs });
 
   test('보내지 않은 칸은 그대로, 대표 null과 참고 []는 비우기', () => {
     const post = linked(Post.DRAFT);
@@ -328,23 +313,7 @@ describe('결재한 공개', () => {
   const approved = new ApprovedActor(SPACE, String(owner.id), APPROVAL, Post.PUBLISH_ACTION);
   const later = new Date('2026-10-30T00:00:00Z');
   const saved = (status: string, publishedAt: Date | null = null, deletedAt: Date | null = null) =>
-    Post.restore(
-      'id',
-      3,
-      SPACE,
-      'first',
-      status,
-      PostContent.restore('첫 글', '본문'),
-      [],
-      'left',
-      'r1',
-      1,
-      publishedAt,
-      now,
-      deletedAt,
-      null,
-      [],
-    );
+    stored({ status, published_at: publishedAt, deleted_at: deletedAt });
 
   test('결재한 버전 그대로면 공개하고, 원래 내용에 결재 결과를 더해 돌려준다', () => {
     const post = saved(Post.DRAFT);
