@@ -53,11 +53,12 @@ export class PostService extends EntityService<Post> {
       const once = new Idempotency(tx, actor.id ?? spaceId, req.requestId, PostService.CREATE);
       const before = await once.previous();
       if (before) return posts.load(spaceId, String(before.postId));
-      const wanted = SlugPolicy.wanted(req.slug, content.title);
+      const manual = req.fields.slug ?? null;
+      const wanted = SlugPolicy.wanted(manual, content.title);
       const taken = await posts.takenSlugs(spaceId, wanted, null);
-      const slug = SlugPolicy.pick(wanted, taken, req.slug !== null);
+      const slug = SlugPolicy.pick(wanted, taken, manual !== null);
       const now = new Date();
-      const post = Post.open(actor, slug, content, req.tags, req.align, req.requestId, now);
+      const post = Post.open(actor, content, { ...req.fields, slug }, req.requestId, now);
       post.linkWikis(req.mainWikiId, req.refWikiIds, actor, now);
       await posts.save(post);
       await once.remember({ postId: post.id });
@@ -75,10 +76,10 @@ export class PostService extends EntityService<Post> {
       const posts = new PostRepository(tx);
       const post = await posts.lock(spaceId, req.id);
       post.assertVersion(req.version);
-      const wanted = SlugPolicy.check(req.slug ?? post.slug);
+      const wanted = SlugPolicy.check(req.changes.slug ?? post.slug);
       const slug = SlugPolicy.pick(wanted, await posts.takenSlugs(spaceId, wanted, post.id), true);
       const now = new Date();
-      post.edit(content, slug, req.tags, req.align, actor, now);
+      post.edit(content, { ...req.changes, slug }, actor, now);
       post.linkWikis(req.mainWikiId, req.refWikiIds, actor, now);
       await posts.save(post);
       return post;
@@ -106,11 +107,11 @@ export class PostService extends EntityService<Post> {
       if (req.postId === null) {
         const wanted = SlugPolicy.fromTitle(content.title);
         const slug = SlugPolicy.pick(wanted, await posts.takenSlugs(spaceId, wanted, null), false);
-        post = Post.open(actor, slug, content, req.tags ?? [], 'left', req.requestId, now);
+        post = Post.open(actor, content, { ...req.changes, slug }, req.requestId, now);
       } else {
         post = await posts.lock(spaceId, req.postId);
         post.assertVersion(req.baseVersion ?? 0);
-        post.edit(content, post.slug, req.tags ?? post.tags, post.align, actor, now);
+        post.edit(content, req.changes, actor, now);
       }
       post.linkWikis(req.mainWikiId, req.refWikiIds, actor, now);
       await posts.save(post);

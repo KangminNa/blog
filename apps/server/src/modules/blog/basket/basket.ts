@@ -24,25 +24,14 @@ export class BasketItem extends TableEntity<BasketItemRow, BasketItemNew> {
   /** 소재는 주인만 담는다 (basket_items.actor_type) */
   private static readonly ACTOR_TYPE = 'user';
 
-  static open(
-    basketId: string,
-    kind: string,
-    refId: string | null,
-    url: string | null,
-    title: string | null,
-    note: string | null,
-    by: Actor,
-    now: Date,
-  ): BasketItem {
+  /** 종류마다 필요한 칸(세션·글의 id, 링크, 메모)은 입력이 맞춰 온다 */
+  static open(basketId: string, fields: Partial<BasketItemRow>, by: Actor, now: Date): BasketItem {
     return new BasketItem(
       {
+        kind: '',
+        ...fields,
         id: BaseEntity.newId(),
         basket_id: basketId,
-        kind,
-        ref_id: refId,
-        url,
-        title,
-        note,
         actor_type: BasketItem.ACTOR_TYPE,
         actor_id: by.id,
         created_at: now,

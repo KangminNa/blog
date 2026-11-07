@@ -1,7 +1,11 @@
-import { BaseRequest, type RequestFields } from '../../platform';
+import { BaseRequest, type ColumnReaders, type RequestFields } from '../../platform';
+import type { PostRow } from '../blog.tables';
 import { Post } from './post';
 import { PostContent } from './post-content';
 import { SlugPolicy } from './slug.policy';
+
+// 글 입력의 모양. 뜻(태그 정리, 정렬 값, 주소의 모양과 겹침)은 Post와 SlugPolicy가 검사한다.
+// 제목·본문은 글의 칸이 아니라 판의 내용이라 칸 목록(COLUMNS) 밖에서 읽는다.
 
 /** 주소의 글 id를 본문과 함께 읽는다 (본문이 객체가 아니면 그대로 두어 "객체여야 해요"로 알린다) */
 function withId(id: string, body: unknown): unknown {
@@ -10,7 +14,24 @@ function withId(id: string, body: unknown): unknown {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** 대표 wiki 칸. 보내지 않으면 undefined(그대로), null이면 비우기 */
+/** 편집기가 정하는 칸. 칸 하나에 한 줄이다. 주소를 보내지 않으면 새 글은 제목에서 만들고, 고칠 때는 지금 주소 그대로 */
+const COLUMNS: ColumnReaders<PostRow> = {
+  tags: (f, n) => f.optionalTextList(n, Post.TAGS_MAX, Post.TAG_MAX) ?? [],
+  slug: (f, n) => f.optionalText(n, SlugPolicy.MAX) ?? undefined,
+  align: (f, n) => f.optionalText(n, 10) ?? 'left',
+};
+
+/** 편집기는 태그와 정렬을 늘 함께 저장한다: 보내지 않으면 태그는 비고 정렬은 left다 */
+function editorColumns(f: RequestFields): Partial<PostRow> {
+  return { tags: [], align: 'left', ...f.columns(COLUMNS) };
+}
+
+/** AI 도구가 정하는 칸. 태그를 보내지 않으면 고칠 때 지금 태그 그대로 (주소·정렬은 건드리지 않는다) */
+const DRAFT_COLUMNS: ColumnReaders<PostRow> = {
+  tags: (f, n) => f.optionalTextList(n, Post.TAGS_MAX, Post.TAG_MAX) ?? undefined,
+};
+
+/** 대표 wiki 칸. 보내지 않으면 undefined(그대로), null이면 비우기. 빈 문자열은 비우기가 아니라 틀린 값이다 */
 function mainWikiOf(f: RequestFields, raw: unknown, name: string): string | null | undefined {
   const value = (raw as Record<string, unknown> | null)?.[name];
   return value === undefined || value === null ? value : f.uuid(name);
@@ -39,10 +60,7 @@ export class CreatePostInput extends BaseRequest {
     readonly requestId: string,
     readonly title: string,
     readonly body: string,
-    readonly tags: readonly string[],
-    /** 사람이 정한 주소. 없으면 제목에서 만든다 */
-    readonly slug: string | null,
-    readonly align: string,
+    readonly fields: Partial<PostRow>,
     readonly mainWikiId: string | null | undefined,
     readonly refWikiIds: readonly string[] | undefined,
   ) {
@@ -53,6 +71,7 @@ export class CreatePostInput extends BaseRequest {
     return linkedWikis(this.mainWikiId, this.refWikiIds);
   }
 
+  /** 제목은 꼭 있어야 한다. 칸 순서대로 읽어 틀린 칸이 그 순서로 모인다 */
   static from(raw: unknown): CreatePostInput {
     return BaseRequest.read(
       raw,
@@ -61,9 +80,7 @@ export class CreatePostInput extends BaseRequest {
           f.uuid('requestId'),
           f.text('title', PostContent.TITLE_MAX),
           f.optionalText('body', PostContent.BODY_MAX) ?? '',
-          f.optionalTextList('tags', Post.TAGS_MAX, Post.TAG_MAX) ?? [],
-          f.optionalText('slug', SlugPolicy.MAX),
-          f.optionalText('align', 10) ?? 'left',
+          editorColumns(f),
           mainWikiOf(f, raw, 'mainWikiId'),
           refWikisOf(f, 'refWikiIds'),
         ),
@@ -78,10 +95,7 @@ export class SavePostInput extends BaseRequest {
     readonly version: number,
     readonly title: string,
     readonly body: string,
-    readonly tags: readonly string[],
-    /** 바꿀 주소. 없으면 지금 주소 그대로 */
-    readonly slug: string | null,
-    readonly align: string,
+    readonly changes: Partial<PostRow>,
     /** 보내지 않으면 지금 연결 그대로. 대표 null·참고 []는 비우기 */
     readonly mainWikiId: string | null | undefined,
     readonly refWikiIds: readonly string[] | undefined,
@@ -102,9 +116,7 @@ export class SavePostInput extends BaseRequest {
           f.version(),
           f.text('title', PostContent.TITLE_MAX),
           f.optionalText('body', PostContent.BODY_MAX) ?? '',
-          f.optionalTextList('tags', Post.TAGS_MAX, Post.TAG_MAX) ?? [],
-          f.optionalText('slug', SlugPolicy.MAX),
-          f.optionalText('align', 10) ?? 'left',
+          editorColumns(f),
           mainWikiOf(f, raw, 'mainWikiId'),
           refWikisOf(f, 'refWikiIds'),
         ),
@@ -214,8 +226,7 @@ export class SaveDraftInput extends BaseRequest {
     readonly baseVersion: number | null,
     readonly title: string,
     readonly body: string,
-    /** 없으면 고칠 때 지금 태그 그대로 */
-    readonly tags: readonly string[] | null,
+    readonly changes: Partial<PostRow>,
     /** 보내지 않으면 지금 연결 그대로. 대표 null·참고 []는 비우기 */
     readonly mainWikiId: string | null | undefined,
     readonly refWikiIds: readonly string[] | undefined,
@@ -236,7 +247,7 @@ export class SaveDraftInput extends BaseRequest {
         editing ? f.version('base_version') : null,
         f.text('title', PostContent.TITLE_MAX),
         f.text('body_md', PostContent.BODY_MAX),
-        f.optionalTextList('tags', Post.TAGS_MAX, Post.TAG_MAX),
+        f.columns(DRAFT_COLUMNS),
         mainWikiOf(f, raw, 'main_wiki_id'),
         refWikisOf(f, 'ref_wiki_ids'),
       );

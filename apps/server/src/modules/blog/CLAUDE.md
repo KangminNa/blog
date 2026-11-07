@@ -17,7 +17,8 @@
 - `basket/`: 소재(`BasketItem`, 공간마다 기본 상자 하나를 처음 담을 때 만든다). `api/basket/items`(주인만), MCP 도구 `basket_get`(write 권한).
   지금은 세션·글·링크·메모만 담는다. 사진·파일은 소재용 올리는 길이 없어 받지 않는다
 
-엔티티는 `TableEntity`(platform)로 표 한 줄을 들고, Repository(`TableRepository`)는 바뀐 칸만 저장한다 (객체설계 6장). 칼럼을 아는 곳은 `blog.tables.ts`, Entity의 `RULES`, View의 `toJSON`, 보관·복원이다.
+엔티티는 `TableEntity`(platform)로 표 한 줄을 들고, Repository(`TableRepository`)는 바뀐 칸만 저장한다 (객체설계 6장). 칼럼을 아는 곳은 `blog.tables.ts`, Entity의 `RULES`, Input의 `COLUMNS`, View의 `toJSON`, 보관·복원이다.
+글의 주소·태그·정렬은 `Post.RULES`를 지나 `edit(content, changes)`로 바뀌고(주소의 모양과 겹침은 `SlugPolicy`가 먼저 본다), 공개 범위·휴지통·wiki 연결은 동사 메서드로만 바뀐다.
 `Post`는 지금 판·판 수·참고 wiki를 함께 읽어(`LoadedPost`) 판과 참고 wiki를 `saveParts`로 저장하고, 같은 값은 적지 않아 바뀐 것이 없으면 버전도 그대로다. `Asset`은 id가 없어 `BaseEntity`다.
 글의 View는 보는 사람마다 모양이 둘이다: 비공개까지 보는 요청자는 `toJSON`, 아니면 `toPublicJSON` (`PostResponse`가 고른다).
 

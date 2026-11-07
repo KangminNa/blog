@@ -70,8 +70,8 @@ describe('AddBasketItemInput', () => {
       url: 'javascript:alert(1)',
       refId,
     });
-    assert.equal(input.note, '메모');
-    assert.equal(input.url, null);
-    assert.equal(input.refId, null);
+    assert.equal(input.fields.note, '메모');
+    assert.equal(input.fields.url, null);
+    assert.equal(input.fields.ref_id, null);
   });
 });

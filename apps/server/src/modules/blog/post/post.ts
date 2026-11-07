@@ -30,7 +30,7 @@ export class PostRevision extends TableEntity<PostRevisionRow, PostRevisionNew> 
     system: 'system',
   };
 
-  /** base: 바로 앞의 판 (첫 판이면 null) */
+  /** seq: 몇 번째 판인가 (1부터). base: 바로 앞의 판 (첫 판이면 null) */
   static write(
     postId: string,
     seq: number,
@@ -55,15 +55,6 @@ export class PostRevision extends TableEntity<PostRevisionRow, PostRevisionNew> 
       },
       true,
     );
-  }
-
-  get seq(): number {
-    return this.row.seq;
-  }
-
-  /** 판을 만든 쪽: user · ai · system */
-  get actorType(): string {
-    return this.row.actor_type;
   }
 }
 
@@ -169,13 +160,14 @@ export class Post extends TableEntity<PostRow, PostNew> {
     );
   }
 
-  /** 새 글: 임시 상태로 첫 판과 함께 */
+  /**
+   * 새 글: 임시 상태로 첫 판과 함께. 주소는 Service가 SlugPolicy로 겹치지 않게 정해 넣는다.
+   * 적지 않은 태그는 없고 정렬은 left다
+   */
   static open(
     by: Actor,
-    slug: string,
     content: PostContent,
-    tags: readonly string[],
-    align: string,
+    fields: Omit<PostNew, 'id' | 'space_id'>,
     requestId: string,
     now: Date,
   ): Post {
@@ -183,7 +175,7 @@ export class Post extends TableEntity<PostRow, PostNew> {
       {
         id: BaseEntity.newId(),
         space_id: Post.spaceOf(by),
-        slug,
+        slug: fields.slug,
         status: Post.DRAFT,
         main_wiki_id: null,
         published_at: null,
@@ -193,7 +185,7 @@ export class Post extends TableEntity<PostRow, PostNew> {
       [],
       true,
     );
-    post.accept({ tags, align }, Post.RULES);
+    post.accept({ tags: [], align: 'left', ...fields }, Post.RULES);
     post.addRevision(content, requestId, by, now);
     post.touch(now);
     return post;
@@ -208,45 +200,9 @@ export class Post extends TableEntity<PostRow, PostNew> {
     );
   }
 
+  /** 지금 주소 (고쳐 쓸 때 주소를 보내지 않으면 이 주소의 겹침을 다시 본다) */
   get slug(): string {
     return this.row.slug;
-  }
-
-  get status(): string {
-    return this.row.status;
-  }
-
-  get tags(): readonly string[] {
-    return this.row.tags;
-  }
-
-  get align(): string {
-    return this.row.align;
-  }
-
-  get revisionCount(): number {
-    return this.revisions;
-  }
-
-  get publishedAt(): Date | null {
-    return this.row.published_at;
-  }
-
-  get deletedAt(): Date | null {
-    return this.row.deleted_at;
-  }
-
-  /** 휴지통 글을 영구히 지울 수 있게 되는 때 */
-  get purgeAfter(): Date | null {
-    return this.row.purge_after;
-  }
-
-  get mainWikiId(): string | null {
-    return this.row.main_wiki_id;
-  }
-
-  get refWikiIds(): readonly string[] {
-    return this.refWikis;
   }
 
   /** 이번에 새로 쌓인 판 (Repository가 저장한다) */
@@ -259,27 +215,15 @@ export class Post extends TableEntity<PostRow, PostNew> {
     return this.relinked ? this.refWikis : null;
   }
 
-  /** 저장할 것이 있는가 (아무것도 바뀌지 않았으면 행을 건드리지 않는다) */
-  get changed(): boolean {
-    return Object.keys(this.unsaved).length > 0;
-  }
-
   /**
-   * 고쳐 쓰기. 제목·본문이 바뀌었으면 새 판을 쌓는다. 주소·태그·정렬은 판 없이 바꾼다.
+   * 고쳐 쓰기. 제목·본문이 바뀌었으면 새 판을 쌓는다. 주소·태그·정렬은 판 없이 바꾸고, 적지 않은 칸은 그대로다.
    * 공개된 글(공개·링크만)은 주인만 고친다.
    */
-  edit(
-    content: PostContent,
-    slug: string,
-    tags: readonly string[],
-    align: string,
-    by: Actor,
-    now: Date,
-  ): void {
+  edit(content: PostContent, changes: Partial<PostRow>, by: Actor, now: Date): void {
     this.assertLive();
     if (this.row.status !== Post.DRAFT) Post.assertOwner(by);
     const before = this.row;
-    this.accept({ slug, tags, align }, Post.RULES);
+    this.accept(changes, Post.RULES);
     const revised = !content.sameAs(this.head);
     if (revised) this.addRevision(content, null, by, now);
     // 칸이 실제로 바뀌었을 때만 행이 새 객체가 된다 (put)
@@ -390,19 +334,11 @@ export class Post extends TableEntity<PostRow, PostNew> {
   }
 
   private addRevision(content: PostContent, requestId: string | null, by: Actor, now: Date): void {
-    const revision = PostRevision.write(
-      this.id,
-      this.revisions + 1,
-      content,
-      this.row.head_revision_id ?? null,
-      requestId,
-      by,
-      now,
-    );
-    this.added = revision;
-    this.revisions = revision.seq;
+    const base = this.row.head_revision_id ?? null;
+    this.revisions += 1;
+    this.added = PostRevision.write(this.id, this.revisions, content, base, requestId, by, now);
     this.head = content;
-    this.put('head_revision_id', revision.id);
+    this.put('head_revision_id', this.added.id);
   }
 
   /** 고친 때를 적고 찾기용 사본(제목·앞부분·찾기용 글자)을 지금 판에 맞춘다 */

@@ -1,18 +1,16 @@
 import { BaseRequest, type RequestFields } from '../../platform';
+import type { BasketItemRow } from '../blog.tables';
 import { BasketItem } from './basket';
 
 /**
  * POST /api/basket/items. 같은 requestId는 처음 담은 소재를 돌려준다.
  * 종류마다 필요한 칸이 다르다: 세션·글은 refId, 링크는 url, 메모는 note.
+ * 칸을 읽는 법이 종류에 달려 있어 칸마다 한 줄인 COLUMNS로 적지 않는다.
  */
 export class AddBasketItemInput extends BaseRequest {
   private constructor(
     readonly requestId: string,
-    readonly kind: string,
-    readonly refId: string | null,
-    readonly url: string | null,
-    readonly title: string | null,
-    readonly note: string | null,
+    readonly fields: Partial<BasketItemRow>,
   ) {
     super();
   }
@@ -23,14 +21,13 @@ export class AddBasketItemInput extends BaseRequest {
       if (kind && !BasketItem.KINDS.includes(kind))
         f.reject('kind', `${BasketItem.KINDS.join(' · ')} 중 하나예요`);
       const refers = kind === BasketItem.SESSION || kind === BasketItem.POST;
-      return new AddBasketItemInput(
-        f.uuid('requestId'),
+      return new AddBasketItemInput(f.uuid('requestId'), {
         kind,
-        refers ? f.uuid('refId') : null,
-        kind === BasketItem.LINK ? AddBasketItemInput.link(f) : null,
-        f.optionalText('title', BasketItem.TITLE_MAX),
-        AddBasketItemInput.note(f, kind),
-      );
+        ref_id: refers ? f.uuid('refId') : null,
+        url: kind === BasketItem.LINK ? AddBasketItemInput.link(f) : null,
+        title: f.optionalText('title', BasketItem.TITLE_MAX),
+        note: AddBasketItemInput.note(f, kind),
+      });
     });
   }
 
