@@ -1,23 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseResponse, BaseTool } from '../../platform';
-import type { Approval } from './approval';
+import { Actor, BaseTool } from '../../platform';
 import { RequestApprovalInput } from './approval.input';
 import { ApprovalService } from './approval.service';
-
-/** request_approval의 답. 작업은 결재를 기다리므로 에이전트는 여기서 멈춘다 */
-export class ApprovalRequestedResponse extends BaseResponse {
-  private constructor(private readonly approval: Approval) {
-    super();
-  }
-
-  static of(approval: Approval): ApprovalRequestedResponse {
-    return new ApprovalRequestedResponse(approval);
-  }
-
-  toJSON(): object {
-    return { approval_id: this.approval.id, status: this.approval.status };
-  }
-}
+import type { ApprovalRequestedView } from './approval.view';
 
 // MCP 도구 request_approval: 발행·전송·삭제처럼 위험한 동작을 주인에게 올린다.
 // 작업 토큰으로만 부른다. 어느 작업·어느 에이전트인지는 입력이 아니라 토큰에서 나온다.
@@ -56,9 +41,8 @@ export class RequestApprovalTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<ApprovalRequestedResponse> {
-    return ApprovalRequestedResponse.of(
-      await this.approvals.request(actor, RequestApprovalInput.from(raw)),
-    );
+  /** 작업은 결재를 기다리므로 에이전트는 여기서 멈춘다 */
+  async handle(actor: Actor, raw: unknown): Promise<ApprovalRequestedView> {
+    return (await this.approvals.request(actor, RequestApprovalInput.from(raw))).requestedView();
   }
 }

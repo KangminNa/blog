@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { RuleViolation } from '../../platform';
+import type { AgentRow } from '../task.tables';
 import { Agent, AgentUsage } from './agent';
 
 // 에이전트가 쉬는 규칙. DB 없이 돈다.
@@ -8,18 +9,18 @@ import { Agent, AgentUsage } from './agent';
 const NOW = new Date('2026-11-01T00:00:00Z');
 
 function agentWith(fiveHourLimit: number | null, planStopPercent: number | null): Agent {
-  return Agent.open(
-    'space',
-    '글쓰기',
-    '',
-    'claude',
-    [],
-    [],
-    null,
-    fiveHourLimit,
-    planStopPercent,
-    NOW,
-  );
+  return Agent.restore({
+    id: 'agent-1',
+    version: 1,
+    space_id: 'space',
+    name: '글쓰기',
+    tool: 'claude',
+    monthly_limit: null,
+    five_hour_limit: fiveHourLimit,
+    plan_stop_percent: planStopPercent,
+    reports_to: null,
+    status: Agent.ACTIVE,
+  } as AgentRow);
 }
 
 describe('Agent.holds', () => {
@@ -56,11 +57,9 @@ describe('Agent.holds', () => {
 
   test('쉬어도 상태는 그대로다: 저장할 것이 없다', () => {
     const agent = agentWith(100, 80);
-    agent.clearChanges();
-    agent.pullEvents();
     agent.holds(100, 90);
-    assert.equal(agent.status, Agent.ACTIVE);
-    assert.equal(agent.changed, false);
+    assert.equal(agent.paused, false);
+    assert.deepEqual(agent.unsaved, {});
     assert.deepEqual(agent.pullEvents(), []);
   });
 });
@@ -80,45 +79,48 @@ describe('AgentUsage', () => {
 describe('한도 칸', () => {
   test('범위를 벗어나면 거절한다', () => {
     const agent = agentWith(null, null);
-    assert.throws(() => {
-      agent.fiveHourLimit = 0;
-    }, RuleViolation);
-    assert.throws(() => {
-      agent.planStopPercent = 0;
-    }, RuleViolation);
-    assert.throws(() => {
-      agent.planStopPercent = 101;
-    }, RuleViolation);
+    assert.throws(() => agent.edit({ five_hour_limit: 0 }), RuleViolation);
+    assert.throws(() => agent.edit({ plan_stop_percent: 0 }), RuleViolation);
+    assert.throws(() => agent.edit({ plan_stop_percent: 101 }), RuleViolation);
   });
 
   test('바뀐 열만 기억하고 null로 비울 수 있다', () => {
     const agent = agentWith(100, 80);
-    agent.clearChanges();
-    agent.fiveHourLimit = null;
-    agent.planStopPercent = 90;
-    assert.deepEqual(agent.changes, { five_hour_limit: null, plan_stop_percent: 90 });
+    agent.edit({ five_hour_limit: null, plan_stop_percent: 90 });
+    assert.deepEqual(agent.unsaved, { five_hour_limit: null, plan_stop_percent: 90 });
   });
 });
 
 describe('조직도 (Agent.reportTo)', () => {
   /** 이름만 다른 에이전트. 보고 대상은 reportTo로 잇는다 */
   function named(name: string): Agent {
-    return Agent.open('space', name, '', 'claude', [], [], null, null, null, NOW);
+    return Agent.restore({
+      id: `agent-${name}`,
+      version: 1,
+      space_id: 'space',
+      name,
+      tool: 'claude',
+      reports_to: null,
+      status: Agent.ACTIVE,
+      created_at: NOW,
+    } as AgentRow);
   }
+
+  /** 지금 보고 대상 */
+  const managerOf = (agent: Agent) => agent.view().toJSON().reportsTo;
 
   test('보고 대상이 없으면 주인에게 보고한다. 정하면 바뀐 열로 남는다', () => {
     const lead = named('팀장');
     const member = named('담당');
     const all = [lead, member];
-    assert.equal(member.reportsTo, null);
-    member.clearChanges();
+    assert.equal(managerOf(member), null);
     member.reportTo(lead.id, all);
-    assert.equal(member.reportsTo, lead.id);
-    assert.deepEqual(member.changes, { reports_to: lead.id });
+    assert.equal(managerOf(member), lead.id);
+    assert.deepEqual(member.unsaved, { reports_to: lead.id });
     assert.equal(lead.manages(member), true);
     assert.equal(member.manages(lead), false);
     member.reportTo(null, all);
-    assert.equal(member.reportsTo, null, '주인에게 돌아갈 수 있다');
+    assert.equal(managerOf(member), null, '주인에게 돌아갈 수 있다');
   });
 
   test('자기 자신이나 자기 팀원에게 보고하면 순환이라 막는다', () => {
@@ -130,7 +132,7 @@ describe('조직도 (Agent.reportTo)', () => {
     c.reportTo(b.id, all);
     assert.throws(() => a.reportTo(a.id, all), RuleViolation);
     assert.throws(() => a.reportTo(c.id, all), RuleViolation, '손자에게도');
-    assert.equal(a.reportsTo, null, '막히면 그대로');
+    assert.equal(managerOf(a), null, '막히면 그대로');
   });
 
   test('없는 에이전트에게는 보고하지 못한다', () => {
@@ -157,6 +159,6 @@ describe('조직도 (Agent.reportTo)', () => {
     e.reportTo(d.id, all);
     assert.throws(() => d.reportTo(c.id, all), RuleViolation);
     d.reportTo(b.id, all);
-    assert.equal(d.reportsTo, b.id, '3단계 + 팀원 하나는 4단계라 된다');
+    assert.equal(managerOf(d), b.id, '3단계 + 팀원 하나는 4단계라 된다');
   });
 });

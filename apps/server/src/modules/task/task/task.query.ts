@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { type Actor, AgentActor, BaseQuery, NotFound, type Row } from '../../platform';
+import { type Actor, AgentActor, BaseQuery, NotFound } from '../../platform';
+import type { GoalRow, TaskEventRow, TaskRow } from '../task.tables';
 import { Task } from './task';
 import type { ListTasksInput, TaskIdInput } from './task.input';
 import { TaskDetailView, TaskEventView, TaskGoalView, TaskPageView, TaskView } from './task.view';
@@ -15,7 +16,7 @@ export class TaskQuery extends BaseQuery {
 
   async list(actor: Actor, req: ListTasksInput): Promise<TaskPageView> {
     actor.assertOwner();
-    const rows = await this.sql`
+    const rows = await this.sql<(TaskRow & { last_event: string | null })[]>`
       SELECT t.*, e.body AS last_event FROM task.tasks t
       LEFT JOIN LATERAL (
         SELECT left(body, ${TaskQuery.LAST_EVENT}) AS body FROM task.task_events
@@ -27,45 +28,37 @@ export class TaskQuery extends BaseQuery {
         ${req.cursor === null ? this.sql`` : this.sql`AND t.id < ${req.cursor}`}
       ORDER BY t.id DESC
       LIMIT ${TaskQuery.PAGE + 1}`;
-    const page = rows.slice(0, TaskQuery.PAGE).map((r) => TaskQuery.view(r));
-    return new TaskPageView(page, rows.length > TaskQuery.PAGE ? (page.at(-1)?.id ?? null) : null);
+    const page = rows.slice(0, TaskQuery.PAGE);
+    return new TaskPageView(
+      page.map((r) => new TaskView(r, r.last_event)),
+      rows.length > TaskQuery.PAGE ? (page.at(-1)?.id ?? null) : null,
+    );
   }
 
   async get(actor: Actor, req: TaskIdInput): Promise<TaskDetailView> {
     actor.assertOwner();
-    const [row] = await this.sql`
+    const [row] = await this.sql<TaskRow[]>`
       SELECT * FROM task.tasks WHERE space_id = ${actor.spaceId} AND id = ${req.id}`;
     if (!row) throw new NotFound('작업을 찾을 수 없어요');
-    const events = await this.sql`
+    const events = await this.sql<TaskEventRow[]>`
       SELECT * FROM (
         SELECT * FROM task.task_events WHERE task_id = ${req.id} ORDER BY id DESC LIMIT ${TaskQuery.EVENTS}
       ) e ORDER BY id`;
-    const goals = row.goal_id === null ? [] : await this.goalChain(String(row.goal_id));
-    const children = await this.sql`
+    const goals = row.goal_id === null ? [] : await this.goalChain(row.goal_id);
+    const children = await this.sql<TaskRow[]>`
       SELECT * FROM task.tasks WHERE parent_id = ${req.id} ORDER BY id`;
     return new TaskDetailView(
-      TaskQuery.view(row),
-      String(row.instruction),
-      Task.shownPayload(String(row.kind), row.payload),
-      row.result,
-      events.map(
-        (e) =>
-          new TaskEventView(
-            String(e.id),
-            new Date(e.at),
-            String(e.kind),
-            String(e.body),
-            Number(e.tokens),
-          ),
-      ),
+      row,
+      Task.shownPayload(row.kind, row.payload),
+      events.map((e) => new TaskEventView(e)),
       goals,
-      children.map((c) => TaskQuery.view(c)),
+      children.map((c) => new TaskView(c)),
     );
   }
 
   /** 회사 목표부터 이 목표까지. 목표의 부모는 바뀌지 않는다 */
   private async goalChain(goalId: string): Promise<readonly TaskGoalView[]> {
-    const rows = await this.sql`
+    const rows = await this.sql<Pick<GoalRow, 'id' | 'title' | 'status'>[]>`
       WITH RECURSIVE up AS (
         SELECT id, parent_id, title, status, 0 AS step FROM task.goals WHERE id = ${goalId}
         UNION ALL
@@ -73,7 +66,7 @@ export class TaskQuery extends BaseQuery {
         JOIN up ON g.id = up.parent_id
       )
       SELECT * FROM up ORDER BY step DESC`;
-    return rows.map((r) => new TaskGoalView(String(r.id), String(r.title), String(r.status)));
+    return rows.map((r) => new TaskGoalView(r));
   }
 
   /**
@@ -87,28 +80,5 @@ export class TaskQuery extends BaseQuery {
       WHERE id = ${actor.taskId} AND agent_id = ${actor.agentId}
         AND status IN (${Task.RUNNING}, ${Task.WAITING}) AND lease_until > now()`;
     return row !== undefined;
-  }
-
-  private static view(r: Row): TaskView {
-    return new TaskView(
-      String(r.id),
-      r.agent_id === null ? null : String(r.agent_id),
-      String(r.kind),
-      String(r.title),
-      String(r.status),
-      Number(r.priority),
-      r.target_kind === null ? null : String(r.target_kind),
-      r.target_id === null ? null : String(r.target_id),
-      r.base_version === null ? null : Number(r.base_version),
-      Number(r.attempts),
-      r.lease_until === null ? null : new Date(r.lease_until),
-      Number(r.version),
-      new Date(r.created_at),
-      r.finished_at === null ? null : new Date(r.finished_at),
-      r.last_event === undefined || r.last_event === null ? null : String(r.last_event),
-      r.goal_id === null ? null : String(r.goal_id),
-      r.parent_id === null ? null : String(r.parent_id),
-      r.wait_reason === null ? null : String(r.wait_reason),
-    );
   }
 }

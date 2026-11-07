@@ -1,4 +1,5 @@
 import { BaseRequest, type RequestFields } from '../../platform';
+import type { PlanUsageRow, TaskNew } from '../task.tables';
 import { PlanUsage } from '../usage/plan-usage';
 
 // 작업 입력의 모양. REST(콘솔)는 camelCase, MCP(러너)는 다른 도구처럼 snake_case로 받는다.
@@ -9,6 +10,7 @@ const PRIORITY_MAX = 1000;
 /**
  * 작업 하나를 만드는 입력. 콘솔(POST /api/tasks)은 requestId · instruction · agentId? · goalId?만 보내고,
  * 일 요청 이벤트(task.task.requested)는 종류, 제목, 대상까지 적는다.
+ * 만들 때만 받는 칸이라 하나씩 읽는다 (제목은 지시에서 정하고, 빠지면 기본값이 들어간다).
  */
 export class CreateTaskInput extends BaseRequest {
   private static readonly GENERAL = 'general';
@@ -16,17 +18,8 @@ export class CreateTaskInput extends BaseRequest {
 
   private constructor(
     readonly requestId: string,
-    readonly agentId: string | null,
-    readonly kind: string,
-    readonly title: string,
-    readonly instruction: string,
-    readonly payload: Readonly<Record<string, unknown>>,
-    readonly targetKind: string | null,
-    readonly targetId: string | null,
-    readonly baseVersion: number | null,
-    readonly priority: number,
-    /** 이 작업이 향하는 목표 (진행 중이어야 한다) */
-    readonly goalId: string | null,
+    /** goal_id: 이 작업이 향하는 목표 (진행 중이어야 한다) */
+    readonly fields: Omit<TaskNew, 'id' | 'space_id'>,
   ) {
     super();
   }
@@ -34,19 +27,18 @@ export class CreateTaskInput extends BaseRequest {
   static from(raw: unknown): CreateTaskInput {
     return BaseRequest.read(raw, (f) => {
       const instruction = f.optionalText('instruction', 20_000) ?? '';
-      return new CreateTaskInput(
-        f.text('requestId', 200),
-        CreateTaskInput.optionalUuid(f, raw, 'agentId'),
-        f.optionalText('kind', 100) ?? CreateTaskInput.GENERAL,
-        CreateTaskInput.titleOf(f, instruction),
+      return new CreateTaskInput(f.text('requestId', 200), {
+        agent_id: CreateTaskInput.optionalUuid(f, raw, 'agentId'),
+        kind: f.optionalText('kind', 100) ?? CreateTaskInput.GENERAL,
+        title: CreateTaskInput.titleOf(f, instruction),
         instruction,
-        f.optionalRecord('payload'),
-        f.optionalText('targetKind', 40),
-        CreateTaskInput.optionalUuid(f, raw, 'targetId'),
-        f.optionalInteger('baseVersion', 0, VERSION_MAX),
-        f.optionalInteger('priority', -PRIORITY_MAX, PRIORITY_MAX) ?? 0,
-        CreateTaskInput.optionalUuid(f, raw, 'goalId'),
-      );
+        payload: f.optionalRecord('payload'),
+        target_kind: f.optionalText('targetKind', 40),
+        target_id: CreateTaskInput.optionalUuid(f, raw, 'targetId'),
+        base_version: f.optionalInteger('baseVersion', 0, VERSION_MAX),
+        priority: f.optionalInteger('priority', -PRIORITY_MAX, PRIORITY_MAX) ?? 0,
+        goal_id: CreateTaskInput.optionalUuid(f, raw, 'goalId'),
+      });
     });
   }
 
@@ -103,23 +95,6 @@ export class TaskIdInput extends BaseRequest {
 
   static from(id: string): TaskIdInput {
     return BaseRequest.read({ id }, (f) => new TaskIdInput(f.uuid('id')));
-  }
-}
-
-/** POST /api/tasks/:id/cancel */
-export class CancelTaskInput extends BaseRequest {
-  private constructor(
-    readonly id: string,
-    readonly version: number,
-  ) {
-    super();
-  }
-
-  static from(id: string, raw: unknown): CancelTaskInput {
-    return BaseRequest.read(
-      { ...(raw as object), id },
-      (f) => new CancelTaskInput(f.uuid('id'), f.integer('version', 1, VERSION_MAX)),
-    );
   }
 }
 
@@ -180,10 +155,8 @@ export class ReportedEvent extends BaseRequest {
 /** report_progress의 구독 사용률 창 하나. 어느 창을 저장할지는 도메인이 정한다 (PlanUsage) */
 export class ReportedPlanUsage extends BaseRequest {
   private constructor(
-    readonly window: string,
-    readonly percent: number,
-    readonly resetsAt: Date,
-    readonly status: string | null,
+    /** period는 API의 window다 (Postgres 예약어라 칸 이름이 다르다) */
+    readonly fields: Pick<PlanUsageRow, 'period' | 'percent' | 'resets_at' | 'status'>,
   ) {
     super();
   }
@@ -191,12 +164,12 @@ export class ReportedPlanUsage extends BaseRequest {
   static from(f: RequestFields): ReportedPlanUsage {
     const resetsAt = f.optionalDate('resets_at');
     if (resetsAt === null) f.reject('resets_at', 'ISO 8601 날짜여야 해요');
-    return new ReportedPlanUsage(
-      f.text('window', 40),
-      f.integer('percent', 0, PlanUsage.PERCENT_MAX),
-      resetsAt ?? new Date(0),
-      f.optionalText('status', 40),
-    );
+    return new ReportedPlanUsage({
+      period: f.text('window', 40),
+      percent: f.integer('percent', 0, PlanUsage.PERCENT_MAX),
+      resets_at: resetsAt ?? new Date(0),
+      status: f.optionalText('status', 40),
+    });
   }
 }
 
@@ -293,28 +266,23 @@ export class SubtaskOrder extends BaseRequest {
   private constructor(
     readonly requestId: string,
     readonly toAgentId: string,
-    readonly kind: string,
-    readonly title: string,
-    readonly instruction: string,
-    readonly targetKind: string | null,
-    readonly targetId: string | null,
-    readonly baseVersion: number | null,
+    /** MCP 입력은 칸 이름 그대로다. 대상의 판(base_version)만 target_version으로 받는다 */
+    readonly fields: Omit<TaskNew, 'id' | 'space_id'>,
   ) {
     super();
   }
 
   static from(f: RequestFields): SubtaskOrder {
     const targetKind = f.optionalText('target_kind', 40);
-    return new SubtaskOrder(
-      f.text('request_id', 200),
-      f.uuid('to_agent_id'),
-      f.optionalText('kind', 100) ?? 'general',
-      f.text('title', 200),
-      f.text('instruction', 20_000),
-      targetKind,
-      targetKind === null ? null : f.uuid('target_id'),
-      targetKind === null ? null : f.optionalInteger('target_version', 0, VERSION_MAX),
-    );
+    return new SubtaskOrder(f.text('request_id', 200), f.uuid('to_agent_id'), {
+      kind: f.optionalText('kind', 100) ?? 'general',
+      title: f.text('title', 200),
+      instruction: f.text('instruction', 20_000),
+      target_kind: targetKind,
+      target_id: targetKind === null ? null : f.uuid('target_id'),
+      base_version:
+        targetKind === null ? null : f.optionalInteger('target_version', 0, VERSION_MAX),
+    });
   }
 }
 

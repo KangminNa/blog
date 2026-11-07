@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import { Forbidden, RuleViolation } from '../../platform';
 import { Agent } from '../agent/agent';
 import { Task } from '../task/task';
+import type { AgentRow } from '../task.tables';
 import { Approval } from './approval';
 
 // 결재의 상태 기계: 결정은 한 번뿐이고, 승인은 동작·대상·승인자를 이벤트로 남긴다. DB 없이 돈다.
@@ -12,23 +13,15 @@ const OWNER = 'owner-1';
 const TARGET = '00000000-0000-7000-8000-000000000001';
 
 function agent(actions: readonly string[] = ['blog.post.publish']): Agent {
-  return Agent.open('space', '글쓰기', '', 'claude', ['write'], actions, null, null, null, NOW);
+  const fields = { name: '글쓰기', tool: 'claude', scopes: ['write'], approval_actions: actions };
+  return Agent.open('space', fields, NOW);
 }
 
 function runningTask(who: Agent): Task {
   const task = Task.open(
     'space',
-    who.id,
-    'draft_post',
-    '글',
-    '',
-    {},
-    null,
-    null,
-    null,
-    0,
     'request',
-    null,
+    { agent_id: who.id, kind: 'draft_post', title: '글' },
     NOW,
   );
   task.lease('runner', who.id, NOW);
@@ -41,11 +34,13 @@ function pending(): { approval: Approval; task: Task } {
   const approval = Approval.request(
     task,
     who,
-    'blog.post.publish',
-    'post',
-    TARGET,
-    3,
-    '공개해 주세요',
+    {
+      action: 'blog.post.publish',
+      target_kind: 'post',
+      target_id: TARGET,
+      target_version: 3,
+      note: '공개해 주세요',
+    },
     NOW,
   );
   return { approval, task };
@@ -54,8 +49,8 @@ function pending(): { approval: Approval; task: Task } {
 describe('결재 상태', () => {
   test('올리면 작업이 결재를 기다린다', () => {
     const { approval, task } = pending();
-    assert.equal(approval.status, Approval.PENDING);
-    assert.equal(task.status, Task.WAITING);
+    assert.equal(approval.unsaved.status, Approval.PENDING);
+    assert.equal(task.unsaved.status, Task.WAITING);
     assert.equal(task.addedLog.at(-1)?.body, '결재 요청: blog.post.publish (공개해 주세요)');
   });
 
@@ -63,10 +58,22 @@ describe('결재 상태', () => {
     const who = agent();
     const task = runningTask(who);
     assert.throws(
-      () => Approval.request(task, who, 'sns.post.send', 'post', TARGET, 1, null, NOW),
+      () =>
+        Approval.request(
+          task,
+          who,
+          {
+            action: 'sns.post.send',
+            target_kind: 'post',
+            target_id: TARGET,
+            target_version: 1,
+            note: null,
+          },
+          NOW,
+        ),
       Forbidden,
     );
-    assert.equal(task.status, Task.RUNNING);
+    assert.equal(task.unsaved.status, Task.RUNNING);
   });
 
   test('승인은 동작·대상·승인자를 이벤트로 남기고 작업은 실행을 기다린다', () => {
@@ -74,15 +81,15 @@ describe('결재 상태', () => {
     approval.pullEvents();
     approval.approve(OWNER, null, NOW);
     approval.applyTo(task, NOW);
-    assert.equal(approval.status, Approval.APPROVED);
-    assert.equal(task.status, Task.RUNNING);
-    assert.equal(task.leaseUntil, null);
+    assert.equal(approval.unsaved.status, Approval.APPROVED);
+    assert.equal(task.unsaved.status, Task.RUNNING);
+    assert.equal(task.unsaved.lease_until, null);
     const [event] = approval.pullEvents();
     assert.equal(event?.name, 'task.approval.granted');
     assert.deepEqual(event?.data, {
       approvalId: approval.id,
       taskId: task.id,
-      agentId: approval.agentId,
+      agentId: approval.unsaved.agent_id,
       action: 'blog.post.publish',
       targetKind: 'post',
       targetId: TARGET,
@@ -96,9 +103,9 @@ describe('결재 상태', () => {
     const { approval, task } = pending();
     approval.requestRevision(OWNER, '제목을 바꿔 주세요', NOW);
     approval.applyTo(task, NOW);
-    assert.equal(approval.status, Approval.REVISION_REQUESTED);
-    assert.equal(task.status, Task.QUEUED);
-    assert.equal(task.revisionNote, '제목을 바꿔 주세요');
+    assert.equal(approval.unsaved.status, Approval.REVISION_REQUESTED);
+    assert.equal(task.unsaved.status, Task.QUEUED);
+    assert.deepEqual(task.unsaved.payload, { revisionNote: '제목을 바꿔 주세요' });
   });
 
   test('고칠 말 없이 고쳐 달라고 할 수 없다', () => {
@@ -110,8 +117,8 @@ describe('결재 상태', () => {
     const { approval, task } = pending();
     approval.reject(OWNER, '안 해요', NOW);
     approval.applyTo(task, NOW);
-    assert.equal(approval.status, Approval.REJECTED);
-    assert.equal(task.status, Task.CANCELLED);
+    assert.equal(approval.unsaved.status, Approval.REJECTED);
+    assert.equal(task.unsaved.status, Task.CANCELLED);
   });
 
   test('결정은 한 번뿐이다', () => {
@@ -131,7 +138,7 @@ describe('결재 상태', () => {
     const who = agent();
     const approval = Approval.raiseLimit(who, 120, NOW);
     assert.equal(approval.taskId, null);
-    assert.equal(approval.targetKind, 'agent');
+    assert.equal(approval.unsaved.target_kind, 'agent');
     assert.equal(approval.targetId, who.id);
     assert.equal(approval.raisesLimit, false);
     approval.approve(OWNER, null, NOW);
@@ -141,9 +148,7 @@ describe('결재 상태', () => {
 
 describe('에이전트', () => {
   test('러너의 권한은 줄 수 없다', () => {
-    assert.throws(() => {
-      agent().scopes = ['run'];
-    }, RuleViolation);
+    assert.throws(() => agent().edit({ scopes: ['run'] }), RuleViolation);
   });
 
   test('한도 올리기는 에이전트가 맡을 수 있는 동작이 아니다', () => {
@@ -152,7 +157,7 @@ describe('에이전트', () => {
   });
 
   test('한도를 넘기면 한 번만 잡히고, 올리면 두 배가 되어 다시 움직인다', () => {
-    const who = Agent.open('space', '글쓰기', '', 'claude', [], [], 100, null, null, NOW);
+    const who = Agent.open('space', { name: '글쓰기', tool: 'claude', monthly_limit: 100 }, NOW);
     assert.equal(who.overLimit(100), false);
     assert.equal(who.overLimit(101), true);
     who.pause();
@@ -167,25 +172,18 @@ describe('에이전트', () => {
   });
 
   test('바뀐 열만 기억한다', () => {
-    const who = Agent.restore(
-      'agent-1',
-      2,
-      'space',
-      '글쓰기',
-      '',
-      'claude',
-      [],
-      [],
-      null,
-      null,
-      null,
-      null,
-      Agent.ACTIVE,
-      NOW,
-    );
-    who.name = '정리';
-    assert.deepEqual(who.changes, { name: '정리' });
+    const who = Agent.restore({
+      id: 'agent-1',
+      version: 2,
+      space_id: 'space',
+      name: '글쓰기',
+      tool: 'claude',
+      status: Agent.ACTIVE,
+      created_at: NOW,
+    } as AgentRow);
+    who.edit({ name: '정리' });
+    assert.deepEqual(who.unsaved, { name: '정리' });
     who.pause();
-    assert.deepEqual(who.changes, { name: '정리', status: Agent.PAUSED });
+    assert.deepEqual(who.unsaved, { name: '정리', status: Agent.PAUSED });
   });
 });

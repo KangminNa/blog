@@ -1,24 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseResponse, BaseTool } from '../../platform';
-import type { AiLogin } from './ai-login';
+import { Actor, BaseTool } from '../../platform';
 import { AiLoginInput, AiLoginRefreshInput, AiSigninStepInput } from './ai-login.input';
 import { AiLoginService } from './ai-login.service';
-import { AiLoginVersionView, type AiSigninRelayView, type AiTokenView } from './ai-login.view';
-
-/** ai_login의 답 */
-export class AiTokenResponse extends BaseResponse {
-  private constructor(private readonly view: AiTokenView) {
-    super();
-  }
-
-  static of(view: AiTokenView): AiTokenResponse {
-    return new AiTokenResponse(view);
-  }
-
-  toJSON(): object {
-    return this.view.toJSON();
-  }
-}
+import type { AiLoginVersionView, AiSigninRelayView, AiTokenView } from './ai-login.view';
 
 // 러너가 일마다 부른다 (run 권한). 받은 토큰은 메모리에만 두고 AI CLI를 띄울 때 환경 변수로만 넘긴다.
 // 부를 때마다 러너가 닿은 때를 남긴다 (러너 메뉴의 연결 상태): 할 수 있는 것을 알리기 전의 러너는 토큰이 없으면 이것만 묻는다.
@@ -45,23 +29,8 @@ export class AiLoginTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<AiTokenResponse> {
-    return AiTokenResponse.of(await this.logins.handOver(actor, AiLoginInput.from(raw)));
-  }
-}
-
-/** ai_login_refresh의 답: 저장한 뒤의 판 */
-export class AiLoginVersionResponse extends BaseResponse {
-  private constructor(private readonly login: AiLogin) {
-    super();
-  }
-
-  static of(login: AiLogin): AiLoginVersionResponse {
-    return new AiLoginVersionResponse(login);
-  }
-
-  toJSON(): object {
-    return new AiLoginVersionView(this.login.version).toJSON();
+  handle(actor: Actor, raw: unknown): Promise<AiTokenView> {
+    return this.logins.handOver(actor, AiLoginInput.from(raw));
   }
 }
 
@@ -92,25 +61,9 @@ export class AiLoginRefreshTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<AiLoginVersionResponse> {
-    return AiLoginVersionResponse.of(
-      await this.logins.refresh(actor, AiLoginRefreshInput.from(raw)),
-    );
-  }
-}
-
-/** ai_signin의 답 */
-export class AiSigninRelayResponse extends BaseResponse {
-  private constructor(private readonly view: AiSigninRelayView) {
-    super();
-  }
-
-  static of(view: AiSigninRelayView): AiSigninRelayResponse {
-    return new AiSigninRelayResponse(view);
-  }
-
-  toJSON(): object {
-    return this.view.toJSON();
+  /** 저장한 뒤의 판 */
+  async handle(actor: Actor, raw: unknown): Promise<AiLoginVersionView> {
+    return (await this.logins.refresh(actor, AiLoginRefreshInput.from(raw))).versionView();
   }
 }
 
@@ -143,9 +96,7 @@ export class AiSigninTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<AiSigninRelayResponse> {
-    return AiSigninRelayResponse.of(
-      await this.logins.relaySignin(actor, AiSigninStepInput.from(raw)),
-    );
+  handle(actor: Actor, raw: unknown): Promise<AiSigninRelayView> {
+    return this.logins.relaySignin(actor, AiSigninStepInput.from(raw));
   }
 }

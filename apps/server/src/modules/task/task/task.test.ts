@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import { AgentActor, Conflict, Forbidden, RuleViolation, SecretBox } from '../../platform';
 import { Agent } from '../agent/agent';
+import type { TaskRow } from '../task.tables';
 import { Task } from './task';
 
 // 작업의 상태 기계: 허용된 변경만 메서드로 받고, 나머지는 RuleViolation. DB 없이 돈다.
@@ -16,20 +17,14 @@ const AGENT = 'agent-1';
 function queued(): Task {
   return Task.open(
     'space',
-    AGENT,
-    'draft_post',
-    '글 쓰기',
-    '지시',
-    {},
-    null,
-    null,
-    null,
-    0,
     randomUUID(),
-    null,
+    { agent_id: AGENT, kind: 'draft_post', title: '글 쓰기', instruction: '지시' },
     NOW,
   );
 }
+
+/** 러너가 받는 일의 모양 */
+const job = (task: Task) => task.jobView(null, SecretBox.fromEnv({}), [], [], []).toJSON();
 
 function running(): Task {
   const task = queued();
@@ -46,19 +41,19 @@ function waiting(): Task {
 describe('작업 상태', () => {
   test('queued → running → waiting → running → done', () => {
     const task = queued();
-    assert.equal(task.status, Task.QUEUED);
+    assert.equal(task.unsaved.status, Task.QUEUED);
     task.lease(RUNNER, AGENT, NOW);
-    assert.equal(task.status, Task.RUNNING);
-    assert.equal(task.attempts, 1);
-    assert.equal(task.leasedBy, RUNNER);
+    assert.equal(task.unsaved.status, Task.RUNNING);
+    assert.equal(task.unsaved.attempts, 1);
+    assert.equal(task.unsaved.leased_by, RUNNER);
     task.waitFor(NOW);
-    assert.equal(task.status, Task.WAITING);
+    assert.equal(task.unsaved.status, Task.WAITING);
     task.resume();
-    assert.equal(task.status, Task.RUNNING);
-    assert.equal(task.leaseUntil, null);
+    assert.equal(task.unsaved.status, Task.RUNNING);
+    assert.equal(task.unsaved.lease_until, null);
     task.finish({ ok: true }, NOW);
-    assert.equal(task.status, Task.DONE);
-    assert.equal(task.finishedAt, NOW);
+    assert.equal(task.unsaved.status, Task.DONE);
+    assert.equal(task.unsaved.finished_at, NOW);
   });
 
   test('끝난 작업은 어떤 상태로도 가지 않는다', () => {
@@ -89,10 +84,10 @@ describe('작업 상태', () => {
     assert.throws(() => queued().returnForRevision('다시', 'post', POST, 2), RuleViolation);
   });
 
-  test('상태에는 set이 없다', () => {
-    const task = queued() as unknown as { status: string };
+  test('상태에는 set이 없다: 행은 메서드로만 바뀐다', () => {
+    const task = queued() as unknown as { row: Partial<TaskRow> };
     assert.throws(() => {
-      task.status = Task.DONE;
+      task.row = { status: Task.DONE };
     }, TypeError);
   });
 
@@ -101,28 +96,28 @@ describe('작업 상태', () => {
     assert.throws(() => running().submit(RUNNER, Task.DONE, {}, null, LATER), RuleViolation);
     const task = running();
     task.submit(RUNNER, Task.DONE, { ok: true }, null, NOW);
-    assert.equal(task.status, Task.DONE);
+    assert.equal(task.unsaved.status, Task.DONE);
     const failed = running();
     failed.submit(RUNNER, Task.FAILED, {}, '실패 이유', NOW);
-    assert.equal(failed.status, Task.FAILED);
-    assert.deepEqual(failed.result, { error: '실패 이유' });
+    assert.equal(failed.unsaved.status, Task.FAILED);
+    assert.deepEqual(failed.unsaved.result, { error: '실패 이유' });
   });
 
   test('진행 보고는 임대를 늘린다. 취소·결재 대기는 기록만 받는다', () => {
     const task = running();
     const later = new Date(NOW.getTime() + 60_000);
     task.acceptReport(RUNNER, later);
-    assert.equal(task.leaseUntil?.getTime(), later.getTime() + Task.LEASE_MS);
+    assert.equal(task.unsaved.lease_until?.getTime(), later.getTime() + Task.LEASE_MS);
 
     const held = waiting();
-    const lease = held.leaseUntil;
+    const lease = held.unsaved.lease_until;
     held.acceptReport(RUNNER, later);
-    assert.equal(held.leaseUntil, lease);
+    assert.equal(held.unsaved.lease_until, lease);
 
     const cancelled = running();
     cancelled.cancel(NOW);
     cancelled.acceptReport(RUNNER, later);
-    assert.equal(cancelled.status, Task.CANCELLED);
+    assert.equal(cancelled.unsaved.status, Task.CANCELLED);
 
     assert.throws(() => running().acceptReport(RUNNER, LATER), RuleViolation);
     assert.throws(() => running().acceptReport('다른 러너', NOW), RuleViolation);
@@ -133,42 +128,42 @@ describe('작업 상태', () => {
     for (let i = 1; i < Task.MAX_ATTEMPTS; i++) {
       task.lease(RUNNER, AGENT, NOW);
       task.expire(LATER);
-      assert.equal(task.status, Task.QUEUED);
-      assert.equal(task.leasedBy, null);
+      assert.equal(task.unsaved.status, Task.QUEUED);
+      assert.equal(task.unsaved.leased_by, null);
     }
     task.lease(RUNNER, AGENT, NOW);
     task.expire(LATER);
-    assert.equal(task.status, Task.FAILED);
-    assert.equal(task.leaseUntil, null);
+    assert.equal(task.unsaved.status, Task.FAILED);
+    assert.equal(task.unsaved.lease_until, null);
   });
 
   test('돌려준 일은 시도로 세지 않는다', () => {
     const task = running();
     task.release(RUNNER, '모델 한도', NOW);
-    assert.equal(task.status, Task.QUEUED);
-    assert.equal(task.attempts, 0);
-    assert.equal(task.leasedBy, null);
+    assert.equal(task.unsaved.status, Task.QUEUED);
+    assert.equal(task.unsaved.attempts, 0);
+    assert.equal(task.unsaved.leased_by, null);
   });
 
   test('고쳐 달라고 하면 말과 함께 대기열로 돌아가고 시도를 새로 센다', () => {
     const task = waiting();
     task.returnForRevision('제목을 바꿔 주세요', 'post', POST, 2);
-    assert.equal(task.targetKind, 'post');
-    assert.equal(task.targetId, POST);
-    assert.equal(task.baseVersion, 2);
-    assert.equal(task.status, Task.QUEUED);
-    assert.equal(task.revisionNote, '제목을 바꿔 주세요');
-    assert.equal(task.attempts, 0);
-    assert.equal(task.leaseUntil, null);
+    assert.equal(task.unsaved.target_kind, 'post');
+    assert.equal(task.unsaved.target_id, POST);
+    assert.equal(task.unsaved.base_version, 2);
+    assert.equal(task.unsaved.status, Task.QUEUED);
+    assert.equal(job(task).revision_note, '제목을 바꿔 주세요');
+    assert.equal(task.unsaved.attempts, 0);
+    assert.equal(task.unsaved.lease_until, null);
   });
 
   test('실행 결과는 두 번 와도 같다', () => {
     const task = waiting();
     task.resume();
     task.concludeExecution(true, null, NOW);
-    assert.equal(task.status, Task.DONE);
+    assert.equal(task.unsaved.status, Task.DONE);
     task.concludeExecution(false, '늦게 온 실패', NOW);
-    assert.equal(task.status, Task.DONE);
+    assert.equal(task.unsaved.status, Task.DONE);
   });
 
   test('모르는 기록 종류는 거절한다', () => {
@@ -176,43 +171,29 @@ describe('작업 상태', () => {
   });
 
   test('바뀐 열만 기억한다', () => {
-    const task = Task.restore(
-      'task-1',
-      3,
-      'space',
-      AGENT,
-      'draft_post',
-      '글',
-      '',
-      {},
-      null,
-      null,
-      null,
-      null,
-      Task.RUNNING,
-      0,
-      new Date(NOW.getTime() + 1000),
-      RUNNER,
-      1,
-      null,
-      null,
-      null,
-      0,
-      null,
-      0,
-      NOW,
-      null,
-    );
-    assert.equal(task.changed, false);
+    const task = Task.restore({
+      id: 'task-1',
+      version: 3,
+      space_id: 'space',
+      agent_id: AGENT,
+      kind: 'draft_post',
+      title: '글',
+      status: Task.RUNNING,
+      lease_until: new Date(NOW.getTime() + 1000),
+      leased_by: RUNNER,
+      attempts: 1,
+      wait_reason: null,
+    } as TaskRow);
+    assert.deepEqual(task.unsaved, {});
     task.waitFor(NOW);
-    assert.deepEqual(Object.keys(task.changes), ['status', 'wait_reason']);
-    assert.equal(task.waitReason, Task.WAIT_APPROVAL);
+    assert.deepEqual(Object.keys(task.unsaved), ['status', 'wait_reason']);
+    assert.equal(task.unsaved.wait_reason, Task.WAIT_APPROVAL);
   });
 
   test('kind로 스킬을 고른다', () => {
-    assert.equal(queued().skill, 'cairn-write');
-    const unknown = Task.open('s', null, 'other', 't', '', {}, null, null, null, 0, 'r', null, NOW);
-    assert.equal(unknown.skill, null);
+    assert.equal(job(queued()).skill, 'cairn-write');
+    const unknown = Task.open('s', 'r', { kind: 'other', title: 't' }, NOW);
+    assert.equal(job(unknown).skill, null);
   });
 });
 
@@ -252,7 +233,7 @@ describe('위임', () => {
   /** 팀장과 바로 아래 팀원 둘(글쓰기, 정리), 팀 밖의 에이전트 하나 */
   function org() {
     const make = (name: string, scopes: string[]) =>
-      Agent.open('space', name, '', 'claude', scopes, [], null, null, null, NOW);
+      Agent.open('space', { name, tool: 'claude', scopes }, NOW);
     const lead = make('팀장', ['read_public']);
     const writer = make('글쓰기', ['read_public', 'write']);
     const tidier = make('정리', ['tidy', 'read_all']);
@@ -266,17 +247,8 @@ describe('위임', () => {
   function leadTask(lead: Agent): Task {
     const task = Task.open(
       'space',
-      lead.id,
-      'general',
-      '이번 달 글',
-      '',
-      {},
-      null,
-      null,
-      null,
-      7,
       randomUUID(),
-      'goal-1',
+      { agent_id: lead.id, kind: 'general', title: '이번 달 글', priority: 7, goal_id: 'goal-1' },
       NOW,
     );
     task.lease(RUNNER, lead.id, NOW);
@@ -288,12 +260,14 @@ describe('위임', () => {
       lead,
       worker,
       randomUUID(),
-      kind,
-      '조사',
-      '자료를 모아 주세요',
-      null,
-      null,
-      null,
+      {
+        kind,
+        title: '조사',
+        instruction: '자료를 모아 주세요',
+        target_kind: null,
+        target_id: null,
+        base_version: null,
+      },
       NOW,
     );
 
@@ -302,18 +276,18 @@ describe('위임', () => {
     const parent = leadTask(lead);
     parent.assertCanDelegate(lead.id, 1, 0, NOW);
     const child = order(parent, lead, writer, 'draft_post');
-    assert.equal(child.status, Task.QUEUED);
+    assert.equal(child.unsaved.status, Task.QUEUED);
     assert.equal(child.agentId, writer.id);
-    assert.equal(child.parentId, parent.id);
-    assert.equal(child.depth, 1);
-    assert.equal(child.goalId, 'goal-1');
-    assert.equal(child.priority, 7);
+    assert.equal(child.unsaved.parent_id, parent.id);
+    assert.equal(child.unsaved.depth, 1);
+    assert.equal(child.unsaved.goal_id, 'goal-1');
+    assert.equal(child.unsaved.priority, 7);
     assert.match(String(child.requestId), new RegExp(`^delegate:${parent.id}:`));
 
     parent.waitForSubtasks(1, NOW);
-    assert.equal(parent.status, Task.WAITING);
-    assert.equal(parent.waitReason, Task.WAIT_SUBTASKS);
-    assert.equal(parent.rounds, 1);
+    assert.equal(parent.unsaved.status, Task.WAITING);
+    assert.equal(parent.unsaved.wait_reason, Task.WAIT_SUBTASKS);
+    assert.equal(parent.unsaved.rounds, 1);
     assert.throws(() => parent.resume(), RuleViolation, '결재 승인으로 깨울 수 없다');
   });
 
@@ -325,7 +299,7 @@ describe('위임', () => {
     assert.throws(() => order(parent, writer, tidier), Forbidden, '팀원끼리는 맡기지 못한다');
     assert.throws(() => order(parent, lead, writer, 'tidy_session'), RuleViolation);
     assert.throws(() => order(parent, lead, writer, 'ai_test'), RuleViolation);
-    assert.equal(order(parent, lead, tidier, 'tidy_session').kind, 'tidy_session');
+    assert.equal(order(parent, lead, tidier, 'tidy_session').unsaved.kind, 'tidy_session');
     assert.deepEqual(Task.delegableWith(writer.scopes), ['general', 'draft_post']);
   });
 
@@ -339,61 +313,39 @@ describe('위임', () => {
     assert.throws(() => parent.assertCanDelegate('someone-else', 1, 0, NOW), Forbidden);
     assert.throws(() => parent.assertCanDelegate(lead.id, 1, 0, LATER), Conflict, '임대가 끝남');
 
-    const deep = Task.restore(
-      't',
-      1,
-      'space',
-      lead.id,
-      'general',
-      't',
-      '',
-      {},
-      null,
-      null,
-      null,
-      null,
-      Task.RUNNING,
-      0,
-      LATER,
-      RUNNER,
-      1,
-      'r',
-      null,
-      'p',
-      Task.DEPTH_MAX,
-      null,
-      0,
-      NOW,
-      null,
-    );
+    const deep = Task.restore({
+      id: 't',
+      version: 1,
+      space_id: 'space',
+      agent_id: lead.id,
+      kind: 'general',
+      title: 't',
+      status: Task.RUNNING,
+      lease_until: LATER,
+      leased_by: RUNNER,
+      attempts: 1,
+      request_id: 'r',
+      parent_id: 'p',
+      depth: Task.DEPTH_MAX,
+      rounds: 0,
+    } as TaskRow);
     assert.throws(() => deep.assertCanDelegate(lead.id, 1, 0, NOW), RuleViolation);
-    const tired = Task.restore(
-      't',
-      1,
-      'space',
-      lead.id,
-      'general',
-      't',
-      '',
-      {},
-      null,
-      null,
-      null,
-      null,
-      Task.RUNNING,
-      0,
-      LATER,
-      RUNNER,
-      1,
-      'r',
-      null,
-      null,
-      0,
-      null,
-      Task.ROUNDS_MAX,
-      NOW,
-      null,
-    );
+    const tired = Task.restore({
+      id: 't',
+      version: 1,
+      space_id: 'space',
+      agent_id: lead.id,
+      kind: 'general',
+      title: 't',
+      status: Task.RUNNING,
+      lease_until: LATER,
+      leased_by: RUNNER,
+      attempts: 1,
+      request_id: 'r',
+      parent_id: null,
+      depth: 0,
+      rounds: Task.ROUNDS_MAX,
+    } as TaskRow);
     assert.throws(() => tired.assertCanDelegate(lead.id, 1, 0, NOW), RuleViolation);
 
     parent.waitForSubtasks(1, NOW);
@@ -404,20 +356,19 @@ describe('위임', () => {
     const { lead } = org();
     const parent = leadTask(lead);
     parent.waitForSubtasks(2, NOW);
-    parent.clearChanges();
     parent.wakeAfterSubtasks(NOW);
-    assert.equal(parent.status, Task.QUEUED);
-    assert.equal(parent.waitReason, null);
-    assert.equal(parent.attempts, 0);
-    assert.equal(parent.leaseUntil, null);
-    assert.equal(parent.changes.wait_reason, null);
+    assert.equal(parent.unsaved.status, Task.QUEUED);
+    assert.equal(parent.unsaved.wait_reason, null);
+    assert.equal(parent.unsaved.attempts, 0);
+    assert.equal(parent.unsaved.lease_until, null);
+    assert.equal(parent.unsaved.wait_reason, null);
   });
 
   test('결재를 기다리는 작업은 하위 작업으로 깨울 수 없고, 취소하면 기다리는 이유가 지워진다', () => {
     const task = waiting();
     assert.throws(() => task.wakeAfterSubtasks(NOW), RuleViolation);
     task.cancel(NOW);
-    assert.equal(task.waitReason, null);
-    assert.equal(task.settled, true);
+    assert.equal(task.unsaved.wait_reason, null);
+    assert.equal(task.unsaved.status, Task.CANCELLED);
   });
 });

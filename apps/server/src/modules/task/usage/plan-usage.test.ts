@@ -9,8 +9,8 @@ const NOW = new Date('2026-11-01T00:00:00Z');
 const LATER = new Date(NOW.getTime() + 60_000);
 const EARLIER = new Date(NOW.getTime() - 60_000);
 
-const seen = (window: string, percent: number, resetsAt: Date, tool = 'claude') =>
-  PlanUsage.seen('space', tool, window, percent, resetsAt, 'allowed', NOW);
+const seen = (period: string, percent: number, resets_at: Date, tool = 'claude') =>
+  PlanUsage.seen('space', tool, { period, percent, resets_at, status: 'allowed' }, NOW);
 
 describe('PlanUsage', () => {
   test('초기화 시각이 지나면 유효하지 않다', () => {
@@ -36,18 +36,20 @@ describe('PlanUsage', () => {
   });
 
   test('초과 사용은 100을 넘어도 받는다. 범위 밖과 모르는 값은 거절한다', () => {
-    assert.equal(seen(PlanUsage.FIVE_HOUR, 1000, LATER).percent, 1000);
+    assert.equal(seen(PlanUsage.FIVE_HOUR, 1000, LATER).unsaved.percent, 1000);
     assert.throws(() => seen(PlanUsage.FIVE_HOUR, 1001, LATER), RuleViolation);
     assert.throws(() => seen(PlanUsage.FIVE_HOUR, -1, LATER), RuleViolation);
     assert.throws(() => seen('one_hour', 10, LATER), RuleViolation);
+    const fields = { period: PlanUsage.FIVE_HOUR, percent: 10, resets_at: LATER };
     assert.throws(
-      () => PlanUsage.seen('space', 'claude', PlanUsage.FIVE_HOUR, 10, LATER, 'wat', NOW),
+      () => PlanUsage.seen('space', 'claude', { ...fields, status: 'wat' }, NOW),
       RuleViolation,
     );
   });
 
   test('상태는 없어도 된다', () => {
-    const usage = PlanUsage.seen('space', 'claude', PlanUsage.FIVE_HOUR, 10, LATER, null, NOW);
-    assert.equal(usage.status, null);
+    const fields = { period: PlanUsage.FIVE_HOUR, percent: 10, resets_at: LATER, status: null };
+    const usage = PlanUsage.seen('space', 'claude', fields, NOW);
+    assert.equal(usage.unsaved.status, null);
   });
 });

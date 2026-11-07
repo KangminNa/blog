@@ -6,37 +6,29 @@ import {
   DomainEvent,
   Forbidden,
   RuleViolation,
-  TrackedEntity,
+  type SecretBox,
+  TableEntity,
 } from '../../platform';
 import type { Agent } from '../agent/agent';
-
-/** 실행 기록 한 줄 (추가만). 작업과 함께 저장한다 */
-export class TaskLogEntry {
-  static readonly READ = 'read';
-  static readonly WRITE = 'write';
-  static readonly RESULT = 'result';
-  static readonly ERROR = 'error';
-  static readonly KINDS: readonly string[] = [
-    TaskLogEntry.READ,
-    TaskLogEntry.WRITE,
-    TaskLogEntry.RESULT,
-    TaskLogEntry.ERROR,
-  ];
-
-  constructor(
-    readonly kind: string,
-    readonly body: string,
-    readonly tokens: number,
-    readonly at: Date,
-  ) {}
-}
+import { AiSigninRelayView, AiTestView } from '../ai/ai-login.view';
+import type { Goal } from '../goal/goal';
+import type { TaskEventRow, TaskNew, TaskRow } from '../task.tables';
+import {
+  DelegatedView,
+  JobStateView,
+  JobSubtaskResultView,
+  JobView,
+  ProgressView,
+  TaskView,
+} from './task.view';
 
 // 작업 하나. 러너가 임대로 빌려 가고, 에이전트가 결재를 올리고, 결재 뒤 실행 결과로 끝난다.
 //   queued → running → waiting → running → done, 그리고 failed · cancelled
-// waiting은 무엇을 기다리는지(waitReason)를 함께 적는다: 결재(approval)면 승인 뒤 running, 하위 작업(subtasks)이면
+// waiting은 무엇을 기다리는지(wait_reason)를 함께 적는다: 결재(approval)면 승인 뒤 running, 하위 작업(subtasks)이면
 // 하위 작업이 모두 끝난 뒤 queued로 돌아가 같은 에이전트가 결과를 모은다 (위임).
 // 상태는 아래 메서드로만 바꾼다. 허용되지 않은 변경은 RuleViolation.
-export class Task extends TrackedEntity {
+// 실행 기록(task_events)은 추가만 하고 작업과 함께 저장한다.
+export class Task extends TableEntity<TaskRow, TaskNew> {
   static readonly QUEUED = 'queued';
   static readonly RUNNING = 'running';
   static readonly WAITING = 'waiting';
@@ -80,9 +72,22 @@ export class Task extends TrackedEntity {
   static readonly ROUNDS_MAX = 3;
   static readonly DELEGATE_AT_ONCE = 5;
   static readonly SUBTASKS_MAX = 10;
+  /** 실행 기록의 종류 */
+  static readonly LOG_READ = 'read';
+  static readonly LOG_WRITE = 'write';
+  static readonly LOG_RESULT = 'result';
+  static readonly LOG_ERROR = 'error';
+  static readonly LOG_KINDS: readonly string[] = [
+    Task.LOG_READ,
+    Task.LOG_WRITE,
+    Task.LOG_RESULT,
+    Task.LOG_ERROR,
+  ];
   /** 연결 확인은 쌓인 일보다 먼저 돈다 */
   private static readonly AI_TEST_PRIORITY = 1000;
   private static readonly AI_TEST_PROMPT = 'ok라고만 답하세요.';
+  /** 깨어난 위 작업에게 보내는 하위 작업 결과의 길이 */
+  private static readonly SUMMARY_MAX = 2000;
   private static readonly SKILLS: Readonly<Record<string, string>> = {
     draft_post: 'cairn-write',
     tidy_session: 'cairn-tidy',
@@ -93,83 +98,32 @@ export class Task extends TrackedEntity {
     tidy_session: [Actor.TIDY, Actor.READ_ALL],
   };
 
-  private readonly logged: TaskLogEntry[] = [];
+  private readonly logged: Omit<TaskEventRow, 'id'>[] = [];
 
-  private constructor(
-    id: string,
-    version: number,
-    readonly spaceId: string,
-    private agent: string | null,
-    readonly kind: string,
-    readonly title: string,
-    readonly instruction: string,
-    private payloadValue: Readonly<Record<string, unknown>>,
-    private resultValue: Readonly<Record<string, unknown>> | null,
-    private targetKindValue: string | null,
-    private targetIdValue: string | null,
-    private baseVersionValue: number | null,
-    private statusValue: string,
-    readonly priority: number,
-    private leaseEnd: Date | null,
-    private leaseHolder: string | null,
-    private tries: number,
-    readonly requestId: string | null,
-    /** 이 작업이 향하는 목표. 만들 때 정하고 바꾸지 않는다 */
-    readonly goalId: string | null,
-    /** 이 작업을 맡긴 위 작업 (위임). 주인이 맡긴 작업은 null */
-    readonly parentId: string | null,
-    /** 위임 깊이. 주인이 맡긴 작업이 0 */
-    readonly depth: number,
-    private waitReasonValue: string | null,
-    private roundsValue: number,
-    readonly createdAt: Date,
-    private finishedOn: Date | null,
-    readonly isNew: boolean,
-  ) {
-    super(id, version);
-  }
-
+  /** 새 작업. 담당·입력·시도·임대·위임 칸은 표에 기본값이 있어도 규칙이 저장 전에 읽어서 적어 둔다 */
   static open(
     spaceId: string,
-    agentId: string | null,
-    kind: string,
-    title: string,
-    instruction: string,
-    payload: Readonly<Record<string, unknown>>,
-    targetKind: string | null,
-    targetId: string | null,
-    baseVersion: number | null,
-    priority: number,
     requestId: string,
-    goalId: string | null,
+    fields: Omit<TaskNew, 'id' | 'space_id'>,
     now: Date,
   ): Task {
     const task = new Task(
-      BaseEntity.newId(),
-      1,
-      spaceId,
-      agentId,
-      kind,
-      title,
-      instruction,
-      payload,
-      null,
-      targetKind,
-      targetId,
-      baseVersion,
-      Task.QUEUED,
-      priority,
-      null,
-      null,
-      0,
-      requestId,
-      goalId,
-      null,
-      0,
-      null,
-      0,
-      now,
-      null,
+      {
+        agent_id: null,
+        payload: {},
+        attempts: 0,
+        lease_until: null,
+        leased_by: null,
+        depth: 0,
+        wait_reason: null,
+        rounds: 0,
+        ...fields,
+        id: BaseEntity.newId(),
+        space_id: spaceId,
+        request_id: requestId,
+        status: Task.QUEUED,
+        created_at: now,
+      },
       true,
     );
     task.announce();
@@ -181,182 +135,126 @@ export class Task extends TrackedEntity {
    * Claude는 사람이 브라우저의 코드를 붙여 넣어야 하고, Codex는 주소와 코드만 보여 주면 된다
    */
   static aiSignin(spaceId: string, tool: string, now: Date): Task {
-    return Task.open(
-      spaceId,
-      null,
-      Task.AI_SIGNIN,
-      `${tool} 로그인`,
-      '',
-      { tool, step: Task.SIGNIN_STARTING },
-      null,
-      null,
-      null,
-      Task.AI_TEST_PRIORITY,
-      BaseEntity.newId(),
-      null,
-      now,
-    );
+    const fields = {
+      kind: Task.AI_SIGNIN,
+      title: `${tool} 로그인`,
+      payload: { tool, step: Task.SIGNIN_STARTING },
+      priority: Task.AI_TEST_PRIORITY,
+    };
+    return Task.open(spaceId, BaseEntity.newId(), fields, now);
   }
 
   /** AI 로그인의 연결 확인. 어느 판의 로그인을 보는지 함께 적어 둔다 */
   static aiTest(spaceId: string, tool: string, loginVersion: number, now: Date): Task {
-    return Task.open(
-      spaceId,
-      null,
-      Task.AI_TEST,
-      'AI 연결 확인',
-      Task.AI_TEST_PROMPT,
-      { tool, loginVersion },
-      null,
-      null,
-      null,
-      Task.AI_TEST_PRIORITY,
-      BaseEntity.newId(),
-      null,
-      now,
+    const fields = {
+      kind: Task.AI_TEST,
+      title: 'AI 연결 확인',
+      instruction: Task.AI_TEST_PROMPT,
+      payload: { tool, loginVersion },
+      priority: Task.AI_TEST_PRIORITY,
+    };
+    return Task.open(spaceId, BaseEntity.newId(), fields, now);
+  }
+
+  static restore(row: TaskRow): Task {
+    return new Task(row);
+  }
+
+  /** 작업 상세에 보일 payload. 웹 로그인의 코드는 암호문이어도 내보내지 않는다 */
+  static shownPayload(kind: string, payload: unknown): unknown {
+    if (kind !== Task.AI_SIGNIN || typeof payload !== 'object' || payload === null) return payload;
+    const { code: _sealed, ...rest } = payload as Record<string, unknown>;
+    return rest;
+  }
+
+  /** 이 권한을 가진 에이전트에게 위임할 수 있는 일의 종류 */
+  static delegableWith(scopes: readonly string[]): readonly string[] {
+    return Task.DELEGABLE.filter((kind) =>
+      (Task.SCOPES[kind] ?? []).every((scope) => scopes.includes(scope)),
     );
   }
 
-  static restore(
-    id: string,
-    version: number,
-    spaceId: string,
-    agentId: string | null,
-    kind: string,
-    title: string,
-    instruction: string,
-    payload: Readonly<Record<string, unknown>>,
-    result: Readonly<Record<string, unknown>> | null,
-    targetKind: string | null,
-    targetId: string | null,
-    baseVersion: number | null,
-    status: string,
-    priority: number,
-    leaseUntil: Date | null,
-    leasedBy: string | null,
-    attempts: number,
-    requestId: string | null,
-    goalId: string | null,
-    parentId: string | null,
-    depth: number,
-    waitReason: string | null,
-    rounds: number,
-    createdAt: Date,
-    finishedAt: Date | null,
-  ): Task {
-    return new Task(
-      id,
-      version,
-      spaceId,
-      agentId,
-      kind,
-      title,
-      instruction,
-      payload,
-      result,
-      targetKind,
-      targetId,
-      baseVersion,
-      status,
-      priority,
-      leaseUntil,
-      leasedBy,
-      attempts,
-      requestId,
-      goalId,
-      parentId,
-      depth,
-      waitReason,
-      rounds,
-      createdAt,
-      finishedAt,
-      false,
+  /** delegate_task의 답: 맡긴 하위 작업들. 위 작업은 하위 작업을 기다린다 */
+  static delegatedView(subtasks: readonly Task[]): DelegatedView {
+    return new DelegatedView(
+      subtasks.map((t) => t.row),
+      Task.WAIT_SUBTASKS,
     );
+  }
+
+  get spaceId(): string {
+    return this.row.space_id;
   }
 
   get agentId(): string | null {
-    return this.agent;
+    return this.row.agent_id;
   }
 
-  get targetKind(): string | null {
-    return this.targetKindValue;
+  /** 이 작업이 향하는 목표. 만들 때 정하고 바꾸지 않는다 */
+  get goalId(): string | null {
+    return this.row.goal_id;
   }
 
-  get targetId(): string | null {
-    return this.targetIdValue;
-  }
-
-  get baseVersion(): number | null {
-    return this.baseVersionValue;
-  }
-
-  get payload(): Readonly<Record<string, unknown>> {
-    return this.payloadValue;
-  }
-
-  get result(): Readonly<Record<string, unknown>> | null {
-    return this.resultValue;
-  }
-
-  get status(): string {
-    return this.statusValue;
-  }
-
-  get leaseUntil(): Date | null {
-    return this.leaseEnd;
-  }
-
-  get leasedBy(): string | null {
-    return this.leaseHolder;
-  }
-
-  get attempts(): number {
-    return this.tries;
-  }
-
-  get finishedAt(): Date | null {
-    return this.finishedOn;
-  }
-
-  /** waiting이면 무엇을 기다리는지 (approval · subtasks). 아니면 null */
-  get waitReason(): string | null {
-    return this.waitReasonValue;
-  }
-
-  /** 이 작업이 위임한 횟수 */
-  get rounds(): number {
-    return this.roundsValue;
+  get requestId(): string | null {
+    return this.row.request_id;
   }
 
   get waitingForSubtasks(): boolean {
-    return this.statusValue === Task.WAITING && this.waitReasonValue === Task.WAIT_SUBTASKS;
-  }
-
-  /** 끝났는가 (결과든 취소든). 하위 작업이 모두 이렇게 되면 위 작업이 깨어난다 */
-  get settled(): boolean {
-    return this.ended || this.cancelled;
+    return this.row.status === Task.WAITING && this.row.wait_reason === Task.WAIT_SUBTASKS;
   }
 
   get cancelled(): boolean {
-    return this.statusValue === Task.CANCELLED;
+    return this.row.status === Task.CANCELLED;
   }
 
   get isAiTest(): boolean {
-    return this.kind === Task.AI_TEST;
-  }
-
-  get isAiSignin(): boolean {
-    return this.kind === Task.AI_SIGNIN;
+    return this.row.kind === Task.AI_TEST;
   }
 
   /** 에이전트 없이 러너가 바로 도는 일인가 (연결 확인, 웹 로그인) */
   get agentless(): boolean {
-    return Task.AGENTLESS.includes(this.kind);
+    return Task.AGENTLESS.includes(this.row.kind);
   }
 
   /** 웹 로그인의 도구 (claude · codex). 웹 로그인이 아니면 null */
   get signinTool(): string | null {
-    return this.isAiSignin ? String(this.payloadValue.tool) : null;
+    return this.isAiSignin ? String(this.payload.tool) : null;
+  }
+
+  /**
+   * 사람이 붙여 넣은 코드 (암호화한 값). 로그인이 끝날 때까지 물을 때마다 같은 것을 준다:
+   * 응답을 잃어도 러너가 다시 받을 수 있게. 러너는 한 번만 쳐 넣는다. 끝나면 지운다 (forgetSignin)
+   */
+  get signinCode(): string | null {
+    const code = this.payload.code;
+    return typeof code === 'string' ? code : null;
+  }
+
+  /** 결과를 내고 끝났는가. 취소는 결과가 없어서 뺀다 */
+  get ended(): boolean {
+    return this.row.status === Task.DONE || this.row.status === Task.FAILED;
+  }
+
+  /** 실패한 이유 */
+  get failure(): string | null {
+    const error = this.result?.error;
+    return typeof error === 'string' ? error : null;
+  }
+
+  /** 연결 확인이 보는 도구 */
+  get testedTool(): string {
+    return String(this.payload.tool);
+  }
+
+  /** 연결 확인이 이 판의 로그인을 보는가. 그사이 토큰을 바꿨으면 아니다 */
+  tests(loginVersion: number): boolean {
+    return this.payload.loginVersion === loginVersion;
+  }
+
+  /** 이 권한을 가진 에이전트가 맡을 수 있는 일인가 */
+  doableWith(scopes: readonly string[]): boolean {
+    const needed = Task.SCOPES[this.row.kind];
+    return needed === undefined || needed.every((scope) => scopes.includes(scope));
   }
 
   /**
@@ -365,15 +263,15 @@ export class Task extends TrackedEntity {
    */
   showSignin(url: string, userCode: string | null): void {
     this.assertSigninRunning();
+    const payload = this.payload;
     // 주소는 한 번만 정한다. 러너가 같은 것을 다시 보내면(응답을 못 받은 재시도) 그대로 둔다
-    if (this.payloadValue.step !== Task.SIGNIN_STARTING) {
-      if (this.payloadValue.url === url && (this.payloadValue.userCode ?? null) === userCode)
-        return;
+    if (payload.step !== Task.SIGNIN_STARTING) {
+      if (payload.url === url && (payload.userCode ?? null) === userCode) return;
       throw new Conflict('이미 로그인 주소를 알렸어요');
     }
     const claude = this.signinTool === 'claude';
-    this.setPayload({
-      ...this.payloadValue,
+    this.put('payload', {
+      ...payload,
       url,
       userCode,
       step: claude ? Task.SIGNIN_WAITING_CODE : Task.SIGNIN_OPEN_URL,
@@ -383,18 +281,9 @@ export class Task extends TrackedEntity {
   /** 사람이 붙여 넣은 코드를 받는다 (암호화한 값). 러너가 가져갈 때까지만 둔다 */
   acceptSigninCode(sealedCode: string): void {
     this.assertSigninRunning();
-    if (this.payloadValue.step !== Task.SIGNIN_WAITING_CODE)
+    if (this.payload.step !== Task.SIGNIN_WAITING_CODE)
       throw new RuleViolation('코드를 붙여 넣을 차례가 아니에요');
-    this.setPayload({ ...this.payloadValue, code: sealedCode, step: Task.SIGNIN_VERIFYING });
-  }
-
-  /**
-   * 사람이 붙여 넣은 코드 (암호화한 값). 로그인이 끝날 때까지 물을 때마다 같은 것을 준다:
-   * 응답을 잃어도 러너가 다시 받을 수 있게. 러너는 한 번만 쳐 넣는다. 끝나면 지운다 (forgetSignin)
-   */
-  get signinCode(): string | null {
-    const code = this.payloadValue.code;
-    return typeof code === 'string' ? code : null;
+    this.put('payload', { ...this.payload, code: sealedCode, step: Task.SIGNIN_VERIFYING });
   }
 
   /**
@@ -407,104 +296,48 @@ export class Task extends TrackedEntity {
 
   /** 이 러너가 자격을 넘겨 이미 끝난 웹 로그인인가. 응답을 잃은 러너가 다시 보내도 같은 답을 준다 */
   signinDoneBy(runnerId: string): boolean {
-    return this.isAiSignin && this.statusValue === Task.DONE && this.leaseHolder === runnerId;
-  }
-
-  /** 작업 상세에 보일 payload. 웹 로그인의 코드는 암호문이어도 내보내지 않는다 */
-  static shownPayload(kind: string, payload: unknown): unknown {
-    if (kind !== Task.AI_SIGNIN || typeof payload !== 'object' || payload === null) return payload;
-    const { code: _sealed, ...rest } = payload as Record<string, unknown>;
-    return rest;
-  }
-
-  /** 결과를 내고 끝났는가. 취소는 결과가 없어서 뺀다 */
-  get ended(): boolean {
-    return this.statusValue === Task.DONE || this.statusValue === Task.FAILED;
-  }
-
-  /** 실패한 이유 */
-  get failure(): string | null {
-    const error = this.resultValue?.error;
-    return typeof error === 'string' ? error : null;
-  }
-
-  /** 러너가 쓸 스킬. 없으면 지시만으로 일한다 */
-  get skill(): string | null {
-    return Task.SKILLS[this.kind] ?? null;
-  }
-
-  /** 이 권한을 가진 에이전트에게 위임할 수 있는 일의 종류 */
-  static delegableWith(scopes: readonly string[]): readonly string[] {
-    return Task.DELEGABLE.filter((kind) =>
-      (Task.SCOPES[kind] ?? []).every((scope) => scopes.includes(scope)),
-    );
-  }
-
-  /** 이 권한을 가진 에이전트가 맡을 수 있는 일인가 */
-  doableWith(scopes: readonly string[]): boolean {
-    const needed = Task.SCOPES[this.kind];
-    return needed === undefined || needed.every((scope) => scopes.includes(scope));
-  }
-
-  /** 주인이 결재에서 고쳐 달라고 남긴 말 */
-  get revisionNote(): string | null {
-    const note = this.payloadValue.revisionNote;
-    return typeof note === 'string' ? note : null;
-  }
-
-  private assertSigninRunning(): void {
-    if (!this.isAiSignin) throw new RuleViolation('웹 로그인 작업이 아니에요');
-    if (this.statusValue !== Task.RUNNING)
-      throw new Conflict(`진행 중인 로그인이 아니에요 (${this.statusValue})`);
-  }
-
-  private setPayload(payload: Readonly<Record<string, unknown>>): void {
-    this.payloadValue = payload;
-    this.track('payload', payload);
+    return this.isAiSignin && this.row.status === Task.DONE && this.row.leased_by === runnerId;
   }
 
   /** 이번에 쌓인 실행 기록 (Repository가 저장한다) */
-  get addedLog(): readonly TaskLogEntry[] {
+  get addedLog(): readonly Omit<TaskEventRow, 'id'>[] {
     return this.logged;
   }
 
   /** 러너가 빌려 간다: queued → running. 담당이 없던 일은 agentId가 맡는다. 연결 확인은 담당 없이 돈다 */
   lease(runnerId: string, agentId: string | null, now: Date): void {
     this.move([Task.QUEUED], Task.RUNNING);
-    if (this.agent === null && agentId !== null) {
-      this.agent = agentId;
-      this.track('agent_id', agentId);
-    }
+    if (this.row.agent_id === null && agentId !== null) this.put('agent_id', agentId);
     this.holdLease(runnerId, new Date(now.getTime() + Task.LEASE_MS));
-    this.tries += 1;
-    this.track('attempts', this.tries);
+    this.put('attempts', this.row.attempts + 1);
     // 웹 로그인을 다시 빌리면(앞 러너가 사라짐) 앞 시도의 주소와 코드는 쓸모가 없다
-    if (this.isAiSignin && this.payloadValue.step !== Task.SIGNIN_STARTING)
-      this.setPayload({ tool: this.payloadValue.tool, step: Task.SIGNIN_STARTING });
+    if (this.isAiSignin && this.payload.step !== Task.SIGNIN_STARTING)
+      this.put('payload', { tool: this.payload.tool, step: Task.SIGNIN_STARTING });
   }
 
   /**
    * 진행 보고를 받는다. 임대를 늘리되, 취소됐으면 기록만 받아 러너가 응답으로 알게 하고,
    * 결재를 기다리는 중이면 임대를 늘리지 않는다 (에이전트가 남긴 마지막 기록을 받으려고 기록만).
+   * 늘린 임대는 version 없이 저장한다 (TaskRepository.saveLease)
    */
   acceptReport(runnerId: string, now: Date): void {
     this.assertLeasedBy(runnerId);
-    if (this.cancelled || this.statusValue === Task.WAITING) return;
+    if (this.cancelled || this.row.status === Task.WAITING) return;
     this.assertHeldBy(runnerId, now);
-    this.leaseEnd = new Date(now.getTime() + Task.LEASE_MS);
+    this.put('lease_until', new Date(now.getTime() + Task.LEASE_MS));
   }
 
   /** 임대를 쥔 러너가 살아 있는 임대로 부르는가. 늦은 제출은 여기서 막힌다 */
   assertHeldBy(runnerId: string, now: Date): void {
-    if (this.statusValue !== Task.RUNNING)
-      throw new RuleViolation(`진행 중인 작업이 아니에요 (${this.statusValue})`);
+    if (this.row.status !== Task.RUNNING)
+      throw new RuleViolation(`진행 중인 작업이 아니에요 (${this.row.status})`);
     this.assertLeasedBy(runnerId);
     if (!this.leaseAlive(now)) throw new RuleViolation('임대가 끝난 작업이에요');
   }
 
   /** 결재를 기다린다: running → waiting. 임대는 남은 시간까지 두고 늘리지 않으며, 끝나도 되돌리지 않는다 */
   waitFor(now: Date): void {
-    if (this.statusValue === Task.RUNNING && !this.leaseAlive(now))
+    if (this.row.status === Task.RUNNING && !this.leaseAlive(now))
       throw new RuleViolation('임대가 끝난 작업이에요');
     this.move([Task.RUNNING], Task.WAITING, Task.WAIT_APPROVAL);
   }
@@ -526,18 +359,19 @@ export class Task extends TrackedEntity {
    * 한 번에 DELEGATE_AT_ONCE개, 작업 하나에 SUBTASKS_MAX개(made는 이미 맡긴 수), 깊이 DEPTH_MAX, 라운드 ROUNDS_MAX까지
    */
   assertCanDelegate(agentId: string, count: number, made: number, now: Date): void {
-    if (this.agent !== agentId) throw new Forbidden(Actor.AGENT, '이 에이전트의 작업이 아니에요');
-    if (this.statusValue !== Task.RUNNING || !this.leaseAlive(now))
-      throw new Conflict(`실행 중인 작업이 아니에요 (${this.statusValue})`);
+    const r = this.row;
+    if (r.agent_id !== agentId) throw new Forbidden(Actor.AGENT, '이 에이전트의 작업이 아니에요');
+    if (r.status !== Task.RUNNING || !this.leaseAlive(now))
+      throw new Conflict(`실행 중인 작업이 아니에요 (${r.status})`);
     if (count < 1 || count > Task.DELEGATE_AT_ONCE)
       throw new RuleViolation(`한 번에 1~${Task.DELEGATE_AT_ONCE}개를 맡길 수 있어요 (한도)`);
     if (made + count > Task.SUBTASKS_MAX)
       throw new RuleViolation(
         `작업 하나가 맡길 수 있는 하위 작업은 ${Task.SUBTASKS_MAX}개예요 (한도, 이미 ${made}개)`,
       );
-    if (this.depth + 1 > Task.DEPTH_MAX)
+    if (r.depth + 1 > Task.DEPTH_MAX)
       throw new RuleViolation(`위임은 ${Task.DEPTH_MAX}단계까지예요 (한도)`);
-    if (this.roundsValue + 1 > Task.ROUNDS_MAX)
+    if (r.rounds + 1 > Task.ROUNDS_MAX)
       throw new RuleViolation(
         `작업 하나가 위임할 수 있는 횟수는 ${Task.ROUNDS_MAX}번이에요 (한도)`,
       );
@@ -551,48 +385,31 @@ export class Task extends TrackedEntity {
     manager: Agent,
     worker: Agent | null,
     requestId: string,
-    kind: string,
-    title: string,
-    instruction: string,
-    targetKind: string | null,
-    targetId: string | null,
-    baseVersion: number | null,
+    fields: Omit<TaskNew, 'id' | 'space_id'>,
     now: Date,
   ): Task {
+    const { kind } = fields;
     if (worker === null || !manager.manages(worker))
       throw new Forbidden(Actor.AGENT, '바로 아래 팀원에게만 맡길 수 있어요');
     if (!Task.DELEGABLE.includes(kind))
       throw new RuleViolation(`맡길 수 있는 일은 ${Task.DELEGABLE.join(' · ')}예요: ${kind}`);
     if (!Task.delegableWith(worker.scopes).includes(kind))
       throw new RuleViolation(`${worker.name}의 권한으로는 할 수 없는 일이에요: ${kind}`);
-    return new Task(
-      BaseEntity.newId(),
-      1,
-      this.spaceId,
-      worker.id,
-      kind,
-      title,
-      instruction,
-      { delegatedBy: this.id },
-      null,
-      targetKind,
-      targetId,
-      baseVersion,
-      Task.QUEUED,
-      this.priority,
-      null,
-      null,
-      0,
+    const r = this.row;
+    return Task.open(
+      r.space_id,
       this.subtaskRequestId(requestId),
-      this.goalId,
-      this.id,
-      this.depth + 1,
-      null,
-      0,
+      {
+        ...fields,
+        agent_id: worker.id,
+        payload: { delegatedBy: this.id },
+        priority: r.priority,
+        goal_id: r.goal_id,
+        parent_id: this.id,
+        depth: r.depth + 1,
+      },
       now,
-      null,
-      true,
-    ).announced();
+    );
   }
 
   /**
@@ -601,9 +418,8 @@ export class Task extends TrackedEntity {
    */
   waitForSubtasks(count: number, now: Date): void {
     this.move([Task.RUNNING], Task.WAITING, Task.WAIT_SUBTASKS);
-    this.roundsValue += 1;
-    this.track('rounds', this.roundsValue);
-    this.log(TaskLogEntry.WRITE, `하위 작업 ${count}개를 맡겼어요`, 0, now);
+    this.put('rounds', this.row.rounds + 1);
+    this.log(Task.LOG_WRITE, `하위 작업 ${count}개를 맡겼어요`, 0, now);
   }
 
   /**
@@ -614,9 +430,8 @@ export class Task extends TrackedEntity {
     this.assertWaitingFor(Task.WAIT_SUBTASKS);
     this.move([Task.WAITING], Task.QUEUED);
     this.holdLease(null, null);
-    this.tries = 0;
-    this.track('attempts', 0);
-    this.log(TaskLogEntry.READ, '하위 작업이 모두 끝나 다시 대기열로 돌아갔어요', 0, now);
+    this.put('attempts', 0);
+    this.log(Task.LOG_READ, '하위 작업이 모두 끝나 다시 대기열로 돌아갔어요', 0, now);
   }
 
   /**
@@ -632,16 +447,11 @@ export class Task extends TrackedEntity {
     this.assertWaitingFor(Task.WAIT_APPROVAL);
     this.move([Task.WAITING], Task.QUEUED);
     this.holdLease(null, null);
-    this.tries = 0;
-    this.track('attempts', 0);
-    this.payloadValue = { ...this.payloadValue, revisionNote: note };
-    this.track('payload', this.payloadValue);
-    this.targetKindValue = targetKind;
-    this.track('target_kind', targetKind);
-    this.targetIdValue = targetId;
-    this.track('target_id', targetId);
-    this.baseVersionValue = targetVersion;
-    this.track('base_version', targetVersion);
+    this.put('attempts', 0);
+    this.put('payload', { ...this.payload, revisionNote: note });
+    this.put('target_kind', targetKind);
+    this.put('target_id', targetId);
+    this.put('base_version', targetVersion);
   }
 
   /** 러너가 끝을 알린다. 살아 있는 임대로만 */
@@ -666,7 +476,7 @@ export class Task extends TrackedEntity {
    * 결재 뒤 주인이 취소한 작업도 여기서는 건드리지 않는다.
    */
   concludeExecution(succeeded: boolean, error: string | null, now: Date): void {
-    if (this.statusValue !== Task.RUNNING) return;
+    if (this.row.status !== Task.RUNNING) return;
     if (succeeded) this.finish({}, now);
     else this.fail(error ?? '실행하지 못했어요', now);
   }
@@ -675,23 +485,21 @@ export class Task extends TrackedEntity {
   finish(result: Readonly<Record<string, unknown>>, now: Date): void {
     this.move([Task.RUNNING], Task.DONE);
     this.close(result, now);
-    this.log(TaskLogEntry.RESULT, '', 0, now);
+    this.log(Task.LOG_RESULT, '', 0, now);
   }
 
   /** 실패로 끝낸다: running → failed */
   fail(error: string, now: Date): void {
     this.move([Task.RUNNING], Task.FAILED);
     this.close({ error }, now);
-    this.log(TaskLogEntry.ERROR, error, 0, now);
+    this.log(Task.LOG_ERROR, error, 0, now);
   }
 
   /** 주인이 멈춘다. 임대를 쥔 러너는 다음 보고의 응답으로 안다 */
   cancel(now: Date): void {
     this.move([Task.QUEUED, Task.RUNNING, Task.WAITING], Task.CANCELLED);
-    this.leaseEnd = null;
-    this.track('lease_until', null);
-    this.finishedOn = now;
-    this.track('finished_at', now);
+    this.put('lease_until', null);
+    this.put('finished_at', now);
     this.forgetSignin();
   }
 
@@ -700,68 +508,153 @@ export class Task extends TrackedEntity {
     this.assertHeldBy(runnerId, now);
     this.move([Task.RUNNING], Task.QUEUED);
     this.holdLease(null, null);
-    this.tries = Math.max(0, this.tries - 1);
-    this.track('attempts', this.tries);
-    this.log(TaskLogEntry.ERROR, `돌려줌: ${reason}`, 0, now);
+    this.put('attempts', Math.max(0, this.row.attempts - 1));
+    this.log(Task.LOG_ERROR, `돌려줌: ${reason}`, 0, now);
     this.forgetSignin();
   }
 
   /** 임대가 끝남 (러너가 죽음): 다시 대기열로, MAX_ATTEMPTS번째면 실패로 */
   expire(now: Date): void {
-    if (this.tries >= Task.MAX_ATTEMPTS) {
+    if (this.row.attempts >= Task.MAX_ATTEMPTS) {
       this.fail('임대가 세 번 끝나 멈췄어요', now);
       this.holdLease(null, null);
       return;
     }
     this.move([Task.RUNNING], Task.QUEUED);
     this.holdLease(null, null);
-    this.log(TaskLogEntry.ERROR, '임대가 끝나 다시 대기열로 돌아갔어요', 0, now);
+    this.log(Task.LOG_ERROR, '임대가 끝나 다시 대기열로 돌아갔어요', 0, now);
     this.forgetSignin();
   }
 
   log(kind: string, body: string, tokens: number, now: Date): void {
-    if (!TaskLogEntry.KINDS.includes(kind))
-      throw new RuleViolation(`기록 종류는 ${TaskLogEntry.KINDS.join(' · ')} 중 하나예요`);
-    this.logged.push(new TaskLogEntry(kind, body, tokens, now));
+    if (!Task.LOG_KINDS.includes(kind))
+      throw new RuleViolation(`기록 종류는 ${Task.LOG_KINDS.join(' · ')} 중 하나예요`);
+    this.logged.push({ task_id: this.id, at: now, kind, body, tokens });
   }
 
   /** 이 작업을 하는 에이전트의 요청자. 그 에이전트의 권한만 담아 작업 토큰이 된다 */
   actorFor(agentId: string, scopes: readonly string[]): AgentActor {
-    return new AgentActor(this.spaceId, agentId, this.id, new Set(scopes));
+    return new AgentActor(this.row.space_id, agentId, this.id, new Set(scopes));
+  }
+
+  /** 바꾼 작업 하나. 목록의 한 줄과 같은 모양이고, 화면은 이 version으로 다음 변경을 보낸다 */
+  view(): TaskView {
+    return new TaskView(this.row);
+  }
+
+  /**
+   * 빌려 준 일 하나. 맡은 에이전트의 작업 토큰을 여기서 만든다.
+   * 목표 사슬(goals), 바로 아래 팀(org에서), 깨어난 일이면 하위 작업(children)의 결과를 함께 싣는다
+   */
+  jobView(
+    agent: Agent | null,
+    box: SecretBox,
+    goals: readonly Goal[],
+    org: readonly Agent[],
+    children: readonly Task[],
+  ): JobView {
+    const runToken =
+      agent && this.actorFor(agent.id, agent.scopes).seal(box, Task.RUN_TOKEN_SECONDS);
+    const team = agent ? org.filter((a) => agent.manages(a)) : [];
+    return new JobView(
+      this.row,
+      this.skill,
+      this.revisionNote,
+      agent,
+      runToken,
+      goals.map((g) => g.title),
+      team.map((a) => a.memberView(Task.delegableWith(a.scopes))),
+      children.map((c) => c.resultView(org.find((a) => a.id === c.row.agent_id)?.name ?? null)),
+      Math.max(0, Task.ROUNDS_MAX - this.row.rounds),
+    );
+  }
+
+  /** 진행 보고의 답. agentPaused는 이 작업의 에이전트가 멈췄는가 */
+  progressView(agentPaused: boolean): ProgressView {
+    return new ProgressView(this.row, this.cancelled, agentPaused);
+  }
+
+  /** submit_result · release_job의 답 */
+  stateView(): JobStateView {
+    return new JobStateView(this.row);
+  }
+
+  /** 맡긴 연결 확인이나 시작한 웹 로그인 */
+  testView(): AiTestView {
+    return new AiTestView(this.row);
+  }
+
+  /** 웹 로그인을 진행하는 러너에게 주는 답. code는 푼 코드 */
+  relayView(code: string | null): AiSigninRelayView {
+    return new AiSigninRelayView(this.row, this.cancelled, code);
+  }
+
+  /** 하위 작업 하나의 결과. 러너는 결과를 { text }로 낸다 */
+  private resultView(agentName: string | null): JobSubtaskResultView {
+    const text = this.result?.text;
+    const summary = typeof text === 'string' ? text.slice(0, Task.SUMMARY_MAX) : null;
+    return new JobSubtaskResultView(this.row, agentName, summary, this.failure);
+  }
+
+  private get payload(): Readonly<Record<string, unknown>> {
+    return (this.row.payload ?? {}) as Readonly<Record<string, unknown>>;
+  }
+
+  private get result(): Readonly<Record<string, unknown>> | null {
+    return (this.row.result ?? null) as Readonly<Record<string, unknown>> | null;
+  }
+
+  private get isAiSignin(): boolean {
+    return this.row.kind === Task.AI_SIGNIN;
+  }
+
+  /** 러너가 쓸 스킬. 없으면 지시만으로 일한다 */
+  private get skill(): string | null {
+    return Task.SKILLS[this.row.kind] ?? null;
+  }
+
+  /** 주인이 결재에서 고쳐 달라고 남긴 말 */
+  private get revisionNote(): string | null {
+    const note = this.payload.revisionNote;
+    return typeof note === 'string' ? note : null;
+  }
+
+  private assertSigninRunning(): void {
+    if (!this.isAiSignin) throw new RuleViolation('웹 로그인 작업이 아니에요');
+    if (this.row.status !== Task.RUNNING)
+      throw new Conflict(`진행 중인 로그인이 아니에요 (${this.row.status})`);
   }
 
   private leaseAlive(now: Date): boolean {
-    return this.leaseEnd !== null && this.leaseEnd.getTime() > now.getTime();
+    const until = this.row.lease_until;
+    return until !== null && until.getTime() > now.getTime();
   }
 
   private assertLeasedBy(runnerId: string): void {
-    if (this.leaseHolder !== runnerId) throw new RuleViolation('다른 러너가 맡은 작업이에요');
+    if (this.row.leased_by !== runnerId) throw new RuleViolation('다른 러너가 맡은 작업이에요');
   }
 
   private holdLease(runnerId: string | null, until: Date | null): void {
-    this.leaseHolder = runnerId;
-    this.leaseEnd = until;
-    this.track('leased_by', runnerId);
-    this.track('lease_until', until);
+    this.put('leased_by', runnerId);
+    this.put('lease_until', until);
   }
 
   private close(result: Readonly<Record<string, unknown>>, now: Date): void {
-    this.resultValue = result;
-    this.track('result', result);
-    this.finishedOn = now;
-    this.track('finished_at', now);
+    this.put('result', result);
+    this.put('finished_at', now);
     this.forgetSignin();
   }
 
   /** 끝나거나 대기열로 돌아간 웹 로그인에는 주소도 코드도 남기지 않는다. 어느 도구였는지만 */
   private forgetSignin(): void {
-    if (this.isAiSignin && Object.keys(this.payloadValue).some((key) => key !== 'tool'))
-      this.setPayload({ tool: this.payloadValue.tool });
+    if (this.isAiSignin && Object.keys(this.payload).some((key) => key !== 'tool'))
+      this.put('payload', { tool: this.payload.tool });
   }
 
   private assertWaitingFor(reason: string): void {
-    if (this.statusValue === Task.WAITING && this.waitReasonValue !== reason)
-      throw new RuleViolation(`${reason}을(를) 기다리는 작업이 아니에요 (${this.waitReasonValue})`);
+    const r = this.row;
+    if (r.status === Task.WAITING && r.wait_reason !== reason)
+      throw new RuleViolation(`${reason}을(를) 기다리는 작업이 아니에요 (${r.wait_reason})`);
   }
 
   /**
@@ -769,28 +662,19 @@ export class Task extends TrackedEntity {
    * waiting으로 갈 때만 무엇을 기다리는지 적고, 나머지 상태로 가면 지운다 (DB의 CHECK와 같다)
    */
   private move(from: readonly string[], to: string, waitReason: string | null = null): void {
-    if (!from.includes(this.statusValue))
-      throw new RuleViolation(`${this.statusValue} 상태의 작업은 ${to}(으)로 바꿀 수 없어요`);
-    this.statusValue = to;
-    this.track('status', to);
+    if (!from.includes(this.row.status))
+      throw new RuleViolation(`${this.row.status} 상태의 작업은 ${to}(으)로 바꿀 수 없어요`);
+    this.put('status', to);
     const reason = to === Task.WAITING ? waitReason : null;
-    if (reason !== this.waitReasonValue) {
-      this.waitReasonValue = reason;
-      this.track('wait_reason', reason);
-    }
+    if (reason !== this.row.wait_reason) this.put('wait_reason', reason);
     this.announce();
-  }
-
-  private announced(): Task {
-    this.announce();
-    return this;
   }
 
   private announce(): void {
     this.record(
-      new DomainEvent(Task.CHANGED, 1, this.spaceId, {
+      new DomainEvent(Task.CHANGED, 1, this.row.space_id, {
         taskId: this.id,
-        status: this.statusValue,
+        status: this.row.status,
       }),
     );
   }

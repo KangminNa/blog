@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseResponse, BaseTool } from '../../platform';
+import { Actor, BaseTool } from '../../platform';
 import { PlanUsage } from '../usage/plan-usage';
-import type { Task } from './task';
 import {
   NextJobsInput,
   ReleaseJobInput,
@@ -9,55 +8,10 @@ import {
   SubmitResultInput,
 } from './task.input';
 import { TaskService } from './task.service';
-import type { JobView, ProgressView } from './task.view';
+import { type JobStateView, NextJobsView, type ProgressView } from './task.view';
 
 // 러너가 쓰는 MCP 도구 (run 권한). 러너는 일을 빌리고, AI CLI에게는 작업 토큰만 준다.
 // 입력 모양을 바꾸면 러너와 스킬을 함께 고친다. 깨지는 변경은 새 도구 이름으로 (API설계 2장).
-
-/** next_jobs의 답 */
-export class NextJobsResponse extends BaseResponse {
-  private constructor(private readonly jobs: readonly JobView[]) {
-    super();
-  }
-
-  static of(jobs: readonly JobView[]): NextJobsResponse {
-    return new NextJobsResponse(jobs);
-  }
-
-  toJSON(): object {
-    return { jobs: this.jobs.map((j) => j.toJSON()) };
-  }
-}
-
-/** report_progress의 답 */
-export class ProgressResponse extends BaseResponse {
-  private constructor(private readonly view: ProgressView) {
-    super();
-  }
-
-  static of(view: ProgressView): ProgressResponse {
-    return new ProgressResponse(view);
-  }
-
-  toJSON(): object {
-    return this.view.toJSON();
-  }
-}
-
-/** submit_result · release_job의 답 */
-export class JobStateResponse extends BaseResponse {
-  private constructor(private readonly task: Task) {
-    super();
-  }
-
-  static of(task: Task): JobStateResponse {
-    return new JobStateResponse(task);
-  }
-
-  toJSON(): object {
-    return { task_id: this.task.id, status: this.task.status };
-  }
-}
 
 @Injectable()
 export class NextJobsTool extends BaseTool {
@@ -110,8 +64,8 @@ export class NextJobsTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<NextJobsResponse> {
-    return NextJobsResponse.of(await this.tasks.next(actor, NextJobsInput.from(raw)));
+  async handle(actor: Actor, raw: unknown): Promise<NextJobsView> {
+    return new NextJobsView(await this.tasks.next(actor, NextJobsInput.from(raw)));
   }
 }
 
@@ -186,8 +140,8 @@ export class ReportProgressTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<ProgressResponse> {
-    return ProgressResponse.of(await this.tasks.report(actor, ReportProgressInput.from(raw)));
+  handle(actor: Actor, raw: unknown): Promise<ProgressView> {
+    return this.tasks.report(actor, ReportProgressInput.from(raw));
   }
 }
 
@@ -220,8 +174,8 @@ export class SubmitResultTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<JobStateResponse> {
-    return JobStateResponse.of(await this.tasks.submit(actor, SubmitResultInput.from(raw)));
+  async handle(actor: Actor, raw: unknown): Promise<JobStateView> {
+    return (await this.tasks.submit(actor, SubmitResultInput.from(raw))).stateView();
   }
 }
 
@@ -243,7 +197,7 @@ export class ReleaseJobTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<JobStateResponse> {
-    return JobStateResponse.of(await this.tasks.release(actor, ReleaseJobInput.from(raw)));
+  async handle(actor: Actor, raw: unknown): Promise<JobStateView> {
+    return (await this.tasks.release(actor, ReleaseJobInput.from(raw))).stateView();
   }
 }

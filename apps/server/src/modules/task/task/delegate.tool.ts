@@ -1,31 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseResponse, BaseTool } from '../../platform';
+import { Actor, BaseTool } from '../../platform';
 import { Task } from './task';
 import { DelegateTaskInput } from './task.input';
 import { TaskService } from './task.service';
-
-/** delegate_task의 답. 작업은 하위 작업을 기다리므로 에이전트는 여기서 멈춘다 */
-export class DelegatedResponse extends BaseResponse {
-  private constructor(private readonly subtasks: readonly Task[]) {
-    super();
-  }
-
-  static of(subtasks: readonly Task[]): DelegatedResponse {
-    return new DelegatedResponse(subtasks);
-  }
-
-  toJSON(): object {
-    return {
-      subtasks: this.subtasks.map((t) => ({
-        task_id: t.id,
-        to_agent_id: t.agentId,
-        title: t.title,
-        status: t.status,
-      })),
-      waiting: Task.WAIT_SUBTASKS,
-    };
-  }
-}
+import type { DelegatedView } from './task.view';
 
 // MCP 도구 delegate_task: 에이전트가 바로 아래 팀에게 하위 작업을 맡긴다 (에이전트 조직, 객체설계 13장).
 // 작업 토큰으로만 부른다. 누가 어느 작업에서 맡기는지는 입력이 아니라 토큰에서 나온다.
@@ -83,7 +61,8 @@ export class DelegateTaskTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<DelegatedResponse> {
-    return DelegatedResponse.of(await this.tasks.delegate(actor, DelegateTaskInput.from(raw)));
+  /** 작업은 하위 작업을 기다리므로 에이전트는 여기서 멈춘다 */
+  async handle(actor: Actor, raw: unknown): Promise<DelegatedView> {
+    return Task.delegatedView(await this.tasks.delegate(actor, DelegateTaskInput.from(raw)));
   }
 }

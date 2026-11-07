@@ -1,7 +1,9 @@
 import { BaseRequest, type RequestFields } from '../../platform';
+import type { HeartbeatRow } from '../task.tables';
 import { Heartbeat } from './heartbeat';
 
 // 하트비트 입력의 모양. 뜻(주기, 시간대, 요일 범위)은 Heartbeat가 검사한다.
+// 설정을 한 번에 바꾸는 입력이라 칸을 모두 읽는다. 시각은 API에서 atTime("09:30")이고 칸은 at_minute(570)이다.
 
 const VERSION_MAX = 2_147_483_647;
 
@@ -15,14 +17,7 @@ export class HeartbeatInput extends BaseRequest {
   private constructor(
     readonly agentId: string,
     readonly version: number,
-    readonly enabled: boolean,
-    readonly mode: string,
-    readonly atMinute: number | null,
-    readonly weekdays: readonly number[],
-    readonly everyHours: number | null,
-    readonly timeZone: string,
-    readonly instruction: string,
-    readonly goalId: string | null,
+    readonly settings: Partial<HeartbeatRow>,
   ) {
     super();
   }
@@ -32,18 +27,16 @@ export class HeartbeatInput extends BaseRequest {
     return BaseRequest.read(
       body,
       (f) =>
-        new HeartbeatInput(
-          f.uuid('agentId'),
-          f.integer('version', 0, VERSION_MAX),
-          f.boolean('enabled'),
-          f.text('mode', 20),
-          HeartbeatInput.minuteOf(f, body.atTime),
-          HeartbeatInput.weekdaysOf(f, body.weekdays),
-          f.optionalInteger('everyHours', 1, 24),
-          f.text('timeZone', 100),
-          f.optionalText('instruction', Heartbeat.INSTRUCTION_MAX) ?? '',
-          body.goalId === undefined || body.goalId === null ? null : f.uuid('goalId'),
-        ),
+        new HeartbeatInput(f.uuid('agentId'), f.integer('version', 0, VERSION_MAX), {
+          enabled: f.boolean('enabled'),
+          mode: f.text('mode', 20),
+          at_minute: HeartbeatInput.minuteOf(f, body.atTime),
+          weekdays: HeartbeatInput.weekdaysOf(f, body.weekdays),
+          every_hours: f.optionalInteger('everyHours', 1, 24),
+          time_zone: f.text('timeZone', 100),
+          instruction: f.optionalText('instruction', Heartbeat.INSTRUCTION_MAX) ?? '',
+          goal_id: body.goalId === undefined || body.goalId === null ? null : f.uuid('goalId'),
+        }),
     );
   }
 

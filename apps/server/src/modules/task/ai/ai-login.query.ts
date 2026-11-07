@@ -1,18 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import {
-  Actor,
-  BaseQuery,
-  Database,
-  Forbidden,
-  type Row,
-  RuleViolation,
-  SecretBox,
-} from '../../platform';
+import { Actor, BaseQuery, Database, Forbidden, RuleViolation, SecretBox } from '../../platform';
 import { Task } from '../task/task';
+import type { AiLoginRow, TaskRow } from '../task.tables';
 import { AiLogin } from './ai-login';
 import type { AiLoginInput } from './ai-login.input';
 import { AiLoginRepository } from './ai-login.repository';
-import { AiSigninView, AiTokenView, AiToolListView, AiToolView } from './ai-login.view';
+import { AiSigninView, type AiTokenView, AiToolListView, AiToolView } from './ai-login.view';
 
 // AI 로그인 읽기. 콘솔은 상태만 보고, 토큰은 run 권한을 가진 기기에게만 나간다.
 @Injectable()
@@ -28,26 +21,26 @@ export class AiLoginQuery extends BaseQuery {
   async list(actor: Actor): Promise<AiToolListView> {
     actor.assertOwner();
     const now = new Date();
-    const logins = await this.sql`
+    const logins = await this.sql<
+      Pick<AiLoginRow, 'tool' | 'expires_at' | 'checked_at' | 'last_error'>[]
+    >`
       SELECT tool, expires_at, checked_at, last_error FROM task.ai_logins
       WHERE space_id = ${actor.spaceId}`;
-    const signins = await this.sql`
+    const signins = await this.sql<Pick<TaskRow, 'id' | 'status' | 'payload'>[]>`
       SELECT id, status, payload FROM task.tasks
       WHERE space_id = ${actor.spaceId} AND kind = ${Task.AI_SIGNIN}
         AND status IN (${Task.QUEUED}, ${Task.RUNNING})
       ORDER BY id DESC`;
     return new AiToolListView(
       AiLogin.TOOLS.map((tool) => {
-        const row = logins.find((r) => r.tool === tool);
-        const signin = signins.find((r) => (r.payload as Row | null)?.tool === tool);
-        const expiresAt = row?.expires_at ? new Date(row.expires_at) : null;
+        const row = logins.find((r) => r.tool === tool) ?? null;
+        const signin = signins.find((r) => AiLoginQuery.toolOf(r) === tool);
+        const expiresAt = row?.expires_at ?? null;
         return new AiToolView(
           tool,
-          row !== undefined && (expiresAt === null || expiresAt.getTime() > now.getTime()),
-          expiresAt,
-          row?.checked_at ? new Date(row.checked_at) : null,
-          row?.last_error ? String(row.last_error) : null,
-          signin ? AiLoginQuery.signin(signin) : null,
+          row,
+          row !== null && (expiresAt === null || expiresAt.getTime() > now.getTime()),
+          signin ? new AiSigninView(signin, AiLoginQuery.stepOf(signin)) : null,
         );
       }),
     );
@@ -63,20 +56,18 @@ export class AiLoginQuery extends BaseQuery {
     const login = await new AiLoginRepository(this.sql).find(actor.spaceId, req.tool);
     if (!login)
       throw new RuleViolation('AI 토큰을 아직 넣지 않았어요. 콘솔의 AI 메뉴에서 넣어 주세요');
-    return new AiTokenView(login.tokenAt(new Date(), this.box), login.expiresAt, login.version);
+    return login.tokenView(new Date(), this.box);
   }
 
-  /** 진행 중인 웹 로그인. 러너가 아직 받지 않았으면 시작 중이다 */
-  private static signin(row: Row): AiSigninView {
-    const payload = (row.payload as Row | null) ?? {};
-    const text = (v: unknown) => (typeof v === 'string' ? v : null);
-    return new AiSigninView(
-      String(row.id),
-      row.status === Task.QUEUED
-        ? Task.SIGNIN_STARTING
-        : (text(payload.step) ?? Task.SIGNIN_STARTING),
-      text(payload.url),
-      text(payload.userCode),
-    );
+  /** 웹 로그인의 도구 (payload.tool) */
+  private static toolOf(row: Pick<TaskRow, 'payload'>): unknown {
+    return (row.payload as Readonly<Record<string, unknown>> | null)?.tool;
+  }
+
+  /** 진행 중인 웹 로그인의 단계. 러너가 아직 받지 않았으면 시작 중이다 */
+  private static stepOf(row: Pick<TaskRow, 'status' | 'payload'>): string {
+    const step = (row.payload as Readonly<Record<string, unknown>> | null)?.step;
+    if (row.status === Task.QUEUED || typeof step !== 'string') return Task.SIGNIN_STARTING;
+    return step;
   }
 }

@@ -22,7 +22,7 @@ import type {
 } from './ai-login.input';
 import { AiLoginQuery } from './ai-login.query';
 import { AiLoginRepository } from './ai-login.repository';
-import { AiSigninRelayView, type AiTokenView } from './ai-login.view';
+import type { AiSigninRelayView, AiTokenView } from './ai-login.view';
 import { AiSigninPolicy } from './ai-signin.policy';
 
 // AI 로그인 쓰기: 토큰 넣기, 연결 확인 맡기기(주인), 서버 키를 바꾼 뒤 다시 잠그기, 러너에게 건네기(ai_login),
@@ -63,12 +63,12 @@ export class AiLoginService extends BaseService {
   /** Claude 토큰을 넣거나 바꾼다 */
   async saveToken(actor: Actor, req: AiTokenInput): Promise<AiLogin> {
     actor.assertOwner();
-    const spaceId = AiLoginService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     const sealed = this.box.seal(req.token);
     const now = new Date();
     return this.transaction(async (tx) => {
       const logins = new AiLoginRepository(tx);
-      const found = await logins.lock(spaceId, AiLogin.CLAUDE);
+      const found = await logins.lockTool(spaceId, AiLogin.CLAUDE);
       found?.replace(sealed, now);
       const login = found ?? AiLogin.open(spaceId, AiLogin.CLAUDE, sealed, now);
       await logins.save(login);
@@ -82,10 +82,10 @@ export class AiLoginService extends BaseService {
    */
   async test(actor: Actor): Promise<Task> {
     actor.assertOwner();
-    const spaceId = AiLoginService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     const now = new Date();
     return this.transaction(async (tx) => {
-      const login = await new AiLoginRepository(tx).lock(spaceId, AiLogin.CLAUDE);
+      const login = await new AiLoginRepository(tx).lockTool(spaceId, AiLogin.CLAUDE);
       if (!login) throw new RuleViolation('토큰을 먼저 넣어 주세요');
       login.assertUsable(now);
       const tasks = new TaskRepository(tx);
@@ -100,7 +100,7 @@ export class AiLoginService extends BaseService {
   /** 웹 로그인을 시작한다. 도구마다 하나: 진행 중인 로그인이 있으면 그 작업을 돌려준다 */
   async startSignin(actor: Actor, req: AiSigninInput): Promise<Task> {
     actor.assertOwner();
-    const spaceId = AiLoginService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     AiLogin.assertTool(req.tool);
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
@@ -116,7 +116,7 @@ export class AiLoginService extends BaseService {
   /** 주인이 브라우저에서 받은 코드 (Claude). 암호화해서 러너가 가져갈 때까지만 둔다 */
   async submitSigninCode(actor: Actor, req: AiSigninCodeInput): Promise<Task> {
     actor.assertOwner();
-    const spaceId = AiLoginService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     AiSigninPolicy.assertBrowserCode(req.code);
     const sealed = this.box.pack(
       `${AiLoginService.CODE_PURPOSE}${req.code}`,
@@ -145,14 +145,14 @@ export class AiLoginService extends BaseService {
     const now = new Date();
     // 로그인하는 동안 러너는 이것만 부른다. 러너 메뉴에 연결 안 됨으로 보이지 않게 닿은 때를 남긴다
     await this.transaction((tx) => new RunnerRepository(tx).seen(spaceId, runnerId, now));
-    const sealedCode = await this.transaction(async (tx) => {
+    const { task, code } = await this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
       const task = await tasks.lock(spaceId, req.taskId);
       const tool = task.signinTool;
       if (tool === null) throw new RuleViolation('웹 로그인 작업이 아니에요');
-      if (task.cancelled) return { cancelled: true, code: null, status: task.status };
+      if (task.cancelled) return { task, code: null };
       // 자격을 넘긴 응답을 잃고 다시 보냈다: 이미 저장했으니 같은 답을 준다
-      if (task.signinDoneBy(runnerId)) return { cancelled: false, code: null, status: task.status };
+      if (task.signinDoneBy(runnerId)) return { task, code: null };
       task.assertHeldBy(runnerId, now);
       if (req.url !== null) {
         AiSigninPolicy.assertUrl(tool, req.url);
@@ -162,7 +162,7 @@ export class AiLoginService extends BaseService {
       if (req.credential !== null) {
         AiSigninPolicy.assertCredential(tool, req.credential);
         const logins = new AiLoginRepository(tx);
-        const found = await logins.lock(spaceId, tool);
+        const found = await logins.lockTool(spaceId, tool);
         const sealed = this.box.seal(req.credential);
         found?.replace(sealed, now);
         await logins.save(found ?? AiLogin.open(spaceId, tool, sealed, now));
@@ -170,13 +170,9 @@ export class AiLoginService extends BaseService {
       }
       const code = task.signinCode;
       await tasks.save(task);
-      return { cancelled: false, code, status: task.status };
+      return { task, code };
     });
-    return new AiSigninRelayView(
-      this.openCode(sealedCode.code, now),
-      sealedCode.cancelled,
-      sealedCode.status,
-    );
+    return task.relayView(this.openCode(code, now));
   }
 
   /**
@@ -205,12 +201,12 @@ export class AiLoginService extends BaseService {
       const task = await new TaskRepository(tx).lock(spaceId, req.taskId);
       task.assertWorkedBy(runnerId);
       const logins = new AiLoginRepository(tx);
-      const login = await logins.lock(spaceId, req.tool);
+      const login = await logins.lockTool(spaceId, req.tool);
       if (!login) throw new NotFound(`${req.tool} 로그인이 없어요`);
       login.assertVersion(req.version);
       login.refresh(sealed);
       await logins.save(login);
-      return (await logins.find(spaceId, req.tool)) ?? login;
+      return login;
     });
   }
 
@@ -227,10 +223,5 @@ export class AiLoginService extends BaseService {
       }
       return count;
     });
-  }
-
-  private static spaceOf(actor: Actor): string {
-    if (!actor.spaceId) throw new Forbidden('owner');
-    return actor.spaceId;
   }
 }

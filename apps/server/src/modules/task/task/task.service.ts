@@ -10,6 +10,7 @@ import {
   Idempotency,
   SecretBox,
   type Sql,
+  type VersionInput,
 } from '../../platform';
 import type { Agent } from '../agent/agent';
 import { AgentRepository } from '../agent/agent.repository';
@@ -24,7 +25,6 @@ import { PlanUsageRepository } from '../usage/plan-usage.repository';
 import { LeasePolicy } from './lease.policy';
 import { Task } from './task';
 import type {
-  CancelTaskInput,
   CreateTaskInput,
   DelegateTaskInput,
   NextJobsInput,
@@ -33,7 +33,7 @@ import type {
   SubmitResultInput,
 } from './task.input';
 import { TaskRepository } from './task.repository';
-import { JobSubtaskResultView, JobTeamMemberView, JobView, ProgressView } from './task.view';
+import type { JobView, ProgressView } from './task.view';
 
 // 작업 쓰기: 만들기와 취소(주인), 일 요청(이벤트), 빌리기·진행·끝내기·돌려주기(러너), 끝난 임대 되돌리기(일꾼),
 // 위임(에이전트가 작업 토큰으로)과 하위 작업이 끝났을 때 위 작업 깨우기(일꾼).
@@ -46,8 +46,6 @@ export class TaskService extends BaseService {
   /** 신호를 놓쳤거나 임대가 끝났을 때를 위해 이 간격으로도 다시 찾는다 */
   private static readonly RECHECK_MS = 5_000;
   private static readonly RECLAIM_BATCH = 50;
-  /** 깨어난 위 작업에게 보내는 하위 작업 결과의 길이 */
-  private static readonly SUMMARY_MAX = 2000;
 
   constructor(
     db: Database,
@@ -116,12 +114,7 @@ export class TaskService extends BaseService {
       }
       // 일하는 동안에는 next_jobs를 부르지 않으므로 진행 보고로 닿은 때를 남긴다 (잠그는 순서의 맨 뒤)
       await new RunnerRepository(tx).seen(spaceId, runnerId, now);
-      return new ProgressView(
-        task.status,
-        task.cancelled,
-        await this.agentPaused(tx, task),
-        task.leaseUntil,
-      );
+      return task.progressView(await this.agentPaused(tx, task));
     });
   }
 
@@ -160,7 +153,7 @@ export class TaskService extends BaseService {
   }
 
   /** 주인이 멈춘다. 기다리던 결재도 닫고, 끝나지 않은 아래 작업(위임)도 함께 멈춘다 */
-  async cancel(actor: Actor, req: CancelTaskInput): Promise<Task> {
+  async cancel(actor: Actor, req: VersionInput): Promise<Task> {
     actor.assertOwner();
     const spaceId = TaskService.spaceOf(actor);
     const now = new Date();
@@ -219,12 +212,7 @@ export class TaskService extends BaseService {
           manager,
           org.find((a) => a.id === s.toAgentId) ?? null,
           s.requestId,
-          s.kind,
-          s.title,
-          s.instruction,
-          s.targetKind,
-          s.targetId,
-          s.baseVersion,
+          s.fields,
           now,
         ),
       );
@@ -264,25 +252,11 @@ export class TaskService extends BaseService {
   private open(spaceId: string, req: CreateTaskInput): Promise<Task> {
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
-      if (req.agentId !== null) await new AgentRepository(tx).load(spaceId, req.agentId);
+      const { agent_id: agentId = null, goal_id: goalId = null } = req.fields;
+      if (agentId !== null) await new AgentRepository(tx).load(spaceId, agentId);
       // 목표는 진행 중이어야 한다. 잠그지 않는다: 그사이 끝나도 이어진 작업은 그대로 가는 것과 같다
-      if (req.goalId !== null)
-        (await new GoalRepository(tx).load(spaceId, req.goalId)).assertActive();
-      const task = Task.open(
-        spaceId,
-        req.agentId,
-        req.kind,
-        req.title,
-        req.instruction,
-        req.payload,
-        req.targetKind,
-        req.targetId,
-        req.baseVersion,
-        req.priority,
-        req.requestId,
-        req.goalId,
-        new Date(),
-      );
+      if (goalId !== null) (await new GoalRepository(tx).load(spaceId, goalId)).assertActive();
+      const task = Task.open(spaceId, req.requestId, req.fields, new Date());
       return (await tasks.insertOnce(task)) ? task : tasks.findByRequest(spaceId, req.requestId);
     });
   }
@@ -351,48 +325,8 @@ export class TaskService extends BaseService {
     org: readonly Agent[],
   ): Promise<JobView> {
     const goals = task.goalId === null ? [] : await new GoalRepository(tx).chain(task.goalId);
-    const team = agent ? org.filter((a) => agent.manages(a)) : [];
     const children = await new TaskRepository(tx).children(task.id);
-    return new JobView(
-      task.id,
-      task.kind,
-      task.title,
-      task.instruction,
-      task.payload,
-      task.targetKind,
-      task.targetId,
-      task.baseVersion,
-      task.skill,
-      task.revisionNote,
-      agent?.id ?? null,
-      agent?.name ?? null,
-      agent?.role ?? null,
-      agent?.tool ?? null,
-      task.leaseUntil,
-      agent && task.actorFor(agent.id, agent.scopes).seal(this.box, Task.RUN_TOKEN_SECONDS),
-      goals.map((g) => g.title),
-      team.map(
-        (a) => new JobTeamMemberView(a.id, a.name, a.role, a.status, Task.delegableWith(a.scopes)),
-      ),
-      children.map(
-        (c) =>
-          new JobSubtaskResultView(
-            c.id,
-            c.title,
-            org.find((a) => a.id === c.agentId)?.name ?? null,
-            c.status,
-            TaskService.summaryOf(c),
-            c.failure,
-          ),
-      ),
-      Math.max(0, Task.ROUNDS_MAX - task.rounds),
-    );
-  }
-
-  /** 하위 작업의 결과 글 앞부분. 러너는 결과를 { text }로 낸다 */
-  private static summaryOf(task: Task): string | null {
-    const text = task.result?.text;
-    return typeof text === 'string' ? text.slice(0, TaskService.SUMMARY_MAX) : null;
+    return task.jobView(agent, this.box, goals, org, children);
   }
 
   private async expire(tx: Sql, now: Date): Promise<number> {
@@ -413,8 +347,8 @@ export class TaskService extends BaseService {
   private async noteAiTest(tx: Sql, task: Task, now: Date): Promise<void> {
     if (!task.isAiTest || !task.ended) return;
     const logins = new AiLoginRepository(tx);
-    const login = await logins.lock(task.spaceId, String(task.payload.tool));
-    if (login === null || login.version !== task.payload.loginVersion) return;
+    const login = await logins.lockTool(task.spaceId, task.testedTool);
+    if (login === null || !task.tests(login.version)) return;
     login.noteTest(task.failure, now);
     await logins.save(login);
   }
@@ -436,20 +370,8 @@ export class TaskService extends BaseService {
     if (req.planUsage.length === 0 || task.agentId === null) return;
     const { tool } = await new AgentRepository(tx).load(task.spaceId, task.agentId);
     const seen = PlanUsage.WINDOWS.flatMap((window) => {
-      const last = req.planUsage.findLast((p) => p.window === window);
-      return last
-        ? [
-            PlanUsage.seen(
-              task.spaceId,
-              tool,
-              window,
-              last.percent,
-              last.resetsAt,
-              last.status,
-              now,
-            ),
-          ]
-        : [];
+      const last = req.planUsage.findLast((p) => p.fields.period === window);
+      return last ? [PlanUsage.seen(task.spaceId, tool, last.fields, now)] : [];
     });
     await new PlanUsageRepository(tx).save(seen);
   }

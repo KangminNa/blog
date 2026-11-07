@@ -1,9 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { type Actor, BaseService, Conflict, Forbidden, type Sql } from '../../platform';
+import { type Actor, BaseService, Conflict, type Sql } from '../../platform';
 import type { AgentUsage } from '../agent/agent';
 import { AgentRepository } from '../agent/agent.repository';
 import { GoalRepository } from '../goal/goal.repository';
-import { Task } from '../task/task';
 import { TaskRepository } from '../task/task.repository';
 import { Heartbeat } from './heartbeat';
 import type { HeartbeatInput } from './heartbeat.input';
@@ -19,29 +18,19 @@ export class HeartbeatService extends BaseService {
   /** 주인이 정한다. 처음이면 version 0, 고칠 때는 본 version (다르면 409) */
   async configure(actor: Actor, req: HeartbeatInput): Promise<Heartbeat> {
     actor.assertOwner();
-    const spaceId = HeartbeatService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     const now = new Date();
+    const goalId = req.settings.goal_id ?? null;
     return this.transaction(async (tx) => {
       await new AgentRepository(tx).load(spaceId, req.agentId);
-      if (req.goalId !== null)
-        (await new GoalRepository(tx).load(spaceId, req.goalId)).assertActive();
+      if (goalId !== null) (await new GoalRepository(tx).load(spaceId, goalId)).assertActive();
       const heartbeats = new HeartbeatRepository(tx);
       const before = await heartbeats.lockByAgent(spaceId, req.agentId);
       if (before) before.assertVersion(req.version);
       else if (req.version !== 0)
         throw new Conflict('하트비트가 아직 없어요. 다시 읽고 version 0으로 보내 주세요');
       const heartbeat = before ?? Heartbeat.open(spaceId, req.agentId, now);
-      heartbeat.configure(
-        req.mode,
-        req.atMinute,
-        req.weekdays,
-        req.everyHours,
-        req.timeZone,
-        req.instruction,
-        req.goalId,
-        req.enabled,
-        now,
-      );
+      heartbeat.configure(req.settings, now);
       await heartbeats.save(heartbeat);
       return heartbeat;
     });
@@ -80,27 +69,6 @@ export class HeartbeatService extends BaseService {
       heartbeat.goalId === null
         ? null
         : await new GoalRepository(tx).load(heartbeat.spaceId, heartbeat.goalId);
-    return tasks.insertOnce(
-      Task.open(
-        heartbeat.spaceId,
-        heartbeat.agentId,
-        Task.GENERAL,
-        heartbeat.titleFor(slot),
-        heartbeat.taskInstruction,
-        { heartbeat: slot.toISOString() },
-        null,
-        null,
-        null,
-        0,
-        heartbeat.requestIdFor(slot),
-        goal?.active ? goal.id : null,
-        now,
-      ),
-    );
-  }
-
-  private static spaceOf(actor: Actor): string {
-    if (!actor.spaceId) throw new Forbidden('owner');
-    return actor.spaceId;
+    return tasks.insertOnce(heartbeat.wake(slot, goal, now));
   }
 }

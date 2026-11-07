@@ -96,35 +96,48 @@ describe('HeartbeatPolicy.nextHourly', () => {
 describe('Heartbeat', () => {
   const NOW = at('2026-11-05T23:00:00Z'); // 11/6(금) 08:00 KST
 
+  /** configure에 넘기는 설정 한 벌 */
+  const settings = (
+    mode: string,
+    at_minute: number | null,
+    weekdays: readonly number[],
+    every_hours: number | null,
+    time_zone: string,
+    instruction: string,
+    goal_id: string | null,
+    enabled: boolean,
+  ) => ({ mode, at_minute, weekdays, every_hours, time_zone, instruction, goal_id, enabled });
+
   function daily(): Heartbeat {
     const heartbeat = Heartbeat.open('space', 'agent-1', NOW);
-    heartbeat.configure('daily', 9 * 60, ALL, null, SEOUL, '', null, true, NOW);
+    heartbeat.configure(settings('daily', 9 * 60, ALL, null, SEOUL, '', null, true), NOW);
     return heartbeat;
   }
 
   test('처음에는 꺼져 있고, 켜면 다음 시각이 생기고, 끄면 지운다', () => {
     const heartbeat = Heartbeat.open('space', 'agent-1', NOW);
-    assert.equal(heartbeat.enabled, false);
-    assert.equal(heartbeat.nextRunAt?.toISOString() ?? null, null);
-    heartbeat.configure('daily', 9 * 60, ALL, null, SEOUL, '확인', null, true, NOW);
-    assert.equal(heartbeat.nextRunAt?.toISOString(), '2026-11-06T00:00:00.000Z');
-    heartbeat.configure('hourly', null, [], 6, SEOUL, '', null, false, NOW);
-    assert.equal(heartbeat.nextRunAt, null);
-    assert.equal(heartbeat.atMinute, null, 'N시간마다면 시각을 지운다');
-    assert.equal(heartbeat.everyHours, 6);
+    assert.equal(heartbeat.unsaved.enabled, false);
+    assert.equal(heartbeat.unsaved.next_run_at?.toISOString() ?? null, null);
+    heartbeat.configure(settings('daily', 9 * 60, ALL, null, SEOUL, '확인', null, true), NOW);
+    assert.equal(heartbeat.unsaved.next_run_at?.toISOString(), '2026-11-06T00:00:00.000Z');
+    heartbeat.configure(settings('hourly', null, [], 6, SEOUL, '', null, false), NOW);
+    assert.equal(heartbeat.unsaved.next_run_at, null);
+    assert.equal(heartbeat.unsaved.at_minute, null, 'N시간마다면 시각을 지운다');
+    assert.equal(heartbeat.unsaved.every_hours, 6);
   });
 
   test('맞지 않는 설정은 거절한다', () => {
     const heartbeat = Heartbeat.open('space', 'agent-1', NOW);
     const bad = [
-      () => heartbeat.configure('weekly', 0, ALL, null, SEOUL, '', null, true, NOW),
-      () => heartbeat.configure('daily', null, ALL, null, SEOUL, '', null, true, NOW),
-      () => heartbeat.configure('daily', 1440, ALL, null, SEOUL, '', null, true, NOW),
-      () => heartbeat.configure('daily', 0, [], null, SEOUL, '', null, true, NOW),
-      () => heartbeat.configure('daily', 0, [8], null, SEOUL, '', null, true, NOW),
-      () => heartbeat.configure('hourly', null, ALL, 0, SEOUL, '', null, true, NOW),
-      () => heartbeat.configure('hourly', null, ALL, 25, SEOUL, '', null, true, NOW),
-      () => heartbeat.configure('daily', 0, ALL, null, 'Nowhere/City', '', null, true, NOW),
+      () => heartbeat.configure(settings('weekly', 0, ALL, null, SEOUL, '', null, true), NOW),
+      () => heartbeat.configure(settings('daily', null, ALL, null, SEOUL, '', null, true), NOW),
+      () => heartbeat.configure(settings('daily', 1440, ALL, null, SEOUL, '', null, true), NOW),
+      () => heartbeat.configure(settings('daily', 0, [], null, SEOUL, '', null, true), NOW),
+      () => heartbeat.configure(settings('daily', 0, [8], null, SEOUL, '', null, true), NOW),
+      () => heartbeat.configure(settings('hourly', null, ALL, 0, SEOUL, '', null, true), NOW),
+      () => heartbeat.configure(settings('hourly', null, ALL, 25, SEOUL, '', null, true), NOW),
+      () =>
+        heartbeat.configure(settings('daily', 0, ALL, null, 'Nowhere/City', '', null, true), NOW),
     ];
     for (const configure of bad) assert.throws(configure, RuleViolation);
   });
@@ -138,8 +151,8 @@ describe('Heartbeat', () => {
     const late = at('2026-11-09T01:00:00Z');
     const slot = heartbeat.fire(late);
     assert.equal(slot.toISOString(), '2026-11-06T00:00:00.000Z', '놓친 첫 시각 하나');
-    assert.equal(heartbeat.nextRunAt?.toISOString(), '2026-11-10T00:00:00.000Z');
-    assert.equal(heartbeat.lastRunAt, late);
+    assert.equal(heartbeat.unsaved.next_run_at?.toISOString(), '2026-11-10T00:00:00.000Z');
+    assert.equal(heartbeat.unsaved.last_run_at, late);
     assert.equal(heartbeat.dueAt(late), false);
   });
 

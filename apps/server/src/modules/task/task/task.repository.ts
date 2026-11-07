@@ -1,56 +1,18 @@
-import { BaseRepository, ChangeSignal, type Row } from '../../platform';
+import { ChangeSignal, TableRepository } from '../../platform';
 import type { Agent } from '../agent/agent';
+import type { TaskRow } from '../task.tables';
 import { Task } from './task';
 
-// task.tasks + task_events ↔ Task. 고칠 때는 엔티티가 기억한 바뀐 열만 저장한다.
-export class TaskRepository extends BaseRepository<Task> {
+// task.tasks + task_events ↔ Task. 불러오기·잠그기·저장(바뀐 칸만)은 기반이 하고, 여기에는 대기열 SQL과 실행 기록이 있다.
+export class TaskRepository extends TableRepository<TaskRow, Task> {
   /** 실행 기록이 쌓였다는 신호 (콘솔의 실행 기록 화면이 다시 읽는다) */
   static readonly LOGGED = 'task.event.added';
 
-  protected toEntity(row: Row): Task {
-    return Task.restore(
-      String(row.id),
-      Number(row.version),
-      String(row.space_id),
-      row.agent_id === null ? null : String(row.agent_id),
-      String(row.kind),
-      String(row.title),
-      String(row.instruction),
-      (row.payload as Record<string, unknown> | null) ?? {},
-      (row.result as Record<string, unknown> | null) ?? null,
-      row.target_kind === null ? null : String(row.target_kind),
-      row.target_id === null ? null : String(row.target_id),
-      row.base_version === null ? null : Number(row.base_version),
-      String(row.status),
-      Number(row.priority),
-      row.lease_until === null ? null : new Date(row.lease_until),
-      row.leased_by === null ? null : String(row.leased_by),
-      Number(row.attempts),
-      row.request_id === null ? null : String(row.request_id),
-      row.goal_id === null ? null : String(row.goal_id),
-      row.parent_id === null ? null : String(row.parent_id),
-      Number(row.depth),
-      row.wait_reason === null ? null : String(row.wait_reason),
-      Number(row.rounds),
-      new Date(row.created_at),
-      row.finished_at === null ? null : new Date(row.finished_at),
-    );
-  }
+  protected readonly table = 'task.tasks';
+  protected readonly noun = '작업';
 
-  async load(spaceId: string, id: string): Promise<Task> {
-    return this.one(
-      await this.sql`SELECT * FROM task.tasks WHERE id = ${id} AND space_id = ${spaceId}`,
-      '작업',
-    );
-  }
-
-  /** 고칠 작업을 잠근다. 없으면 NotFound */
-  async lock(spaceId: string, id: string): Promise<Task> {
-    return this.one(
-      await this
-        .sql`SELECT * FROM task.tasks WHERE id = ${id} AND space_id = ${spaceId} FOR UPDATE`,
-      '작업',
-    );
+  protected toEntity(row: TaskRow): Task {
+    return Task.restore(row);
   }
 
   /** 공간을 모르고 잠근다 (일꾼이 이벤트로 받은 작업) */
@@ -62,7 +24,7 @@ export class TaskRepository extends BaseRepository<Task> {
     return this.one(
       await this.sql`
         SELECT * FROM task.tasks WHERE space_id = ${spaceId} AND request_id = ${requestId}`,
-      '작업',
+      this.noun,
     );
   }
 
@@ -79,7 +41,7 @@ export class TaskRepository extends BaseRepository<Task> {
     tools: { testTools: readonly string[] | null; signinTools: readonly string[] | null },
   ): Promise<readonly Task[]> {
     const agentIds = ready.map((a) => a.id);
-    const rows = await this.sql`
+    const rows = await this.sql<TaskRow[]>`
       SELECT * FROM task.tasks
       WHERE space_id = ${spaceId} AND status = ${Task.QUEUED}
         AND (kind = ANY(${Task.AGENTLESS as string[]}::text[])
@@ -103,10 +65,10 @@ export class TaskRepository extends BaseRepository<Task> {
 
   /** 지금 도는 에이전트 일의 도구들 (갱신 토큰이 바뀌는 도구를 한 번에 하나만 돌리려고) */
   async runningAgentTools(spaceId: string): Promise<readonly string[]> {
-    const rows = await this.sql`
+    const rows = await this.sql<{ tool: string }[]>`
       SELECT DISTINCT a.tool FROM task.tasks t JOIN task.agents a ON a.id = t.agent_id
       WHERE t.space_id = ${spaceId} AND t.status = ${Task.RUNNING}`;
-    return rows.map((r) => String(r.tool));
+    return rows.map((r) => r.tool);
   }
 
   /** 권한이 필요한 종류는 그 권한을 가진 에이전트의 일이거나, 담당이 없어도 맡을 에이전트가 있을 때만 */
@@ -122,7 +84,7 @@ export class TaskRepository extends BaseRepository<Task> {
 
   /** 이 request_id들로 이미 만든 작업 (위임을 다시 보냈을 때) */
   async findByRequests(spaceId: string, requestIds: readonly string[]): Promise<readonly Task[]> {
-    const rows = await this.sql`
+    const rows = await this.sql<TaskRow[]>`
       SELECT * FROM task.tasks
       WHERE space_id = ${spaceId} AND request_id = ANY(${requestIds as string[]}::text[])`;
     return rows.map((r) => this.toEntity(r));
@@ -140,23 +102,24 @@ export class TaskRepository extends BaseRepository<Task> {
 
   /** 이 작업을 맡긴 위 작업의 id. 없으면 null */
   async parentOf(id: string): Promise<string | null> {
-    const [row] = await this.sql`SELECT parent_id FROM task.tasks WHERE id = ${id}`;
-    return row?.parent_id ? String(row.parent_id) : null;
+    const [row] = await this.sql<Pick<TaskRow, 'parent_id'>[]>`
+      SELECT parent_id FROM task.tasks WHERE id = ${id}`;
+    return row?.parent_id ?? null;
   }
 
   /** 위 작업이 맡긴 하위 작업 전부 (id 순서. 한 번에 맡긴 것끼리는 순서가 정해지지 않는다). 잠그지 않는다 */
   async children(parentId: string): Promise<readonly Task[]> {
-    const rows = await this.sql`
+    const rows = await this.sql<TaskRow[]>`
       SELECT * FROM task.tasks WHERE parent_id = ${parentId} ORDER BY id`;
     return rows.map((r) => this.toEntity(r));
   }
 
   /** 끝나지 않은 하위 작업의 수 */
   async openChildren(parentId: string): Promise<number> {
-    const [row] = await this.sql`
+    const [row] = await this.sql<{ n: number }[]>`
       SELECT count(*) AS n FROM task.tasks
       WHERE parent_id = ${parentId} AND status IN (${Task.QUEUED}, ${Task.RUNNING}, ${Task.WAITING})`;
-    return Number(row?.n ?? 0);
+    return row?.n ?? 0;
   }
 
   /**
@@ -164,7 +127,7 @@ export class TaskRepository extends BaseRepository<Task> {
    * 위 작업을 먼저 잠근 뒤에 부른다 (위 → 아래 순서. 하위 작업이 끝날 때 깨우는 쪽은 위 작업만 잠근다)
    */
   async lockOpenDescendants(parentId: string): Promise<readonly Task[]> {
-    const rows = await this.sql`
+    const rows = await this.sql<TaskRow[]>`
       WITH RECURSIVE below AS (
         SELECT id FROM task.tasks WHERE parent_id = ${parentId}
         UNION ALL
@@ -211,7 +174,7 @@ export class TaskRepository extends BaseRepository<Task> {
 
   /** 임대가 끝난 작업을 잠근다 */
   async lockExpired(now: Date, limit: number): Promise<readonly Task[]> {
-    const rows = await this.sql`
+    const rows = await this.sql<TaskRow[]>`
       SELECT * FROM task.tasks
       WHERE status = ${Task.RUNNING} AND lease_until < ${now}
       ORDER BY lease_until LIMIT ${limit}
@@ -224,56 +187,29 @@ export class TaskRepository extends BaseRepository<Task> {
    * 앞의 요청이 아직 커밋 전이면 끝날 때까지 기다렸다가 판단한다.
    */
   async insertOnce(task: Task): Promise<boolean> {
-    const inserted = await this.sql`
-      INSERT INTO task.tasks (id, space_id, agent_id, kind, title, instruction, payload, target_kind,
-        target_id, base_version, status, priority, request_id, goal_id, parent_id, depth, created_at)
-      VALUES (${task.id}, ${task.spaceId}, ${task.agentId}, ${task.kind}, ${task.title}, ${task.instruction},
-        ${this.sql.json(task.payload as never)}, ${task.targetKind}, ${task.targetId}, ${task.baseVersion},
-        ${task.status}, ${task.priority}, ${task.requestId}, ${task.goalId}, ${task.parentId},
-        ${task.depth}, ${task.createdAt})
+    const [row] = await this.sql<TaskRow[]>`
+      INSERT INTO task.tasks ${this.sql(task.unsaved as never)}
       ON CONFLICT (space_id, request_id) DO NOTHING
-      RETURNING id`;
-    if (inserted.length === 0) return false;
-    task.clearChanges();
+      RETURNING *`;
+    if (!row) return false;
+    task.saved(row);
     await this.publishEvents(task);
     return true;
   }
 
-  async save(task: Task): Promise<void> {
-    if (task.changed) {
-      const { payload, result, ...columns } = task.changes;
-      const json = {
-        ...(payload === undefined ? {} : { payload: this.sql.json(payload as never) }),
-        ...(result === undefined ? {} : { result: this.sql.json(result as never) }),
-      };
-      const update = await this.sql`
-        UPDATE task.tasks SET ${this.sql({ ...columns, ...json })}, version = version + 1
-        WHERE id = ${task.id} AND version = ${task.version}`;
-      this.expectUpdated(update.count, task);
-      task.clearChanges();
-    }
-    await this.addLog(task);
-    await this.publishEvents(task);
-  }
-
   /** 임대만 늘린다. version은 사람이 본 내용을 지키는 값이라 올리지 않는다 (진행 보고가 주인의 취소를 막지 않게) */
   async saveLease(task: Task): Promise<void> {
-    await this.sql`UPDATE task.tasks SET lease_until = ${task.leaseUntil} WHERE id = ${task.id}`;
-    await this.addLog(task);
+    const until = task.unsaved.lease_until;
+    if (until !== undefined)
+      await this.sql`UPDATE task.tasks SET lease_until = ${until} WHERE id = ${task.id}`;
+    await this.saveParts(task);
   }
 
-  private async addLog(task: Task): Promise<void> {
+  /** 쌓인 실행 기록을 남긴다 (추가만) */
+  protected override async saveParts(task: Task): Promise<void> {
     const entries = task.addedLog;
     if (entries.length === 0) return;
-    const rows = entries.map((e) => ({
-      task_id: task.id,
-      at: e.at,
-      kind: e.kind,
-      body: e.body,
-      tokens: e.tokens,
-    }));
-    await this.sql`
-      INSERT INTO task.task_events ${this.sql(rows, 'task_id', 'at', 'kind', 'body', 'tokens')}`;
+    await this.sql`INSERT INTO task.task_events ${this.sql(entries as never)}`;
     await ChangeSignal.send(this.sql, [
       new ChangeSignal(task.spaceId, TaskRepository.LOGGED, task.id),
     ]);
