@@ -40,27 +40,18 @@ export class TargetRepository {
 
   private lockAt(place: string): Promise<ChangeTarget | null> {
     const [kind = '', id = '', dst, edgeKind] = place.split(':');
-    if (kind === 'category') return this.categories.lock(this.spaceId, id);
-    if (kind === 'session') return this.sessions.lock(this.spaceId, id);
-    if (kind === 'wiki') return this.wikis.lock(this.spaceId, id);
+    if (kind === 'category') return this.categories.lockOrNull(this.spaceId, id);
+    if (kind === 'session') return this.sessions.lockOrNull(this.spaceId, id);
+    if (kind === 'wiki') return this.wikis.lockOrNull(this.spaceId, id);
     return dst && edgeKind
       ? this.edges.lockAt(id, dst, edgeKind)
-      : this.edges.lock(this.spaceId, id);
+      : this.edges.lockOrNull(this.spaceId, id);
   }
 
-  /** 대상을 저장한다. 새 wiki·카테고리는 여기서 겹치지 않는 주소를 정한다 */
-  async save(target: ChangeTarget): Promise<void> {
-    if (target.targetKind === 'wiki') {
-      const wiki = target as Wiki;
-      if (wiki.isNew) wiki.settleSlug(await this.wikis.takenSlugs(this.spaceId, wiki.slug));
-      return this.wikis.save(wiki);
-    }
-    if (target.targetKind === 'category') {
-      const category = target as Category;
-      if (category.isNew)
-        category.settleSlug(await this.categories.takenSlugs(this.spaceId, category.slug));
-      return this.categories.save(category);
-    }
+  /** 대상을 저장한다. 새 wiki·카테고리는 저장소가 겹치지 않는 주소를 정한다 */
+  save(target: ChangeTarget): Promise<void> {
+    if (target.targetKind === 'wiki') return this.wikis.save(target as Wiki);
+    if (target.targetKind === 'category') return this.categories.save(target as Category);
     if (target.targetKind === 'session') return this.sessions.save(target as Session);
     return this.edges.save(target as Edge);
   }

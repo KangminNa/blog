@@ -25,6 +25,14 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
 - `vault-archive.query.ts`: 보관 형식 파일 (`ArchiveQuery.register`로 등록). `vault-archive.api.ts`: `api/archive.zip`(주인만). platform은 모듈 파일을 모르고, 이 경로의 자리가 다른 곳에 없어 여기 둔다
 - `restore/`: 복원의 vault 몫(`VaultRestore`, `ArchiveQuery.registerRestore`로 등록). 파일을 읽는 `RestoredCategory` · `RestoredWiki` · `RestoredSession` · `RestoredEdge` · `RestoredPin` · `RestoredPostMark`, 새 행만 넣는 `VaultRestoreRepository`
 
+엔티티는 `TableEntity`(platform)로 표 한 줄을 들고, Repository(`TableRepository`)는 바뀐 칸만 저장한다 (객체설계 6장). 칼럼을 아는 곳은 `vault.tables.ts`, Entity의 `RULES`, Input의 `COLUMNS`, View의 `toJSON`, 그리고 칸을 다른 형식으로 옮기는 `ChangeOp`의 payload · `snapshot` · 보관 · 복원이다.
+- 변경 대상(세션 · wiki · 카테고리 · 선)은 `TargetEntity`, 휴지통으로 가는 점(wiki · 카테고리)은 `GraphNode`다 (`change/change-target.ts`). 변경과 묶음은 `ChangeTarget` 약속으로만 대상을 다룬다
+- 열쇠가 `id`가 아닌 표는 읽을 때 `node_id AS id`(세션 · wiki · 카테고리), `space_id AS id`(정리 설정), `post_id AS id`(글 자리 사본)로 맞춘다. 점의 저장소(`NodeRepository` · `GraphNodeRepository`, `change/change-target.repository.ts`)가 새 점을 `vault.nodes`에 먼저 넣고, 휴지통 표시는 점에 따로 적는다
+- 없는 대상은 실패가 아니라 `missing`이라 `lockOrNull`로 잠근다. 판(세션 · wiki)은 엔티티가 새 행(`…RevisionNew`)으로 들고 `saveParts`가 넣기만 한다
+- 카테고리의 칸은 `Category.RULES` · `COLUMNS`를 지나 `edit(changes)`로 바뀐다(변경 `category.create` · `category.update`가 칸 묶음을 들고 간다). wiki의 제목 · 본문 · 공개 · 카테고리, 세션의 대표 wiki, 선의 지우기 · 되살리기는 동사 메서드로만 바뀐다
+- `ChangeOp`과 그래프의 View는 표 한 줄이 아니라 그대로 둔다. `ChangeOp`은 판정한 칸을 `change_ops` 한 줄(`toRow`)로 내놓는다
+- wiki · 카테고리의 View는 보는 사람마다 모양이 둘이다: 비공개까지 보는 요청자는 `toJSON`, 아니면 `toPublicJSON` (`WikiResponse` · `CategoryListResponse`가 고른다)
+
 ## 소유 데이터
 스키마 `vault`: node_kinds, edge_kinds, nodes, sessions, session_revisions, attachments, categories, wikis, wiki_revisions, wiki_aliases,
 edges, project_rules, graph_views, node_layout, graph_snapshots, post_marks, chunks, chunk_embeddings,

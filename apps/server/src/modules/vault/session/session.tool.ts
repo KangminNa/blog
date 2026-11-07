@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseResponse, BaseTool } from '../../platform';
-import type { SessionReceipt } from './session';
+import { Actor, BaseTool } from '../../platform';
 import {
   CheckSessionInput,
   GetSessionInput,
@@ -9,116 +8,16 @@ import {
 } from './session.input';
 import { SessionQuery } from './session.query';
 import { SessionService } from './session.service';
-import type { SessionCheckView, SessionHitPageView, SessionNoteView } from './session.view';
+import type {
+  SessionCheckView,
+  SessionHitPageView,
+  SessionNoteView,
+  SessionSavedView,
+} from './session.view';
 import { SessionNote } from './session-note';
 
-// 세션의 MCP 도구 네 개와 그 응답. AI 도구가 읽는 모양이라 snake_case다.
+// 세션의 MCP 도구 네 개. 답은 session.view.ts의 AI용 모양(snake_case)이다.
 // 설명과 입력 모양은 AI가 읽고 인자를 만드는 글이다. 칸을 바꾸면 cairn-save · cairn-recall 스킬도 함께 고친다.
-
-/** save_session 결과 (AI에게). AI가 사용자에게 보여줄 관리 화면 링크와, 서버가 지운 민감정보 경고를 함께 */
-export class SaveSessionResponse extends BaseResponse {
-  private constructor(
-    private readonly receipt: SessionReceipt,
-    private readonly site: string,
-  ) {
-    super();
-  }
-
-  static of(receipt: SessionReceipt, site: string): SaveSessionResponse {
-    return new SaveSessionResponse(receipt, site);
-  }
-
-  toJSON(): object {
-    return {
-      status: this.receipt.status,
-      session_id: this.receipt.sessionId,
-      revision: this.receipt.seq,
-      warnings: this.receipt.warnings,
-      url: `${this.site}/admin/sessions?session=${this.receipt.sessionId}`,
-    };
-  }
-}
-
-/** check_session 결과 (AI에게). 저장할 때 그대로 쓸 값, 올릴 곳, 저장하면 서버가 지울 것 */
-export class SessionCheckResponse extends BaseResponse {
-  private constructor(
-    private readonly view: SessionCheckView,
-    private readonly site: string,
-  ) {
-    super();
-  }
-
-  static of(view: SessionCheckView, site: string): SessionCheckResponse {
-    return new SessionCheckResponse(view, site);
-  }
-
-  toJSON(): object {
-    const v = this.view;
-    return {
-      ok: true,
-      request_id: v.requestId,
-      source_session_id: v.sourceSessionId,
-      existing: v.sessionId ? { session_id: v.sessionId, revisions: v.revisions } : null,
-      warnings: v.redactions,
-      site: this.site,
-      limits: { section_max: SessionNote.SECTION_MAX, quotes_max: SessionNote.QUOTES_MAX },
-    };
-  }
-}
-
-/** search_sessions 결과 (AI에게). 어떤 세션을 읽을지 고를 만큼만 짧게 */
-export class SessionSearchResponse extends BaseResponse {
-  private constructor(private readonly page: SessionHitPageView) {
-    super();
-  }
-
-  static of(page: SessionHitPageView): SessionSearchResponse {
-    return new SessionSearchResponse(page);
-  }
-
-  toJSON(): object {
-    return {
-      sessions: this.page.hits.map((h) => ({
-        session_id: h.id,
-        title: h.title,
-        project: h.project,
-        tool: h.tool,
-        date: h.lastRevisionAt,
-        excerpt: h.excerpt.replace(/\s+/g, ' ').trim(),
-      })),
-      next: this.page.next,
-    };
-  }
-}
-
-/** get_session 결과 (AI에게). 칸은 save_session의 입력과 같은 이름으로, 내용이 있는 칸만 */
-export class SessionNoteResponse extends BaseResponse {
-  private constructor(private readonly view: SessionNoteView) {
-    super();
-  }
-
-  static of(view: SessionNoteView): SessionNoteResponse {
-    return new SessionNoteResponse(view);
-  }
-
-  toJSON(): object {
-    const { summary, head } = this.view;
-    return {
-      session_id: summary.id,
-      title: head.title,
-      project: summary.project,
-      tool: summary.tool,
-      started_at: summary.startedAt,
-      last_revision_at: summary.lastRevisionAt,
-      revision: head.seq,
-      tags: head.tags,
-      // 칸은 save_session의 입력과 같은 이름으로, 내용이 있는 칸만 (칸 순서 그대로)
-      sections: Object.fromEntries(
-        head.sections.filter((s) => s.text).map((s) => [s.name, s.text]),
-      ),
-    };
-  }
-}
 
 // MCP 도구 save_session: AI 도구가 작업한 세션의 노트를 저장한다. mcp 모듈이 모아서 연다.
 // 설명과 입력 모양은 AI가 읽고 인자를 만드는 글이다. 칸을 바꾸면 cairn-save 스킬도 함께 고친다.
@@ -195,11 +94,8 @@ export class SaveSessionTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown, site: string): Promise<SaveSessionResponse> {
-    return SaveSessionResponse.of(
-      await this.sessions.save(actor, SaveSessionInput.from(raw)),
-      site,
-    );
+  async handle(actor: Actor, raw: unknown, site: string): Promise<SessionSavedView> {
+    return (await this.sessions.save(actor, SaveSessionInput.from(raw))).view(site);
   }
 }
 
@@ -226,11 +122,8 @@ export class CheckSessionTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown, site: string): Promise<SessionCheckResponse> {
-    return SessionCheckResponse.of(
-      await this.sessions.check(actor, CheckSessionInput.from(raw)),
-      site,
-    );
+  handle(actor: Actor, raw: unknown, site: string): Promise<SessionCheckView> {
+    return this.sessions.check(actor, CheckSessionInput.from(raw), site);
   }
 }
 
@@ -285,10 +178,8 @@ export class SearchSessionsTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<SessionSearchResponse> {
-    return SessionSearchResponse.of(
-      await this.sessions.search(actor, SearchSessionsInput.from(raw)),
-    );
+  handle(actor: Actor, raw: unknown): Promise<SessionHitPageView> {
+    return this.sessions.search(actor, SearchSessionsInput.from(raw));
   }
 }
 
@@ -318,7 +209,7 @@ export class GetSessionTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<SessionNoteResponse> {
-    return SessionNoteResponse.of(await this.sessions.note(actor, GetSessionInput.from(raw)));
+  handle(actor: Actor, raw: unknown): Promise<SessionNoteView> {
+    return this.sessions.note(actor, GetSessionInput.from(raw));
   }
 }

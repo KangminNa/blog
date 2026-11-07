@@ -1,44 +1,38 @@
-// 변경 묶음의 읽기 모양. 웹이 `import type`으로 가져오므로 아무것도 import하지 않는다 (객체설계 6장).
+import type { ChangeOpRow, ChangeSetRow } from '../vault.tables';
+
+// 변경 묶음의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
+// 표의 칸 중 무엇을 내보내는지는 여기 한 곳에만 적는다. AI에게 주는 답은 snake_case다.
+
+/** 승인함의 한 줄을 읽는 칸: 변경 하나와 그 묶음의 칸 몇 개 */
+export interface WaitingChangeRow
+  extends ChangeOpRow,
+    Pick<ChangeSetRow, 'kind' | 'message' | 'actor_type' | 'actor_id' | 'created_at'> {
+  /** 묶음의 version. 결정할 때 보낸다 */
+  set_version: number;
+}
 
 /** 승인함의 한 줄: 검토를 기다리는 변경 하나와 그 묶음의 정보. 결정할 때 setVersion을 보낸다 */
 export class WaitingChangeView {
-  constructor(
-    readonly setId: string,
-    readonly seq: number,
-    readonly op: string,
-    readonly targetKind: string,
-    readonly targetId: string | null,
-    readonly baseVersion: number | null,
-    readonly payload: unknown,
-    readonly verdict: string | null,
-    readonly rule: string | null,
-    readonly status: string,
-    readonly reason: string | null,
-    readonly setVersion: number,
-    readonly kind: string,
-    readonly message: string,
-    readonly actorType: string,
-    readonly actorId: string | null,
-    readonly createdAt: Date,
-  ) {}
+  constructor(private readonly row: Readonly<WaitingChangeRow>) {}
 
   toJSON() {
+    const r = this.row;
     return {
-      setId: this.setId,
-      seq: this.seq,
-      op: this.op,
-      target: { kind: this.targetKind, id: this.targetId, version: this.baseVersion },
-      payload: this.payload,
-      verdict: this.verdict,
-      rule: this.rule,
-      status: this.status,
-      reason: this.reason,
-      version: this.setVersion,
-      kind: this.kind,
-      message: this.message,
-      actorType: this.actorType,
-      actorId: this.actorId,
-      createdAt: this.createdAt.toISOString(),
+      setId: r.change_set_id,
+      seq: r.seq,
+      op: r.op,
+      target: { kind: r.target_kind, id: r.target_id, version: r.base_version },
+      payload: r.payload,
+      verdict: r.verdict,
+      rule: r.rule,
+      status: r.status,
+      reason: r.reason,
+      version: r.set_version,
+      kind: r.kind,
+      message: r.message,
+      actorType: r.actor_type,
+      actorId: r.actor_id,
+      createdAt: r.created_at.toISOString(),
     };
   }
 }
@@ -46,8 +40,8 @@ export class WaitingChangeView {
 /** 승인함 한 쪽. next가 있으면 그 값으로 다음 쪽을 부른다 */
 export class WaitingChangePageView {
   constructor(
-    readonly changes: readonly WaitingChangeView[],
-    readonly next: string | null,
+    private readonly changes: readonly WaitingChangeView[],
+    private readonly next: string | null,
   ) {}
 
   toJSON() {
@@ -57,26 +51,18 @@ export class WaitingChangePageView {
 
 /** 묶음 안의 변경 하나의 결과 */
 export class ChangeOpView {
-  constructor(
-    readonly seq: number,
-    readonly op: string,
-    readonly targetKind: string,
-    readonly targetId: string | null,
-    readonly verdict: string | null,
-    readonly rule: string | null,
-    readonly status: string,
-    readonly reason: string | null,
-  ) {}
+  constructor(private readonly row: Readonly<ChangeOpRow>) {}
 
   toJSON() {
+    const r = this.row;
     return {
-      seq: this.seq,
-      op: this.op,
-      target: { kind: this.targetKind, id: this.targetId },
-      verdict: this.verdict,
-      rule: this.rule,
-      status: this.status,
-      reason: this.reason,
+      seq: r.seq,
+      op: r.op,
+      target: { kind: r.target_kind, id: r.target_id },
+      verdict: r.verdict,
+      rule: r.rule,
+      status: r.status,
+      reason: r.reason,
     };
   }
 }
@@ -84,24 +70,40 @@ export class ChangeOpView {
 /** 변경 묶음 하나. 화면은 이 version으로 다음 결정을 보낸다 */
 export class ChangeSetView {
   constructor(
-    readonly id: string,
-    readonly version: number,
-    readonly kind: string,
-    readonly status: string,
-    readonly message: string,
-    readonly revertedBy: string | null,
-    readonly ops: readonly ChangeOpView[],
+    private readonly row: Readonly<ChangeSetRow>,
+    private readonly ops: readonly Readonly<ChangeOpRow>[],
+  ) {}
+
+  toJSON() {
+    const r = this.row;
+    return {
+      id: r.id,
+      version: r.version,
+      kind: r.kind,
+      status: r.status,
+      message: r.message,
+      revertedBy: r.reverted_by,
+      ops: this.ops.map((op) => new ChangeOpView(op).toJSON()),
+    };
+  }
+}
+
+/** submit_changes의 답 (AI에게): 변경마다 판정을 바로 알려 준다. 검토나 거부가 있어도 호출은 성공이다 */
+export class SubmittedChangesView {
+  constructor(
+    private readonly setId: string,
+    private readonly ops: readonly Readonly<ChangeOpRow>[],
   ) {}
 
   toJSON() {
     return {
-      id: this.id,
-      version: this.version,
-      kind: this.kind,
-      status: this.status,
-      message: this.message,
-      revertedBy: this.revertedBy,
-      ops: this.ops.map((op) => op.toJSON()),
+      change_set_id: this.setId,
+      ops: this.ops.map((op) => ({
+        seq: op.seq,
+        verdict: op.verdict,
+        status: op.status,
+        reason: op.reason,
+      })),
     };
   }
 }

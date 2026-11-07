@@ -8,13 +8,15 @@ import { BaseQuery } from './base-query';
 import { BaseRepository } from './base-repository';
 import { BaseRequest, RequestFields } from './base-request';
 import { Database, type Row } from './database';
-import { Conflict, Forbidden, InvalidRequest, TooManyRequests } from './errors';
+import { Conflict, Forbidden, InvalidRequest, NotFound, TooManyRequests } from './errors';
 import { DomainEvent } from './event';
 import { Idempotency } from './idempotency';
 import { Outbox } from './outbox';
 import { PasswordHasher } from './password-hasher';
 import { SecretBox } from './secret-box';
 import { SecretRotation } from './secret-rotation';
+import { TableEntity, type TableRow } from './table-entity';
+import { TableRepository } from './table-repository';
 import { ZipFile } from './zip-file';
 
 // 기반 클래스가 약속한 동작을 실제 DB로 확인한다.
@@ -53,6 +55,12 @@ class SampleQuery extends BaseQuery {
       SELECT count(*)::int AS n FROM (VALUES ('public'), ('private')) AS t(visibility)
       WHERE true ${this.visibleTo(actor, 't.visibility')}`;
     return Number(row?.n);
+  }
+}
+
+class SampleRow extends TableEntity<TableRow> {
+  static restore(row: TableRow): SampleRow {
+    return new SampleRow(row);
   }
 }
 
@@ -151,6 +159,31 @@ describe('BaseRepository', () => {
     assert.throws(() => repository.check(0, sample), Conflict);
     repository.check(1, sample);
     assert.equal(sample.version, 2);
+  });
+});
+
+describe('TableRepository', () => {
+  const known = '0192d2a0-0000-7000-8000-00000000cafe';
+
+  class SampleTableRepository extends TableRepository<TableRow, SampleRow> {
+    protected readonly table = 'platform.none';
+    protected readonly noun = '시험 행';
+    protected toEntity(row: TableRow): SampleRow {
+      return SampleRow.restore(row);
+    }
+    /** 표 없이 한 줄만 있는 것처럼 읽는다 */
+    protected override select(_spaceId: string, id: string) {
+      return this.sql`
+        SELECT * FROM (VALUES (${known}::uuid, 1)) AS t(id, version) WHERE t.id = ${id}::uuid`;
+    }
+  }
+
+  test('lock은 없는 행이면 NotFound, lockOrNull은 null', async () => {
+    const repository = new SampleTableRepository(db.sql);
+    const missing = '0192d2a0-0000-7000-8000-00000000dead';
+    await assert.rejects(repository.lock('s', missing), NotFound);
+    assert.equal(await repository.lockOrNull('s', missing), null);
+    assert.equal((await repository.lockOrNull('s', known))?.id, known);
   });
 });
 

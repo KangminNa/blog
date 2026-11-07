@@ -5,7 +5,7 @@ import type { ChangeSet } from '../change/change-set';
 import type { Category } from './category';
 import { CreateCategoryInput, DeleteCategoryInput, UpdateCategoryInput } from './category.input';
 import { CategoryQuery } from './category.query';
-import { type CategoryListView, CategoryView } from './category.view';
+import type { CategoryListView, CategorySavedView } from './category.view';
 
 /** 카테고리 목록. 방문자는 공개 칸만 */
 export class CategoryListResponse extends BaseResponse {
@@ -25,34 +25,6 @@ export class CategoryListResponse extends BaseResponse {
   }
 }
 
-/** 만들거나 고친 카테고리 하나. 화면은 이 version으로 다음 변경을 보낸다 */
-export class CategorySavedResponse extends BaseResponse {
-  private constructor(private readonly set: ChangeSet) {
-    super();
-  }
-
-  static of(set: ChangeSet): CategorySavedResponse {
-    return new CategorySavedResponse(set);
-  }
-
-  toJSON(): object {
-    const c = this.set.result as Category;
-    return {
-      ...new CategoryView(
-        c.id,
-        c.name,
-        c.slug,
-        c.color,
-        c.description,
-        c.sort,
-        c.origin,
-        c.version,
-      ).toJSON(),
-      changeSetId: this.set.id,
-    };
-  }
-}
-
 // 카테고리 메뉴. 목록은 누구나 (이름은 공개), 쓰기는 주인만 (변경 묶음으로 남는다).
 @Controller('api/categories')
 export class CategoryController {
@@ -67,11 +39,8 @@ export class CategoryController {
   }
 
   @Post()
-  async create(
-    @CurrentActor() actor: Actor,
-    @Body() body: unknown,
-  ): Promise<CategorySavedResponse> {
-    return CategorySavedResponse.of(await this.changes.edit(actor, CreateCategoryInput.from(body)));
+  async create(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<CategorySavedView> {
+    return CategoryController.saved(await this.changes.edit(actor, CreateCategoryInput.from(body)));
   }
 
   @Patch(':id')
@@ -79,8 +48,8 @@ export class CategoryController {
     @CurrentActor() actor: Actor,
     @Param('id') id: string,
     @Body() body: unknown,
-  ): Promise<CategorySavedResponse> {
-    return CategorySavedResponse.of(
+  ): Promise<CategorySavedView> {
+    return CategoryController.saved(
       await this.changes.edit(actor, UpdateCategoryInput.from(id, body)),
     );
   }
@@ -90,9 +59,14 @@ export class CategoryController {
     @CurrentActor() actor: Actor,
     @Param('id') id: string,
     @Body() body: unknown,
-  ): Promise<CategorySavedResponse> {
-    return CategorySavedResponse.of(
+  ): Promise<CategorySavedView> {
+    return CategoryController.saved(
       await this.changes.edit(actor, DeleteCategoryInput.from(id, body)),
     );
+  }
+
+  /** 만들거나 고친 카테고리 하나. 화면은 이 version으로 다음 변경을 보낸다 */
+  private static saved(set: ChangeSet): CategorySavedView {
+    return (set.result as Category).view(set.id);
   }
 }

@@ -108,7 +108,7 @@ export class DecideChangeInput extends BaseRequest {
       return new DecideChangeInput(
         f.uuid('setId'),
         f.integer('seq', 1, SEQ_MAX),
-        f.integer('version', 1, VERSION_MAX),
+        f.version(),
         decision,
       );
     });
@@ -131,7 +131,7 @@ export class RevertChangeInput extends BaseRequest {
   static from(setId: string, raw: unknown): RevertChangeInput {
     return BaseRequest.read(
       { ...(raw as object), setId },
-      (f) => new RevertChangeInput(f.uuid('setId'), f.integer('version', 1, VERSION_MAX)),
+      (f) => new RevertChangeInput(f.uuid('setId'), f.version()),
     );
   }
 }

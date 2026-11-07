@@ -2,10 +2,14 @@ import { RequestFields, RuleViolation } from '../../platform';
 import { Category } from '../category/category';
 import { Edge, type EdgeKind } from '../edge/edge';
 import { Session } from '../session/session';
+import type { CategoryRow, ChangeOpRow } from '../vault.tables';
 import { Wiki } from '../wiki/wiki';
 import { WikiBody } from '../wiki/wiki-body';
 import type { ChangeTarget, ChangeWork } from './change-target';
 import type { Verdict } from './review.policy';
+
+/** change_ops의 칸 중 판정과 결정이 채우는 것 */
+type ChangeOpState = Omit<ChangeOpRow, 'change_set_id' | 'seq' | 'op' | 'target_kind' | 'payload'>;
 
 /**
  * 한 묶음이 잠근 대상들. Repository가 고정된 순서로 잠가 채우고, 변경은 여기서 자기 대상을 찾는다.
@@ -92,19 +96,25 @@ export abstract class ChangeOp {
   /** AI가 본 version과 잠글 때의 version이 다르다 */
   stale = false;
 
-  private verdictValue: string | null = null;
-  private ruleValue: string | null = null;
-  private statusValue = ChangeOp.PENDING;
-  private reasonValue: string | null = null;
-  private decidedAtValue: Date | null = null;
-  private decidedByValue: string | null = null;
+  private state: ChangeOpState;
   private touched = true;
 
   protected constructor(
     readonly seq: number,
-    private targetIdValue: string | null,
-    private baseVersionValue: number | null,
-  ) {}
+    targetId: string | null,
+    baseVersion: number | null,
+  ) {
+    this.state = {
+      target_id: targetId,
+      base_version: baseVersion,
+      verdict: null,
+      rule: null,
+      status: ChangeOp.PENDING,
+      reason: null,
+      decided_at: null,
+      decided_by: null,
+    };
+  }
 
   /** 이 묶음에서 만든 것을 가리키는 값인가 */
   static isMade(ref: string): boolean {
@@ -117,36 +127,24 @@ export abstract class ChangeOp {
   }
 
   get targetId(): string | null {
-    return this.targetIdValue;
+    return this.state.target_id;
   }
 
   /** 판정할 때 대상의 version. 승인할 때 이 값과 비교해 그사이 바뀌었는지 본다 */
   get baseVersion(): number | null {
-    return this.baseVersionValue;
-  }
-
-  get verdict(): string | null {
-    return this.verdictValue;
-  }
-
-  get rule(): string | null {
-    return this.ruleValue;
+    return this.state.base_version;
   }
 
   get status(): string {
-    return this.statusValue;
+    return this.state.status;
   }
 
-  get reason(): string | null {
-    return this.reasonValue;
+  get verdict(): string | null {
+    return this.state.verdict;
   }
 
-  get decidedAt(): Date | null {
-    return this.decidedAtValue;
-  }
-
-  get decidedBy(): string | null {
-    return this.decidedByValue;
+  get rule(): string | null {
+    return this.state.rule;
   }
 
   /** 저장해야 하는가 (Repository가 본다) */
@@ -155,16 +153,28 @@ export abstract class ChangeOp {
   }
 
   get waiting(): boolean {
-    return this.statusValue === ChangeOp.WAITING;
+    return this.state.status === ChangeOp.WAITING;
   }
 
   get applied(): boolean {
-    return this.statusValue === ChangeOp.APPLIED;
+    return this.state.status === ChangeOp.APPLIED;
   }
 
   /** 판정한 뒤 대상이 바뀌었는가: 없어졌거나 version이 달라졌다 */
   get moved(): boolean {
-    return (this.target?.version ?? null) !== this.baseVersionValue;
+    return (this.target?.version ?? null) !== this.state.base_version;
+  }
+
+  /** change_ops 한 줄 */
+  toRow(setId: string): ChangeOpRow {
+    return {
+      ...this.state,
+      change_set_id: setId,
+      seq: this.seq,
+      op: this.name,
+      target_kind: this.targetKind,
+      payload: this.toPayload(),
+    };
   }
 
   /** vault.changes.op */
@@ -174,7 +184,8 @@ export abstract class ChangeOp {
 
   /** 잠글 자리들: 대상 + 가리키는 점 */
   places(_board: TargetBoard): readonly string[] {
-    return this.targetIdValue ? [TargetBoard.place(this.targetKind, this.targetIdValue)] : [];
+    const id = this.state.target_id;
+    return id ? [TargetBoard.place(this.targetKind, id)] : [];
   }
 
   /** 살아 있는지 볼 점들 (잠그지 않는다) */
@@ -184,10 +195,8 @@ export abstract class ChangeOp {
 
   /** 잠근 대상을 찾아 둔다. 판정과 적용은 이 뒤에 한다 */
   bind(board: TargetBoard): void {
-    const place = this.targetIdValue
-      ? TargetBoard.place(this.targetKind, this.targetIdValue)
-      : null;
-    this.attach(board, place);
+    const id = this.state.target_id;
+    this.attach(board, id ? TargetBoard.place(this.targetKind, id) : null);
   }
 
   /** 없거나 지운 대상이면 missing. AI가 적은 version이 잠글 때와 다르면 stale */
@@ -195,10 +204,8 @@ export abstract class ChangeOp {
     this.place = place;
     this.target = place ? board.at(place) : null;
     this.missing = this.needsTarget && (this.target === null || this.target.gone);
-    this.stale =
-      this.baseVersionValue !== null &&
-      place !== null &&
-      board.lockedVersion(place) !== this.baseVersionValue;
+    const seen = this.state.base_version;
+    this.stale = seen !== null && place !== null && board.lockedVersion(place) !== seen;
   }
 
   /** 없던 것을 더하는가 */
@@ -242,28 +249,28 @@ export abstract class ChangeOp {
 
   /** 규칙의 판정을 적는다. 대상의 지금 version이 이후의 기준이 된다 */
   judge(verdict: Verdict): void {
-    this.verdictValue = verdict.action;
-    this.ruleValue = verdict.rule;
-    this.reasonValue = verdict.reason;
-    this.statusValue = verdict.status;
-    this.baseVersionValue = this.target?.version ?? null;
-    this.targetIdValue ??= this.target?.id ?? null;
-    this.touched = true;
+    this.write({
+      verdict: verdict.action,
+      rule: verdict.rule,
+      reason: verdict.reason,
+      status: verdict.status,
+      base_version: this.target?.version ?? null,
+      target_id: this.state.target_id ?? this.target?.id ?? null,
+    });
   }
 
   /** 적용이 끝났다 */
   settled(target: ChangeTarget): void {
     this.target = target;
-    this.targetIdValue = target.id;
-    this.touched = true;
+    this.write({ target_id: target.id });
   }
 
   approve(by: string | null, now: Date): void {
-    this.close(ChangeOp.APPLIED, by, now, this.reasonValue);
+    this.close(ChangeOp.APPLIED, by, now, this.state.reason);
   }
 
   decline(by: string | null, now: Date): void {
-    this.close(ChangeOp.DECLINED, by, now, this.reasonValue);
+    this.close(ChangeOp.DECLINED, by, now, this.state.reason);
   }
 
   supersede(by: string | null, now: Date, reason: string): void {
@@ -271,20 +278,9 @@ export abstract class ChangeOp {
   }
 
   /** 저장된 판정을 되살린다 (Repository만) */
-  restoreState(
-    verdict: string | null,
-    rule: string | null,
-    status: string,
-    reason: string | null,
-    decidedAt: Date | null,
-    decidedBy: string | null,
-  ): this {
-    this.verdictValue = verdict;
-    this.ruleValue = rule;
-    this.statusValue = status;
-    this.reasonValue = reason;
-    this.decidedAtValue = decidedAt;
-    this.decidedByValue = decidedBy;
+  restored(row: Readonly<ChangeOpRow>): this {
+    const { verdict, rule, status, reason, decided_at, decided_by } = row;
+    this.write({ verdict, rule, status, reason, decided_at, decided_by });
     this.touched = false;
     return this;
   }
@@ -295,10 +291,11 @@ export abstract class ChangeOp {
   }
 
   private close(status: string, by: string | null, now: Date, reason: string | null): void {
-    this.statusValue = status;
-    this.reasonValue = reason;
-    this.decidedAtValue = now;
-    this.decidedByValue = by;
+    this.write({ status, reason, decided_at: now, decided_by: by });
+  }
+
+  private write(changes: Partial<ChangeOpState>): void {
+    this.state = { ...this.state, ...changes };
     this.touched = true;
   }
 }
@@ -595,11 +592,8 @@ export class CategoryCreateOp extends ChangeOp {
   constructor(
     seq: number,
     targetId: string | null,
-    private label: string,
-    private readonly slug: string | null,
-    private readonly color: string | null,
-    private description: string | null,
-    private readonly sort: number,
+    /** 주소가 없으면 이름에서 만든다 */
+    private fields: Partial<CategoryRow>,
   ) {
     super(seq, targetId, null);
   }
@@ -613,21 +607,26 @@ export class CategoryCreateOp extends ChangeOp {
   }
 
   override clean(scrub: (text: string) => string): void {
-    this.label = scrub(this.label);
-    this.description = this.description === null ? null : scrub(this.description);
+    const { name, description } = this.fields;
+    this.fields = {
+      ...this.fields,
+      name: scrub(name ?? ''),
+      description: description ? scrub(description) : description,
+    };
   }
 
   apply(work: ChangeWork): ChangeTarget {
-    return Category.open(work, this.label, this.slug, this.color, this.description, this.sort);
+    return Category.open(work, this.fields);
   }
 
   toPayload(): Record<string, unknown> {
+    const { name, slug, color, description, sort } = this.fields;
     return {
-      name: this.label,
-      slug: this.slug,
-      color: this.color,
-      description: this.description,
-      sort: this.sort,
+      name,
+      slug: slug ?? null,
+      color: color ?? null,
+      description: description ?? null,
+      sort: sort ?? 0,
     };
   }
 }
@@ -679,7 +678,7 @@ export class CategoryAssignOp extends ChangeOp {
   }
 }
 
-/** 카테고리의 칸을 고친다. 사람만 (관리 화면). undefined는 그대로 둔다 */
+/** 카테고리의 칸을 고친다. 사람만 (관리 화면). 없는 칸은 그대로 둔다 */
 export class CategoryUpdateOp extends ChangeOp {
   static readonly NAME = 'category.update';
   readonly name = CategoryUpdateOp.NAME;
@@ -689,34 +688,21 @@ export class CategoryUpdateOp extends ChangeOp {
     seq: number,
     targetId: string,
     baseVersion: number,
-    private readonly label: string | null,
-    private readonly slug: string | null,
-    private readonly color: string | null | undefined,
-    private readonly description: string | null | undefined,
-    private readonly sort: number | null,
+    private readonly changes: Partial<CategoryRow>,
   ) {
     super(seq, targetId, baseVersion);
   }
 
   apply(): ChangeTarget {
     const category = this.target as Category;
-    if (this.label !== null) category.name = this.label;
-    if (this.slug !== null) category.slug = this.slug;
-    if (this.color !== undefined) category.color = this.color;
-    if (this.description !== undefined) category.description = this.description;
-    if (this.sort !== null) category.sort = this.sort;
+    category.edit(this.changes);
     if (category.changed) category.announce();
     return category;
   }
 
   toPayload(): Record<string, unknown> {
-    return {
-      name: this.label,
-      slug: this.slug,
-      color: this.color,
-      description: this.description,
-      sort: this.sort,
-    };
+    const { name, slug, color, description, sort } = this.changes;
+    return { name: name ?? null, slug: slug ?? null, color, description, sort: sort ?? null };
   }
 }
 
@@ -911,15 +897,12 @@ export class ChangeOps {
           p.text('kind', 40),
         );
       case CategoryCreateOp.NAME:
-        return new CategoryCreateOp(
-          seq,
-          null,
-          p.text('name', Category.NAME_MAX),
-          null,
-          p.optionalText('color', 40),
-          p.optionalText('description', Category.DESCRIPTION_MAX),
-          p.optionalInteger('sort', 0, Category.SORT_MAX) ?? 0,
-        );
+        return new CategoryCreateOp(seq, null, {
+          name: p.text('name', Category.NAME_MAX),
+          color: p.optionalText('color', Category.COLOR_MAX),
+          description: p.optionalText('description', Category.DESCRIPTION_MAX),
+          sort: p.optionalInteger('sort', 0, Category.SORT_MAX) ?? 0,
+        });
       case CategoryAssignOp.NAME:
         return new CategoryAssignOp(seq, target(), baseVersion, ChangeOps.ref(p, 'category_id'));
       default:

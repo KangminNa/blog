@@ -1,23 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseResponse, BaseTool } from '../../platform';
+import { Actor, BaseTool } from '../../platform';
 import { NeighborsInput } from './graph.input';
 import { GraphQuery } from './graph.query';
 import type { NeighborsView } from './graph.view';
-
-/** neighbors 결과 (AI에게) */
-export class NeighborsResponse extends BaseResponse {
-  private constructor(private readonly view: NeighborsView) {
-    super();
-  }
-
-  static of(view: NeighborsView): NeighborsResponse {
-    return new NeighborsResponse(view);
-  }
-
-  toJSON(): object {
-    return this.view.toJSON();
-  }
-}
 
 // MCP 도구 neighbors: 그래프의 점 하나와 이어진 점들을 읽는다. 볼 수 없는 점은 없는 점과 똑같이 답한다.
 @Injectable()
@@ -44,7 +29,7 @@ export class NeighborsTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<NeighborsResponse> {
-    return NeighborsResponse.of(await this.graph.neighbors(actor, NeighborsInput.from(raw)));
+  handle(actor: Actor, raw: unknown): Promise<NeighborsView> {
+    return this.graph.neighbors(actor, NeighborsInput.from(raw));
   }
 }

@@ -5,7 +5,6 @@ import {
   BaseService,
   Conflict,
   Database,
-  Forbidden,
   Idempotency,
   NotFound,
   RuleViolation,
@@ -42,7 +41,7 @@ export class ChangeService extends BaseService {
    */
   async submit(actor: Actor, req: SubmitChangesInput): Promise<ChangeSet> {
     actor.assertCan(Actor.TIDY);
-    const spaceId = ChangeService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     const scrub = (text: string) => this.sensitive.scrub('wiki', text)[0];
     for (const op of req.ops) op.clean(scrub);
     const jobId = actor instanceof AgentActor ? actor.taskId : null;
@@ -87,7 +86,7 @@ export class ChangeService extends BaseService {
    */
   async edit(actor: Actor, req: EditInput): Promise<ChangeSet> {
     actor.assertOwner();
-    const spaceId = ChangeService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     return this.transaction(async (tx) => {
       const sets = new ChangeRepository(tx);
       const targets = new TargetRepository(tx, spaceId);
@@ -140,7 +139,7 @@ export class ChangeService extends BaseService {
     decision: DecideChangeInput,
   ): Promise<ChangeSet> {
     actor.assertOwner();
-    const spaceId = ChangeService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     return this.transaction(async (tx) => {
       const sets = new ChangeRepository(tx);
       const set = await sets.lock(spaceId, setId);
@@ -172,7 +171,7 @@ export class ChangeService extends BaseService {
    */
   async revert(actor: Actor, setId: string, version: number): Promise<ChangeSet> {
     actor.assertOwner();
-    const spaceId = ChangeService.spaceOf(actor);
+    const spaceId = actor.requireSpace();
     return this.transaction(async (tx) => {
       const sets = new ChangeRepository(tx);
       const original = await sets.lock(spaceId, setId);
@@ -229,10 +228,5 @@ export class ChangeService extends BaseService {
     if (jobId) return sets.lockJob(spaceId, jobId);
     const before = await once?.previous();
     return before ? sets.load(spaceId, String(before.changeSetId)) : null;
-  }
-
-  private static spaceOf(actor: Actor): string {
-    if (!actor.spaceId) throw new Forbidden('owner');
-    return actor.spaceId;
   }
 }

@@ -1,59 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseResponse, BaseTool } from '../../platform';
+import { Actor, BaseTool } from '../../platform';
 import { SearchWikisInput, WikiIdInput } from './wiki.input';
 import { WikiQuery } from './wiki.query';
-import type { WikiDetailView, WikiHitPageView } from './wiki.view';
-
-/** search_wikis 결과 (AI에게). 어떤 wiki를 읽을지 고를 만큼만 짧게 */
-export class WikiSearchResponse extends BaseResponse {
-  private constructor(private readonly page: WikiHitPageView) {
-    super();
-  }
-
-  static of(page: WikiHitPageView): WikiSearchResponse {
-    return new WikiSearchResponse(page);
-  }
-
-  toJSON(): object {
-    return {
-      wikis: this.page.hits.map((h) => ({
-        wiki_id: h.id,
-        title: h.title,
-        category_id: h.categoryId,
-        date: h.updatedAt,
-        excerpt: h.excerpt.replace(/\s+/g, ' ').trim(),
-      })),
-      next: this.page.next,
-    };
-  }
-}
-
-/** get_wiki 결과 (AI에게). version은 고칠 때 base_version으로 쓴다 */
-export class WikiNoteResponse extends BaseResponse {
-  private constructor(private readonly detail: WikiDetailView) {
-    super();
-  }
-
-  static of(detail: WikiDetailView): WikiNoteResponse {
-    return new WikiNoteResponse(detail);
-  }
-
-  toJSON(): object {
-    const { summary, bodyMd, sections, pinnedSections } = this.detail;
-    return {
-      wiki_id: summary.id,
-      title: summary.title,
-      slug: summary.slug,
-      category_id: summary.categoryId,
-      version: summary.version,
-      revision: summary.revisionCount,
-      updated_at: summary.updatedAt,
-      pinned_sections: pinnedSections,
-      sections: sections.map((s) => s.toJSON()),
-      body_md: bodyMd,
-    };
-  }
-}
+import type { ToolWikiView, WikiHitPageView } from './wiki.view';
 
 // MCP 도구 search_wikis: 정리된 wiki를 키워드로 찾는다. 요청자가 볼 수 있는 wiki만 나온다.
 @Injectable()
@@ -92,8 +41,8 @@ export class SearchWikisTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<WikiSearchResponse> {
-    return WikiSearchResponse.of(await this.wikis.search(actor, SearchWikisInput.from(raw)));
+  handle(actor: Actor, raw: unknown): Promise<WikiHitPageView> {
+    return this.wikis.search(actor, SearchWikisInput.from(raw));
   }
 }
 
@@ -122,7 +71,7 @@ export class GetWikiTool extends BaseTool {
     super();
   }
 
-  async handle(actor: Actor, raw: unknown): Promise<WikiNoteResponse> {
-    return WikiNoteResponse.of(await this.wikis.note(actor, WikiIdInput.fromTool(raw)));
+  handle(actor: Actor, raw: unknown): Promise<ToolWikiView> {
+    return this.wikis.note(actor, WikiIdInput.fromTool(raw));
   }
 }

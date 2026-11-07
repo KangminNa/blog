@@ -53,17 +53,20 @@ describe('WikiBody', () => {
 
 describe('Wiki', () => {
   const body = (md: string): WikiBody => WikiBody.parse(md);
+  /** 관리 화면이 받는 모양으로 본다 (제목 · 주소 · 공개 · 판 수 · 사람이 고친 칸 · 본문) */
+  const shown = (wiki: Wiki) => wiki.view('set').toJSON();
 
   test('새 wiki는 비공개이고 첫 판이 쌓인다', () => {
     const wiki = Wiki.open(ai, ' 세션 저장 ', body('본문'), null, null);
-    assert.equal(wiki.title, '세션 저장');
-    assert.equal(wiki.slug, '세션-저장');
-    assert.equal(wiki.visibility, Wiki.PRIVATE);
-    assert.equal(wiki.origin, 'ai');
-    assert.equal(wiki.revisionCount, 1);
+    const view = shown(wiki);
+    assert.equal(view.title, '세션 저장');
+    assert.equal(view.slug, '세션-저장');
+    assert.equal(view.visibility, Wiki.PRIVATE);
+    assert.equal(view.origin, 'ai');
+    assert.equal(view.revisionCount, 1);
     assert.equal(wiki.addedRevision?.kind, 'ai');
-    assert.equal(wiki.addedRevision?.changeSetId, 'set-1');
-    assert.deepEqual(wiki.pinnedSections, []);
+    assert.equal(wiki.addedRevision?.change_set_id, 'set-1');
+    assert.deepEqual(view.pinnedSections, []);
   });
 
   test('글자가 없는 제목이나 긴 제목은 거절한다', () => {
@@ -77,18 +80,18 @@ describe('Wiki', () => {
   test('내용이 같으면 판을 쌓지 않는다', () => {
     const wiki = Wiki.open(ai, '제목', body('본문'), null, null);
     wiki.revise('제목', body('본문'), ai);
-    assert.equal(wiki.revisionCount, 1);
+    assert.equal(shown(wiki).revisionCount, 1);
   });
 
   test('AI가 고치면 새 판만 쌓이고, 사람이 고치면 바뀐 칸이 사람의 것이 된다', () => {
     const wiki = Wiki.open(ai, '제목', body('## 가\n\n1\n\n## 나\n\n2'), null, null);
     wiki.revise('제목', body('## 가\n\n고침\n\n## 나\n\n2'), ai);
-    assert.equal(wiki.revisionCount, 2);
-    assert.deepEqual(wiki.pinnedSections, []);
+    assert.equal(shown(wiki).revisionCount, 2);
+    assert.deepEqual(shown(wiki).pinnedSections, []);
     wiki.revise('새 제목', body('## 가\n\n고침\n\n## 나\n\n사람'), human);
-    assert.equal(wiki.revisionCount, 3);
+    assert.equal(shown(wiki).revisionCount, 3);
     assert.equal(wiki.addedRevision?.kind, 'human');
-    assert.deepEqual([...wiki.pinnedSections].sort(), [Wiki.TITLE_KEY, '나'].sort());
+    assert.deepEqual([...shown(wiki).pinnedSections].sort(), [Wiki.TITLE_KEY, '나'].sort());
   });
 
   test('공개 여부는 사람만 바꾼다', () => {
@@ -96,7 +99,7 @@ describe('Wiki', () => {
     assert.throws(() => wiki.setVisibility(Wiki.PUBLIC, ai), RuleViolation);
     assert.throws(() => wiki.setVisibility('everyone', human), RuleViolation);
     wiki.setVisibility(Wiki.PUBLIC, human);
-    assert.equal(wiki.visibility, Wiki.PUBLIC);
+    assert.equal(shown(wiki).visibility, Wiki.PUBLIC);
   });
 
   test('앞 상태로 돌아가면 앞 내용이 새 판으로 쌓인다 (판은 지우지 않는다)', () => {
@@ -104,9 +107,9 @@ describe('Wiki', () => {
     const before = wiki.snapshot();
     wiki.revise('제목', body('고침'), human);
     wiki.rollBack(before, human);
-    assert.equal(wiki.body.markdown, '처음');
-    assert.equal(wiki.revisionCount, 3);
-    assert.deepEqual(wiki.pinnedSections, []);
+    assert.equal(shown(wiki).bodyMd, '처음');
+    assert.equal(shown(wiki).revisionCount, 3);
+    assert.deepEqual(shown(wiki).pinnedSections, []);
   });
 
   test('이 묶음이 만든 wiki를 되돌리면 휴지통으로 간다', () => {

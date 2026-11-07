@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { WikiRevisionNew } from '../vault.tables';
 
 /** wiki 본문의 칸 하나: md 제목(##) 하나 아래의 글 */
 export class WikiSection {
@@ -68,6 +69,16 @@ export class WikiBody {
   /** 칸 이름 → 글의 해시 (wiki_revisions.section_hashes) */
   sectionHashes(): Record<string, string> {
     return Object.fromEntries(this.sections.map((s) => [s.key, s.hash]));
+  }
+
+  /** 판(wiki_revisions)에 적는 본문의 칸: md 원문, 칸들, 칸마다의 해시, 전체 해시 */
+  revision(): Pick<WikiRevisionNew, 'body_md' | 'sections' | 'section_hashes' | 'content_hash'> {
+    return {
+      body_md: this.markdown,
+      sections: this.sections.map((s) => s.toJSON()),
+      section_hashes: this.sectionHashes(),
+      content_hash: this.hash,
+    };
   }
 
   /** 다른 본문과 비교해 바뀐 칸들: 글이 달라졌거나, 새로 생겼거나, 없어진 칸 */

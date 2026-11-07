@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { RuleViolation } from '../../platform';
+import type { SessionRevisionNew, SessionRevisionRow } from '../vault.tables';
 
 /** 민감정보를 지운 자리 하나. 값은 남기지 않고 어느 칸에서 무엇을 지웠는지만 */
 export class Redaction {
@@ -64,11 +65,10 @@ export class SessionNote {
     return note;
   }
 
-  /** 판(session_revisions)의 sections·redactions 열에서 */
-  static restore(
-    sections: Readonly<Record<string, unknown>>,
-    redactions: readonly Readonly<Record<string, unknown>>[] | null,
-  ): SessionNote {
+  /** 판(session_revisions)의 sections·redactions 칸에서 */
+  static restore(revision: Pick<SessionRevisionRow, 'sections' | 'redactions'>): SessionNote {
+    const sections = revision.sections as Readonly<Record<string, unknown>>;
+    const redactions = revision.redactions as readonly Readonly<Record<string, unknown>>[] | null;
     return new SessionNote(
       String(sections.title ?? ''),
       Array.isArray(sections.tags) ? sections.tags.map(String) : [],
@@ -117,6 +117,21 @@ export class SessionNote {
   /** 내용 전체의 해시. 같으면 같은 판이다 (`UNIQUE (session_id, content_hash)`) */
   get hash(): string {
     return SessionNote.sha(JSON.stringify([SessionNote.SCHEMA, this.toJSON()]));
+  }
+
+  /** 판(session_revisions)에 적는 노트의 칸: 본문 md, 칸들, 칸 구성, 해시, 지운 자리(없으면 null) */
+  revision(): Pick<
+    SessionRevisionNew,
+    'body_md' | 'sections' | 'sections_schema' | 'section_hashes' | 'content_hash' | 'redactions'
+  > {
+    return {
+      body_md: this.toMarkdown(),
+      sections: this.toJSON(),
+      sections_schema: SessionNote.SCHEMA,
+      section_hashes: this.sectionHashes(),
+      content_hash: this.hash,
+      redactions: this.redactions.length > 0 ? this.redactions.map((r) => r.toJSON()) : null,
+    };
   }
 
   /** 본문 md: 내용이 있는 칸만 고정 소제목으로. 제목·태그는 보관 파일의 앞부분(frontmatter)에 들어간다 */
