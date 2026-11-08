@@ -66,6 +66,7 @@ export {
 export { SealedSecret, SecretBox } from './base/secret-box';
 export { SecretRotation } from './base/secret-rotation';
 export { type ColumnRules, TableEntity, type TableRow } from './base/table-entity';
+export { type How, type RowOf, Rule, type Where } from './base/table-query';
 export { type EntityStore, TableRepository } from './base/table-repository';
 export { ZipFile } from './base/zip-file';
 export { ZipLimits, ZipReader } from './base/zip-reader';

@@ -28,6 +28,7 @@ import { and, asc, eq, lt, QueryTemplate } from './query-template';
 import { SecretBox } from './secret-box';
 import { SecretRotation } from './secret-rotation';
 import { TableEntity, type TableRow } from './table-entity';
+import { Rule, TableQuery } from './table-query';
 import { TableRepository } from './table-repository';
 import { ZipFile } from './zip-file';
 
@@ -334,6 +335,236 @@ describe('QueryTemplate', () => {
       /DB 이름 그대로/,
     );
     assert.throws(() => QueryTemplate.byId(other, false), /space_id/);
+  });
+});
+
+describe('조건 규칙 (코어의 쿼리 도구)', () => {
+  // 트랜잭션마다 임시 표를 만든다 (연결 하나에만 보이고, 롤백하면 사라진다)
+  const bytes = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
+  const notes = pgTable('rule_notes', {
+    id: uuid('id').notNull(),
+    space_id: uuid('space_id').notNull(),
+    name: text('name').notNull(),
+    status: text('status').notNull(),
+    parent_id: uuid('parent_id'),
+    tokens: bigint('tokens', { mode: 'number' }),
+    tags: text('tags').array().notNull(),
+    meta: jsonb('meta'),
+    secret: bytes('secret'),
+    done: boolean('done').notNull(),
+    version: integer('version').notNull(),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+  });
+  type NoteRow = typeof notes.$inferSelect;
+  const space = '0192d2a0-0000-7000-8000-0000000000bb';
+  const ids = [
+    '0192d2a0-0000-7000-8000-000000000011',
+    '0192d2a0-0000-7000-8000-000000000012',
+    '0192d2a0-0000-7000-8000-000000000013',
+  ] as const;
+
+  class NoteEntity extends TableEntity<NoteRow> {
+    static restore(row: NoteRow): NoteEntity {
+      return new NoteEntity(row);
+    }
+    get name(): string {
+      return this.row.name;
+    }
+  }
+
+  /** 기반 클래스의 조건 규칙을 밖에서 부르려고 연다 */
+  class Notes extends TableRepository<NoteRow, NoteEntity> {
+    protected readonly table = notes;
+    protected readonly noun = '메모';
+    protected toEntity(row: NoteRow): NoteEntity {
+      return NoteEntity.restore(row);
+    }
+    read = this.rows.bind(this);
+    first = this.row.bind(this);
+    has = this.exists.bind(this);
+    put = this.insertRows.bind(this);
+    change = this.updateRows.bind(this);
+    drop = this.deleteRows.bind(this);
+    entities = this.find.bind(this);
+    page = this.pageOf.bind(this);
+  }
+
+  /** 임시 표와 행 셋을 둔 트랜잭션 안에서 일하고, 끝나면 되돌린다 */
+  async function inScratch(work: (repo: Notes, tx: Notes['sql']) => Promise<void>) {
+    const done = new Error('되돌리기');
+    await assert.rejects(
+      db.transaction(async (tx) => {
+        await tx`
+          CREATE TEMP TABLE rule_notes (id uuid, space_id uuid, name text, status text, parent_id uuid,
+            tokens bigint, tags text[], meta jsonb, secret bytea, done boolean, version int,
+            created_at timestamptz)`;
+        const repo = new Notes(tx);
+        await repo.put(
+          notes,
+          ids.map((id, n) => ({
+            id,
+            space_id: space,
+            name: `메모${n}`,
+            status: n === 1 ? 'done' : 'open',
+            parent_id: n === 0 ? null : ids[0],
+            tokens: 9_007_199_254_740 + n,
+            tags: ['가', '나'],
+            meta: { n },
+            secret: Buffer.from([n, 255]),
+            done: n === 1,
+            version: 1,
+            created_at: new Date(Date.UTC(2026, 10, 8, n)),
+          })),
+        );
+        await work(repo, tx);
+        throw done;
+      }),
+      (error) => error === done,
+    );
+  }
+  const names = (rows: readonly { name: string }[]) => rows.map((r) => r.name);
+
+  test('값은 =, 목록은 = ANY, null은 IS NULL, Rule.set은 IS NOT NULL', async () => {
+    await inScratch(async (repo) => {
+      assert.deepEqual(names(await repo.read(notes, { status: 'open' }, { order: ['name'] })), [
+        '메모0',
+        '메모2',
+      ]);
+      assert.deepEqual(names(await repo.read(notes, { status: ['done', 'gone'] })), ['메모1']);
+      assert.deepEqual(names(await repo.read(notes, { parent_id: null })), ['메모0']);
+      assert.deepEqual(
+        names(await repo.read(notes, { parent_id: Rule.set }, { order: ['name desc'] })),
+        ['메모2', '메모1'],
+      );
+    });
+  });
+
+  test('비교 · 정렬 · 개수 · 고를 칸', async () => {
+    await inScratch(async (repo) => {
+      const at = new Date(Date.UTC(2026, 10, 8, 1));
+      assert.deepEqual(names(await repo.read(notes, { created_at: Rule.before(at) })), ['메모0']);
+      assert.deepEqual(
+        names(await repo.read(notes, { created_at: Rule.atMost(at) }, { order: ['created_at'] })),
+        ['메모0', '메모1'],
+      );
+      assert.deepEqual(names(await repo.read(notes, { created_at: Rule.after(at) })), ['메모2']);
+      assert.deepEqual(
+        names(
+          await repo.read(
+            notes,
+            { name: Rule.like('메모%'), status: Rule.not('done') },
+            { order: ['id desc'], limit: 1 },
+          ),
+        ),
+        ['메모2'],
+      );
+      assert.deepEqual(
+        Object.keys((await repo.first(notes, { id: ids[0] }, { columns: ['name'] })) ?? {}),
+        ['name'],
+      );
+      assert.equal(await repo.has(notes, { space_id: space, done: true }), true);
+      assert.equal(await repo.has(notes, { space_id: space, name: '없음' }), false);
+    });
+  });
+
+  test('Rule.maybe: 값이 없으면 조건을 빼고, 비교를 주면 그 비교로', async () => {
+    await inScratch(async (repo) => {
+      const list = async (status: string | null, before: string | null) =>
+        names(
+          await repo.read(
+            notes,
+            { space_id: space, status: Rule.maybe(status), id: Rule.maybe(before, Rule.before) },
+            { order: ['id'] },
+          ),
+        );
+      assert.deepEqual(await list(null, null), ['메모0', '메모1', '메모2']);
+      assert.deepEqual(await list('open', null), ['메모0', '메모2']);
+      assert.deepEqual(await list('open', ids[2]), ['메모0']);
+    });
+  });
+
+  test('빠진 값(undefined)과 표에 없는 칸은 오류, 조건 없는 고치기 · 지우기도 막는다', async () => {
+    await inScratch(async (repo) => {
+      await assert.rejects(
+        repo.read(notes, { space_id: undefined }),
+        /조건 값이 없어요: rule_notes.space_id/,
+      );
+      await assert.rejects(repo.read(notes, { nope: 1 } as never), /없는 칸이에요: nope/);
+      await assert.rejects(repo.change(notes, { name: 'x' }, {}), /조건 없이/);
+      await assert.rejects(repo.drop(notes, { status: Rule.maybe<string>(null) }), /조건 없이/);
+      await assert.rejects(
+        repo.change(notes, { parent_id: Rule.set } as never, { id: ids[0] }),
+        /Rule.now만/,
+      );
+    });
+  });
+
+  test('행 모양은 지금 sql과 같다 (Date · bigint → number · 배열 · jsonb · bytea · 불리언)', async () => {
+    await inScratch(async (repo, tx) => {
+      const made = await repo.first(notes, { id: ids[1] });
+      const [raw] = await tx`SELECT * FROM rule_notes WHERE id = ${ids[1]}`;
+      assert.deepEqual(made, { ...raw });
+      assert.ok(made?.created_at instanceof Date);
+      assert.equal(made?.tokens, 9_007_199_254_741);
+      assert.deepEqual(made?.meta, { n: 1 });
+      assert.ok(Buffer.isBuffer(made?.secret));
+      const [kind] =
+        await tx`SELECT jsonb_typeof(meta) AS kind FROM rule_notes WHERE id = ${ids[1]}`;
+      assert.equal(kind?.kind, 'object', 'jsonb는 두 번 인코딩되지 않는다');
+    });
+  });
+
+  test('쓰기: 고친 수 · 지운 수, Rule.now는 DB 시각, jsonb는 객체로', async () => {
+    await inScratch(async (repo, tx) => {
+      assert.equal(
+        await repo.change(
+          notes,
+          { name: '새이름', meta: { a: 1 }, created_at: Rule.now },
+          { status: 'open' },
+        ),
+        2,
+      );
+      const [row] = await tx`
+        SELECT jsonb_typeof(meta) AS kind, created_at = now() AS stamped FROM rule_notes WHERE id = ${ids[0]}`;
+      assert.deepEqual({ ...row }, { kind: 'object', stamped: true });
+      assert.equal(await repo.drop(notes, { status: 'done' }), 1);
+      assert.deepEqual(names(await repo.read(notes, {}, { order: ['id'] })), ['새이름', '새이름']);
+    });
+  });
+
+  test('부른 연결(트랜잭션) 안에서 돌고, 같은 모양은 SQL을 한 번만 만든다', async () => {
+    await inScratch(async (repo) => {
+      const shapes = (TableQuery.of(notes) as unknown as { shapes: Map<string, string> }).shapes;
+      const before = shapes.size;
+      await repo.read(notes, { id: ids[0], space_id: space });
+      await repo.read(notes, { id: ids[1], space_id: space });
+      assert.equal(shapes.size, before + 1);
+      assert.equal(
+        (await repo.lock(space, ids[2])).name,
+        '메모2',
+        'TableRepository.lock도 조건 규칙',
+      );
+      assert.deepEqual(
+        names(await repo.entities({ space_id: space }, { order: ['id desc'], lock: true })),
+        ['메모2', '메모1', '메모0'],
+      );
+      await assert.rejects(
+        repo.read(notes, { id: ids[0] }).then(() => db.sql`SELECT * FROM rule_notes`),
+        /rule_notes/,
+      );
+    });
+  });
+
+  test('pageOf: 하나 더 읽은 행을 한 쪽으로 자르고, 넘치면 마지막 행으로 다음 커서', () => {
+    const repo = new Notes(db.sql);
+    assert.deepEqual(
+      repo.page([1, 2, 3], 2, (last) => `c${last}`),
+      { items: [1, 2], next: 'c2' },
+    );
+    assert.deepEqual(
+      repo.page([1, 2], 2, (last) => `c${last}`),
+      { items: [1, 2], next: null },
+    );
   });
 });
 

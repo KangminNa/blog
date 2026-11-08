@@ -59,7 +59,8 @@ export class AiLoginRepository extends TableRepository<AiLoginRow, AiLogin> {
     return AiLogin.restore(row);
   }
 
-  async find(spaceId: string, tool: string): Promise<AiLogin | null> {
+  /** 공간의 이 도구 로그인. 없으면 null */
+  async byTool(spaceId: string, tool: string): Promise<AiLogin | null> {
     return this.maybeOne(await AiLoginRepository.BY_TOOL.rows(this.sql, { space: spaceId, tool }));
   }
 

@@ -81,7 +81,7 @@ export class ApprovalService extends BaseService {
     if (!(actor instanceof SystemActor)) throw new Forbidden('system');
     const now = new Date();
     await this.transaction(async (tx) => {
-      const seen = await new ApprovalRepository(tx).find(spaceId, req.approvalId);
+      const seen = await new ApprovalRepository(tx).findIn(spaceId, req.approvalId);
       if (!seen?.approved || seen.taskId === null) return;
       const tasks = new TaskRepository(tx);
       const task = await tasks.lock(spaceId, seen.taskId);

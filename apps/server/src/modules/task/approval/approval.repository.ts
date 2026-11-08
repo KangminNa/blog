@@ -27,7 +27,7 @@ export class ApprovalRepository extends TableRepository<ApprovalRow, Approval> {
   }
 
   /** 있을 수도 없을 수도 있을 때 (다른 모듈의 이벤트가 가리킨 결재) */
-  async find(spaceId: string, id: string): Promise<Approval | null> {
+  async findIn(spaceId: string, id: string): Promise<Approval | null> {
     return this.maybeOne(await this.select(spaceId, id, false));
   }
 

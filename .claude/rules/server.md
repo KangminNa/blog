@@ -15,10 +15,10 @@ paths:
 | `*.input.ts` | `static from(raw)`로 모양 검사(`InvalidRequest`). 표의 칸은 `COLUMNS` 한 줄씩, `changes`로 넘긴다 | 의미 검사(도메인의 일), DB |
 | `*.api.test.ts` | 보는 사람별 결과: 방문자 · write 기기(`ApiClient.writeDevice`) · 주인 | 손으로 curl 확인 |
 | `*.service.ts` | 첫 줄 권한 확인(관리 일은 `assertOwner()`, `assertCan(WRITE)`는 write 기기도 통과), 트랜잭션 하나, 불러오기 → 엔티티 메서드 → 저장, 같은 모듈의 Query로 읽기. 하나를 고치면 `EntityService`의 `change` | 판단 로직, 칼럼을 낱개로 넘기기, 다른 Service 호출, 트랜잭션 안 외부 호출, 다른 데이터 묶음의 Repository 사용(예외: vault의 `ChangeService`) |
-| `*.query.ts` | Actor로 공개 범위를 거른 읽기, 행을 View에 넘기기. 표 하나의 읽기는 `static readonly` `QueryTemplate`, 표를 잇거나 모으면 `sql` | 쓰기, 엔티티 반환, Actor 없는 메서드, 행 손 변환, 부를 때마다 쿼리 만들기, `drizzle-orm` 직접 import |
+| `*.query.ts` | Actor로 공개 범위를 거른 읽기, 행을 View에 넘기기. 표 하나의 읽기는 코어의 조건 규칙(`this.rows` · `row` · `exists`), 표를 잇거나 모으는 그 기능만의 읽기는 `this.sql` | 쓰기, 엔티티 반환, Actor 없는 메서드, 행 손 변환, `drizzle-orm` 직접 import |
 | Entity (`<이름>.ts`) | `TableEntity` 상속. 칸의 규칙은 `RULES`, 상태는 동사형 메서드, `static open` / `static restore(row)`, `view()` | 필드로 칸 복사, 응답·저장을 위한 `get`, import `@nestjs/*`, `postgres`, `Date.now()` 직접 호출 |
 | `*.policy.ts` | 입력 → 판단 결과 | 상태 보관, DB |
-| `*.repository.ts` | `TableRepository` 상속: 표 이름, `toEntity` 한 줄, 그 표만의 SQL | 칼럼을 나열한 INSERT·UPDATE, 판단, View |
+| `*.repository.ts` | `TableRepository` 상속: 표(`<모듈>.schema.ts`), `toEntity` 한 줄. 표 하나의 읽기 · 쓰기는 조건 규칙(`find` · `findOne` · `rows` · `insertRows` · `updateRows` · `deleteRows`), 그 기능만의 쿼리는 `this.sql` | 칼럼을 나열한 INSERT·UPDATE, 판단, View |
 | `*.gateway.ts` | 외부 서비스 호출 | 판단 |
 | `*.handler.ts` · `*.job.ts` · `*.action.ts` | 이벤트 하나 받기 / 간격마다 / 주인이 누름 → Service·Query·Gateway 호출. 두 번 불려도 결과가 같게 | 판단, 트랜잭션 직접 열기 |
 

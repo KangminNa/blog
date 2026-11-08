@@ -91,7 +91,7 @@ export class AiLoginQuery extends BaseQuery {
   async token(actor: Actor, req: AiLoginInput): Promise<AiTokenView> {
     actor.assertCan(Actor.RUN);
     if (actor.kind !== 'device' || !actor.spaceId) throw new Forbidden(Actor.RUN);
-    const login = await new AiLoginRepository(this.sql).find(actor.spaceId, req.tool);
+    const login = await new AiLoginRepository(this.sql).byTool(actor.spaceId, req.tool);
     if (!login)
       throw new RuleViolation('AI 토큰을 아직 넣지 않았어요. 콘솔의 AI 메뉴에서 넣어 주세요');
     return login.tokenView(new Date(), this.box);

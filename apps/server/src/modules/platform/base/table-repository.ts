@@ -1,7 +1,8 @@
+import type { PgTable } from 'drizzle-orm/pg-core';
 import { BaseRepository } from './base-repository';
 import type { Row } from './database';
-import { type IdRead, type PgTable, QueryTemplate } from './query-template';
 import type { TableEntity, TableRow } from './table-entity';
+import { type How, TableQuery, type Where } from './table-query';
 
 /** Service가 아는 저장소의 모양: 잠그고 저장한다 */
 export interface EntityStore<E> {
@@ -10,17 +11,12 @@ export interface EntityStore<E> {
 }
 
 // 표 하나가 엔티티 하나인 저장소. 불러오기, 잠그기, 저장은 어느 표나 같아서 여기 한 곳에 있다.
-// 하위 클래스는 표(<모듈>.schema.ts)와 행 → 엔티티 한 줄, 그 표만의 읽기만 가진다. 칼럼을 몰라도 된다.
-// 저장소는 트랜잭션마다 새로 만들므로, 표마다의 템플릿과 이름은 표를 열쇠로 한 번만 만들어 모든 저장소가 함께 쓴다.
+// 하위 클래스는 표(<모듈>.schema.ts)와 행 → 엔티티 한 줄, 그 기능만의 찾기만 가진다.
+// 찾기는 코어의 조건 규칙(find · findOne)으로 쓰고, 표를 잇거나 모으면 SQL로 쓴다.
 export abstract class TableRepository<R extends TableRow, E extends TableEntity<R>>
   extends BaseRepository<E>
   implements EntityStore<E>
 {
-  /** 표 → 공간과 id로 한 줄 읽기 · 잠그기 템플릿 */
-  private static readonly reads = new WeakMap<PgTable, { load: IdRead; lock: IdRead }>();
-  /** 표 → 스키마까지 적은 이름 */
-  private static readonly names = new WeakMap<PgTable, string>();
-
   /** 이 저장소의 표 (<모듈>.schema.ts) */
   protected abstract readonly table: PgTable;
   /** 찾지 못했을 때 알리는 이름 */
@@ -49,20 +45,24 @@ export abstract class TableRepository<R extends TableRow, E extends TableEntity<
     await this.publishEvents(entity);
   }
 
+  /** 조건에 맞는 엔티티들 (예: this.find({ space_id: s }, { order: ['id'], lock: true })) */
+  protected async find(where: Where<R>, how?: How<R>): Promise<E[]> {
+    const rows = await TableQuery.of(this.table).rows(this.sql, where, how as How<TableRow>);
+    return rows.map((row) => this.toEntity(row));
+  }
+
+  /** 조건에 맞는 첫 엔티티. 없으면 null */
+  protected async findOne(where: Where<R>, how?: How<R>): Promise<E | null> {
+    const [found] = await this.find(where, how);
+    return found ?? null;
+  }
+
   /**
-   * 한 줄을 공간과 id로 읽는다 (표마다 미리 만든 템플릿). id · space_id 칸이 없는 표나
+   * 한 줄을 공간과 id로 읽는다 (조건 규칙). id · space_id 칸이 없는 표나
    * 다른 표를 함께 읽는 엔티티는 SQL로 바꾼다
    */
   protected select(spaceId: string, id: string, lock: boolean): Promise<readonly Row[]> {
-    let reads = TableRepository.reads.get(this.table);
-    if (!reads) {
-      reads = {
-        load: QueryTemplate.byId(this.table, false),
-        lock: QueryTemplate.byId(this.table, true),
-      };
-      TableRepository.reads.set(this.table, reads);
-    }
-    return (lock ? reads.lock : reads.load).rows(this.sql, { space: spaceId, id });
+    return TableQuery.of(this.table).rows(this.sql, { id, space_id: spaceId }, { lock });
   }
 
   /** 함께 저장할 딸린 표 (판, 기록). 없으면 하지 않는다 */
@@ -70,12 +70,7 @@ export abstract class TableRepository<R extends TableRow, E extends TableEntity<
 
   /** 스키마까지 적은 표 이름 (예: task.goals). 저장 SQL에 쓴다 */
   protected get tableName(): string {
-    let name = TableRepository.names.get(this.table);
-    if (!name) {
-      name = QueryTemplate.nameOf(this.table);
-      TableRepository.names.set(this.table, name);
-    }
-    return name;
+    return TableQuery.of(this.table).name;
   }
 
   private async insert(entity: E): Promise<void> {

@@ -10,16 +10,16 @@ export class BasketQuery extends BaseQuery {
   /** 콘솔의 소재 메뉴. 아직 상자가 없으면 빈 목록이다 (읽기는 상자를 만들지 않는다) */
   async list(actor: Actor): Promise<BasketView> {
     actor.assertOwner();
-    return new BasketView((await this.rows(actor)).map((r) => new BasketItemView(r)));
+    return new BasketView((await this.items(actor)).map((r) => new BasketItemView(r)));
   }
 
   /** AI 도구의 basket_get */
   async forWriting(actor: Actor): Promise<ToolBasketView> {
     actor.assertCan(Actor.WRITE);
-    return new ToolBasketView(await this.rows(actor));
+    return new ToolBasketView(await this.items(actor));
   }
 
-  private rows(actor: Actor): Promise<readonly BasketItemRow[]> {
+  private items(actor: Actor): Promise<readonly BasketItemRow[]> {
     return this.sql<BasketItemRow[]>`
       SELECT i.* FROM work.basket_items i JOIN work.baskets b ON b.id = i.basket_id
       WHERE b.space_id = ${actor.spaceId} AND b.archived_at IS NULL
