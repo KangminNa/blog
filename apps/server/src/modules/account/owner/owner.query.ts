@@ -1,5 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { type Actor, BaseQuery, OwnerActor, Unauthenticated } from '../../platform';
+import {
+  type Actor,
+  BaseQuery,
+  eq,
+  OwnerActor,
+  QueryTemplate,
+  Unauthenticated,
+} from '../../platform';
+import { users } from '../account.schema';
 import type { SpaceMemberRow, UserRow } from '../account.tables';
 import { WebSession } from './owner';
 import { OwnerView } from './owner.view';
@@ -7,6 +15,14 @@ import { OwnerView } from './owner.view';
 // 주인 읽기: 로그인 쿠키 → 요청자(Guard), 로그인한 사람 정보.
 @Injectable()
 export class OwnerQuery extends BaseQuery {
+  /** 계정의 아이디 */
+  private static readonly LOGIN = QueryTemplate.of<{ id: string }, Pick<UserRow, 'login'>>((q) =>
+    q
+      .select({ login: users.login })
+      .from(users)
+      .where(eq(users.id, QueryTemplate.value('id'))),
+  );
+
   /** Guard가 부른다: 끝나지 않은 로그인이면 주인, 아니면 null */
   async actorFor(token: string): Promise<OwnerActor | null> {
     const [row] = await this.sql<SpaceMemberRow[]>`
@@ -18,8 +34,7 @@ export class OwnerQuery extends BaseQuery {
 
   async me(actor: Actor): Promise<OwnerView> {
     if (actor.kind !== 'owner' || !actor.id) throw new Unauthenticated('로그인해 주세요');
-    const [row] = await this.sql<Pick<UserRow, 'login'>[]>`
-      SELECT login FROM account.users WHERE id = ${actor.id}`;
+    const row = await OwnerQuery.LOGIN.one(this.sql, { id: actor.id });
     if (!row) throw new Unauthenticated('로그인해 주세요');
     return new OwnerView(row);
   }

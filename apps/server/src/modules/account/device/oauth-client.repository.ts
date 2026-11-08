@@ -1,4 +1,5 @@
-import { BaseRepository } from '../../platform';
+import { BaseRepository, eq, QueryTemplate } from '../../platform';
+import { oauthClients, oauthCodes } from '../account.schema';
 import type { OauthClientRow, OauthCodeRow } from '../account.tables';
 import { AuthorizationCode } from './authorization-code';
 import { OAuthClient } from './oauth-client';
@@ -6,13 +7,29 @@ import { OAuthClient } from './oauth-client';
 // account.oauth_clients ↔ OAuthClient, account.oauth_codes ↔ AuthorizationCode.
 // 둘 다 기기를 만들기 전 단계의 데이터라 한 곳에서 다룬다. 열쇠가 id가 아니라 TableRepository를 쓰지 않는다.
 export class OAuthClientRepository extends BaseRepository<OAuthClient> {
+  /** client_id로 등록 한 줄 */
+  private static readonly BY_CLIENT = QueryTemplate.of<{ client: string }, OauthClientRow>((q) =>
+    q
+      .select()
+      .from(oauthClients)
+      .where(eq(oauthClients.client_id, QueryTemplate.value('client'))),
+  );
+  /** 해시로 승인 코드 한 줄을 잠근다 */
+  private static readonly LOCK_CODE = QueryTemplate.of<{ hash: string }, OauthCodeRow>((q) =>
+    q
+      .select()
+      .from(oauthCodes)
+      .where(eq(oauthCodes.code_hash, QueryTemplate.value('hash')))
+      .for('update'),
+  );
+
   protected toEntity(row: OauthClientRow): OAuthClient {
     return OAuthClient.restore(row);
   }
 
   async find(clientId: string): Promise<OAuthClient | null> {
     return this.maybeOne(
-      await this.sql`SELECT * FROM account.oauth_clients WHERE client_id = ${clientId}`,
+      await OAuthClientRepository.BY_CLIENT.rows(this.sql, { client: clientId }),
     );
   }
 
@@ -31,8 +48,7 @@ export class OAuthClientRepository extends BaseRepository<OAuthClient> {
 
   /** 승인 코드를 잠그고 읽는다 (한 번만 쓰이게) */
   async lockCode(codeHash: string): Promise<AuthorizationCode | null> {
-    const [row] = await this.sql<OauthCodeRow[]>`
-      SELECT * FROM account.oauth_codes WHERE code_hash = ${codeHash} FOR UPDATE`;
+    const row = await OAuthClientRepository.LOCK_CODE.one(this.sql, { hash: codeHash });
     return row ? AuthorizationCode.restore(row) : null;
   }
 

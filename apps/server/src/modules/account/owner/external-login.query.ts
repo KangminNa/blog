@@ -2,14 +2,18 @@ import { randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import {
   Actor,
+  asc,
   BaseQuery,
   Database,
+  eq,
   type LoginMethod,
   NotFound,
   PluginRegistry,
+  QueryTemplate,
   RuleViolation,
   SecretBox,
 } from '../../platform';
+import { loginLinks } from '../account.schema';
 import type { LoginLinkRow } from '../account.tables';
 import { SpaceQuery } from '../space/space.query';
 import { ExternalCallbackInput, ExternalStartInput } from './external-login.input';
@@ -24,6 +28,15 @@ import {
 // 외부 로그인 읽기: 켜진 로그인 방법(로그인 플러그인), 주인이 연결한 계정, 시작 주소 만들기.
 @Injectable()
 export class ExternalLoginQuery extends BaseQuery {
+  /** 계정에 연결한 외부 로그인, 방법 이름 순서 */
+  private static readonly LINKS = QueryTemplate.of<{ user: string | null }, LoginLinkRow>((q) =>
+    q
+      .select()
+      .from(loginLinks)
+      .where(eq(loginLinks.user_id, QueryTemplate.value('user')))
+      .orderBy(asc(loginLinks.method)),
+  );
+
   constructor(
     db: Database,
     private readonly registry: PluginRegistry,
@@ -41,8 +54,7 @@ export class ExternalLoginQuery extends BaseQuery {
 
   async links(actor: Actor): Promise<LoginLinkListView> {
     actor.assertOwner();
-    const rows = await this.sql<LoginLinkRow[]>`
-      SELECT * FROM account.login_links WHERE user_id = ${actor.id} ORDER BY method`;
+    const rows = await ExternalLoginQuery.LINKS.rows(this.sql, { user: actor.id });
     return new LoginLinkListView(rows.map((r) => new LoginLinkView(r)));
   }
 
