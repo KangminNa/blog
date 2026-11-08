@@ -5,7 +5,7 @@
 //
 // 파일만 만든다. 모듈 등록·도구 목록·메뉴 한 줄과 마이그레이션은 출력해서 사람이 넣는다
 // (TS 파일을 스크립트로 고치면 깨지기 쉽고, 빠뜨리면 생성된 API 테스트가 404로 알려 준다).
-// 표 인터페이스(<모듈>.tables.ts)에는 출력한 마이그레이션의 모양을 끝에 붙여 둔다. 그래서 만든 직후 pnpm check는
+// 표 인터페이스(<모듈>.tables.ts)와 Drizzle 표(<모듈>.schema.ts)에는 출력한 마이그레이션의 모양을 끝에 붙여 둔다. 그래서 만든 직후 pnpm check는
 // 통과하고, 마이그레이션 뒤 pnpm db:rows가 그 파일을 DB에서 다시 만든다 (그 전에는 pnpm db:check가 알려 준다).
 // pnpm test는 등록·마이그레이션 전이라 실패한다 (빨강에서 시작).
 import { execFileSync } from 'node:child_process';
@@ -116,9 +116,17 @@ if (!existsSync(join(root, tablesFile)))
   fail(`표 인터페이스 파일이 없어요: ${tablesFile} (pnpm db:rows)`);
 if (read(tablesFile).includes(`export interface ${Table}Row {`))
   fail(`이미 있는 표예요: ${schema}.${table} (${Table}Row). --plural로 다른 표 이름을 주세요`);
+/** Drizzle 표 이름 (<모듈>.schema.ts, db:rows와 같은 규칙: basket_items → basketItems) */
+const tables = table.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+const schemaFile = `apps/server/src/modules/${module}/${module}.schema.ts`;
+if (!existsSync(join(root, schemaFile)))
+  fail(`Drizzle 표 파일이 없어요: ${schemaFile} (pnpm db:rows)`);
+if (read(schemaFile).includes(`export const ${tables} =`))
+  fail(`이미 있는 표예요: ${schema}.${table} (${tables}). --plural로 다른 표 이름을 주세요`);
 const vars = {
   Name,
   Table,
+  tables,
   module,
   bundle,
   plural,
@@ -163,7 +171,7 @@ const steps = [
    );
    -- migrate:down
    DROP TABLE ${schema}.${table};
-   그다음 pnpm db:migrate, pnpm db:rows (${tablesFile} 끝에 붙여 둔 ${Table}Row를 DB에서 다시 만든다)`,
+   그다음 pnpm db:migrate, pnpm db:rows (${tablesFile} · ${schemaFile} 끝에 붙여 둔 표를 DB에서 다시 만든다)`,
   `등록: ${moduleFile}
    import { ${Name}Controller } from '${importOf('.api')}';
    import { ${Name}Query } from '${importOf('.query')}';
@@ -192,10 +200,8 @@ const rendered = [...server, ...web].map(([from, to]) => [
   to,
   render(readFileSync(join(templates, from), 'utf8'), vars, opts),
 ]);
-const tableBlock = render(
-  readFileSync(join(templates, 'server/tables.ts.tmpl'), 'utf8'),
-  vars,
-  opts,
+const [tableBlock, schemaBlock] = ['tables', 'schema'].map((kind) =>
+  render(readFileSync(join(templates, `server/${kind}.ts.tmpl`), 'utf8'), vars, opts),
 );
 const written = [];
 for (const [to, text] of rendered) {
@@ -205,6 +211,7 @@ for (const [to, text] of rendered) {
 }
 // 자동 생성 파일이라 포맷하지 않는다 (db:rows가 만드는 모양 그대로)
 appendFileSync(join(root, tablesFile), `\n${tableBlock}`);
+appendFileSync(join(root, schemaFile), schemaBlock);
 
 // 자리 값의 길이에 따라 줄 바꿈이 달라지므로 저장소의 포맷 규칙으로 맞춘다
 const biome = join(root, 'node_modules/.bin/biome');
@@ -212,6 +219,6 @@ if (existsSync(biome))
   execFileSync(biome, ['check', '--write', ...written], { cwd: root, stdio: 'ignore' });
 
 console.log(
-  `만든 파일:\n${written.map((f) => `  ${relative(root, join(root, f))}`).join('\n')}\n붙인 곳:\n  ${tablesFile} (${Table}Row · ${Table}New)\n`,
+  `만든 파일:\n${written.map((f) => `  ${relative(root, join(root, f))}`).join('\n')}\n붙인 곳:\n  ${tablesFile} (${Table}Row · ${Table}New)\n  ${schemaFile} (${tables})\n`,
 );
 console.log(`다음 할 일:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`);

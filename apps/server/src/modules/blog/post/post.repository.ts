@@ -1,4 +1,5 @@
 import { Database, type DomainEvent, Outbox, RuleViolation, TableRepository } from '../../platform';
+import { posts } from '../blog.schema';
 import type { PostRow } from '../blog.tables';
 import { type LoadedPost, Post } from './post';
 
@@ -6,7 +7,7 @@ import { type LoadedPost, Post } from './post';
 // 여기에는 지금 판과 함께 읽는 SQL, 주소 찾기, 딸린 표(판·참고 wiki) 저장이 있다.
 // lock은 휴지통 글도 잠근다. load는 같은 요청이 다시 왔을 때 처음 만든 글을 돌려주려고 잠그지 않고 읽는다.
 export class PostRepository extends TableRepository<PostRow, Post> {
-  protected readonly table = 'blog.posts';
+  protected readonly table = posts;
   protected readonly noun = '글';
 
   protected toEntity(row: LoadedPost): Post {

@@ -1,4 +1,5 @@
 import { TableRepository } from '../../platform';
+import { agents } from '../task.schema';
 import type { AgentRow } from '../task.tables';
 import { PlanUsage } from '../usage/plan-usage';
 import { PlanUsageRepository } from '../usage/plan-usage.repository';
@@ -6,7 +7,7 @@ import { Agent, AgentUsage } from './agent';
 
 // task.agents ↔ Agent. 불러오기와 저장은 기반이 하고, 여기에는 조직도와 사용량 SQL만 있다.
 export class AgentRepository extends TableRepository<AgentRow, Agent> {
-  protected readonly table = 'task.agents';
+  protected readonly table = agents;
   protected readonly noun = '에이전트';
 
   protected toEntity(row: AgentRow): Agent {

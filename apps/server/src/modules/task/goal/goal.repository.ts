@@ -1,10 +1,11 @@
 import { TableRepository } from '../../platform';
+import { goals } from '../task.schema';
 import type { GoalRow } from '../task.tables';
 import { Goal } from './goal';
 
 // task.goals ↔ Goal. 불러오기와 저장은 기반이 하고, 여기에는 나무를 따라가는 SQL만 있다.
 export class GoalRepository extends TableRepository<GoalRow, Goal> {
-  protected readonly table = 'task.goals';
+  protected readonly table = goals;
   protected readonly noun = '목표';
 
   protected toEntity(row: GoalRow): Goal {

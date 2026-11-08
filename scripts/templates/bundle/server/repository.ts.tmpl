@@ -1,11 +1,12 @@
 import { TableRepository } from '../../platform';
+import { __tables__ } from '../__module__.schema';
 import type { __Table__Row } from '../__module__.tables';
 import { __Name__ } from './__bundle__';
 
 // __schema__.__table__ ↔ __Name__. 불러오기 · 잠그기 · 저장(바뀐 칸만, version으로 늦은 쓰기를 막는다)은 기반이 한다.
 // 여기에는 이 표만의 SQL을 더한다.
 export class __Name__Repository extends TableRepository<__Table__Row, __Name__> {
-  protected readonly table = '__schema__.__table__';
+  protected readonly table = __tables__;
   protected readonly noun = '__label__';
 
   protected toEntity(row: __Table__Row): __Name__ {

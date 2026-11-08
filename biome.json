@@ -18,7 +18,8 @@
       "!apps/web/app/_plugins/installed",
       "!plugins/office/web/pixel",
       "!**/slots.generated.ts",
-      "!**/*.tables.ts"
+      "!**/*.tables.ts",
+      "!**/*.schema.ts"
     ]
   },
   "formatter": {

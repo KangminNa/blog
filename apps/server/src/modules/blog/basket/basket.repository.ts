@@ -1,4 +1,5 @@
 import { TableRepository } from '../../platform';
+import { basketItems } from '../blog.schema';
 import type { BasketItemRow, BasketRow } from '../blog.tables';
 import { BasketItem } from './basket';
 
@@ -6,7 +7,7 @@ import { BasketItem } from './basket';
 // 불러오기와 저장은 기반이 하고, 여기에는 상자를 찾고 소재를 지우는 SQL만 있다.
 export class BasketRepository extends TableRepository<BasketItemRow, BasketItem> {
   private static readonly DEFAULT_NAME = '소재';
-  protected readonly table = 'work.basket_items';
+  protected readonly table = basketItems;
   protected readonly noun = '소재';
 
   protected toEntity(row: BasketItemRow): BasketItem {

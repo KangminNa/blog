@@ -1,10 +1,11 @@
 import { Conflict } from '../../platform';
 import { GraphNodeRepository } from '../change/change-target.repository';
+import { categories } from '../vault.schema';
 import { Category, type LoadedCategory } from './category';
 
 // vault.nodes(카테고리) + categories ↔ Category. 휴지통은 nodes.deleted_at.
 export class CategoryRepository extends GraphNodeRepository<LoadedCategory, Category> {
-  protected readonly table = 'vault.categories';
+  protected readonly table = categories;
   protected readonly noun = '카테고리';
   protected readonly kind = 'category';
   protected readonly slugKey = 'categories_space_id_slug_key';

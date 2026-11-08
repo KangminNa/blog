@@ -22,14 +22,14 @@ export abstract class NodeRepository<
     const node = { id, space_id: entity.spaceId, kind: this.kind };
     await this.sql`INSERT INTO vault.nodes ${this.sql(node as never)}`;
     const [row] = await this.sql<R[]>`
-      INSERT INTO ${this.sql(this.table)} ${this.sql(columns as never)} RETURNING *`;
+      INSERT INTO ${this.sql(this.tableName)} ${this.sql(columns as never)} RETURNING *`;
     entity.saved(row as R);
   }
 
   private async updateNode(entity: E): Promise<void> {
     const columns = { ...entity.unsaved, version: entity.version + 1 };
     const rows = await this.sql<R[]>`
-      UPDATE ${this.sql(this.table)} SET ${this.sql(columns as never)}
+      UPDATE ${this.sql(this.tableName)} SET ${this.sql(columns as never)}
       WHERE node_id = ${entity.id} AND version = ${entity.version} RETURNING *`;
     this.expectUpdated(rows.length, entity);
     entity.saved(rows[0] as R);
@@ -66,7 +66,7 @@ export abstract class GraphNodeRepository<
   /** 이 주소이거나 "이 주소-숫자"인 점의 주소들 (휴지통 포함). 주소에는 %·_가 없다 (SlugPolicy) */
   private async takenSlugs(spaceId: string, base: string): Promise<ReadonlySet<string>> {
     const rows = await this.sql<Pick<GraphNodeRow, 'slug'>[]>`
-      SELECT slug FROM ${this.sql(this.table)}
+      SELECT slug FROM ${this.sql(this.tableName)}
       WHERE space_id = ${spaceId} AND (slug = ${base} OR slug LIKE ${`${base}-%`})`;
     return new Set(rows.map((r) => r.slug));
   }

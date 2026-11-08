@@ -1,0 +1,12 @@
+
+// pnpm new:bundle이 붙였다. 마이그레이션 뒤 pnpm db:rows가 이 파일을 DB에서 다시 만든다
+import * as __tables__Columns from 'drizzle-orm/pg-core';
+
+/** __schema__.__table__ */
+export const __tables__ = __tables__Columns.pgSchema('__schema__').table('__table__', {
+  id: __tables__Columns.uuid('id').notNull(),
+  space_id: __tables__Columns.uuid('space_id').notNull(),
+  name: __tables__Columns.text('name').notNull(),
+  version: __tables__Columns.integer('version').notNull(),
+  created_at: __tables__Columns.timestamp('created_at', { withTimezone: true }).notNull(),
+});

@@ -47,6 +47,21 @@ export { Idempotency } from './base/idempotency';
 export { McpEndpoint } from './base/mcp-endpoint';
 export { ChangeSignal, Outbox } from './base/outbox';
 export { PasswordHasher } from './base/password-hasher';
+export {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  ne,
+  or,
+  QueryTemplate,
+} from './base/query-template';
 export { SealedSecret, SecretBox } from './base/secret-box';
 export { SecretRotation } from './base/secret-rotation';
 export { type ColumnRules, TableEntity, type TableRow } from './base/table-entity';

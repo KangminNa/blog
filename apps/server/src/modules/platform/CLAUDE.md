@@ -16,6 +16,7 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 
 ## 공개 API (`index.ts`)
 - 기반 클래스: `BaseService` · `EntityService` · `BaseQuery` · `BaseRepository` · `TableRepository` · `BaseEntity` · `TableEntity` · `BaseRequest`(+`RequestFields` · `VersionInput`) · `BaseResponse` · `BaseGateway` · `BaseTool`
+- `QueryTemplate`: 미리 만든 읽기 (2026-11-08). 표 하나의 읽기 모양을 `<모듈>.schema.ts`의 표로 만들어 한 번 SQL 글자로 바꿔 두고, 실행은 부를 때 넘긴 연결에서. 조건 · 정렬(`eq` · `and` · `lt` · `desc` …)도 여기서 다시 내보낸다. 모듈은 `drizzle-orm`을 직접 가져오지 않는다
 - `Database`, `Sql`·`Row`(라이브러리 타입 별칭), `Actor`와 `OwnerActor`·`DeviceActor`·`AgentActor`·`ApprovedActor`·`SystemActor`·`VisitorActor`.
   권한은 `assertCan(권한)`(기기·에이전트가 받은 권한), 관리 일은 종류로 묻는다: `assertOwner()`(주인만), `assertOwnerOrSystem()`(주인과 명령줄·일꾼: 플러그인, 서버 키 교체, 복원)
 - 같은 트랜잭션에 들어가는 것: `Outbox`(이벤트, 변경 신호, 일꾼 깨우기), `ChangeSignal`(내용 없는 신호), `Idempotency`(같은 request_id는 한 번만)

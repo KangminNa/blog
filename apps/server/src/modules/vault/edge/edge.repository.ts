@@ -1,10 +1,11 @@
 import { TableRepository } from '../../platform';
+import { edges } from '../vault.schema';
 import type { EdgeKindRow, EdgeRow, NodeRow } from '../vault.tables';
 import { Edge, EdgeKind } from './edge';
 
 // vault.edges ↔ Edge. 지운 선도 행으로 남는다. 불러오기·잠그기·저장은 기반이 하고, 여기에는 선을 찾는 SQL만 있다.
 export class EdgeRepository extends TableRepository<EdgeRow, Edge> {
-  protected readonly table = 'vault.edges';
+  protected readonly table = edges;
   protected readonly noun = '연결선';
 
   protected toEntity(row: EdgeRow): Edge {

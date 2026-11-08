@@ -1,4 +1,5 @@
 import { TableRepository } from '../../platform';
+import { spaces } from '../account.schema';
 import type { SettingNew, SpaceRow } from '../account.tables';
 import { Space } from './space';
 import type { LoadedSpace } from './space.view';
@@ -6,7 +7,7 @@ import type { LoadedSpace } from './space.view';
 // account.spaces + settings ↔ Space. 공간은 지금 하나라 "가장 먼저 만든 공간"이 그 공간이다.
 // 넣기와 고치기(바뀐 칸만)는 기반이 하고, 설정(키 하나에 행 하나, 값은 jsonb)은 saveParts에서 적는다.
 export class SpaceRepository extends TableRepository<SpaceRow, Space> {
-  protected readonly table = 'account.spaces';
+  protected readonly table = spaces;
   protected readonly noun = '블로그 공간';
 
   protected toEntity(row: LoadedSpace): Space {

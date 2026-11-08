@@ -1,9 +1,10 @@
 import { GraphNodeRepository } from '../change/change-target.repository';
+import { wikis } from '../vault.schema';
 import { type LoadedWiki, Wiki } from './wiki';
 
 // vault.nodes(wiki) + wikis + wiki_revisions ↔ Wiki. wikis의 head_text는 지금 판의 찾기용 사본이다.
 export class WikiRepository extends GraphNodeRepository<LoadedWiki, Wiki> {
-  protected readonly table = 'vault.wikis';
+  protected readonly table = wikis;
   protected readonly noun = 'wiki';
   protected readonly kind = 'wiki';
   protected readonly slugKey = 'wikis_space_id_slug_key';

@@ -1,5 +1,6 @@
 import { ChangeSignal, TableRepository } from '../../platform';
 import type { Agent } from '../agent/agent';
+import { tasks } from '../task.schema';
 import type { TaskRow } from '../task.tables';
 import { Task } from './task';
 
@@ -8,7 +9,7 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
   /** 실행 기록이 쌓였다는 신호 (콘솔의 실행 기록 화면이 다시 읽는다) */
   static readonly LOGGED = 'task.event.added';
 
-  protected readonly table = 'task.tasks';
+  protected readonly table = tasks;
   protected readonly noun = '작업';
 
   protected toEntity(row: TaskRow): Task {

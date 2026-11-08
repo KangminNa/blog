@@ -6,7 +6,7 @@
 // 코드 검사 항목
 //   1. 다른 모듈은 index.ts로만 가져온다
 //   2. modules.json의 dependsOn에 있는 모듈만 가져온다
-//   3. 외부 라이브러리는 platform/base 안에서만 가져온다 (프레임워크 제외)
+//   3. 외부 라이브러리는 platform/base 안에서만 가져온다 (프레임워크 제외, 생성된 <모듈>.schema.ts의 drizzle-orm 제외)
 //   4. SQL(sql`…`, tx`…`)은 자기 모듈이 소유한 스키마만 쓴다
 //   5. 플러그인(plugins/<이름>/)은 자기 폴더 안의 파일, react(화면), node:*·apps/server/src/plugin-api(서버)만 가져온다
 //   6. 모듈의 <이름>.view.ts는 표 인터페이스(<모듈>.tables.ts)의 타입만 가져온다 (웹이 import type으로 가져오는 파일)
@@ -103,6 +103,8 @@ function checkImport(file, owner, spec, line) {
   )
     return;
   if (owner && file.startsWith(join(modulesDir, map.libraryHome) + sep)) return;
+  // pnpm db:rows가 만든 Drizzle 표 (쿼리 템플릿이 모양을 만들 때 쓴다)
+  if (file.endsWith('.schema.ts') && spec.startsWith('drizzle-orm')) return;
   if (!owner) return; // main.api.ts 등 진입 파일
   problems.push(`${where} 외부 라이브러리 '${spec}'는 ${map.libraryHome} 안에서만 가져올 수 있음`);
 }

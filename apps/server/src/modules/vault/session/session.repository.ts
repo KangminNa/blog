@@ -1,10 +1,11 @@
 import { NodeRepository } from '../change/change-target.repository';
+import { sessions } from '../vault.schema';
 import { type LoadedSession, Session } from './session';
 
 // vault.nodes(세션) + sessions + session_revisions ↔ Session. 저장은 기반이 하고(바뀐 칸만, version으로 늦은 쓰기를 막는다),
 // 여기에는 세션을 찾는 SQL과 판(추가만) 넣기가 있다.
 export class SessionRepository extends NodeRepository<LoadedSession, Session> {
-  protected readonly table = 'vault.sessions';
+  protected readonly table = sessions;
   protected readonly noun = '세션';
   protected readonly kind = 'session';
 

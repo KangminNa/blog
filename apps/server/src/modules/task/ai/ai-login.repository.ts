@@ -1,10 +1,11 @@
 import { TableRepository } from '../../platform';
+import { aiLogins } from '../task.schema';
 import type { AiLoginRow } from '../task.tables';
 import { AiLogin } from './ai-login';
 
 // task.ai_logins ↔ AiLogin. 공간과 도구마다 한 줄이다. 고치기는 기반이 하고, 처음 넣기만 여기서 한다.
 export class AiLoginRepository extends TableRepository<AiLoginRow, AiLogin> {
-  protected readonly table = 'task.ai_logins';
+  protected readonly table = aiLogins;
   protected readonly noun = 'AI 로그인';
 
   protected toEntity(row: AiLoginRow): AiLogin {

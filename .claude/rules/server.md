@@ -15,7 +15,7 @@ paths:
 | `*.input.ts` | `static from(raw)`로 모양 검사(`InvalidRequest`). 표의 칸은 `COLUMNS` 한 줄씩, `changes`로 넘긴다 | 의미 검사(도메인의 일), DB |
 | `*.api.test.ts` | 보는 사람별 결과: 방문자 · write 기기(`ApiClient.writeDevice`) · 주인 | 손으로 curl 확인 |
 | `*.service.ts` | 첫 줄 권한 확인(관리 일은 `assertOwner()`, `assertCan(WRITE)`는 write 기기도 통과), 트랜잭션 하나, 불러오기 → 엔티티 메서드 → 저장, 같은 모듈의 Query로 읽기. 하나를 고치면 `EntityService`의 `change` | 판단 로직, 칼럼을 낱개로 넘기기, 다른 Service 호출, 트랜잭션 안 외부 호출, 다른 데이터 묶음의 Repository 사용(예외: vault의 `ChangeService`) |
-| `*.query.ts` | Actor로 공개 범위를 거른 읽기 SQL, 행을 View에 넘기기 | 쓰기, 엔티티 반환, Actor 없는 메서드, 행 손 변환 |
+| `*.query.ts` | Actor로 공개 범위를 거른 읽기, 행을 View에 넘기기. 표 하나의 읽기는 `static readonly` `QueryTemplate`, 표를 잇거나 모으면 `sql` | 쓰기, 엔티티 반환, Actor 없는 메서드, 행 손 변환, 부를 때마다 쿼리 만들기, `drizzle-orm` 직접 import |
 | Entity (`<이름>.ts`) | `TableEntity` 상속. 칸의 규칙은 `RULES`, 상태는 동사형 메서드, `static open` / `static restore(row)`, `view()` | 필드로 칸 복사, 응답·저장을 위한 `get`, import `@nestjs/*`, `postgres`, `Date.now()` 직접 호출 |
 | `*.policy.ts` | 입력 → 판단 결과 | 상태 보관, DB |
 | `*.repository.ts` | `TableRepository` 상속: 표 이름, `toEntity` 한 줄, 그 표만의 SQL | 칼럼을 나열한 INSERT·UPDATE, 판단, View |
@@ -24,7 +24,7 @@ paths:
 
 - 지금 다루는 모듈의 `CLAUDE.md`를 먼저 읽는다. 써도 되는 모듈과 소유 테이블은 `apps/server/modules.json`.
 - 다른 모듈은 `index.ts`로만 가져오고, 자기 스키마에만 SQL을 쓴다. 후속 일은 Entity가 `DomainEvent`로 기록한다.
-- 칼럼을 아는 곳은 `<모듈>.tables.ts`(자동 생성), Entity의 `RULES`, Input의 `COLUMNS`, View의 `toJSON`뿐이다. 마이그레이션 뒤 `pnpm db:rows` (객체설계 6장).
+- 칼럼을 아는 곳은 `<모듈>.tables.ts` · `<모듈>.schema.ts`(자동 생성), Entity의 `RULES`, Input의 `COLUMNS`, View의 `toJSON`뿐이다. 마이그레이션 뒤 `pnpm db:rows` (객체설계 6장).
 - 객체는 `platform`의 기반 클래스(`EntityService`·`BaseService`·`BaseQuery`·`TableRepository`·`BaseRepository`·`TableEntity`·`BaseEntity`·`BaseRequest`·`BaseGateway`·`BaseTool`)를 상속한다. 같은 행위가 둘 이상이면 기반 클래스로 올린다.
 - 외부 라이브러리는 `modules/platform/base` 안에서만 import한다 (`@nestjs/*`, `node:*` 제외). `pnpm check`가 막는다.
 - 데이터만 들고 다니는 클래스, 구현이 하나뿐인 추상 클래스를 만들지 않는다. `type`·`interface`는 표 인터페이스, 기반 클래스끼리의 약속, 표 행에 함께 읽는 칸을 더한 모양에만 쓴다.

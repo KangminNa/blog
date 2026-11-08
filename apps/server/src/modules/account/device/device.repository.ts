@@ -1,11 +1,12 @@
 import { Database, NotFound, TableRepository } from '../../platform';
+import { devices } from '../account.schema';
 import type { DeviceRow } from '../account.tables';
 import { Device, DeviceCredential } from './device';
 
 // account.devices + oauth_tokens + device_tokens ↔ Device. 불러오기·잠그기·저장(바뀐 칸만)은 기반이 하고,
 // 여기에는 이름·토큰으로 찾는 SQL과 딸린 토큰 표의 저장이 있다. 토큰 표에는 해시만 들어간다.
 export class DeviceRepository extends TableRepository<DeviceRow, Device> {
-  protected readonly table = 'account.devices';
+  protected readonly table = devices;
   protected readonly noun = '기기';
 
   protected toEntity(row: DeviceRow): Device {

@@ -1,5 +1,6 @@
-// 표마다 인터페이스 하나를 만든다. 칼럼의 원본은 마이그레이션이고, 코드는 이 파일로 표를 안다.
-// 모듈마다 modules/<모듈>/<모듈>.tables.ts 하나. 마이그레이션 뒤 다시 만든다. Docker의 db가 떠 있어야 함.
+// 표마다 인터페이스 하나와 Drizzle 표 하나를 만든다. 칼럼의 원본은 마이그레이션이고, 코드는 이 파일들로 표를 안다.
+// 모듈마다 modules/<모듈>/<모듈>.tables.ts(행 타입, 웹도 가져옴)와 <모듈>.schema.ts(쿼리 템플릿이 쓰는 Drizzle 표).
+// 마이그레이션 뒤 다시 만든다. Docker의 db가 떠 있어야 함.
 //
 //   node scripts/db-rows.mjs           파일을 다시 쓴다
 //   node scripts/db-rows.mjs --check   DB와 파일이 다르면 실패
@@ -23,20 +24,40 @@ const TS_TYPES = {
   timestamptz: 'Date',
 };
 
+/** Drizzle 칸 만드는 함수 (pg-core). 여기 없는 타입은 파일 안에서 customType으로 만든다 */
+const DRIZZLE = {
+  bool: (c) => `boolean('${c}')`,
+  float4: (c) => `real('${c}')`,
+  float8: (c) => `doublePrecision('${c}')`,
+  inet: (c) => `inet('${c}')`,
+  int2: (c) => `smallint('${c}')`,
+  int4: (c) => `integer('${c}')`,
+  int8: (c) => `bigint('${c}', { mode: 'number' })`,
+  jsonb: (c) => `jsonb('${c}')`,
+  text: (c) => `text('${c}')`,
+  timestamptz: (c) => `timestamp('${c}', { withTimezone: true })`,
+  uuid: (c) => `uuid('${c}')`,
+};
+
 const schemas = Object.values(map.modules).flatMap((m) => m.schemas);
 const columns = readColumns(schemas);
 const stale = [];
 
 for (const [module, { schemas: owned }] of Object.entries(map.modules)) {
-  const file = join(root, 'apps/server/src/modules', module, `${module}.tables.ts`);
-  const text = render(columns.filter((c) => owned.includes(c.schema)));
-  if (process.argv.includes('--check')) {
-    if (!existsSync(file) || readFileSync(file, 'utf8') !== text) stale.push(file);
-  } else writeFileSync(file, text);
+  const mine = columns.filter((c) => owned.includes(c.schema));
+  const dir = join(root, 'apps/server/src/modules', module);
+  for (const [file, text] of [
+    [join(dir, `${module}.tables.ts`), render(mine)],
+    [join(dir, `${module}.schema.ts`), renderSchema(mine)],
+  ]) {
+    if (process.argv.includes('--check')) {
+      if (!existsSync(file) || readFileSync(file, 'utf8') !== text) stale.push(file);
+    } else writeFileSync(file, text);
+  }
 }
 
 if (stale.length > 0) {
-  console.error('표 인터페이스가 DB와 달라요. pnpm db:rows로 다시 만들어 주세요:');
+  console.error('표 인터페이스나 Drizzle 표가 DB와 달라요. pnpm db:rows로 다시 만들어 주세요:');
   for (const file of stale) console.error(`  ${relative(root, file)}`);
   process.exit(1);
 }
@@ -94,4 +115,56 @@ function tsType({ type, nullable }) {
     ? `readonly ${TS_TYPES[type.slice(1)] ?? 'string'}[]`
     : (TS_TYPES[type] ?? 'string');
   return nullable ? `${value} | null` : value;
+}
+
+/** 쿼리 템플릿이 쓰는 Drizzle 표. 칸 이름(객체의 열쇠)은 DB 그대로라 고른 행이 <모듈>.tables.ts의 행과 같다 */
+function renderSchema(found) {
+  const tables = Map.groupBy(found, (c) => `${c.schema}.${c.name}`);
+  const builders = new Set(['pgSchema']);
+  const custom = new Map();
+  const columnOf = (c) => {
+    const base = c.type.startsWith('_') ? c.type.slice(1) : c.type;
+    let made;
+    if (DRIZZLE[base]) {
+      made = DRIZZLE[base](c.column);
+      builders.add(made.slice(0, made.indexOf('(')));
+    } else {
+      builders.add('customType');
+      custom.set(base, TS_TYPES[base] ?? 'string');
+      made = `${base}Column('${c.column}')`;
+    }
+    if (c.type.startsWith('_')) made += '.array()';
+    if (!c.nullable) made += '.notNull()';
+    return `  ${c.column}: ${made},`;
+  };
+  const owned = [...new Set(found.map((c) => c.schema))];
+  const blocks = [...tables].map(([name, cols]) => {
+    const [schema, table] = name.split('.');
+    return [
+      `/** ${name} */`,
+      `export const ${camel(table)} = ${camel(schema)}Schema.table('${table}', {`,
+      ...cols.map(columnOf),
+      '});',
+      '',
+    ].join('\n');
+  });
+  return [
+    '// 자동으로 만든 파일이라 고치지 않는다. 마이그레이션 뒤 pnpm db:rows로 다시 만든다 (scripts/db-rows.mjs).',
+    '// 쿼리 템플릿(QueryTemplate)이 읽기 모양을 만들 때 쓰는 Drizzle 표. 칸 이름은 DB 그대로다.',
+    '// drizzle-orm을 직접 가져오는 곳은 이 파일들과 platform/base뿐이다 (모듈 경계 검사).',
+    `import { ${[...builders].sort().join(', ')} } from 'drizzle-orm/pg-core';`,
+    '',
+    ...[...custom].map(
+      ([type, ts]) =>
+        `const ${type}Column = customType<{ data: ${ts} }>({ dataType: () => '${type}' });`,
+    ),
+    ...owned.map((schema) => `const ${camel(schema)}Schema = pgSchema('${schema}');`),
+    '',
+    blocks.join('\n'),
+  ].join('\n');
+}
+
+/** ai_logins → aiLogins */
+function camel(name) {
+  return name.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
 }

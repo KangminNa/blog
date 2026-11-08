@@ -1,4 +1,5 @@
 import { TableRepository } from '../../platform';
+import { changeSets } from '../vault.schema';
 import type { ChangeNew, ChangeOpRow, ChangeRow, ReviewRuleRow } from '../vault.tables';
 import { type ChangeOp, ChangeOps, RevertOp, SettledOp } from './change-op';
 import { ChangeSet, type LoadedChangeSet } from './change-set';
@@ -8,7 +9,7 @@ import { ReviewRules } from './review.policy';
 // vault.change_sets + change_ops + changes(실제로 바뀐 행의 전/후) ↔ ChangeSet. 검토 규칙 값(review_rules)도 여기서 읽는다.
 // 머리를 먼저 넣고(begin) 적용이 끝난 뒤 저장하므로(save) 저장의 순서는 기반과 다르다.
 export class ChangeRepository extends TableRepository<LoadedChangeSet, ChangeSet> {
-  protected readonly table = 'vault.change_sets';
+  protected readonly table = changeSets;
   protected readonly noun = '변경 묶음';
 
   protected toEntity(row: LoadedChangeSet): ChangeSet {

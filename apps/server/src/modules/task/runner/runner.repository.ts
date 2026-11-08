@@ -1,10 +1,11 @@
 import { TableRepository } from '../../platform';
+import { runners } from '../task.schema';
 import type { RunnerRow } from '../task.tables';
 import { Runner } from './runner';
 
 // task.runners ↔ Runner. 켜기·끄기는 기반의 저장으로, 마지막으로 닿은 때는 version 없이 바로 적는다 (진행 보고의 saveLease처럼).
 export class RunnerRepository extends TableRepository<RunnerRow, Runner> {
-  protected readonly table = 'task.runners';
+  protected readonly table = runners;
   protected readonly noun = '러너';
 
   protected toEntity(row: RunnerRow): Runner {

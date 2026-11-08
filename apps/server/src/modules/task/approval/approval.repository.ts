@@ -1,10 +1,11 @@
 import { TableRepository } from '../../platform';
+import { approvals } from '../task.schema';
 import type { ApprovalRow } from '../task.tables';
 import { Approval } from './approval';
 
 // task.approvals ↔ Approval. 불러오기와 저장은 기반이 하고, 여기에는 찾는 SQL만 있다.
 export class ApprovalRepository extends TableRepository<ApprovalRow, Approval> {
-  protected readonly table = 'task.approvals';
+  protected readonly table = approvals;
   protected readonly noun = '결재';
 
   protected toEntity(row: ApprovalRow): Approval {

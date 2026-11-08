@@ -1,10 +1,11 @@
 import { TableRepository } from '../../platform';
+import { heartbeats } from '../task.schema';
 import type { HeartbeatRow } from '../task.tables';
 import { Heartbeat } from './heartbeat';
 
 // task.heartbeats ↔ Heartbeat. 저장은 기반이 하고(바뀐 칸만, version으로 늦은 쓰기를 막는다), 여기에는 찾는 SQL만 있다.
 export class HeartbeatRepository extends TableRepository<HeartbeatRow, Heartbeat> {
-  protected readonly table = 'task.heartbeats';
+  protected readonly table = heartbeats;
   protected readonly noun = '하트비트';
 
   protected toEntity(row: HeartbeatRow): Heartbeat {
