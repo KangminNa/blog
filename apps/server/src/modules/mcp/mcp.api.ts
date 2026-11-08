@@ -20,7 +20,12 @@ export class McpController {
     private readonly tasks: TaskQuery,
     toolbox: McpToolbox,
   ) {
-    this.endpoint = new McpEndpoint('cairn', '0.1.0', toolbox.tools, McpToolbox.INSTRUCTIONS);
+    this.endpoint = new McpEndpoint(
+      'cairn',
+      '0.1.0',
+      () => toolbox.toolsNow(),
+      McpToolbox.INSTRUCTIONS,
+    );
   }
 
   @Post()

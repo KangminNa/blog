@@ -7,6 +7,7 @@
 //
 // 결과: apps/web/app/_plugins/installed/<이름>/…  (복사본, git에 올리지 않음)
 //       apps/web/app/_plugins/slots.generated.ts   (자동 생성, git에 올리지 않음)
+//       apps/web/app/_plugins/packages.generated.ts (기능 패키지의 콘솔 메뉴와 화면, 자동 생성)
 // 목록 파일의 자세한 검사는 서버가 시작할 때 한다. 여기서는 웹에 필요한 것만 본다.
 import {
   cpSync,
@@ -33,6 +34,8 @@ mkdirSync(installed, { recursive: true });
 
 const imports = [];
 const slots = new Map();
+const packages = [];
+const pageImports = [];
 for (const name of names) {
   const dir = join(pluginsDir, name);
   const manifestFile = join(dir, 'cairn-plugin.json');
@@ -42,8 +45,20 @@ for (const name of names) {
   if (manifest.name !== name)
     throw new Error(`폴더 이름(${name})과 플러그인 이름(${manifest.name})이 달라요`);
   const web = manifest.web ?? {};
-  if (Object.keys(web).length === 0) continue;
+  const menu = manifest.menu ?? null;
+  if (Object.keys(web).length === 0 && !menu) continue;
   cpSync(join(dir, 'web'), join(installed, name), { recursive: true });
+  if (menu) {
+    const id = `Page${pageImports.length}`;
+    pageImports.push(
+      `import ${id} from './installed/${name}/${String(menu.page)
+        .replace(/^web\//, '')
+        .replace(/\.tsx?$/, '')}';`,
+    );
+    packages.push(
+      `{ plugin: '${name}', group: ${JSON.stringify(String(menu.group ?? ''))}, name: ${JSON.stringify(String(menu.name ?? name))}, icon: ${JSON.stringify(String(menu.icon ?? 'plug'))}, Page: ${id} }`,
+    );
+  }
   for (const [slot, file] of Object.entries(web)) {
     const id = `P${imports.length}`;
     const path = `./installed/${name}/${String(file)
@@ -67,6 +82,18 @@ ${imports.join('\n')}
 export const SLOTS: Readonly<Record<string, readonly SlotEntry[]>> = {
 ${body}
 };
+`,
+);
+writeFileSync(
+  join(target, 'packages.generated.ts'),
+  `// 자동 생성 파일: scripts/sync-plugins.mjs가 만든다. 직접 고치지 않는다.
+// 기능 패키지의 콘솔 메뉴와 화면 (목록 파일 menu). 켜졌는지는 콘솔이 서버에 묻는다
+import type { PackageEntry } from './package-types';
+${pageImports.join('\n')}
+
+export const PACKAGES: readonly PackageEntry[] = [
+${packages.map((p) => `  ${p},`).join('\n')}
+];
 `,
 );
 console.log(`플러그인 화면 준비: ${names.length ? names.join(', ') : '(플러그인 없음)'}`);

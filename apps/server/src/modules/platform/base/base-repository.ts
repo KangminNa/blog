@@ -1,13 +1,12 @@
-import type { PgTable } from 'drizzle-orm/pg-core';
 import type { BaseEntity } from './base-entity';
 import type { Row, Sql } from './database';
 import { Conflict, NotFound } from './errors';
 import { Outbox } from './outbox';
-import { type Changes, type RowOf, TableQuery, TableReader, type Where } from './table-query';
+import { TableWriter } from './table-query';
 
 // 데이터 묶음 하나를 불러오고·잠그고·저장한다. Service가 트랜잭션 안에서 `new`로 만든다.
 // 하위 클래스는 DB 행 ↔ 객체 변환과 그 묶음에만 필요한 SQL을 가진다.
-export abstract class BaseRepository<E extends BaseEntity> extends TableReader {
+export abstract class BaseRepository<E extends BaseEntity> extends TableWriter {
   constructor(protected readonly sql: Sql) {
     super();
   }
@@ -40,27 +39,5 @@ export abstract class BaseRepository<E extends BaseEntity> extends TableReader {
   /** 객체에 쌓인 이벤트를 같은 트랜잭션의 outbox에 남긴다. save의 마지막에 부른다 */
   protected async publishEvents(entity: E): Promise<void> {
     await new Outbox(this.sql).publish(entity.pullEvents());
-  }
-
-  /** 새 행들을 표에 넣는다 (조건 규칙, 넣을 칸은 행마다 같아야 한다) */
-  protected insertRows<T extends PgTable>(
-    table: T,
-    rows: Partial<RowOf<T>> | readonly Partial<RowOf<T>>[],
-  ): Promise<void> {
-    return TableQuery.of(table).insert(this.sql, rows);
-  }
-
-  /** 조건에 맞는 행들을 고친다 (Rule.now는 DB 시각). 고친 수를 돌려준다 */
-  protected updateRows<T extends PgTable>(
-    table: T,
-    changes: Changes<RowOf<T>>,
-    where: Where<RowOf<T>>,
-  ): Promise<number> {
-    return TableQuery.of(table).update(this.sql, changes, where);
-  }
-
-  /** 조건에 맞는 행들을 지운다. 지운 수를 돌려준다 */
-  protected deleteRows<T extends PgTable>(table: T, where: Where<RowOf<T>>): Promise<number> {
-    return TableQuery.of(table).delete(this.sql, where);
   }
 }

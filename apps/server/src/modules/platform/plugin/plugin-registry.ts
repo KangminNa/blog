@@ -10,11 +10,12 @@ import { PluginRepository } from './plugin.repository';
 import {
   type EventSubscription,
   LoginMethod,
+  type PackageOperation,
   type PluginAction,
   PluginContext,
   type ScheduledJob,
 } from './plugin-context';
-import { PluginManifest } from './plugin-manifest';
+import { type PackageToolSpec, PluginManifest } from './plugin-manifest';
 import type { PluginState } from './plugin-state';
 
 // 플러그인 목록과 지금 동작 중인 등록.
@@ -26,6 +27,7 @@ export class PluginRegistry {
   private scheduled: readonly ScheduledJob[] = [];
   private pluginActions: readonly PluginAction[] = [];
   private loginMethods: readonly LoginMethod[] = [];
+  private packageOperations: readonly PackageOperation[] = [];
   private states = new Map<string, PluginState>();
   private failures = new Map<string, string>();
 
@@ -73,6 +75,7 @@ export class PluginRegistry {
     const scheduled: ScheduledJob[] = [];
     const actions: PluginAction[] = [];
     const logins: LoginMethod[] = [];
+    const operations: PackageOperation[] = [];
     const failures = new Map<string, string>();
     for (const state of states) {
       const manifest = this.catalog.get(state.name);
@@ -88,6 +91,7 @@ export class PluginRegistry {
         subscriptions.push(...context.subscriptions);
         scheduled.push(...context.jobs);
         actions.push(...context.actions);
+        operations.push(...context.operations);
         for (const login of context.logins) {
           // 같은 이름의 로그인 방법은 먼저 켠 플러그인 것만 쓴다
           if (logins.some((l) => l.name === login.name))
@@ -106,6 +110,7 @@ export class PluginRegistry {
     this.scheduled = scheduled;
     this.pluginActions = actions;
     this.loginMethods = logins;
+    this.packageOperations = operations;
     this.failures = failures;
   }
 
@@ -166,5 +171,53 @@ export class PluginRegistry {
 
   login(name: string): LoginMethod | null {
     return this.loginMethods.find((l) => l.name === name) ?? null;
+  }
+
+  /**
+   * 기능 패키지의 경로에 맞는 동작과 경로의 값(:id 등). 동작 중인 패키지만 찾는다.
+   * route: 목록 파일 api의 열쇠("GET /reads/:id"), path: /api/p/<이름> 뒤의 경로
+   */
+  operationAt(
+    plugin: string,
+    method: string,
+    path: string,
+  ): { found: PackageOperation; params: Record<string, string> } | null {
+    const manifest = this.catalog.get(plugin);
+    if (!manifest) return null;
+    const asked = path.split('/').filter(Boolean);
+    for (const [route, name] of manifest.api) {
+      const [verb, pattern = ''] = route.split(' ');
+      if (verb !== method.toUpperCase()) continue;
+      const parts = pattern.split('/').filter(Boolean);
+      if (parts.length !== asked.length) continue;
+      const params: Record<string, string> = {};
+      const fits = parts.every((part, i) => {
+        const value = asked[i] ?? '';
+        if (part.startsWith(':')) params[part.slice(1)] = decodeURIComponent(value);
+        return part.startsWith(':') || part === value;
+      });
+      const found = this.packageOperations.find(
+        (o) => o.manifest.name === plugin && o.operation.name === name,
+      );
+      if (fits && found) return { found, params };
+    }
+    return null;
+  }
+
+  /** 동작 중인 기능 패키지의 MCP 도구들 (목록 파일 tools → 등록한 동작) */
+  packageTools(): readonly { name: string; spec: PackageToolSpec; found: PackageOperation }[] {
+    return this.packageOperations.flatMap((found) =>
+      [...found.manifest.tools]
+        .filter(([, spec]) => spec.operation === found.operation.name)
+        .map(([name, spec]) => ({ name, spec, found })),
+    );
+  }
+
+  /** 동작 중인 기능 패키지의 콘솔 메뉴 */
+  packageMenus(): readonly { plugin: string; menu: NonNullable<PluginManifest['menu']> }[] {
+    return [...this.catalog.values()].flatMap((m) => {
+      const state = this.states.get(m.name);
+      return m.menu && state?.isActiveFor(m) ? [{ plugin: m.name, menu: m.menu }] : [];
+    });
   }
 }

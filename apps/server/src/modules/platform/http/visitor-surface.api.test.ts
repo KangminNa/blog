@@ -15,6 +15,8 @@ const VISITOR_GET: Readonly<Record<string, number>> = {
   'GET /api/graph/public': 200,
   'GET /api/health': 200,
   'GET /api/install': 200,
+  // 기능 패키지의 입구: 없는 패키지 · 경로는 404, 동작마다 권한은 패키지의 allow (package.api.test.ts)
+  'GET /api/p/:plugin/*rest': 404,
   'GET /api/plugins': 200,
   'GET /api/posts': 200,
   'GET /api/space': 200,

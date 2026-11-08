@@ -1,0 +1,38 @@
+{
+  "name": "browser-tabs",
+  "version": "0.1.0",
+  "cairn": ">=0.2",
+  "description": "주인이 고른 웹 주소를 러너가 로그인된 브라우저 탭으로 열어 읽고 남긴다 (첫 기능 패키지)",
+  "schema": "browser_tabs",
+  "server": "server/plugin.ts",
+  "api": {
+    "GET /reads": "list",
+    "POST /reads": "request"
+  },
+  "tools": {
+    "browser_tab_pending": {
+      "operation": "pending",
+      "description": "읽어 달라고 한 주소들을 오래된 것부터 받는다. 러너가 브라우저 탭으로 열어 읽고 browser_tab_save로 남긴다. 읽기만 하고 클릭 · 입력 · 전송은 하지 않는다.",
+      "input": { "properties": {} }
+    },
+    "browser_tab_save": {
+      "operation": "save",
+      "description": "읽은 탭의 제목과 본문을 남긴다. 읽지 못했으면 error에 이유를 적는다. 받은 id로 한 번만 남길 수 있다.",
+      "input": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "browser_tab_pending에서 받은 id"
+          },
+          "title": { "type": "string", "maxLength": 300 },
+          "body": { "type": "string", "maxLength": 200000, "description": "탭의 본문 (글자만)" },
+          "error": { "type": "string", "maxLength": 500, "description": "읽지 못한 이유" }
+        },
+        "required": ["id"]
+      }
+    }
+  },
+  "menu": { "group": "운영", "name": "브라우저 탭", "icon": "site", "page": "web/TabsPage.tsx" },
+  "uses": ["table", "api", "tool:browser_tab_pending", "tool:browser_tab_save", "menu"]
+}

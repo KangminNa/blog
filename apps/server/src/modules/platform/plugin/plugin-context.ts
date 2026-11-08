@@ -6,6 +6,7 @@ import type { BaseAction } from '../base/base-action';
 import type { BaseHandler } from '../base/base-handler';
 import type { BaseJob } from '../base/base-job';
 import type { BaseLogin } from '../base/base-login';
+import type { Operation } from '../base/operation';
 import type { PluginManifest } from './plugin-manifest';
 
 /** 등록된 이벤트 받기 하나 */
@@ -44,12 +45,21 @@ export class LoginMethod {
   ) {}
 }
 
+/** 등록된 기능 패키지의 동작 하나 */
+export class PackageOperation {
+  constructor(
+    readonly manifest: PluginManifest,
+    readonly operation: Operation,
+  ) {}
+}
+
 // 플러그인이 확장 지점에 등록하는 창구. 목록 파일 `uses`에 적지 않은 것을 쓰면 그 플러그인은 켜지지 않는다.
 export class PluginContext {
   readonly subscriptions: EventSubscription[] = [];
   readonly jobs: ScheduledJob[] = [];
   readonly actions: PluginAction[] = [];
   readonly logins: LoginMethod[] = [];
+  readonly operations: PackageOperation[] = [];
 
   constructor(
     private readonly manifest: PluginManifest,
@@ -85,6 +95,23 @@ export class PluginContext {
   addLogin(name: string, login: BaseLogin): void {
     this.require(`login:${name}`);
     this.logins.push(new LoginMethod(this.manifest.name, name, login));
+  }
+
+  /**
+   * 기능 패키지의 동작. 목록 파일의 api나 tools가 이 동작의 이름을 가리켜야 열린다
+   * (가리키는 곳이 없는 동작은 쓸 길이 없어 등록하지 않는다)
+   */
+  addOperation(operation: Operation): void {
+    const routed = [...this.manifest.api.values()].includes(operation.name);
+    const tooled = [...this.manifest.tools.values()].some((t) => t.operation === operation.name);
+    if (!routed && !tooled)
+      throw new Error(`목록 파일의 api · tools가 가리키지 않는 동작이에요: ${operation.name}`);
+    if (routed) this.require('api');
+    for (const [tool, spec] of this.manifest.tools)
+      if (spec.operation === operation.name) this.require(`tool:${tool}`);
+    if (this.operations.some((o) => o.operation.name === operation.name))
+      throw new Error(`같은 이름의 동작이 둘이에요: ${operation.name}`);
+    this.operations.push(new PackageOperation(this.manifest, operation));
   }
 
   /**

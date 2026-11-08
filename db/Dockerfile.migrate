@@ -1,4 +1,6 @@
 # 운영용 마이그레이션 이미지: 마이그레이션 파일을 이미지에 담아 소스를 마운트하지 않는다
 FROM ghcr.io/amacneil/dbmate:2.36.0
-COPY migrations /db/migrations
+COPY db/migrations /db/migrations
+# 기능 패키지의 마이그레이션 (자기 스키마만). 빌드 맥락은 저장소 뿌리
+COPY plugins /plugins
 USER nobody

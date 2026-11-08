@@ -5,7 +5,7 @@ import { join } from 'node:path';
 // 서버를 시작할 때 들어 있는 플러그인을 모두 읽고 검사한다. 틀리면 시작하지 않는다.
 
 /** 플러그인이 지원하는 Cairn 플러그인 API 버전 */
-const CAIRN_PLUGIN_API = '0.1';
+const CAIRN_PLUGIN_API = '0.2';
 
 /** 웹 화면 자리. 늘릴 때는 웹의 <Slot>과 문서를 함께 고친다 */
 const WEB_SLOTS: readonly string[] = ['post.after', 'task.office'];
@@ -18,8 +18,17 @@ const WEB_SLOTS: readonly string[] = ['post.after', 'task.office'];
  *   archive:read  보관 형식 파일 읽기 (vault 비공개 내용 포함)
  *   archive:restore  보관 형식 파일을 빈 Cairn에 들여오기
  *   login:<이름>  로그인 방법 (예: login:github). 주인이 연결해 둔 계정으로만 로그인된다
+ * 기능 패키지 (2026-11-08): 코어를 고치지 않고 자기 표 · API · MCP 도구 · 콘솔 메뉴를 갖는다
+ *   table         자기 스키마(목록 파일 schema)에 표를 만들고 쓴다. 다른 스키마에는 쓰지 않는다
+ *   api           목록 파일 api의 경로를 연다 (/api/p/<이름>/…)
+ *   tool:<이름>   MCP 도구를 연다 (목록 파일 tools)
+ *   menu          콘솔 메뉴와 화면을 더한다 (목록 파일 menu)
  */
 const USES = [
+  /^table$/,
+  /^api$/,
+  /^tool:[a-z][a-z0-9_]*$/,
+  /^menu$/,
   /^event:[a-z*][a-z_.*]*$/,
   /^job:[a-z][a-z0-9-]*$/,
   /^action:[a-z][a-z0-9-]*$/,
@@ -28,6 +37,29 @@ const USES = [
 ];
 
 const SETTING_TYPES = ['text', 'secret', 'select', 'boolean'];
+
+/** 코어 모듈의 스키마. 기능 패키지는 이 이름을 쓸 수 없다 (apps/server/modules.json) */
+const CORE_SCHEMAS = ['public', 'platform', 'account', 'vault', 'blog', 'work', 'task', 'mcp'];
+
+/** 기능 패키지의 MCP 도구 하나 (목록 파일 tools의 한 항목) */
+export interface PackageToolSpec {
+  /** 부를 동작 이름 (서버 파일이 cairn.addOperation으로 등록) */
+  readonly operation: string;
+  /** AI가 언제 이 도구를 쓸지 판단할 설명 */
+  readonly description: string;
+  /** 입력 모양 (JSON Schema의 properties · required) */
+  readonly input: Readonly<Record<string, unknown>>;
+}
+
+/** 기능 패키지의 콘솔 메뉴 (목록 파일 menu) */
+export interface PackageMenu {
+  /** 콘솔 메뉴의 그룹 (예: 운영) */
+  readonly group: string;
+  readonly name: string;
+  readonly icon: string;
+  /** 콘솔 화면 파일 (web/ 안) */
+  readonly page: string;
+}
 
 /** 설정 항목 하나. 설치 마법사·관리 화면의 칸이 이것으로 만들어진다 */
 export class PluginSettingSpec {
@@ -74,6 +106,13 @@ export class PluginManifest {
     readonly webSlots: ReadonlyMap<string, string>,
     readonly server: string | null,
     readonly uses: ReadonlySet<string>,
+    /** 기능 패키지의 자기 스키마 (migrations/의 SQL이 만든다). 없으면 표가 없다 */
+    readonly schema: string | null = null,
+    /** "GET /reads" → 동작 이름. /api/p/<이름>/reads로 열린다 */
+    readonly api: ReadonlyMap<string, string> = new Map(),
+    /** MCP 도구 이름 → 도구 */
+    readonly tools: ReadonlyMap<string, PackageToolSpec> = new Map(),
+    readonly menu: PackageMenu | null = null,
   ) {}
 
   /** 확장 지점을 켜는 사람이 읽을 말로 (설치 마법사·관리 화면·명령줄이 함께 씀) */
@@ -86,6 +125,10 @@ export class PluginManifest {
     if (kind === 'action') return `관리 동작 "${arg}"을(를) 추가해요`;
     if (kind === 'login')
       return `로그인 방법 "${arg}"을(를) 더해요 (계정 화면에서 연결해 둔 계정으로만 로그인돼요)`;
+    if (use === 'table') return '자기 스키마에 표를 만들고 써요 (배포할 때 마이그레이션이 돌아요)';
+    if (use === 'api') return 'API 경로를 열어요 (/api/p/<이름>/…)';
+    if (kind === 'tool') return `MCP 도구 "${arg}"을(를) AI에게 열어요`;
+    if (use === 'menu') return '콘솔에 메뉴와 화면을 더해요';
     return use;
   }
 
@@ -179,6 +222,52 @@ export class PluginManifest {
     }
     if (uses.size > 0 && !server) problems.push('uses를 쓰려면 server 파일이 있어야 해요');
 
+    // 기능 패키지: 자기 스키마 · API · MCP 도구 · 메뉴. 쓰려면 uses에도 적어 주인이 켤 때 허락한다
+    const schema = str('schema') || null;
+    if (schema) {
+      if (!/^[a-z][a-z0-9_]{1,39}$/.test(schema) || CORE_SCHEMAS.includes(schema))
+        problems.push(`schema는 소문자·숫자·밑줄이고 코어 스키마가 아니어야 해요: ${schema}`);
+      if (!existsSync(join(dir, 'migrations')))
+        problems.push('schema를 쓰려면 migrations/가 있어야 해요');
+      if (!uses.has('table')) problems.push('schema를 쓰려면 uses에 table이 있어야 해요');
+    }
+    const api = new Map<string, string>();
+    for (const [route, operation] of Object.entries((raw.api ?? {}) as Record<string, unknown>)) {
+      if (!/^(GET|POST|PUT|PATCH|DELETE) \/[a-z0-9/:_-]*$/.test(route))
+        problems.push(`api 경로는 "GET /이름/:id" 모양이에요: ${route}`);
+      if (typeof operation !== 'string') problems.push(`api ${route}의 동작 이름이 없어요`);
+      api.set(route, String(operation));
+    }
+    if (api.size > 0 && !uses.has('api')) problems.push('api를 쓰려면 uses에 api가 있어야 해요');
+    const tools = new Map<string, PackageToolSpec>();
+    for (const [tool, spec] of Object.entries(
+      (raw.tools ?? {}) as Record<string, Record<string, unknown>>,
+    )) {
+      if (!uses.has(`tool:${tool}`))
+        problems.push(`도구 ${tool}을 쓰려면 uses에 tool:${tool}이 있어야 해요`);
+      if (typeof spec?.operation !== 'string' || typeof spec?.description !== 'string')
+        problems.push(`도구 ${tool}에 operation · description이 없어요`);
+      tools.set(tool, {
+        operation: String(spec?.operation),
+        description: String(spec?.description ?? ''),
+        input: (spec?.input ?? { properties: {} }) as Record<string, unknown>,
+      });
+    }
+    let menu: PackageMenu | null = null;
+    if (raw.menu) {
+      const m = raw.menu as Record<string, unknown>;
+      const page = String(m.page ?? '');
+      if (!page.startsWith('web/') || !existsSync(join(dir, page)))
+        problems.push(`메뉴 화면 파일이 web/ 안에 없어요: ${page}`);
+      if (!uses.has('menu')) problems.push('menu를 쓰려면 uses에 menu가 있어야 해요');
+      menu = {
+        group: String(m.group ?? ''),
+        name: String(m.name ?? name),
+        icon: String(m.icon ?? 'plug'),
+        page,
+      };
+    }
+
     if (problems.length > 0) {
       throw new Error(`플러그인 ${name || dir} 목록 파일 문제:\n- ${problems.join('\n- ')}`);
     }
@@ -191,6 +280,10 @@ export class PluginManifest {
       webSlots,
       server,
       uses,
+      schema,
+      api,
+      tools,
+      menu,
     );
   }
 

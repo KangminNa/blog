@@ -313,3 +313,28 @@ export abstract class TableReader {
     return { items, next: rows.length > size && last !== undefined ? cursorOf(last) : null };
   }
 }
+
+/** 표 하나를 조건 규칙으로 읽고 쓰는 기반: BaseRepository와 기능 패키지의 Work가 함께 쓴다 */
+export abstract class TableWriter extends TableReader {
+  /** 새 행들을 표에 넣는다 (넣을 칸은 행마다 같아야 한다) */
+  protected insertRows<T extends PgTable>(
+    table: T,
+    rows: Partial<RowOf<T>> | readonly Partial<RowOf<T>>[],
+  ): Promise<void> {
+    return TableQuery.of(table).insert(this.sql, rows);
+  }
+
+  /** 조건에 맞는 행들을 고친다 (Rule.now는 DB 시각). 고친 수를 돌려준다 */
+  protected updateRows<T extends PgTable>(
+    table: T,
+    changes: Changes<RowOf<T>>,
+    where: Where<RowOf<T>>,
+  ): Promise<number> {
+    return TableQuery.of(table).update(this.sql, changes, where);
+  }
+
+  /** 조건에 맞는 행들을 지운다. 지운 수를 돌려준다 */
+  protected deleteRows<T extends PgTable>(table: T, where: Where<RowOf<T>>): Promise<number> {
+    return TableQuery.of(table).delete(this.sql, where);
+  }
+}

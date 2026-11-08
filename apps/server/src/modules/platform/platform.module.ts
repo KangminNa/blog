@@ -10,6 +10,8 @@ import { SecretRotation } from './base/secret-rotation';
 import { HealthController } from './health/health.api';
 import { HealthQuery } from './health/health.query';
 import { DomainErrorFilter } from './http/domain-error.filter';
+import { PackageController } from './plugin/package.api';
+import { PackageService } from './plugin/package.service';
 import { PluginController } from './plugin/plugin.api';
 import { PluginQuery } from './plugin/plugin.query';
 import { PluginService } from './plugin/plugin.service';
@@ -23,6 +25,7 @@ import { OutboxWorker } from './worker/outbox-worker';
 @Global()
 @Module({
   providers: [
+    PackageService,
     Database,
     BlobStore,
     HealthQuery,
@@ -55,7 +58,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     },
     { provide: APP_FILTER, useClass: DomainErrorFilter },
   ],
-  controllers: [HealthController, PluginController, StreamController],
+  controllers: [HealthController, PluginController, PackageController, StreamController],
   exports: [
     Database,
     BlobStore,
@@ -63,6 +66,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     SecretRotation,
     PluginRegistry,
     PluginService,
+    PackageService,
     ArchiveQuery,
     ArchiveRestoreService,
     ChangeStream,

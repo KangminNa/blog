@@ -1,6 +1,6 @@
 // 자동으로 만든 파일이라 고치지 않는다. 마이그레이션 뒤 pnpm db:rows로 다시 만든다 (scripts/db-rows.mjs).
-// 쿼리 템플릿(QueryTemplate)이 읽기 모양을 만들 때 쓰는 Drizzle 표. 칸 이름은 DB 그대로다.
-// drizzle-orm을 직접 가져오는 곳은 이 파일들과 platform/base뿐이다 (모듈 경계 검사).
+// 조건 규칙(platform/base의 TableQuery)이 쓰는 Drizzle 표: 표 이름 · 칸 · 행 타입. 칸 이름은 DB 그대로다.
+// drizzle-orm을 직접 가져오는 곳은 이 생성 파일들과 platform/base뿐이다 (모듈 경계 검사).
 import { bigint, boolean, customType, integer, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 const byteaColumn = customType<{ data: Buffer }>({ dataType: () => 'bytea' });

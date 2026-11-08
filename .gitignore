@@ -21,3 +21,4 @@ CLAUDE.local.md
 # 플러그인 화면 복사본과 자리 목록 (scripts/sync-plugins.mjs가 만든다)
 apps/web/app/_plugins/installed/
 apps/web/app/_plugins/slots.generated.ts
+apps/web/app/_plugins/packages.generated.ts

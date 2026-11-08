@@ -11,7 +11,7 @@
 //   5. 플러그인(plugins/<이름>/)은 자기 폴더 안의 파일, react(화면), node:*·apps/server/src/plugin-api(서버)만 가져온다
 //   6. 모듈의 <이름>.view.ts는 표 인터페이스(<모듈>.tables.ts)의 타입만 가져온다 (웹이 import type으로 가져오는 파일)
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
@@ -19,7 +19,21 @@ const serverSrc = join(root, 'apps/server/src');
 const modulesDir = join(serverSrc, 'modules');
 const map = JSON.parse(readFileSync(join(root, 'apps/server/modules.json'), 'utf8'));
 const moduleNames = Object.keys(map.modules);
-const allSchemas = moduleNames.flatMap((m) => map.modules[m].schemas);
+/** 기능 패키지(plugins/<이름>/, 목록 파일 schema)의 자기 스키마. 패키지 이름 → 스키마 */
+const packageSchemas = new Map(
+  existsSync(join(root, 'plugins'))
+    ? readdirSync(join(root, 'plugins')).flatMap((name) => {
+        const file = join(root, 'plugins', name, 'cairn-plugin.json');
+        if (!existsSync(file)) return [];
+        const schema = JSON.parse(readFileSync(file, 'utf8')).schema;
+        return typeof schema === 'string' ? [[name, schema]] : [];
+      })
+    : [],
+);
+const allSchemas = [
+  ...moduleNames.flatMap((m) => map.modules[m].schemas),
+  ...packageSchemas.values(),
+];
 const problems = [];
 
 if (process.argv.includes('--db')) checkDatabase();
@@ -63,9 +77,11 @@ function checkPlugins() {
     if (!statSync(dir).isDirectory()) continue;
     for (const file of walk(dir)) {
       const text = readFileSync(file, 'utf8');
+      const isServer = relative(dir, file).startsWith(`server${sep}`);
+      // 기능 패키지의 SQL은 자기 스키마만 (work.sql`…`)
+      if (isServer) checkSql(file, `plugin:${name}`, text);
       for (const { spec, line } of imports(text)) {
         const where = `${relative(root, file)}:${line}`;
-        const isServer = relative(dir, file).startsWith(`server${sep}`);
         if (!isServer && (spec === 'react' || spec.startsWith('react/'))) continue;
         if (isServer && spec.startsWith('node:')) continue;
         if (spec.startsWith('.')) {
@@ -109,8 +125,11 @@ function checkImport(file, owner, spec, line) {
   problems.push(`${where} 외부 라이브러리 '${spec}'는 ${map.libraryHome} 안에서만 가져올 수 있음`);
 }
 
+/** owner: 모듈 이름, 또는 기능 패키지면 'plugin:<이름>' */
 function checkSql(file, owner, text) {
-  const owned = map.modules[owner].schemas;
+  const owned = owner.startsWith('plugin:')
+    ? [packageSchemas.get(owner.slice('plugin:'.length))].filter(Boolean)
+    : map.modules[owner].schemas;
   for (const block of text.matchAll(/\b(?:sql|tx)`([\s\S]*?)`/g)) {
     // 따옴표 안의 글자(이벤트 이름 등)는 테이블이 아니므로 같은 길이의 빈칸으로 지운다
     const sqlText = block[1].replace(/'[^']*'/g, (q) => ' '.repeat(q.length));
@@ -120,16 +139,17 @@ function checkSql(file, owner, text) {
       if (owned.includes(schema)) continue;
       const line = text.slice(0, block.index + ref.index).split('\n').length;
       problems.push(
-        `${relative(root, file)}:${line} ${owner} 모듈이 다른 모듈의 테이블 ${ref[0]}에 SQL로 접근함`,
+        `${relative(root, file)}:${line} ${owner}이(가) 자기 스키마 밖의 테이블 ${ref[0]}에 SQL로 접근함`,
       );
     }
   }
 }
 
 function checkDatabase() {
-  const mapping = Object.entries(map.modules)
-    .flatMap(([m, def]) => def.schemas.map((s) => `('${s}','${m}')`))
-    .join(',');
+  const mapping = [
+    ...Object.entries(map.modules).flatMap(([m, def]) => def.schemas.map((s) => `('${s}','${m}')`)),
+    ...[...packageSchemas].map(([name, s]) => `('${s}','plugin:${name}')`),
+  ].join(',');
   const sql = `
     WITH m(schema, module) AS (VALUES ${mapping})
     SELECT 'fk|' || na.nspname || '.' || a.relname || '|' || c.conname || '|' || nb.nspname || '.' || b.relname

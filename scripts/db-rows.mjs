@@ -1,11 +1,12 @@
 // 표마다 인터페이스 하나와 Drizzle 표 하나를 만든다. 칼럼의 원본은 마이그레이션이고, 코드는 이 파일들로 표를 안다.
-// 모듈마다 modules/<모듈>/<모듈>.tables.ts(행 타입, 웹도 가져옴)와 <모듈>.schema.ts(쿼리 템플릿이 쓰는 Drizzle 표).
+// 모듈마다 modules/<모듈>/<모듈>.tables.ts(행 타입, 웹도 가져옴)와 <모듈>.schema.ts(조건 규칙이 쓰는 Drizzle 표).
+// 기능 패키지(plugins/<이름>/, 목록 파일에 schema가 있는 것)는 plugins/<이름>/server/tables.ts · schema.ts.
 // 마이그레이션 뒤 다시 만든다. Docker의 db가 떠 있어야 함.
 //
 //   node scripts/db-rows.mjs           파일을 다시 쓴다
 //   node scripts/db-rows.mjs --check   DB와 파일이 다르면 실패
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { rowTypeOf } from './table-name.mjs';
 
@@ -39,16 +40,44 @@ const DRIZZLE = {
   uuid: (c) => `uuid('${c}')`,
 };
 
-const schemas = Object.values(map.modules).flatMap((m) => m.schemas);
+/** 기능 패키지: 이름 → 자기 스키마 (목록 파일 schema) */
+const pluginsDir = join(root, 'plugins');
+const packages = existsSync(pluginsDir)
+  ? readdirSync(pluginsDir).flatMap((name) => {
+      const file = join(pluginsDir, name, 'cairn-plugin.json');
+      if (!existsSync(file)) return [];
+      const schema = JSON.parse(readFileSync(file, 'utf8')).schema;
+      return typeof schema === 'string' ? [[name, schema]] : [];
+    })
+  : [];
+
+const schemas = [
+  ...Object.values(map.modules).flatMap((m) => m.schemas),
+  ...packages.map(([, schema]) => schema),
+];
 const columns = readColumns(schemas);
 const stale = [];
 
-for (const [module, { schemas: owned }] of Object.entries(map.modules)) {
+const targets = [
+  ...Object.entries(map.modules).map(([module, { schemas: owned }]) => {
+    const dir = join(root, 'apps/server/src/modules', module);
+    return [owned, join(dir, `${module}.tables.ts`), join(dir, `${module}.schema.ts`)];
+  }),
+  ...packages.map(([name, schema]) => {
+    const dir = join(pluginsDir, name, 'server');
+    return [
+      [schema],
+      join(dir, 'tables.ts'),
+      join(dir, 'schema.ts'),
+      '../../../apps/server/src/plugin-api',
+    ];
+  }),
+];
+for (const [owned, tablesFile, schemaFile, pluginApi] of targets) {
   const mine = columns.filter((c) => owned.includes(c.schema));
-  const dir = join(root, 'apps/server/src/modules', module);
   for (const [file, text] of [
-    [join(dir, `${module}.tables.ts`), render(mine)],
-    [join(dir, `${module}.schema.ts`), renderSchema(mine)],
+    [tablesFile, render(mine)],
+    [schemaFile, renderSchema(mine, pluginApi)],
   ]) {
     if (process.argv.includes('--check')) {
       if (!existsSync(file) || readFileSync(file, 'utf8') !== text) stale.push(file);
@@ -118,7 +147,8 @@ function tsType({ type, nullable }) {
 }
 
 /** 쿼리 템플릿이 쓰는 Drizzle 표. 칸 이름(객체의 열쇠)은 DB 그대로라 고른 행이 <모듈>.tables.ts의 행과 같다 */
-function renderSchema(found) {
+/** pluginApi: 기능 패키지면 plugin-api 경로 (drizzle-orm 대신 TableColumns로 가져온다) */
+function renderSchema(found, pluginApi) {
   const tables = Map.groupBy(found, (c) => `${c.schema}.${c.name}`);
   const builders = new Set(['pgSchema']);
   const custom = new Map();
@@ -150,9 +180,11 @@ function renderSchema(found) {
   });
   return [
     '// 자동으로 만든 파일이라 고치지 않는다. 마이그레이션 뒤 pnpm db:rows로 다시 만든다 (scripts/db-rows.mjs).',
-    '// 쿼리 템플릿(QueryTemplate)이 읽기 모양을 만들 때 쓰는 Drizzle 표. 칸 이름은 DB 그대로다.',
-    '// drizzle-orm을 직접 가져오는 곳은 이 파일들과 platform/base뿐이다 (모듈 경계 검사).',
-    `import { ${[...builders].sort().join(', ')} } from 'drizzle-orm/pg-core';`,
+    '// 조건 규칙(platform/base의 TableQuery)이 쓰는 Drizzle 표: 표 이름 · 칸 · 행 타입. 칸 이름은 DB 그대로다.',
+    '// drizzle-orm을 직접 가져오는 곳은 이 생성 파일들과 platform/base뿐이다 (모듈 경계 검사).',
+    pluginApi
+      ? `import { TableColumns } from '${pluginApi}';\n\nconst { ${[...builders].sort().join(', ')} } = TableColumns;`
+      : `import { ${[...builders].sort().join(', ')} } from 'drizzle-orm/pg-core';`,
     '',
     ...[...custom].map(
       ([type, ts]) =>

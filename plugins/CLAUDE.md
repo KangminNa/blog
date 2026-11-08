@@ -48,4 +48,26 @@ pnpm plugin sync-github check                 관리 동작
 - 화면이 받는 값은 `settings`(공개 설정)와 `context`(자리마다 정해진 값, `post.after`는 글 id·주소·제목)뿐이다
 - 설정이 비어 있으면 방문자에게는 아무것도 보이지 않게 한다 (`context.preview`일 때만 안내)
 - 로그인 플러그인은 "누구인지"만 알려준다. 주인인지는 코어가 정하므로, 주인이 계정 화면에서 연결한 계정으로만 로그인된다
-- API 경로·MCP 도구·자기 스키마는 아직 없다. 필요한 플러그인이 생길 때 확장 지점을 먼저 제안하고 만든다
+- 기능 패키지(자기 표 · API · MCP 도구 · 콘솔 메뉴)는 아래 "기능 패키지"를 따른다
+
+## 기능 패키지 (2026-11-08)
+
+코어를 고치지 않고 자기 표 · API · MCP 도구 · 콘솔 메뉴를 갖는 플러그인. 예: `browser-tabs`. 구조와 코어가 하는 일은 객체설계 12장.
+
+```
+plugins/<이름>/
+  cairn-plugin.json     "schema", "api", "tools", "menu" + uses: table · api · tool:<이름> · menu
+  migrations/           <시각>_<이름>.sql (dbmate). 자기 스키마만 만들고 바꾼다
+  server/plugin.ts      register(cairn)에서 cairn.addOperation(new XxxRead())
+  server/operations.ts  Read · Command (plugin-api)
+  server/views.ts       toJSON (콘솔 camelCase, MCP snake_case)
+  server/tables.ts · schema.ts   pnpm db:rows가 만든다. 고치지 않는다
+  web/<화면>.tsx         콘솔 화면. props로 call(method, path, body) · notify(text)
+```
+
+- 표는 자기 스키마(`schema`)에만. 코어 표를 읽거나 쓰지 않고 외래키도 걸지 않는다 (`space_id`는 값으로). `Work`가 다른 스키마의 표를 막고, `pnpm check`가 `work.sql`의 스키마를 본다
+- 동작의 `allow`: `Operation.OWNER`(주인만), `Operation.ANYONE`(방문자도), 또는 `Actor.RUN` 같은 권한. 관리 일은 늘 `Operation.OWNER`
+- 입력은 `this.fields(raw, (f) => …)`로 읽는다 (틀린 칸을 모아 400). 뜻의 검사는 `run`에서 `RuleViolation`
+- 목록 파일의 `api` · `tools`가 가리키지 않는 동작은 등록되지 않는다. 도구 입력 모양(`tools.<이름>.input`)을 바꾸면 쓰는 스킬 · 러너도 함께 고친다
+- 마이그레이션은 배포 때 코어와 함께 적용된다 (`docker compose`의 migrate가 `plugins/*/migrations`도 읽는다). 마이그레이션 뒤 `pnpm db:rows`
+- 콘솔 화면은 react와 자기 `web/` 폴더만 가져온다 (웹으로 복사되므로 `server/`를 가져오지 않는다). 서버가 내보내는 모양은 화면 안에 타입으로 적는다

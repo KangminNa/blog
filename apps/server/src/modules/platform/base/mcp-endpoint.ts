@@ -13,7 +13,8 @@ export class McpEndpoint {
   constructor(
     private readonly name: string,
     private readonly version: string,
-    private readonly tools: readonly BaseTool[],
+    /** 지금 열린 도구들. 요청마다 묻는다: 기능 패키지를 켜고 끄면 재시작 없이 도구가 바뀐다 */
+    private readonly toolsNow: () => readonly BaseTool[],
     /** AI 도구가 서버에 붙을 때 받는 안내 (스킬이 없는 도구도 이것만 보고 쓸 수 있게) */
     private readonly instructions: string,
   ) {}
@@ -30,7 +31,8 @@ export class McpEndpoint {
       { name: this.name, version: this.version },
       { capabilities: { tools: {} }, instructions: this.instructions },
     );
-    const visible = this.tools.filter((t) => t.allows(actor));
+    const tools = this.toolsNow();
+    const visible = tools.filter((t) => t.allows(actor));
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: visible.map((t) => ({
         name: t.name,
@@ -45,7 +47,7 @@ export class McpEndpoint {
       })),
     }));
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const tool = this.tools.find((t) => t.name === request.params.name);
+      const tool = tools.find((t) => t.name === request.params.name);
       try {
         if (!tool) throw new Forbidden('tool', `${request.params.name} 도구가 없어요`);
         if (!tool.allows(actor)) throw new Forbidden(tool.scope);

@@ -18,6 +18,7 @@
       "!apps/web/app/_plugins/installed",
       "!plugins/office/web/pixel",
       "!**/slots.generated.ts",
+      "!**/packages.generated.ts",
       "!**/*.tables.ts",
       "!**/*.schema.ts"
     ]

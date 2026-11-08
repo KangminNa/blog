@@ -25,7 +25,7 @@ export { BaseQuery } from './base/base-query';
 export { BaseRepository } from './base/base-repository';
 export { BaseRequest, type ColumnReaders, RequestFields, VersionInput } from './base/base-request';
 export { BaseService, EntityService, type VersionTarget } from './base/base-service';
-export { BaseTool } from './base/base-tool';
+export { BaseTool, type ToolAnswer } from './base/base-tool';
 export { Blob, BlobStore } from './base/blob-store';
 export { Database, type Row, type Sql } from './base/database';
 export {
@@ -44,6 +44,7 @@ export {
 export { DomainEvent } from './base/event';
 export { Idempotency } from './base/idempotency';
 export { McpEndpoint } from './base/mcp-endpoint';
+export { Command, Operation, Read, Work } from './base/operation';
 export { ChangeSignal, Outbox } from './base/outbox';
 export { PasswordHasher } from './base/password-hasher';
 export {
@@ -65,6 +66,7 @@ export {
 } from './base/query-template';
 export { SealedSecret, SecretBox } from './base/secret-box';
 export { SecretRotation } from './base/secret-rotation';
+export * as TableColumns from './base/table-columns';
 export { type ColumnRules, TableEntity, type TableRow } from './base/table-entity';
 export { type How, type RowOf, Rule, type Where } from './base/table-query';
 export { type EntityStore, TableRepository } from './base/table-repository';
@@ -76,6 +78,8 @@ export { HttpSetup } from './http/http-setup';
 export type { HttpRequest, HttpResponse } from './http/http-types';
 export { PlatformModule } from './platform.module';
 export { BasePlugin } from './plugin/base-plugin';
+export { PackageService } from './plugin/package.service';
+export { PackageTool } from './plugin/package.tool';
 export { PluginService } from './plugin/plugin.service';
 export type { PluginContext } from './plugin/plugin-context';
 export { LoginMethod } from './plugin/plugin-context';

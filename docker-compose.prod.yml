@@ -41,12 +41,17 @@ services:
 
   migrate:
     build:
-      context: ./db
-      dockerfile: Dockerfile.migrate
+      context: .
+      dockerfile: db/Dockerfile.migrate
     image: cairn-migrate:${CAIRN_IMAGE_TAG:-dev}
     environment:
       DATABASE_URL: *db-url
-    command: ["--wait", "--no-dump-schema", "--migrations-dir", "/db/migrations", "up"]
+    # 코어와 기능 패키지의 마이그레이션 (이미지에 담긴 plugins/<이름>/migrations)
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - set -- --wait --no-dump-schema --migrations-dir /db/migrations;
+        for d in /plugins/*/migrations; do [ -d "$$d" ] && set -- "$$@" --migrations-dir "$$d"; done;
+        exec dbmate "$$@" up
     depends_on:
       db:
         condition: service_healthy

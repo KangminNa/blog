@@ -3,6 +3,8 @@
 import { usePathname } from 'next/navigation';
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
 import { api } from '../_lib/client-api';
+import type { PackageEntry } from '../_plugins/package-types';
+import { useActivePackages } from '../_plugins/packages';
 import { countOf, usePendingApprovals } from '../_task/live';
 import { CairnMark } from '../_ui/CairnMark';
 import { ThemeToggle } from '../_ui/ThemeToggle';
@@ -34,6 +36,7 @@ export function AdminShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const packages = useActivePackages();
   const [open, setOpen] = useState(false);
   const [toast, showToast] = useToast();
   const pending = usePendingApprovals();
@@ -74,6 +77,11 @@ export function AdminShell({
           {MENU.map((group) => (
             <nav key={group.label} aria-label={group.label || '홈'}>
               {group.label && <div className="console-label">{group.label}</div>}
+              {packages
+                .filter((p) => p.group === group.label)
+                .map((p) => (
+                  <PackageLink key={p.plugin} entry={p} pathname={pathname} />
+                ))}
               {group.items.map((item) => (
                 <a
                   key={item.href}
@@ -94,6 +102,18 @@ export function AdminShell({
               ))}
             </nav>
           ))}
+          {[...new Set(packages.map((p) => p.group))]
+            .filter((label) => !MENU.some((group) => group.label === label))
+            .map((label) => (
+              <nav key={`package-${label}`} aria-label={label || '기능 패키지'}>
+                <div className="console-label">{label || '기능 패키지'}</div>
+                {packages
+                  .filter((p) => p.group === label)
+                  .map((p) => (
+                    <PackageLink key={p.plugin} entry={p} pathname={pathname} />
+                  ))}
+              </nav>
+            ))}
           <div className="console-foot">
             <span className="label-mono">{login}</span>
             <a className="console-link" href="/">
@@ -135,5 +155,20 @@ export function AdminShell({
         </div>
       )}
     </NotifyContext.Provider>
+  );
+}
+
+/** 기능 패키지의 메뉴 한 줄 (목록 파일 menu). 화면은 /admin/p/<패키지> */
+function PackageLink({ entry, pathname }: { entry: PackageEntry; pathname: string | null }) {
+  const href = `/admin/p/${entry.plugin}`;
+  return (
+    <a
+      className="console-link"
+      href={href}
+      aria-current={pathname?.startsWith(href) ? 'page' : undefined}
+    >
+      <MenuIcon name={entry.icon} />
+      {entry.name}
+    </a>
   );
 }

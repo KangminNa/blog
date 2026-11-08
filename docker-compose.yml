@@ -35,9 +35,15 @@ services:
     image: ghcr.io/amacneil/dbmate:2.36.0
     environment:
       DATABASE_URL: *db-url
-    command: ["--wait", "--no-dump-schema", "--migrations-dir", "/db/migrations", "up"]
+    # 코어 마이그레이션과 기능 패키지(plugins/<이름>/migrations, 자기 스키마만)를 한 번에 적용한다
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - set -- --wait --no-dump-schema --migrations-dir /db/migrations;
+        for d in /plugins/*/migrations; do [ -d "$$d" ] && set -- "$$@" --migrations-dir "$$d"; done;
+        exec dbmate "$$@" up
     volumes:
       - ./db/migrations:/db/migrations
+      - ./plugins:/plugins:ro
     depends_on:
       db:
         condition: service_healthy

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { ApiClient, TestUser } from '../../../testing/api-client';
 
@@ -39,7 +39,16 @@ describe('GET /health', () => {
       'vector',
     ]);
 
-    const files = readdirSync(resolve(process.cwd(), '../../db/migrations'))
+    // 코어(db/migrations)와 기능 패키지(plugins/<이름>/migrations)의 마이그레이션
+    const root = resolve(process.cwd(), '../..');
+    const dirs = [
+      join(root, 'db/migrations'),
+      ...readdirSync(join(root, 'plugins'))
+        .map((name) => join(root, 'plugins', name, 'migrations'))
+        .filter((dir) => existsSync(dir)),
+    ];
+    const files = dirs
+      .flatMap((dir) => readdirSync(dir))
       .filter((f) => f.endsWith('.sql'))
       .map((f) => f.slice(0, 14))
       .sort();
