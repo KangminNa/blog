@@ -47,23 +47,6 @@ export { McpEndpoint } from './base/mcp-endpoint';
 export { Command, Operation, Read, Work } from './base/operation';
 export { ChangeSignal, Outbox } from './base/outbox';
 export { PasswordHasher } from './base/password-hasher';
-export {
-  and,
-  asc,
-  desc,
-  eq,
-  gt,
-  gte,
-  inArray,
-  isNotNull,
-  isNull,
-  like,
-  lt,
-  lte,
-  ne,
-  or,
-  QueryTemplate,
-} from './base/query-template';
 export { SealedSecret, SecretBox } from './base/secret-box';
 export { SecretRotation } from './base/secret-rotation';
 export * as TableColumns from './base/table-columns';
