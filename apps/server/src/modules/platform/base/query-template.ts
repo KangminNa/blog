@@ -16,7 +16,22 @@ import type { Row, Sql } from './database';
 // 그래서 돌아오는 행은 지금 sql과 같다: 칸 이름은 DB 그대로, 날짜는 Date, bigint는 number.
 
 // 모양을 만드는 조건 · 정렬. 모듈은 drizzle-orm을 직접 가져오지 않고 이것만 쓴다 (모듈 경계 검사)
-export { and, asc, desc, eq, gt, gte, isNotNull, isNull, lt, lte, ne, or } from 'drizzle-orm';
+export {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  like,
+  lt,
+  lte,
+  ne,
+  or,
+} from 'drizzle-orm';
 
 /** 템플릿에 넣는 값. 이름은 QueryTemplate.value('이름')의 이름이다 */
 type Values = Readonly<Record<string, unknown>>;
