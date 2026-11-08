@@ -1,8 +1,10 @@
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
+import { SystemActor } from '../base/actor';
 import { Database } from '../base/database';
 import { DomainEvent } from '../base/event';
 import { Outbox } from '../base/outbox';
 import type { OutboxRow } from '../platform.tables';
+import { PackageService } from '../plugin/package.service';
 import type { ScheduledJob } from '../plugin/plugin-context';
 import { PluginRegistry } from '../plugin/plugin-registry';
 import { CoreWorkers } from './core-workers';
@@ -27,11 +29,16 @@ export class OutboxWorker implements OnApplicationShutdown {
   private wanted = false;
   private closing = false;
 
+  /** 기능 패키지가 이벤트에 건 동작을 돌린다 (REST · MCP와 같은 순서: 권한 → 입력 → 트랜잭션 → outbox) */
+  private readonly packages: PackageService;
+
   constructor(
     private readonly db: Database,
     private readonly registry: PluginRegistry,
     private readonly core: CoreWorkers,
-  ) {}
+  ) {
+    this.packages = new PackageService(db, registry);
+  }
 
   start(fallbackMs = OutboxWorker.FALLBACK_MS): void {
     const missing = this.core.missing();
@@ -88,6 +95,11 @@ export class OutboxWorker implements OnApplicationShutdown {
         }
         for (const handler of this.core.handlersFor(event)) await handler.handle(event);
         for (const sub of this.registry.handlersFor(event)) await sub.handler.handle(event);
+        for (const reaction of this.registry.reactionsFor(event))
+          await this.packages.run(new SystemActor(), reaction.found, {
+            ...event.data,
+            spaceId: event.spaceId,
+          });
         await this.db
           .sql`UPDATE platform.outbox SET processed_at = now(), last_error = NULL WHERE id = ${row.id}`;
       } catch (error) {

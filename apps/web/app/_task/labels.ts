@@ -36,9 +36,15 @@ export const APPROVAL_STATUS: Record<string, string> = {
 
 export const PUBLISH_POST = 'blog.post.publish';
 export const RAISE_LIMIT = 'task.agent.raise_limit';
+/** browser-tabs 패키지: 에이전트가 발행 직전에 멈추고 올리는 결재. 서버는 실행하지 않고 주인이 직접 발행한다 */
+export const PUBLISH_SITE = 'browser.site.publish';
+
+/** 서버가 실행하지 않고 주인이 직접 하는 동작: 승인 버튼의 말이 바뀐다 */
+export const MANUAL_ACTIONS: Record<string, string> = { [PUBLISH_SITE]: '직접 발행했어요' };
 
 export const ACTION_LABELS: Record<string, string> = {
   [PUBLISH_POST]: '글 공개',
+  [PUBLISH_SITE]: '브라우저에서 발행',
   'sns.post.send': 'SNS 전송',
   [RAISE_LIMIT]: '한도 변경',
 };
@@ -47,7 +53,11 @@ export function actionLabel(action: string): string {
   return ACTION_LABELS[action] ?? action;
 }
 
-export const TARGET_LABELS: Record<string, string> = { post: '글', agent: '에이전트' };
+export const TARGET_LABELS: Record<string, string> = {
+  post: '글',
+  agent: '에이전트',
+  browser_site: '사이트',
+};
 
 export const EVENT_KINDS: Record<string, string> = {
   read: '읽기',

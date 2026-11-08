@@ -8,6 +8,7 @@ import { api, describe } from '../../_lib/client-api';
 import { useLiveValue } from '../../_lib/use-live';
 import {
   actionLabel,
+  MANUAL_ACTIONS,
   PUBLISH_POST,
   RAISE_LIMIT,
   TARGET_LABELS,
@@ -340,6 +341,12 @@ function Decide({
         {noteProblem && <p className="error">{noteProblem}</p>}
       </div>
       {problem && <p className="error">{problem}</p>}
+      {MANUAL_ACTIONS[approval.action] && (
+        <p className="note">
+          서버는 실행하지 않아요. <Link href="/admin/p/browser-tabs">브라우저 화면</Link>에서 직접
+          발행한 뒤 눌러 주세요
+        </p>
+      )}
       <div className="row">
         <button
           type="button"
@@ -347,7 +354,7 @@ function Decide({
           disabled={busy || !canApprove}
           onClick={() => decide('approve')}
         >
-          승인
+          {MANUAL_ACTIONS[approval.action] ?? '승인'}
         </button>
         <button type="button" className="ghost" disabled={busy} onClick={() => decide('revise')}>
           수정 요청

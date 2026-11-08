@@ -1,4 +1,4 @@
-import type { ReadRow } from './tables';
+import type { ReadRow, SiteRow } from './tables';
 
 // 이 패키지가 내보내는 모양. 보는 사람마다 나눈다: 콘솔(주인)은 camelCase, 러너(MCP)는 snake_case.
 
@@ -50,5 +50,56 @@ export class SavedView {
 
   toJSON() {
     return { id: this.id, status: this.status };
+  }
+}
+
+/** 사이트 하나 (콘솔) */
+export class SiteView {
+  constructor(private readonly row: Readonly<SiteRow>) {}
+
+  toJSON() {
+    const r = this.row;
+    return {
+      id: r.id,
+      name: r.name,
+      startUrl: r.start_url,
+      origins: r.origins,
+      version: r.version,
+      updatedAt: r.updated_at.toISOString(),
+    };
+  }
+}
+
+/** 사이트 목록 (콘솔) */
+export class SiteListView {
+  constructor(private readonly sites: readonly SiteView[]) {}
+
+  toJSON() {
+    return { sites: this.sites.map((s) => s.toJSON()) };
+  }
+}
+
+/** 작업을 맡겼다 (작업은 코어가 곧 만든다) */
+export class AskedView {
+  constructor(private readonly requestId: string) {}
+
+  toJSON() {
+    return { requestId: this.requestId };
+  }
+}
+
+/** 주인 확인 통과 (Caddy forward_auth) */
+export class ViewerView {
+  toJSON() {
+    return { ok: true };
+  }
+}
+
+/** 발행 결재를 마무리했는가 (이 패키지의 동작이 아니면 false) */
+export class ConfirmedView {
+  constructor(private readonly confirmed: boolean) {}
+
+  toJSON() {
+    return { confirmed: this.confirmed };
   }
 }

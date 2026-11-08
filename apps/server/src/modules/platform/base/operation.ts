@@ -3,6 +3,7 @@ import type { Actor } from './actor';
 import { BaseRequest, type RequestFields } from './base-request';
 import type { ToolAnswer } from './base-tool';
 import type { Sql } from './database';
+import { Forbidden } from './errors';
 import type { DomainEvent } from './event';
 import { type Changes, type How, type RowOf, TableWriter, type Where } from './table-query';
 
@@ -22,6 +23,8 @@ export abstract class Operation<I = unknown> {
   static readonly ANYONE = 'anyone';
   /** 주인만 (관리 일) */
   static readonly OWNER = 'owner';
+  /** 서버 자신만: 이벤트로 도는 동작 (cairn.onEvent에 넘긴 Command). REST · MCP로는 누구도 부르지 못한다 */
+  static readonly SYSTEM = 'system';
 
   /** 패키지 안에서 유일한 이름. 목록 파일의 api · tools가 이 이름으로 가리킨다 */
   abstract readonly name: string;
@@ -42,7 +45,9 @@ export abstract class Operation<I = unknown> {
 
   /** 권한 확인. 코어가 입력을 읽기 전에 부른다 */
   check(actor: Actor): void {
-    if (this.allow === Operation.OWNER) actor.assertOwner();
+    if (this.allow === Operation.SYSTEM) {
+      if (actor.kind !== 'system') throw new Forbidden(Operation.SYSTEM);
+    } else if (this.allow === Operation.OWNER) actor.assertOwner();
     else if (this.allow !== Operation.ANYONE) actor.assertCan(this.allow);
   }
 }

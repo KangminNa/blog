@@ -69,6 +69,7 @@ plugins/<이름>/
 - 동작의 `allow`: `Operation.OWNER`(주인만), `Operation.ANYONE`(방문자도), 또는 `Actor.RUN` 같은 권한. 관리 일은 늘 `Operation.OWNER`
 - 입력은 `this.fields(raw, (f) => …)`로 읽는다 (틀린 칸을 모아 400). 뜻의 검사는 `run`에서 `RuleViolation`
 - 목록 파일의 `api` · `tools`가 가리키지 않는 동작은 등록되지 않는다. 도구 입력 모양(`tools.<이름>.input`)을 바꾸면 쓰는 스킬 · 러너도 함께 고친다 (`browser-tabs`의 러너 쪽은 `apps/runner/src/tab-reader.ts` · `cairn-server.ts`)
+- 이벤트를 받아 표에 쓰거나 이벤트를 남기려면 `cairn.onEvent(무늬, new XxxCommand())`: `allow = Operation.SYSTEM`, 코어가 트랜잭션 하나에서 돌린다 (처리기 `BaseHandler`는 DB에 쓸 길이 없다)
 - 이벤트는 `plugin.<스키마>.<무엇>` 이름으로만 남긴다. 에이전트에게 일을 맡기려면 `uses`에 `task:request`를 적고 `task.task.requested`를 남긴다 (그 밖의 코어 이벤트는 `work.record`가 막는다)
 - 마이그레이션은 배포 때 코어와 함께 적용된다 (`docker compose`의 migrate가 `plugins/*/migrations`도 읽는다. 테스트 DB와 `pnpm db:rollback`도 같다). 마이그레이션 뒤 `pnpm db:rows`
 - 콘솔 화면은 react와 자기 `web/` 폴더만 가져온다 (웹으로 복사되므로 `server/`를 가져오지 않는다). 서버가 내보내는 모양은 화면 안에 타입으로 적는다

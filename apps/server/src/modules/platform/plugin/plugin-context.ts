@@ -6,7 +6,7 @@ import type { BaseAction } from '../base/base-action';
 import type { BaseHandler } from '../base/base-handler';
 import type { BaseJob } from '../base/base-job';
 import type { BaseLogin } from '../base/base-login';
-import type { Operation } from '../base/operation';
+import { Command, Operation } from '../base/operation';
 import type { PluginManifest } from './plugin-manifest';
 
 /** 등록된 이벤트 받기 하나 */
@@ -15,6 +15,14 @@ export class EventSubscription {
     readonly plugin: string,
     readonly pattern: string,
     readonly handler: BaseHandler,
+  ) {}
+}
+
+/** 이벤트가 오면 코어가 돌리는 기능 패키지의 쓰기 동작 (서버 자신으로, 트랜잭션 하나에서) */
+export class EventReaction {
+  constructor(
+    readonly pattern: string,
+    readonly found: PackageOperation,
   ) {}
 }
 
@@ -60,6 +68,7 @@ export class PluginContext {
   readonly actions: PluginAction[] = [];
   readonly logins: LoginMethod[] = [];
   readonly operations: PackageOperation[] = [];
+  readonly reactions: EventReaction[] = [];
 
   constructor(
     private readonly manifest: PluginManifest,
@@ -73,8 +82,21 @@ export class PluginContext {
     return this.values;
   }
 
-  onEvent(pattern: string, handler: BaseHandler): void {
+  /**
+   * 이벤트 받기. 처리기(BaseHandler)를 넘기거나, 기능 패키지는 쓰기 동작(Command)을 넘긴다:
+   * 그 동작은 코어(일꾼)가 서버 자신으로 트랜잭션 하나에서 돌리고(입력은 이벤트의 내용 + spaceId),
+   * 남긴 이벤트는 같은 트랜잭션의 outbox로 나간다. allow는 Operation.SYSTEM이어야 한다
+   */
+  onEvent(pattern: string, handler: BaseHandler | Command): void {
     this.require(`event:${pattern}`);
+    if (handler instanceof Command) {
+      if (handler.allow !== Operation.SYSTEM)
+        throw new Error(
+          `이벤트로 도는 동작은 allow가 Operation.SYSTEM이어야 해요: ${handler.name}`,
+        );
+      this.reactions.push(new EventReaction(pattern, new PackageOperation(this.manifest, handler)));
+      return;
+    }
     this.subscriptions.push(new EventSubscription(this.manifest.name, pattern, handler));
   }
 

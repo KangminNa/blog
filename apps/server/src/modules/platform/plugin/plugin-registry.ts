@@ -8,6 +8,7 @@ import type { SecretBox } from '../base/secret-box';
 import { BasePlugin } from './base-plugin';
 import { PluginRepository } from './plugin.repository';
 import {
+  type EventReaction,
   type EventSubscription,
   LoginMethod,
   type PackageOperation,
@@ -24,6 +25,7 @@ import type { PluginState } from './plugin-state';
 //   한 플러그인의 설정이 틀려도 다른 플러그인과 서버는 계속 돈다 (problems()로 원인을 알림).
 export class PluginRegistry {
   private subscriptions: readonly EventSubscription[] = [];
+  private reactions: readonly EventReaction[] = [];
   private scheduled: readonly ScheduledJob[] = [];
   private pluginActions: readonly PluginAction[] = [];
   private loginMethods: readonly LoginMethod[] = [];
@@ -72,6 +74,7 @@ export class PluginRegistry {
   async reload(): Promise<void> {
     const states = await new PluginRepository(this.sql).all();
     const subscriptions: EventSubscription[] = [];
+    const reactions: EventReaction[] = [];
     const scheduled: ScheduledJob[] = [];
     const actions: PluginAction[] = [];
     const logins: LoginMethod[] = [];
@@ -89,6 +92,7 @@ export class PluginRegistry {
         );
         PluginRegistry.instantiate(manifest).register(context);
         subscriptions.push(...context.subscriptions);
+        reactions.push(...context.reactions);
         scheduled.push(...context.jobs);
         actions.push(...context.actions);
         operations.push(...context.operations);
@@ -107,6 +111,7 @@ export class PluginRegistry {
     }
     this.states = new Map(states.map((s) => [s.name, s]));
     this.subscriptions = subscriptions;
+    this.reactions = reactions;
     this.scheduled = scheduled;
     this.pluginActions = actions;
     this.loginMethods = logins;
@@ -150,6 +155,11 @@ export class PluginRegistry {
 
   handlersFor(event: DomainEvent): readonly EventSubscription[] {
     return this.subscriptions.filter((s) => event.matches(s.pattern));
+  }
+
+  /** 이 이벤트에 코어가 돌릴 기능 패키지의 동작들 */
+  reactionsFor(event: DomainEvent): readonly EventReaction[] {
+    return this.reactions.filter((r) => event.matches(r.pattern));
   }
 
   jobs(): readonly ScheduledJob[] {

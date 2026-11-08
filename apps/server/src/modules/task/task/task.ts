@@ -93,6 +93,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   private static readonly SKILLS: Readonly<Record<string, string>> = {
     draft_post: 'cairn-write',
     tidy_session: 'cairn-tidy',
+    browse: 'cairn-browse',
   };
   /** 이 종류의 일을 맡으려면 에이전트에게 있어야 하는 권한. 없는 종류는 누구나 맡는다 */
   static readonly SCOPES: Readonly<Record<string, readonly string[]>> = {

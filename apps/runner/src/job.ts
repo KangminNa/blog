@@ -73,6 +73,9 @@ export class SubtaskResult {
 /** 브라우저 작업(browse)의 사이트. 맡길 때의 값이 작업의 payload에 실려 온다 (browser-tabs 패키지) */
 export class BrowseSite {
   constructor(
+    /** 결재(request_approval)의 target_id · target_version으로 쓴다 */
+    readonly id: string,
+    readonly version: number,
     readonly name: string,
     readonly startUrl: string,
     /** 브라우저가 요청할 수 있는 출처 (Playwright MCP의 --allowed-origins) */
@@ -83,13 +86,20 @@ export class BrowseSite {
   static from(raw: Json): BrowseSite | null {
     const origins = raw.texts('origins').filter((o) => /^https?:\/\/[^/\s;]+$/i.test(o));
     if (origins.length === 0) return null;
-    return new BrowseSite(raw.text('name'), raw.text('startUrl'), origins);
+    return new BrowseSite(
+      raw.text('id'),
+      raw.number('version'),
+      raw.text('name'),
+      raw.text('startUrl'),
+      origins,
+    );
   }
 
   /** 지시문의 한 단락 */
   get part(): string {
     return [
       `# 사이트: ${this.name}`,
+      `사이트 id: ${this.id} · 판: ${this.version} (결재의 target_kind는 browser_site)`,
       `시작 주소: ${this.startUrl}`,
       `갈 수 있는 출처: ${this.origins.join(', ')}`,
       '브라우저는 playwright MCP 도구로 움직입니다. 이 출처 밖으로는 가지 않습니다.',

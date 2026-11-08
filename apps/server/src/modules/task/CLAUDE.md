@@ -43,7 +43,7 @@
 | `task.agent.changed` | `agentId, status` |
 | `task.approval.requested` · `granted` · `rejected` · `revision_requested` · `cancelled` | `approvalId, taskId, agentId, action, targetKind, targetId, targetVersion, decidedBy, note` |
 
-`task.approval.granted`를 받은 모듈이 동작을 실행한다. 받는 모듈이 `CoreWorkers.expect`도 적는다 (지금은 blog의 `blog.post.publish`). 실행하는 모듈이 없는 동작은 승인해도 작업이 끝나지 않는다.
+`task.approval.granted`를 받은 모듈이 동작을 실행한다. 받는 모듈이 `CoreWorkers.expect`도 적는다 (지금은 blog의 `blog.post.publish`). 실행하는 모듈이 없는 동작은 승인해도 작업이 끝나지 않는다. 기능 패키지의 동작도 같다: `browser.site.publish`는 `browser-tabs`가 받아 "주인이 직접 발행함"을 결과로 남긴다 (패키지가 꺼져 있으면 끝나지 않으니 작업을 취소한다).
 변경 신호(SSE)만 있고 이벤트가 아닌 것: `task.event.added` (실행 기록이 쌓임, id는 작업), `task.usage.changed` (구독 사용률이 옴, id는 도구).
 
 ## 받는 이벤트
@@ -70,7 +70,7 @@ platform
 - 위임: `waiting`에는 늘 기다리는 것(`wait_reason`: approval · subtasks)이 있다 (DB CHECK). 결재 승인 · 고쳐 달라는 말은 결재를 기다리는 작업에만, 깨우기는 하위 작업을 기다리는 작업에만. 받는 쪽 · 종류 · 한도는 `Task`가 막고 LLM에게 맡기지 않는다
 - 한도 올리기 결재는 서버만 올린다. 승인은 같은 트랜잭션에서 한도를 두 배로 하고 에이전트를 다시 움직인다
 - 쉬기(`Agent.holds`)는 저장하지 않고 그때마다 계산한다. 5시간 토큰이나 구독 사용률에 닿으면 새 일만 안 빌려주고, 달리는 작업은 끝까지 간다. 결재도 `paused`도 없다: `report_progress`가 `paused: true`를 돌려주면 러너가 작업을 돌려주므로 쉬기에는 쓰지 않는다
-- 일의 종류마다 필요한 권한은 `Task.SCOPES`에 적는다 (`tidy_session` → `tidy`, `browse` → `browse`). `browse`와 `read_all`은 한 에이전트에 함께 두지 않는다 (`Agent` 규칙 + DB CHECK). `lockNext`가 SQL에서 거르므로 빌렸다가 돌려주지 않고, 맡을 에이전트가 없는 일은 대기열에 남아 뒤의 일을 막지 않는다
+- 일의 종류마다 필요한 권한은 `Task.SCOPES`에 적는다 (`tidy_session` → `tidy`, `browse` → `browse`, 스킬은 `Task.SKILLS`: `browse` → `cairn-browse`). `browse`와 `read_all`은 한 에이전트에 함께 두지 않는다 (`Agent` 규칙 + DB CHECK). `lockNext`가 SQL에서 거르므로 빌렸다가 돌려주지 않고, 맡을 에이전트가 없는 일은 대기열에 남아 뒤의 일을 막지 않는다
 - 쉬는지는 작업을 잠그기 전에 따지고 `lockNext`에서 건너뛴다. 빌렸다가 돌려주지 않는다. 일을 빌릴 때와 `UsageQuery`는 같은 `AgentRepository.usage`를 읽는다
 - 초기화 시각이 지난 `plan_usage`는 없는 것과 같다 (`PlanUsage.validAt`). 쉬는 데 쓰지 않고 화면에는 확인 전으로 보인다
 - `plan_usage`의 도구는 러너의 입력이 아니라 작업의 에이전트로 정한다. 저장은 에이전트 잠금 뒤에, 늘 같은 창 순서로 (서로 막지 않게). 진행 보고처럼 `task.tasks.version`을 올리지 않는다

@@ -16,3 +16,17 @@ export interface ReadRow {
   version: number;
 }
 export type ReadNew = Partial<ReadRow> & Pick<ReadRow, 'id' | 'space_id' | 'url'>;
+
+/** browser_tabs.sites */
+export interface SiteRow {
+  id: string;
+  space_id: string;
+  name: string;
+  start_url: string;
+  origins: readonly string[];
+  created_at: Date;
+  updated_at: Date;
+  version: number;
+}
+export type SiteNew = Partial<SiteRow> &
+  Pick<SiteRow, 'id' | 'space_id' | 'name' | 'start_url' | 'origins'>;

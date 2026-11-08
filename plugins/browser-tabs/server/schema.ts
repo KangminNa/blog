@@ -20,3 +20,15 @@ export const reads = browserTabsSchema.table('reads', {
   read_at: timestamp('read_at', { withTimezone: true }),
   version: integer('version').notNull(),
 });
+
+/** browser_tabs.sites */
+export const sites = browserTabsSchema.table('sites', {
+  id: uuid('id').notNull(),
+  space_id: uuid('space_id').notNull(),
+  name: text('name').notNull(),
+  start_url: text('start_url').notNull(),
+  origins: text('origins').array().notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
+  version: integer('version').notNull(),
+});
