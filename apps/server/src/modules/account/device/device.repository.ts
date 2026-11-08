@@ -1,54 +1,11 @@
-import {
-  and,
-  Database,
-  eq,
-  isNull,
-  NotFound,
-  QueryTemplate,
-  TableRepository,
-} from '../../platform';
-import { devices } from '../account.schema';
+import { Database, NotFound, Rule, TableRepository } from '../../platform';
+import { devices, deviceTokens, oauthTokens } from '../account.schema';
 import type { DeviceRow } from '../account.tables';
 import { Device, DeviceCredential } from './device';
 
 // account.devices + oauth_tokens + device_tokens ↔ Device. 불러오기·잠그기·저장(바뀐 칸만)은 기반이 하고,
 // 여기에는 이름·토큰으로 찾는 SQL과 딸린 토큰 표의 저장이 있다. 토큰 표에는 해시만 들어간다.
 export class DeviceRepository extends TableRepository<DeviceRow, Device> {
-  /** 공간에서 이 이름을 쓰는 끊지 않은 기기 하나 (있는지만 본다) */
-  private static readonly LIVE_NAME = QueryTemplate.of<
-    { space: string; name: string },
-    Pick<DeviceRow, 'id'>
-  >((q) =>
-    q
-      .select({ id: devices.id })
-      .from(devices)
-      .where(
-        and(
-          eq(devices.space_id, QueryTemplate.value('space')),
-          eq(devices.name, QueryTemplate.value('name')),
-          isNull(devices.revoked_at),
-        ),
-      )
-      .limit(1),
-  );
-  /** 공간에서 이 이름을 쓰는 끊지 않은 기기를 잠근다 */
-  private static readonly LOCK_LIVE_NAME = QueryTemplate.of<
-    { space: string; name: string },
-    DeviceRow
-  >((q) =>
-    q
-      .select()
-      .from(devices)
-      .where(
-        and(
-          eq(devices.space_id, QueryTemplate.value('space')),
-          eq(devices.name, QueryTemplate.value('name')),
-          isNull(devices.revoked_at),
-        ),
-      )
-      .for('update'),
-  );
-
   protected readonly table = devices;
   protected readonly noun = '기기';
 
@@ -65,18 +22,12 @@ export class DeviceRepository extends TableRepository<DeviceRow, Device> {
 
   /** 끊지 않은 기기 중에 같은 이름이 있는가 (승인 화면에서 먼저 알려주려고) */
   async nameTaken(spaceId: string, name: string): Promise<boolean> {
-    const row = await DeviceRepository.LIVE_NAME.one(this.sql, {
-      space: spaceId,
-      name: name.trim(),
-    });
-    return row !== null;
+    return this.exists(devices, { space_id: spaceId, name: name.trim(), revoked_at: null });
   }
 
   /** 이름으로 살아 있는 기기를 잠근다 (이름은 살아 있는 기기끼리 겹치지 않는다) */
   async lockLiveByName(spaceId: string, name: string): Promise<Device | null> {
-    return this.maybeOne(
-      await DeviceRepository.LOCK_LIVE_NAME.rows(this.sql, { space: spaceId, name }),
-    );
+    return this.findOne({ space_id: spaceId, name, revoked_at: null }, { lock: true });
   }
 
   /** 갱신 토큰으로 기기를 찾아 잠근다 (이미 무효인 토큰도 찾는다: 재사용 감지) */
@@ -122,28 +73,18 @@ export class DeviceRepository extends TableRepository<DeviceRow, Device> {
 
   /** 토큰을 무효로 하고(끊은 기기는 모두) 새 토큰을 넣는다 */
   protected override async saveParts(device: Device): Promise<void> {
+    const revoke = { revoked_at: Rule.now };
     for (const hash of device.retiredHashes) {
-      await this.sql`
-        UPDATE account.oauth_tokens SET revoked_at = now()
-        WHERE token_hash = ${hash} AND revoked_at IS NULL`;
-      await this.sql`
-        UPDATE account.device_tokens SET revoked_at = now()
-        WHERE token_hash = ${hash} AND revoked_at IS NULL`;
+      await this.updateRows(oauthTokens, revoke, { token_hash: hash, revoked_at: null });
+      await this.updateRows(deviceTokens, revoke, { token_hash: hash, revoked_at: null });
     }
     if (device.retiresDeviceTokens)
-      await this.sql`
-        UPDATE account.device_tokens SET revoked_at = now()
-        WHERE device_id = ${device.id} AND revoked_at IS NULL`;
+      await this.updateRows(deviceTokens, revoke, { device_id: device.id, revoked_at: null });
     if (device.revoked) {
-      await this.sql`
-        UPDATE account.oauth_tokens SET revoked_at = now()
-        WHERE device_id = ${device.id} AND revoked_at IS NULL`;
-      await this.sql`
-        UPDATE account.device_tokens SET revoked_at = now()
-        WHERE device_id = ${device.id} AND revoked_at IS NULL`;
+      await this.updateRows(oauthTokens, revoke, { device_id: device.id, revoked_at: null });
+      await this.updateRows(deviceTokens, revoke, { device_id: device.id, revoked_at: null });
     }
-    for (const row of device.newDeviceTokens)
-      await this.sql`INSERT INTO account.device_tokens ${this.sql(row as never)}`;
+    await this.insertRows(deviceTokens, device.newDeviceTokens);
     for (const row of device.newOAuthTokens)
       await this.sql`INSERT INTO account.oauth_tokens ${this.sql(row as never)}`;
   }

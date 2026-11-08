@@ -1,5 +1,5 @@
 import { TableRepository } from '../../platform';
-import { spaces } from '../account.schema';
+import { settings, spaces } from '../account.schema';
 import type { SettingNew, SpaceRow } from '../account.tables';
 import { Space } from './space';
 import type { LoadedSpace } from './space.view';
@@ -26,7 +26,7 @@ export class SpaceRepository extends TableRepository<SpaceRow, Space> {
   protected override async saveParts(space: Space): Promise<void> {
     for (const [key, value] of Object.entries(space.unsavedSettings)) {
       if (value === null) {
-        await this.sql`DELETE FROM account.settings WHERE space_id = ${space.id} AND key = ${key}`;
+        await this.deleteRows(settings, { space_id: space.id, key });
         continue;
       }
       const setting: SettingNew = { space_id: space.id, key, value: this.sql.json(value) };

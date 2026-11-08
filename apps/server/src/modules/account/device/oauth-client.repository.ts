@@ -1,36 +1,19 @@
-import { BaseRepository, eq, QueryTemplate } from '../../platform';
+import { BaseRepository } from '../../platform';
 import { oauthClients, oauthCodes } from '../account.schema';
-import type { OauthClientRow, OauthCodeRow } from '../account.tables';
+import type { OauthClientRow } from '../account.tables';
 import { AuthorizationCode } from './authorization-code';
 import { OAuthClient } from './oauth-client';
 
 // account.oauth_clients ↔ OAuthClient, account.oauth_codes ↔ AuthorizationCode.
 // 둘 다 기기를 만들기 전 단계의 데이터라 한 곳에서 다룬다. 열쇠가 id가 아니라 TableRepository를 쓰지 않는다.
 export class OAuthClientRepository extends BaseRepository<OAuthClient> {
-  /** client_id로 등록 한 줄 */
-  private static readonly BY_CLIENT = QueryTemplate.of<{ client: string }, OauthClientRow>((q) =>
-    q
-      .select()
-      .from(oauthClients)
-      .where(eq(oauthClients.client_id, QueryTemplate.value('client'))),
-  );
-  /** 해시로 승인 코드 한 줄을 잠근다 */
-  private static readonly LOCK_CODE = QueryTemplate.of<{ hash: string }, OauthCodeRow>((q) =>
-    q
-      .select()
-      .from(oauthCodes)
-      .where(eq(oauthCodes.code_hash, QueryTemplate.value('hash')))
-      .for('update'),
-  );
-
   protected toEntity(row: OauthClientRow): OAuthClient {
     return OAuthClient.restore(row);
   }
 
+  /** client_id로 등록 한 줄. 없으면 null */
   async find(clientId: string): Promise<OAuthClient | null> {
-    return this.maybeOne(
-      await OAuthClientRepository.BY_CLIENT.rows(this.sql, { client: clientId }),
-    );
+    return this.maybeOne(await this.rows(oauthClients, { client_id: clientId }));
   }
 
   /** 새로 등록한 클라이언트를 넣는다 (등록은 고치지 않는다) */
@@ -48,7 +31,7 @@ export class OAuthClientRepository extends BaseRepository<OAuthClient> {
 
   /** 승인 코드를 잠그고 읽는다 (한 번만 쓰이게) */
   async lockCode(codeHash: string): Promise<AuthorizationCode | null> {
-    const row = await OAuthClientRepository.LOCK_CODE.one(this.sql, { hash: codeHash });
+    const row = await this.row(oauthCodes, { code_hash: codeHash }, { lock: true });
     return row ? AuthorizationCode.restore(row) : null;
   }
 

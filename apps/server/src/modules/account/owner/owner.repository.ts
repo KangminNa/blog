@@ -1,4 +1,5 @@
 import { BaseRepository, Conflict, Database } from '../../platform';
+import { loginLinks, spaceMembers, webSessions } from '../account.schema';
 import type { UserRow, WebSessionRow } from '../account.tables';
 import { type LoadedOwner, Owner, WebSession } from './owner';
 
@@ -57,15 +58,11 @@ export class OwnerRepository extends BaseRepository<Owner> {
         WHERE user_id = ${owner.id} AND revoked_at IS NULL
           AND id IS DISTINCT FROM ${owner.keptSessionId}`;
     for (const s of owner.changedSessions) {
-      if (s.isNew) await this.sql`INSERT INTO account.web_sessions ${this.sql(s.unsaved as never)}`;
-      else
-        await this.sql`
-          UPDATE account.web_sessions SET ${this.sql(s.unsaved as never)}
-          WHERE id = ${s.id} AND revoked_at IS NULL`;
+      if (s.isNew) await this.insertRows(webSessions, s.unsaved);
+      else await this.updateRows(webSessions, s.unsaved, { id: s.id, revoked_at: null });
     }
     for (const method of owner.removedLinks)
-      await this
-        .sql`DELETE FROM account.login_links WHERE user_id = ${owner.id} AND method = ${method}`;
+      await this.deleteRows(loginLinks, { user_id: owner.id, method });
     for (const link of owner.newLinks)
       await this.sql`
         INSERT INTO account.login_links ${this.sql(link as never)}
@@ -82,8 +79,7 @@ export class OwnerRepository extends BaseRepository<Owner> {
       : await this.sql<UserRow[]>`
           UPDATE account.users SET ${this.sql(owner.unsaved as never)} WHERE id = ${owner.id}
           RETURNING *`;
-    if (fresh)
-      await this.sql`INSERT INTO account.space_members ${this.sql(owner.membership as never)}`;
+    if (fresh) await this.insertRows(spaceMembers, owner.membership);
     if (row) owner.saved(row);
   }
 

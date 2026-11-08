@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { type Actor, BaseQuery, Database } from '../../platform';
+import { spaceMembers } from '../account.schema';
 import { InstallPolicy } from './install.policy';
 import { SpaceRepository } from './space.repository';
 import { InstallStatusView, SpaceView } from './space.view';
@@ -31,9 +32,7 @@ export class SpaceQuery extends BaseQuery {
     );
   }
 
-  private async hasOwner(): Promise<boolean> {
-    const [row] = await this.sql`
-      SELECT EXISTS (SELECT 1 FROM account.space_members WHERE role = 'owner') AS yes`;
-    return Boolean(row?.yes);
+  private hasOwner(): Promise<boolean> {
+    return this.exists(spaceMembers, { role: 'owner' });
   }
 }
