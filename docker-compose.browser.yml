@@ -1,0 +1,39 @@
+# 브라우저 에이전트 (선택). 운영 구성에 더해 쓴다: .env에 COMPOSE_FILE=docker-compose.prod.yml:docker-compose.browser.yml
+# 서버 브라우저(neko)를 띄우고, 서버 러너를 그 네트워크 안에 넣는다: 러너에게 브라우저는 127.0.0.1이라
+# Chrome의 Host 검사를 지나고, CDP는 컨테이너 밖으로 열리지 않는다. 화면은 Caddy가 주인 확인 뒤에만 넘긴다 (README)
+services:
+  browser:
+    build:
+      context: .
+      dockerfile: browser/Dockerfile
+    image: cairn-browser:${CAIRN_IMAGE_TAG:-dev}
+    restart: unless-stopped
+    shm_size: 1g
+    mem_limit: 1g   # 넘치면 브라우저만 죽는다 (시험: 쉬면 약 250MB, 화면을 보면 약 290MB)
+    environment:
+      NEKO_DESKTOP_SCREEN: 1280x720@30
+      # 화면에 들어갈 때 한 번 더 묻는 비밀번호 (Caddy의 주인 확인과 두 겹)
+      NEKO_MEMBER_MULTIUSER_ADMIN_PASSWORD: ${CAIRN_BROWSER_PASSWORD:?.env에 CAIRN_BROWSER_PASSWORD를 넣어 주세요}
+      NEKO_MEMBER_MULTIUSER_USER_PASSWORD: ${CAIRN_BROWSER_PASSWORD}
+      NEKO_SERVER_PROXY: "true"
+      # 화면 영상: UDP 포트 하나로 묶는다 (방화벽에 이것만 연다). 밖에서 보이는 주소를 알려 준다
+      NEKO_WEBRTC_UDPMUX: "52000"
+      NEKO_WEBRTC_ICELITE: "true"
+      NEKO_WEBRTC_NAT1TO1: ${CAIRN_PUBLIC_IP:?.env에 서버의 공인 IP(CAIRN_PUBLIC_IP)를 넣어 주세요}
+    volumes:
+      - browser-profile:/home/neko/.config/chromium   # 로그인 유지
+    ports:
+      - "127.0.0.1:${BROWSER_VIEW_PORT:-4100}:8080"   # 화면 페이지: 이 서버 안에서만 (Caddy가 넘긴다)
+      - "52000:52000/udp"                             # 화면 영상
+
+  runner:
+    # 브라우저의 네트워크를 함께 쓴다. 서버(cairn-server)에는 그대로 닿는다
+    network_mode: service:browser
+    depends_on:
+      browser:
+        condition: service_started
+    environment:
+      CAIRN_BROWSER_URL: http://127.0.0.1:9222
+
+volumes:
+  browser-profile:

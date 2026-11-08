@@ -1,0 +1,25 @@
+{
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "BrowserSignin": 0,
+  "DefaultNotificationsSetting": 2,
+  "DeveloperToolsAvailability": 1,
+  "RemoteDebuggingAllowed": true,
+  "SyncDisabled": true,
+  "BrowserAddPersonEnabled": false,
+  "BrowserGuestModeEnabled": false,
+  "DefaultPopupsSetting": 2,
+  "DownloadRestrictions": 3,
+  "AllowFileSelectionDialogs": false,
+  "PasswordManagerEnabled": false,
+  "BrowserLabsEnabled": false,
+  "CommandLineFlagSecurityWarningsEnabled": false,
+  "URLBlocklist": [
+    "file://*",
+    "chrome://policy"
+  ],
+  "ExtensionInstallBlocklist": [
+    "*"
+  ],
+  "DefaultCookiesSetting": 1
+}
