@@ -1,6 +1,12 @@
-import { TableRepository } from '../../platform';
-import { changeSets } from '../vault.schema';
-import type { ChangeNew, ChangeOpRow, ChangeRow, ReviewRuleRow } from '../vault.tables';
+import { and, asc, eq, QueryTemplate, TableRepository } from '../../platform';
+import { changeSets, changes, reviewRules } from '../vault.schema';
+import type {
+  ChangeNew,
+  ChangeOpRow,
+  ChangeRow,
+  ChangeSetRow,
+  ReviewRuleRow,
+} from '../vault.tables';
 import { type ChangeOp, ChangeOps, RevertOp, SettledOp } from './change-op';
 import { ChangeSet, type LoadedChangeSet } from './change-set';
 import type { ChangeTarget, ChangeWork } from './change-target';
@@ -9,6 +15,48 @@ import { ReviewRules } from './review.policy';
 // vault.change_sets + change_ops + changes(실제로 바뀐 행의 전/후) ↔ ChangeSet. 검토 규칙 값(review_rules)도 여기서 읽는다.
 // 머리를 먼저 넣고(begin) 적용이 끝난 뒤 저장하므로(save) 저장의 순서는 기반과 다르다.
 export class ChangeRepository extends TableRepository<LoadedChangeSet, ChangeSet> {
+  /** 공간에서 이 작업이 낸 묶음의 id (작업 하나에 하나) */
+  private static readonly BY_JOB = QueryTemplate.of<
+    { space: string; job: string },
+    Pick<ChangeSetRow, 'id'>
+  >((q) =>
+    q
+      .select({ id: changeSets.id })
+      .from(changeSets)
+      .where(
+        and(
+          eq(changeSets.job_id, QueryTemplate.value('job')),
+          eq(changeSets.space_id, QueryTemplate.value('space')),
+        ),
+      ),
+  );
+  /** 공간에서 주인이 고른 검토 규칙 값 */
+  private static readonly RULES = QueryTemplate.of<
+    { space: string },
+    Pick<ReviewRuleRow, 'key' | 'action' | 'value'>
+  >((q) =>
+    q
+      .select({ key: reviewRules.key, action: reviewRules.action, value: reviewRules.value })
+      .from(reviewRules)
+      .where(eq(reviewRules.space_id, QueryTemplate.value('space'))),
+  );
+  /** 묶음이 실제로 바꾼 행의 전/후, 기록한 순서 */
+  private static readonly CHANGES = QueryTemplate.of<
+    { batch: string },
+    Pick<ChangeRow, 'entity' | 'entity_id' | 'before' | 'after'>
+  >((q) =>
+    q
+      .select({
+        entity: changes.entity,
+        entity_id: changes.entity_id,
+        before: changes.before,
+        after: changes.after,
+      })
+      .from(changes)
+      .where(eq(changes.batch_id, QueryTemplate.value('batch')))
+      .orderBy(asc(changes.id)),
+  );
+
   protected readonly table = changeSets;
   protected readonly noun = '변경 묶음';
 
@@ -48,15 +96,13 @@ export class ChangeRepository extends TableRepository<LoadedChangeSet, ChangeSet
   async lockJob(spaceId: string, jobId: string): Promise<ChangeSet | null> {
     await this
       .sql`SELECT pg_advisory_xact_lock(hashtextextended(${`vault.change_set.job:${jobId}`}, 0))`;
-    const [found] = await this.sql<Pick<LoadedChangeSet, 'id'>[]>`
-      SELECT id FROM vault.change_sets WHERE job_id = ${jobId} AND space_id = ${spaceId}`;
+    const found = await ChangeRepository.BY_JOB.one(this.sql, { space: spaceId, job: jobId });
     return found ? this.load(spaceId, found.id) : null;
   }
 
   /** 주인이 고른 규칙 값. targets: 이 묶음이 건드리는 대상 수 */
   async rules(spaceId: string, targets: number): Promise<ReviewRules> {
-    const rows = await this.sql<Pick<ReviewRuleRow, 'key' | 'action' | 'value'>[]>`
-      SELECT key, action, value FROM vault.review_rules WHERE space_id = ${spaceId}`;
+    const rows = await ChangeRepository.RULES.rows(this.sql, { space: spaceId });
     return new ReviewRules(
       new Map(rows.map((r) => [r.key, r.action])),
       new Map(rows.filter((r) => r.value !== null).map((r) => [r.key, r.value as number])),
@@ -129,9 +175,7 @@ export class ChangeRepository extends TableRepository<LoadedChangeSet, ChangeSet
 
   /** 이 묶음이 바꾼 대상을 되돌릴 변경들. 아무것도 바꾸지 않았으면 비어 있다 */
   async revertOps(setId: string): Promise<RevertOp[]> {
-    const rows = await this.sql<Pick<ChangeRow, 'entity' | 'entity_id' | 'before' | 'after'>[]>`
-      SELECT entity, entity_id, before, after FROM vault.changes
-      WHERE batch_id = ${setId} ORDER BY id`;
+    const rows = await ChangeRepository.CHANGES.rows(this.sql, { batch: setId });
     return RevertOp.squash(
       rows.map(
         (r, i) =>

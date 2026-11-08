@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseQuery, Database, NotFound } from '../../platform';
+import { Actor, and, BaseQuery, Database, eq, NotFound, QueryTemplate } from '../../platform';
+import { sessionRevisions } from '../vault.schema';
 import type { SessionRevisionRow, SessionRow } from '../vault.tables';
 import { SensitivePolicy } from './sensitive.policy';
 import { Session } from './session';
@@ -38,6 +39,31 @@ export class SessionQuery extends BaseQuery {
   /** 찾은 결과의 본문 조각: 전체 길이, 그중 찾은 말 앞에 남길 길이 */
   private static readonly EXCERPT = 160;
   private static readonly EXCERPT_LEAD = 40;
+  /** 세션의 판 하나 (판 번호로) */
+  private static readonly REVISION = QueryTemplate.of<
+    { session: string; seq: number },
+    SessionRevisionRow
+  >((q) =>
+    q
+      .select()
+      .from(sessionRevisions)
+      .where(
+        and(
+          eq(sessionRevisions.session_id, QueryTemplate.value('session')),
+          eq(sessionRevisions.seq, QueryTemplate.value('seq')),
+        ),
+      ),
+  );
+  /** 판 하나 (판 id로) */
+  private static readonly REVISION_BY_ID = QueryTemplate.of<
+    { id: string | null },
+    SessionRevisionRow
+  >((q) =>
+    q
+      .select()
+      .from(sessionRevisions)
+      .where(eq(sessionRevisions.id, QueryTemplate.value('id'))),
+  );
 
   constructor(
     db: Database,
@@ -111,8 +137,7 @@ export class SessionQuery extends BaseQuery {
   async revisionOf(actor: Actor, req: ReadSessionInput): Promise<SessionRevisionView> {
     actor.assertCan(Actor.READ_ALL);
     await this.find(actor, req.id);
-    const [row] = await this.sql<SessionRevisionRow[]>`
-      SELECT * FROM vault.session_revisions WHERE session_id = ${req.id} AND seq = ${req.seq ?? 0}`;
+    const row = await SessionQuery.REVISION.one(this.sql, { session: req.id, seq: req.seq ?? 0 });
     if (!row) throw new NotFound(`${req.seq}번 판이 없어요`);
     return SessionQuery.revision(row);
   }
@@ -162,8 +187,7 @@ export class SessionQuery extends BaseQuery {
   }
 
   private async headOf(session: SessionRow): Promise<SessionRevisionRow> {
-    const [head] = await this.sql<SessionRevisionRow[]>`
-      SELECT * FROM vault.session_revisions WHERE id = ${session.head_revision_id}`;
+    const head = await SessionQuery.REVISION_BY_ID.one(this.sql, { id: session.head_revision_id });
     if (!head) throw new NotFound('세션의 지금 판을 찾을 수 없어요');
     return head;
   }

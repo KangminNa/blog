@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseQuery } from '../../platform';
+import { Actor, BaseQuery, eq, QueryTemplate } from '../../platform';
+import { tidySettings } from '../vault.schema';
 import type { TidySettingRow } from '../vault.tables';
 import { TidySettingsView } from './tidy.view';
 import type { TidySessionRow } from './tidy-settings';
@@ -9,11 +10,20 @@ import type { TidySessionRow } from './tidy-settings';
 export class TidyQuery extends BaseQuery {
   /** 한 번에 맡기는 세션 수. 주인의 구독 토큰을 쓰므로 조금씩 */
   private static readonly BACKLOG_BATCH = 20;
+  /** 공간의 정리 설정 (공간마다 한 줄, 없을 수 있다) */
+  private static readonly SETTINGS = QueryTemplate.of<
+    { space: string | null },
+    Pick<TidySettingRow, 'auto_tidy' | 'version'>
+  >((q) =>
+    q
+      .select({ auto_tidy: tidySettings.auto_tidy, version: tidySettings.version })
+      .from(tidySettings)
+      .where(eq(tidySettings.space_id, QueryTemplate.value('space'))),
+  );
 
   async settings(actor: Actor): Promise<TidySettingsView> {
     actor.assertOwner();
-    const [row] = await this.sql<Pick<TidySettingRow, 'auto_tidy' | 'version'>[]>`
-      SELECT auto_tidy, version FROM vault.tidy_settings WHERE space_id = ${actor.spaceId}`;
+    const row = await TidyQuery.SETTINGS.one(this.sql, { space: actor.spaceId });
     return new TidySettingsView(row ?? { auto_tidy: false, version: 0 });
   }
 
