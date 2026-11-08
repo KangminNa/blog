@@ -22,3 +22,6 @@ CLAUDE.local.md
 apps/web/app/_plugins/installed/
 apps/web/app/_plugins/slots.generated.ts
 apps/web/app/_plugins/packages.generated.ts
+
+# Playwright MCP가 작업 폴더에 남기는 페이지 스냅샷 (러너 테스트에서 생길 수 있음)
+.playwright-mcp/

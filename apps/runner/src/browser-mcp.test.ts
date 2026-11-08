@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { type ChildProcess, spawn } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { after, before, describe, test } from 'node:test';
 import { BrowserMcp } from './browser-mcp';
@@ -202,8 +205,10 @@ describe('브라우저 작업 (실제 Chromium + Playwright MCP)', { skip: TestC
       chromium.endpoint,
     );
     assert.ok(browser);
+    // AI CLI처럼 작업 폴더에서 띄운다: Playwright MCP가 거기에 페이지 스냅샷을 남긴다
+    const work = mkdtempSync(join(tmpdir(), 'cairn-browse-'));
     const mcp = new StdioMcp(
-      spawn(browser.command, [...browser.args], { stdio: ['pipe', 'pipe', 'ignore'] }),
+      spawn(browser.command, [...browser.args], { cwd: work, stdio: ['pipe', 'pipe', 'ignore'] }),
     );
     try {
       await mcp.call('initialize', {
@@ -220,6 +225,7 @@ describe('브라우저 작업 (실제 Chromium + Playwright MCP)', { skip: TestC
       await mcp.tool('browser_close', {});
     } finally {
       mcp.close();
+      rmSync(work, { recursive: true, force: true });
     }
   });
 });
