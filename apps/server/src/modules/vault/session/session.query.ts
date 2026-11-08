@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { Actor, and, BaseQuery, Database, eq, NotFound, QueryTemplate } from '../../platform';
+import { Actor, BaseQuery, Database, NotFound } from '../../platform';
 import { sessionRevisions } from '../vault.schema';
 import type { SessionRevisionRow, SessionRow } from '../vault.tables';
 import { SensitivePolicy } from './sensitive.policy';
@@ -39,31 +39,6 @@ export class SessionQuery extends BaseQuery {
   /** 찾은 결과의 본문 조각: 전체 길이, 그중 찾은 말 앞에 남길 길이 */
   private static readonly EXCERPT = 160;
   private static readonly EXCERPT_LEAD = 40;
-  /** 세션의 판 하나 (판 번호로) */
-  private static readonly REVISION = QueryTemplate.of<
-    { session: string; seq: number },
-    SessionRevisionRow
-  >((q) =>
-    q
-      .select()
-      .from(sessionRevisions)
-      .where(
-        and(
-          eq(sessionRevisions.session_id, QueryTemplate.value('session')),
-          eq(sessionRevisions.seq, QueryTemplate.value('seq')),
-        ),
-      ),
-  );
-  /** 판 하나 (판 id로) */
-  private static readonly REVISION_BY_ID = QueryTemplate.of<
-    { id: string | null },
-    SessionRevisionRow
-  >((q) =>
-    q
-      .select()
-      .from(sessionRevisions)
-      .where(eq(sessionRevisions.id, QueryTemplate.value('id'))),
-  );
 
   constructor(
     db: Database,
@@ -110,13 +85,14 @@ export class SessionQuery extends BaseQuery {
         ${req.before === null ? this.sql`` : this.sql`AND (s.last_revision_at, s.node_id) < (${req.before[0]}, ${req.before[1]})`}
       ORDER BY s.last_revision_at DESC, s.node_id DESC
       LIMIT ${SessionQuery.PAGE + 1}`;
-    const page = rows.slice(0, SessionQuery.PAGE);
-    const last = page.at(-1);
-    return new SessionPageView(
-      page.map((r) => new SessionSummaryView(r)),
-      rows.length > SessionQuery.PAGE && last?.last_revision_at
+    const { items, next } = this.pageOf(rows, SessionQuery.PAGE, (last) =>
+      last.last_revision_at
         ? ListSessionsInput.cursorAfter(last.last_revision_at, last.node_id)
         : null,
+    );
+    return new SessionPageView(
+      items.map((r) => new SessionSummaryView(r)),
+      next,
     );
   }
 
@@ -137,7 +113,7 @@ export class SessionQuery extends BaseQuery {
   async revisionOf(actor: Actor, req: ReadSessionInput): Promise<SessionRevisionView> {
     actor.assertCan(Actor.READ_ALL);
     await this.find(actor, req.id);
-    const row = await SessionQuery.REVISION.one(this.sql, { session: req.id, seq: req.seq ?? 0 });
+    const row = await this.row(sessionRevisions, { session_id: req.id, seq: req.seq ?? 0 });
     if (!row) throw new NotFound(`${req.seq}번 판이 없어요`);
     return SessionQuery.revision(row);
   }
@@ -166,11 +142,12 @@ export class SessionQuery extends BaseQuery {
         ${req.before === null ? this.sql`` : this.sql`AND s.node_id < ${req.before}`}
       ORDER BY s.node_id DESC
       LIMIT ${req.limit + 1}`;
-    const hits = rows.slice(0, req.limit);
-    const last = hits.at(-1);
+    const { items, next } = this.pageOf(rows, req.limit, (last) =>
+      SearchSessionsInput.cursorAfter(last.node_id),
+    );
     return new SessionHitPageView(
-      hits.map((r) => new SessionHitView(r)),
-      rows.length > req.limit && last ? SearchSessionsInput.cursorAfter(last.node_id) : null,
+      items.map((r) => new SessionHitView(r)),
+      next,
     );
   }
 
@@ -187,7 +164,8 @@ export class SessionQuery extends BaseQuery {
   }
 
   private async headOf(session: SessionRow): Promise<SessionRevisionRow> {
-    const head = await SessionQuery.REVISION_BY_ID.one(this.sql, { id: session.head_revision_id });
+    const id = session.head_revision_id;
+    const head = id === null ? null : await this.row(sessionRevisions, { id });
     if (!head) throw new NotFound('세션의 지금 판을 찾을 수 없어요');
     return head;
   }

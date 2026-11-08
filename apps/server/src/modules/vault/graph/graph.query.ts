@@ -1,19 +1,8 @@
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import {
-  Actor,
-  and,
-  asc,
-  BaseQuery,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  NotFound,
-  QueryTemplate,
-} from '../../platform';
+import { Actor, BaseQuery, NotFound, Rule } from '../../platform';
 import { edges, postMarks } from '../vault.schema';
-import type { CategoryRow, EdgeRow, PostMarkRow, SessionRow, WikiRow } from '../vault.tables';
+import type { CategoryRow, PostMarkRow, SessionRow, WikiRow } from '../vault.tables';
 import type { NeighborsInput } from './graph.input';
 import { GraphEdgeView, GraphNodeView, GraphView, NeighborsView, NeighborView } from './graph.view';
 
@@ -44,48 +33,6 @@ export class GraphQuery extends BaseQuery {
   /** 비공개 wiki 자리의 id 앞머리 */
   private static readonly HIDDEN = 'private-';
   private static readonly HIDDEN_LENGTH = 16;
-  /** 대표 wiki가 있는 글 자리 사본, 글 id 순서. 공간(space)과 상태(status)는 있을 때만 거른다 */
-  private static readonly POSTS = QueryTemplate.choose<
-    { space: string | null; status: string | null },
-    GraphPostRow
-  >(['space', 'status'], (q, given) =>
-    q
-      .select({
-        post_id: postMarks.post_id,
-        title: postMarks.title,
-        slug: postMarks.slug,
-        status: postMarks.status,
-        main_wiki_id: postMarks.main_wiki_id,
-        ref_wiki_ids: postMarks.ref_wiki_ids,
-      })
-      .from(postMarks)
-      .where(
-        and(
-          given('space') ? eq(postMarks.space_id, QueryTemplate.value('space')) : undefined,
-          isNotNull(postMarks.main_wiki_id),
-          given('status') ? eq(postMarks.status, QueryTemplate.value('status')) : undefined,
-        ),
-      )
-      .orderBy(asc(postMarks.post_id)),
-  );
-  /** 지우지 않은 재료·링크 선 중 양 끝이 모두 목록(ids)에 있는 것, id 순서 */
-  private static readonly LINES = QueryTemplate.of<
-    { ids: readonly string[] },
-    Pick<EdgeRow, 'src' | 'dst' | 'kind'>
-  >((q) =>
-    q
-      .select({ src: edges.src, dst: edges.dst, kind: edges.kind })
-      .from(edges)
-      .where(
-        and(
-          isNull(edges.deleted_at),
-          inArray(edges.kind, ['material', 'link']),
-          QueryTemplate.anyOf(edges.src, 'ids'),
-          QueryTemplate.anyOf(edges.dst, 'ids'),
-        ),
-      )
-      .orderBy(asc(edges.id)),
-  );
 
   /** 주인의 그래프 */
   async owner(actor: Actor): Promise<GraphView> {
@@ -164,12 +111,23 @@ export class GraphQuery extends BaseQuery {
       ORDER BY s.node_id`;
   }
 
-  /** 대표 wiki가 없는 글은 그래프에 나오지 않는다. 방문자에게는 공개한 글만 (링크만 공개는 목록에 나오지 않는다) */
+  /**
+   * 대표 wiki가 있는 글 자리 사본, 글 id 순서. 대표 wiki가 없는 글은 그래프에 나오지 않는다.
+   * 방문자에게는 공개한 글만 (링크만 공개는 목록에 나오지 않는다). 공간이 없는 요청자는 공간으로 거르지 않는다
+   */
   private posts(actor: Actor, full: boolean) {
-    return GraphQuery.POSTS.rows(this.sql, {
-      space: actor.spaceId,
-      status: full ? null : GraphQuery.PUBLISHED,
-    });
+    return this.rows(
+      postMarks,
+      {
+        space_id: Rule.maybe(actor.spaceId),
+        main_wiki_id: Rule.set,
+        status: Rule.maybe(full ? null : GraphQuery.PUBLISHED),
+      },
+      {
+        columns: ['post_id', 'title', 'slug', 'status', 'main_wiki_id', 'ref_wiki_ids'],
+        order: ['post_id'],
+      },
+    );
   }
 
   /** 글이 가리키는 비공개 wiki (진짜 id → 자리 id). 주인에게는 다 보이므로 없다 */
@@ -188,10 +146,14 @@ export class GraphQuery extends BaseQuery {
     return new Map(rows.map((r) => [r.node_id, GraphQuery.placeOf(r.node_id)]));
   }
 
-  /** 재료·링크 선. 양 끝이 모두 보이는 선만 */
+  /** 지우지 않은 재료·링크 선 중 양 끝이 모두 보이는 것, id 순서 */
   private async lines(ids: readonly string[]): Promise<GraphEdgeView[]> {
     if (ids.length === 0) return [];
-    const rows = await GraphQuery.LINES.rows(this.sql, { ids });
+    const rows = await this.rows(
+      edges,
+      { deleted_at: null, kind: ['material', 'link'], src: ids, dst: ids },
+      { columns: ['src', 'dst', 'kind'], order: ['id'] },
+    );
     return rows.map((r) => new GraphEdgeView(r.src, r.dst, r.kind));
   }
 

@@ -1,5 +1,5 @@
 import { GraphNodeRepository } from '../change/change-target.repository';
-import { wikis } from '../vault.schema';
+import { wikiRevisions, wikis } from '../vault.schema';
 import { type LoadedWiki, Wiki } from './wiki';
 
 // vault.nodes(wiki) + wikis + wiki_revisions ↔ Wiki. wikis의 head_text는 지금 판의 찾기용 사본이다.
@@ -29,7 +29,7 @@ export class WikiRepository extends GraphNodeRepository<LoadedWiki, Wiki> {
     await super.saveParts(wiki);
     const revision = wiki.addedRevision;
     if (!revision) return;
-    await this.sql`INSERT INTO vault.wiki_revisions ${this.sql(revision as never)}`;
+    await this.insertRows(wikiRevisions, revision);
     wiki.revisionSaved();
   }
 }

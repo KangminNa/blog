@@ -1,5 +1,4 @@
-import { eq, QueryTemplate, type Sql } from '../../platform';
-import { graphViews } from '../vault.schema';
+import type { Sql } from '../../platform';
 import type { GraphViewRow, NodeLayoutNew, NodeRow } from '../vault.tables';
 import type {
   RestoredCategory,
@@ -13,17 +12,6 @@ import type {
 // 복원의 vault 쓰기. 여러 데이터 묶음을 새 행으로만 넣는다 (복원은 빈 곳에만 하므로 불러오지 않는다).
 // 칸은 Restored… 항목이 정한다. outbox에는 남기지 않는다.
 export class VaultRestoreRepository {
-  /** 공간의 그래프 보기 id와 이름 */
-  private static readonly VIEWS = QueryTemplate.of<
-    { space: string },
-    Pick<GraphViewRow, 'id' | 'name'>
-  >((q) =>
-    q
-      .select({ id: graphViews.id, name: graphViews.name })
-      .from(graphViews)
-      .where(eq(graphViews.space_id, QueryTemplate.value('space'))),
-  );
-
   constructor(private readonly tx: Sql) {}
 
   /** 종류별로 있는 점의 수. 휴지통 것도 센다 (id와 주소를 차지한다). 끝날 때까지 새 점이 끼어들지 못하게 잠근다 */
@@ -68,7 +56,8 @@ export class VaultRestoreRepository {
   /** 이름이 같은 그래프 보기가 있는 위치만 넣는다. 넣은 수를 돌려준다. 보기는 보관 파일에 없다 */
   async savePins(spaceId: string, pins: readonly RestoredPin[]): Promise<number> {
     if (pins.length === 0) return 0;
-    const views = await VaultRestoreRepository.VIEWS.rows(this.tx, { space: spaceId });
+    const views = await this.tx<Pick<GraphViewRow, 'id' | 'name'>[]>`
+      SELECT id, name FROM vault.graph_views WHERE space_id = ${spaceId}`;
     const byName = new Map(views.map((v) => [v.name, v.id]));
     let placed = 0;
     for (const pin of pins) {

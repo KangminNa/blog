@@ -1,4 +1,5 @@
 import { Conflict, Database, TableRepository } from '../../platform';
+import { nodes } from '../vault.schema';
 import type { GraphNode, GraphNodeRow, NodeDetailRow, TargetEntity } from './change-target';
 
 // vault.nodes에 행이 있는 표의 저장소: 세션 · wiki · 카테고리. 새 행은 점을 먼저 넣고, 표의 열쇠는 id가 아니라 node_id다.
@@ -19,8 +20,7 @@ export abstract class NodeRepository<
 
   private async insertNode(entity: E): Promise<void> {
     const { id, ...columns } = entity.unsaved;
-    const node = { id, space_id: entity.spaceId, kind: this.kind };
-    await this.sql`INSERT INTO vault.nodes ${this.sql(node as never)}`;
+    await this.insertRows(nodes, { id, space_id: entity.spaceId, kind: this.kind });
     const [row] = await this.sql<R[]>`
       INSERT INTO ${this.sql(this.tableName)} ${this.sql(columns as never)} RETURNING *`;
     entity.saved(row as R);
@@ -59,7 +59,7 @@ export abstract class GraphNodeRepository<
   protected override async saveParts(node: E): Promise<void> {
     const trash = node.trashChange;
     if (!trash) return;
-    await this.sql`UPDATE vault.nodes SET ${this.sql(trash as never)} WHERE id = ${node.id}`;
+    await this.updateRows(nodes, trash, { id: node.id });
     node.trashSaved();
   }
 

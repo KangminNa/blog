@@ -18,13 +18,12 @@ export class ChangeQuery extends BaseQuery {
         ${req.after === null ? this.sql`` : this.sql`AND (o.change_set_id, o.seq) > (${req.after[0]}::uuid, ${req.after[1]}::int)`}
       ORDER BY o.change_set_id, o.seq
       LIMIT ${ChangeQuery.PAGE + 1}`;
-    const page = rows.slice(0, ChangeQuery.PAGE);
-    const last = page.at(-1);
+    const { items, next } = this.pageOf(rows, ChangeQuery.PAGE, (last) =>
+      ListChangesInput.cursorAfter(last.change_set_id, last.seq),
+    );
     return new WaitingChangePageView(
-      page.map((r) => new WaitingChangeView(r)),
-      rows.length > ChangeQuery.PAGE && last
-        ? ListChangesInput.cursorAfter(last.change_set_id, last.seq)
-        : null,
+      items.map((r) => new WaitingChangeView(r)),
+      next,
     );
   }
 }

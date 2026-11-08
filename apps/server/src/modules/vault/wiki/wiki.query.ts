@@ -36,17 +36,16 @@ export class WikiQuery extends BaseQuery {
         ${req.before === null ? this.sql`` : this.sql`AND w.node_id < ${req.before}`}
       ORDER BY w.node_id DESC
       LIMIT ${WikiQuery.PAGE + 1}`;
-    const page = rows.slice(0, WikiQuery.PAGE);
-    const last = page.at(-1);
-    const next =
-      rows.length > WikiQuery.PAGE && last ? ListWikisInput.cursorAfter(last.node_id) : null;
+    const { items, next } = this.pageOf(rows, WikiQuery.PAGE, (last) =>
+      ListWikisInput.cursorAfter(last.node_id),
+    );
     return actor.canSeePrivate()
       ? new WikiPageView(
-          page.map((r) => new WikiSummaryView(r)),
+          items.map((r) => new WikiSummaryView(r)),
           next,
         )
       : new PublicWikiPageView(
-          page.map((r) => new PublicWikiSummaryView(r)),
+          items.map((r) => new PublicWikiSummaryView(r)),
           next,
         );
   }
@@ -72,11 +71,12 @@ export class WikiQuery extends BaseQuery {
         ${req.before === null ? this.sql`` : this.sql`AND w.node_id < ${req.before}`}
       ORDER BY w.node_id DESC
       LIMIT ${req.limit + 1}`;
-    const hits = rows.slice(0, req.limit);
-    const last = hits.at(-1);
+    const { items, next } = this.pageOf(rows, req.limit, (last) =>
+      ListWikisInput.cursorAfter(last.node_id),
+    );
     return new WikiHitPageView(
-      hits.map((r) => new WikiHitView(r)),
-      rows.length > req.limit && last ? ListWikisInput.cursorAfter(last.node_id) : null,
+      items.map((r) => new WikiHitView(r)),
+      next,
     );
   }
 
