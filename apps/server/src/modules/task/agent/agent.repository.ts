@@ -1,4 +1,4 @@
-import { TableRepository } from '../../platform';
+import { asc, eq, QueryTemplate, TableRepository } from '../../platform';
 import { agents } from '../task.schema';
 import type { AgentRow } from '../task.tables';
 import { PlanUsage } from '../usage/plan-usage';
@@ -7,6 +7,24 @@ import { Agent, AgentUsage } from './agent';
 
 // task.agents ↔ Agent. 불러오기와 저장은 기반이 하고, 여기에는 조직도와 사용량 SQL만 있다.
 export class AgentRepository extends TableRepository<AgentRow, Agent> {
+  /** 공간의 모든 에이전트, 만든 순서 */
+  private static readonly ALL = QueryTemplate.of<{ space: string }, AgentRow>((q) =>
+    q
+      .select()
+      .from(agents)
+      .where(eq(agents.space_id, QueryTemplate.value('space')))
+      .orderBy(asc(agents.id)),
+  );
+  /** 공간의 모든 에이전트를 만든 순서대로 잠근다 */
+  private static readonly LOCK_ALL = QueryTemplate.of<{ space: string }, AgentRow>((q) =>
+    q
+      .select()
+      .from(agents)
+      .where(eq(agents.space_id, QueryTemplate.value('space')))
+      .orderBy(asc(agents.id))
+      .for('update'),
+  );
+
   protected readonly table = agents;
   protected readonly noun = '에이전트';
 
@@ -16,8 +34,7 @@ export class AgentRepository extends TableRepository<AgentRow, Agent> {
 
   /** 공간의 모든 에이전트 (만든 순서). 잠그지 않는다: 위임할 때 바로 아래 팀을 찾는다 */
   async all(spaceId: string): Promise<readonly Agent[]> {
-    const rows = await this.sql<AgentRow[]>`
-      SELECT * FROM task.agents WHERE space_id = ${spaceId} ORDER BY id`;
+    const rows = await AgentRepository.ALL.rows(this.sql, { space: spaceId });
     return rows.map((r) => this.toEntity(r));
   }
 
@@ -26,8 +43,7 @@ export class AgentRepository extends TableRepository<AgentRow, Agent> {
    * 각자 본 조직도에는 순환이 없어 둘 다 통과하므로, 조직도 전체를 같은 순서로 잠가 한 번에 하나만 바꾼다.
    */
   async lockAll(spaceId: string): Promise<readonly Agent[]> {
-    const rows = await this.sql<AgentRow[]>`
-      SELECT * FROM task.agents WHERE space_id = ${spaceId} ORDER BY id FOR UPDATE`;
+    const rows = await AgentRepository.LOCK_ALL.rows(this.sql, { space: spaceId });
     return rows.map((r) => this.toEntity(r));
   }
 

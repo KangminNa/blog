@@ -1,4 +1,14 @@
-import { ChangeSignal, TableRepository } from '../../platform';
+import {
+  and,
+  asc,
+  ChangeSignal,
+  eq,
+  inArray,
+  like,
+  lt,
+  QueryTemplate,
+  TableRepository,
+} from '../../platform';
 import type { Agent } from '../agent/agent';
 import { tasks } from '../task.schema';
 import type { TaskRow } from '../task.tables';
@@ -9,6 +19,91 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
   /** 실행 기록이 쌓였다는 신호 (콘솔의 실행 기록 화면이 다시 읽는다) */
   static readonly LOGGED = 'task.event.added';
 
+  /** 공간을 모르고 id로 한 줄을 잠근다 */
+  private static readonly LOCK_BY_ID = QueryTemplate.of<{ id: string }, TaskRow>((q) =>
+    q
+      .select()
+      .from(tasks)
+      .where(eq(tasks.id, QueryTemplate.value('id')))
+      .for('update'),
+  );
+  /** 공간과 request_id로 한 줄 */
+  private static readonly BY_REQUEST = QueryTemplate.of<
+    { space: string; request: string },
+    TaskRow
+  >((q) =>
+    q
+      .select()
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.space_id, QueryTemplate.value('space')),
+          eq(tasks.request_id, QueryTemplate.value('request')),
+        ),
+      ),
+  );
+  /** 공간에서 이 request_id들 중 하나인 작업 */
+  private static readonly BY_REQUESTS = QueryTemplate.of<
+    { space: string; requests: readonly string[] },
+    TaskRow
+  >((q) =>
+    q
+      .select()
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.space_id, QueryTemplate.value('space')),
+          QueryTemplate.anyOf(tasks.request_id, 'requests'),
+        ),
+      ),
+  );
+  /** 에이전트의 끝나지 않은 작업 중 request_id가 패턴(LIKE)에 맞는 것 하나 */
+  private static readonly OPEN_REQUEST = QueryTemplate.of<
+    { agent: string; pattern: string },
+    Pick<TaskRow, 'id'>
+  >((q) =>
+    q
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.agent_id, QueryTemplate.value('agent')),
+          like(tasks.request_id, QueryTemplate.value('pattern')),
+          inArray(tasks.status, [Task.QUEUED, Task.RUNNING, Task.WAITING]),
+        ),
+      )
+      .limit(1),
+  );
+  /** 작업의 위 작업 id */
+  private static readonly PARENT = QueryTemplate.of<{ id: string }, Pick<TaskRow, 'parent_id'>>(
+    (q) =>
+      q
+        .select({ parent_id: tasks.parent_id })
+        .from(tasks)
+        .where(eq(tasks.id, QueryTemplate.value('id'))),
+  );
+  /** 위 작업이 맡긴 하위 작업, id 순서 */
+  private static readonly CHILDREN = QueryTemplate.of<{ parent: string }, TaskRow>((q) =>
+    q
+      .select()
+      .from(tasks)
+      .where(eq(tasks.parent_id, QueryTemplate.value('parent')))
+      .orderBy(asc(tasks.id)),
+  );
+  /** 임대가 끝난 진행 중 작업을 임대가 끝난 순서로 잠근다. 다른 쪽이 잡은 줄은 건너뛴다 */
+  private static readonly LOCK_EXPIRED = QueryTemplate.of<{ now: Date; limit: number }, TaskRow>(
+    (q) =>
+      q
+        .select()
+        .from(tasks)
+        .where(
+          and(eq(tasks.status, Task.RUNNING), lt(tasks.lease_until, QueryTemplate.value('now'))),
+        )
+        .orderBy(asc(tasks.lease_until))
+        .limit(QueryTemplate.value('limit'))
+        .for('update', { skipLocked: true }),
+  );
+
   protected readonly table = tasks;
   protected readonly noun = '작업';
 
@@ -18,13 +113,12 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
 
   /** 공간을 모르고 잠근다 (일꾼이 이벤트로 받은 작업) */
   async lockById(id: string): Promise<Task | null> {
-    return this.maybeOne(await this.sql`SELECT * FROM task.tasks WHERE id = ${id} FOR UPDATE`);
+    return this.maybeOne(await TaskRepository.LOCK_BY_ID.rows(this.sql, { id }));
   }
 
   async findByRequest(spaceId: string, requestId: string): Promise<Task> {
     return this.one(
-      await this.sql`
-        SELECT * FROM task.tasks WHERE space_id = ${spaceId} AND request_id = ${requestId}`,
+      await TaskRepository.BY_REQUEST.rows(this.sql, { space: spaceId, request: requestId }),
       this.noun,
     );
   }
@@ -85,33 +179,31 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
 
   /** 이 request_id들로 이미 만든 작업 (위임을 다시 보냈을 때) */
   async findByRequests(spaceId: string, requestIds: readonly string[]): Promise<readonly Task[]> {
-    const rows = await this.sql<TaskRow[]>`
-      SELECT * FROM task.tasks
-      WHERE space_id = ${spaceId} AND request_id = ANY(${requestIds as string[]}::text[])`;
+    const rows = await TaskRepository.BY_REQUESTS.rows(this.sql, {
+      space: spaceId,
+      requests: requestIds,
+    });
     return rows.map((r) => this.toEntity(r));
   }
 
   /** 이 에이전트에게 request_id가 prefix로 시작하는 끝나지 않은 작업이 있는가 (앞 하트비트 작업) */
   async hasOpenRequest(agentId: string, prefix: string): Promise<boolean> {
-    const [row] = await this.sql`
-      SELECT 1 FROM task.tasks
-      WHERE agent_id = ${agentId} AND request_id LIKE ${`${prefix}%`}
-        AND status IN (${Task.QUEUED}, ${Task.RUNNING}, ${Task.WAITING})
-      LIMIT 1`;
-    return row !== undefined;
+    const row = await TaskRepository.OPEN_REQUEST.one(this.sql, {
+      agent: agentId,
+      pattern: `${prefix}%`,
+    });
+    return row !== null;
   }
 
   /** 이 작업을 맡긴 위 작업의 id. 없으면 null */
   async parentOf(id: string): Promise<string | null> {
-    const [row] = await this.sql<Pick<TaskRow, 'parent_id'>[]>`
-      SELECT parent_id FROM task.tasks WHERE id = ${id}`;
+    const row = await TaskRepository.PARENT.one(this.sql, { id });
     return row?.parent_id ?? null;
   }
 
   /** 위 작업이 맡긴 하위 작업 전부 (id 순서. 한 번에 맡긴 것끼리는 순서가 정해지지 않는다). 잠그지 않는다 */
   async children(parentId: string): Promise<readonly Task[]> {
-    const rows = await this.sql<TaskRow[]>`
-      SELECT * FROM task.tasks WHERE parent_id = ${parentId} ORDER BY id`;
+    const rows = await TaskRepository.CHILDREN.rows(this.sql, { parent: parentId });
     return rows.map((r) => this.toEntity(r));
   }
 
@@ -175,11 +267,7 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
 
   /** 임대가 끝난 작업을 잠근다 */
   async lockExpired(now: Date, limit: number): Promise<readonly Task[]> {
-    const rows = await this.sql<TaskRow[]>`
-      SELECT * FROM task.tasks
-      WHERE status = ${Task.RUNNING} AND lease_until < ${now}
-      ORDER BY lease_until LIMIT ${limit}
-      FOR UPDATE SKIP LOCKED`;
+    const rows = await TaskRepository.LOCK_EXPIRED.rows(this.sql, { now, limit });
     return rows.map((r) => this.toEntity(r));
   }
 

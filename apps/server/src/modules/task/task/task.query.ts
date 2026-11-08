@@ -1,5 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { type Actor, AgentActor, BaseQuery, NotFound } from '../../platform';
+import {
+  type Actor,
+  AgentActor,
+  and,
+  asc,
+  BaseQuery,
+  eq,
+  NotFound,
+  QueryTemplate,
+} from '../../platform';
+import { tasks } from '../task.schema';
 import type { GoalRow, TaskEventRow, TaskRow } from '../task.tables';
 import { Task } from './task';
 import type { ListTasksInput, TaskIdInput } from './task.input';
@@ -13,6 +23,27 @@ export class TaskQuery extends BaseQuery {
   private static readonly EVENTS = 500;
   /** 목록 카드에 보이는 마지막 기록의 길이 */
   private static readonly LAST_EVENT = 200;
+  /** 공간의 작업 한 줄 */
+  private static readonly ONE = QueryTemplate.of<{ space: string | null; id: string }, TaskRow>(
+    (q) =>
+      q
+        .select()
+        .from(tasks)
+        .where(
+          and(
+            eq(tasks.space_id, QueryTemplate.value('space')),
+            eq(tasks.id, QueryTemplate.value('id')),
+          ),
+        ),
+  );
+  /** 위 작업이 맡긴 하위 작업, id 순서 */
+  private static readonly CHILDREN = QueryTemplate.of<{ parent: string }, TaskRow>((q) =>
+    q
+      .select()
+      .from(tasks)
+      .where(eq(tasks.parent_id, QueryTemplate.value('parent')))
+      .orderBy(asc(tasks.id)),
+  );
 
   async list(actor: Actor, req: ListTasksInput): Promise<TaskPageView> {
     actor.assertOwner();
@@ -37,16 +68,14 @@ export class TaskQuery extends BaseQuery {
 
   async get(actor: Actor, req: TaskIdInput): Promise<TaskDetailView> {
     actor.assertOwner();
-    const [row] = await this.sql<TaskRow[]>`
-      SELECT * FROM task.tasks WHERE space_id = ${actor.spaceId} AND id = ${req.id}`;
+    const row = await TaskQuery.ONE.one(this.sql, { space: actor.spaceId, id: req.id });
     if (!row) throw new NotFound('작업을 찾을 수 없어요');
     const events = await this.sql<TaskEventRow[]>`
       SELECT * FROM (
         SELECT * FROM task.task_events WHERE task_id = ${req.id} ORDER BY id DESC LIMIT ${TaskQuery.EVENTS}
       ) e ORDER BY id`;
     const goals = row.goal_id === null ? [] : await this.goalChain(row.goal_id);
-    const children = await this.sql<TaskRow[]>`
-      SELECT * FROM task.tasks WHERE parent_id = ${req.id} ORDER BY id`;
+    const children = await TaskQuery.CHILDREN.rows(this.sql, { parent: req.id });
     return new TaskDetailView(
       row,
       Task.shownPayload(row.kind, row.payload),
