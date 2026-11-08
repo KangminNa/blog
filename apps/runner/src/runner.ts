@@ -1,5 +1,6 @@
 import { AiLogins } from './ai-login';
 import { Backoff } from './backoff';
+import { BrowserTabs } from './browser-tabs';
 import { CairnServer } from './cairn-server';
 import type { Job } from './job';
 import { CliUnavailable, JobRun } from './job-run';
@@ -8,6 +9,7 @@ import { Redactor, RunLog } from './redactor';
 import { RunnerAbility } from './runner-ability';
 import type { RunnerConfig } from './runner-config';
 import { SigninRun } from './signin-run';
+import { TabReader } from './tab-reader';
 
 /** 다시 시도해도 소용없음: 토큰이나 설치를 사람이 고쳐야 한다 */
 export class RunnerHalted extends Error {}
@@ -78,6 +80,31 @@ export class Runner {
       this.log.info(
         'AI 로그인은 콘솔의 AI 메뉴에서 해요. 로그인이 없는 도구의 일은 서버가 주지 않아요',
       );
+    // 브라우저가 있으면 탭 읽기(browser-tabs 패키지)를 일과 따로 돌린다.
+    // 탭 읽기에서 토큰이 거절되면 일의 고리도 멈추고, 일의 고리가 끝나면(멈춤 · 오류) 탭 읽기도 끝낸다
+    let tabFailure: unknown = null;
+    const tabs = this.config.browserUrl
+      ? new TabReader(this.server, new BrowserTabs(this.config.browserUrl), this.log)
+          .run(stop)
+          .catch((error: unknown) => {
+            tabFailure = error;
+            this.stopper.abort();
+            this.pollCutter.abort();
+          })
+      : null;
+    try {
+      await this.loop(stop);
+    } finally {
+      this.stopper.abort();
+      await tabs;
+    }
+    if (tabFailure instanceof AccessDenied) throw new TokenRejected(tabFailure.message);
+    if (tabFailure) throw new RunnerHalted((tabFailure as Error).message);
+    this.log.info('러너를 멈췄어요');
+  }
+
+  /** 일을 빌려 처리하기를 stop까지 되풀이한다 */
+  private async loop(stop: AbortSignal): Promise<void> {
     while (!stop.aborted) {
       try {
         this.polling = true;
@@ -98,7 +125,6 @@ export class Runner {
         await this.backoff.wait(stop);
       }
     }
-    this.log.info('러너를 멈췄어요');
   }
 
   private async perform(job: Job): Promise<void> {

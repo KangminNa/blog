@@ -68,6 +68,6 @@ plugins/<이름>/
 - 표는 자기 스키마(`schema`)에만. 코어 표를 읽거나 쓰지 않고 외래키도 걸지 않는다 (`space_id`는 값으로). `Work`가 다른 스키마의 표를 막고, `pnpm check`가 `work.sql`의 스키마를 본다
 - 동작의 `allow`: `Operation.OWNER`(주인만), `Operation.ANYONE`(방문자도), 또는 `Actor.RUN` 같은 권한. 관리 일은 늘 `Operation.OWNER`
 - 입력은 `this.fields(raw, (f) => …)`로 읽는다 (틀린 칸을 모아 400). 뜻의 검사는 `run`에서 `RuleViolation`
-- 목록 파일의 `api` · `tools`가 가리키지 않는 동작은 등록되지 않는다. 도구 입력 모양(`tools.<이름>.input`)을 바꾸면 쓰는 스킬 · 러너도 함께 고친다
-- 마이그레이션은 배포 때 코어와 함께 적용된다 (`docker compose`의 migrate가 `plugins/*/migrations`도 읽는다). 마이그레이션 뒤 `pnpm db:rows`
+- 목록 파일의 `api` · `tools`가 가리키지 않는 동작은 등록되지 않는다. 도구 입력 모양(`tools.<이름>.input`)을 바꾸면 쓰는 스킬 · 러너도 함께 고친다 (`browser-tabs`의 러너 쪽은 `apps/runner/src/tab-reader.ts` · `cairn-server.ts`)
+- 마이그레이션은 배포 때 코어와 함께 적용된다 (`docker compose`의 migrate가 `plugins/*/migrations`도 읽는다. 테스트 DB와 `pnpm db:rollback`도 같다). 마이그레이션 뒤 `pnpm db:rows`
 - 콘솔 화면은 react와 자기 `web/` 폴더만 가져온다 (웹으로 복사되므로 `server/`를 가져오지 않는다). 서버가 내보내는 모양은 화면 안에 타입으로 적는다

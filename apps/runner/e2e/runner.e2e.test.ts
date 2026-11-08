@@ -10,6 +10,7 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { ServerRunnerPolicy } from '../../server/src/modules/account/device/server-runner.policy';
 import { Database, OutboxWorker } from '../../server/src/modules/platform';
 import { ApiClient, type ApiResult, type TestUser } from '../../server/src/testing/api-client';
+import { TestChromium } from '../src/testing/test-chromium';
 
 // 러너 전체: 실제 서버, 실제 러너 프로세스, 표준 입출력만 흉내 낸 가짜 AI CLI (fake-claude.mjs).
 // 진짜 claude는 쓰지 않는다. 주인은 REST로, 러너는 MCP로만 들어온다.
@@ -931,6 +932,73 @@ describe('Codex로 일한다', () => {
     const refresh = String(((await storedAuth()).tokens as Json).refresh_token);
     assert.equal(JSON.stringify(done).includes(refresh), false);
     assert.ok(JSON.stringify(done).includes('[지움: 토큰]'));
+  });
+});
+
+// browser-tabs 패키지: 주인이 콘솔(REST)에서 주소를 맡기면, 브라우저(CAIRN_BROWSER_URL)가 있는 러너가
+// MCP로 받아 탭으로 열어 읽고 남긴다. 실제 Chromium으로 본다. 없으면 건너뛴다 (CAIRN_TEST_CHROMIUM으로 경로를 줄 수 있다)
+const TAB_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>오늘의 글</title></head>
+<body><h1>탭으로 읽은 본문</h1><p style="display:none">숨은 글자</p></body></html>`;
+
+describe('브라우저 탭을 읽는다', { skip: TestChromium.skip }, () => {
+  const PATH = '/api/p/browser-tabs/reads';
+  let chromium: TestChromium;
+  let site: Server;
+  let siteUrl: string;
+
+  const readOf = (url: string): Promise<Json> =>
+    until(`${url} 읽기가 끝남`, async () => {
+      const { reads } = ok(await api.get(PATH, owner)) as { reads: Json[] };
+      return reads.find((r) => r.url === url && r.status !== 'requested') ?? null;
+    });
+
+  before(async () => {
+    ok(await api.request('POST', '/api/plugins/browser-tabs/enable', owner));
+    site = createServer((_, res) =>
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(TAB_PAGE),
+    );
+    await new Promise<void>((done) => site.listen(0, '127.0.0.1', done));
+    siteUrl = `http://127.0.0.1:${(site.address() as AddressInfo).port}`;
+    chromium = await TestChromium.start();
+  });
+
+  after(async () => {
+    await chromium.stop();
+    site.close();
+    ok(await api.request('POST', '/api/plugins/browser-tabs/disable', owner));
+  });
+
+  test('맡긴 주소를 러너가 탭으로 열어 읽어 남기고, 열리지 않는 주소는 이유를 남긴다', async () => {
+    const page = `${siteUrl}/private/${randomUUID()}`;
+    const broken = 'http://127.0.0.1:1/nothing';
+    for (const url of [page, broken]) {
+      const made = await api.request('POST', PATH, owner, { url });
+      assert.ok([200, 201].includes(made.status), made.text);
+    }
+
+    const runner = RunnerProcess.start(api.baseUrl, {
+      CAIRN_BROWSER_URL: `${chromium.endpoint}/`,
+    });
+    try {
+      await runner.logged('브라우저 탭 읽기를 켰어요');
+      const done = await readOf(page);
+      assert.equal(done.status, 'done');
+      assert.equal(done.title, '오늘의 글');
+      assert.match(String(done.preview), /탭으로 읽은 본문/);
+      assert.doesNotMatch(String(done.preview), /숨은 글자/);
+
+      const failed = await readOf(broken);
+      assert.equal(failed.status, 'failed');
+      assert.match(String(failed.error), /주소를 열지 못했어요/);
+
+      assert.equal((await chromium.openUrls()).includes(page), false, '읽은 탭은 닫는다');
+      await runner.logged('브라우저 탭을 읽었어요: 127.0.0.1');
+      assert.equal(runner.logs.includes('/private/'), false, '로그에는 주소의 호스트만');
+    } finally {
+      runner.signal('SIGTERM');
+      await newTask(await newAgent(), ''); // 긴 폴링을 깨워 바로 끝나게 한다
+      assert.equal(await runner.exited(), 0);
+    }
   });
 });
 

@@ -99,4 +99,18 @@ export class CairnServer {
   async release(taskId: string, reason: string): Promise<void> {
     await this.mcp.call('release_job', { task_id: taskId, reason });
   }
+
+  /** 읽어 달라는 브라우저 탭 주소들 (browser-tabs 패키지). 패키지가 꺼져 있으면 도구가 없어 ToolRefused */
+  async pendingTabs(stop: AbortSignal): Promise<readonly { id: string; url: string }[]> {
+    const body = await this.mcp.call('browser_tab_pending', {}, 0, stop);
+    return body.list('reads').map((r) => ({ id: r.text('id'), url: r.text('url') }));
+  }
+
+  /** 읽은 탭을 남긴다. 읽지 못했으면 error만 */
+  async saveTab(
+    id: string,
+    read: { title: string; body: string } | { error: string },
+  ): Promise<void> {
+    await this.mcp.call('browser_tab_save', { id, ...read });
+  }
 }

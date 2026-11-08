@@ -54,6 +54,18 @@ describe('러너 설정', () => {
     assert.throws(() => RunnerConfig.fromEnv({ ...env, CAIRN_RUNNER_TOKEN: '  ' }), ConfigProblem);
   });
 
+  test('브라우저(CDP 주소)는 없어도 되고, 있으면 끝 슬래시를 뗀다. 주소가 아니면 시작하지 않는다', () => {
+    assert.equal(RunnerConfig.fromEnv(env).browserUrl, null);
+    assert.equal(RunnerConfig.fromEnv({ ...env, CAIRN_BROWSER_URL: '  ' }).browserUrl, null);
+    const config = RunnerConfig.fromEnv({ ...env, CAIRN_BROWSER_URL: 'http://127.0.0.1:9222/' });
+    assert.equal(config.browserUrl, 'http://127.0.0.1:9222');
+    assert.equal(config.withToken('other').browserUrl, 'http://127.0.0.1:9222');
+    assert.throws(
+      () => RunnerConfig.fromEnv({ ...env, CAIRN_BROWSER_URL: 'ws://127.0.0.1:9222' }),
+      (error: Error) => error instanceof ConfigProblem && /CAIRN_BROWSER_URL/.test(error.message),
+    );
+  });
+
   test('http(s) 주소가 아니면 시작하지 않는다', () => {
     for (const url of ['blog.example', 'ftp://blog.example', 'https://'])
       assert.throws(() => RunnerConfig.fromEnv({ ...env, CAIRN_RUNNER_URL: url }), ConfigProblem);

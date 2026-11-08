@@ -26,6 +26,8 @@ export class RunnerConfig {
     readonly pairingFile: string | null = null,
     /** Codex CLI. 지금은 웹 로그인(codex login --device-auth)에만 쓴다 */
     readonly codexCliPath: string = RunnerConfig.DEFAULT_CODEX_CLI,
+    /** 로그인된 브라우저의 CDP 주소 (browser-tabs 패키지). 없으면 브라우저 탭을 읽지 않는다 */
+    readonly browserUrl: string | null = null,
   ) {}
 
   static fromEnv(env: Readonly<Record<string, string | undefined>>): RunnerConfig {
@@ -45,6 +47,7 @@ export class RunnerConfig {
       env.CAIRN_SKILLS_DIR?.trim() || RunnerConfig.DEFAULT_SKILLS,
       token ? null : pairingFile,
       env.CAIRN_RUNNER_CODEX_CLI?.trim() || RunnerConfig.DEFAULT_CODEX_CLI,
+      env.CAIRN_BROWSER_URL?.trim() ? RunnerConfig.browser(env.CAIRN_BROWSER_URL) : null,
     );
   }
 
@@ -58,11 +61,22 @@ export class RunnerConfig {
       this.skillsDir,
       this.pairingFile,
       this.codexCliPath,
+      this.browserUrl,
     );
   }
 
   get mcpUrl(): string {
     return `${this.serverUrl}/mcp`;
+  }
+
+  /** CDP 주소: 이 컴퓨터나 같은 망의 브라우저만 (http). 끝 슬래시는 뗀다 */
+  private static browser(raw: string): string {
+    const text = raw.trim().replace(/\/+$/, '');
+    if (!/^https?:\/\/[^/]/i.test(text) || !URL.canParse(text))
+      throw new ConfigProblem(
+        `CAIRN_BROWSER_URL은 브라우저의 CDP 주소여야 해요 (예: http://127.0.0.1:9222): ${text}`,
+      );
+    return text;
   }
 
   private static address(raw: string): string {
