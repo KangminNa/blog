@@ -1,20 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import {
-  Actor,
-  and,
-  BaseQuery,
-  Database,
-  desc,
-  eq,
-  Forbidden,
-  inArray,
-  QueryTemplate,
-  RuleViolation,
-  SecretBox,
-} from '../../platform';
+import { Actor, BaseQuery, Database, Forbidden, RuleViolation, SecretBox } from '../../platform';
 import { Task } from '../task/task';
 import { aiLogins, tasks } from '../task.schema';
-import type { AiLoginRow, TaskRow } from '../task.tables';
+import type { TaskRow } from '../task.tables';
 import { AiLogin } from './ai-login';
 import type { AiLoginInput } from './ai-login.input';
 import { AiLoginRepository } from './ai-login.repository';
@@ -23,39 +11,6 @@ import { AiSigninView, type AiTokenView, AiToolListView, AiToolView } from './ai
 // AI 로그인 읽기. 콘솔은 상태만 보고, 토큰은 run 권한을 가진 기기에게만 나간다.
 @Injectable()
 export class AiLoginQuery extends BaseQuery {
-  /** 공간의 로그인 상태 (암호문은 읽지 않는다) */
-  private static readonly STATUSES = QueryTemplate.of<
-    { space: string | null },
-    Pick<AiLoginRow, 'tool' | 'expires_at' | 'checked_at' | 'last_error'>
-  >((q) =>
-    q
-      .select({
-        tool: aiLogins.tool,
-        expires_at: aiLogins.expires_at,
-        checked_at: aiLogins.checked_at,
-        last_error: aiLogins.last_error,
-      })
-      .from(aiLogins)
-      .where(eq(aiLogins.space_id, QueryTemplate.value('space'))),
-  );
-  /** 공간의 끝나지 않은 웹 로그인 작업, 최근 것부터 */
-  private static readonly SIGNINS = QueryTemplate.of<
-    { space: string | null },
-    Pick<TaskRow, 'id' | 'status' | 'payload'>
-  >((q) =>
-    q
-      .select({ id: tasks.id, status: tasks.status, payload: tasks.payload })
-      .from(tasks)
-      .where(
-        and(
-          eq(tasks.space_id, QueryTemplate.value('space')),
-          eq(tasks.kind, Task.AI_SIGNIN),
-          inArray(tasks.status, [Task.QUEUED, Task.RUNNING]),
-        ),
-      )
-      .orderBy(desc(tasks.id)),
-  );
-
   constructor(
     db: Database,
     private readonly box: SecretBox,
@@ -66,9 +21,18 @@ export class AiLoginQuery extends BaseQuery {
   /** 로그인을 받는 도구마다 한 줄. 아직 넣지 않았어도 보낸다. 진행 중인 웹 로그인을 함께 싣는다. 암호문은 읽지도 않는다 */
   async list(actor: Actor): Promise<AiToolListView> {
     actor.assertOwner();
+    const space = actor.requireSpace();
     const now = new Date();
-    const logins = await AiLoginQuery.STATUSES.rows(this.sql, { space: actor.spaceId });
-    const signins = await AiLoginQuery.SIGNINS.rows(this.sql, { space: actor.spaceId });
+    const logins = await this.rows(
+      aiLogins,
+      { space_id: space },
+      { columns: ['tool', 'expires_at', 'checked_at', 'last_error'] },
+    );
+    const signins = await this.rows(
+      tasks,
+      { space_id: space, kind: Task.AI_SIGNIN, status: [Task.QUEUED, Task.RUNNING] },
+      { columns: ['id', 'status', 'payload'], order: ['id desc'] },
+    );
     return new AiToolListView(
       AiLogin.TOOLS.map((tool) => {
         const row = logins.find((r) => r.tool === tool) ?? null;
