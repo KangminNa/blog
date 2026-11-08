@@ -11,12 +11,15 @@ import { SigninTerminal } from './signin-terminal';
 //   tools        일할 수 있는 AI CLI: 설치돼 있고 이 러너가 그 도구로 일할 줄 안다
 //   signinTools  웹 로그인을 대신 돌릴 수 있는 CLI: 설치돼 있고 PTY(script)를 만들 수 있다
 //   ownLogins    러너가 스스로 가진 로그인 (환경 변수의 Claude 토큰)
+//   browser      서버 브라우저에 붙어 있는가: 서버 러너(연결 값 파일)이고 CAIRN_BROWSER_URL이 있을 때만.
+//                내 컴퓨터 러너의 브라우저는 탭 읽기에만 쓴다 (평소 쓰는 계정에 가까워 AI에게 맡기지 않는다)
 // 설치는 시작할 때 한 번 본다. CLI를 새로 깔면 러너를 다시 켠다.
 export class RunnerAbility {
   constructor(
     readonly tools: readonly string[],
     readonly signinTools: readonly string[],
     readonly ownLogins: readonly string[],
+    readonly browser = false,
   ) {}
 
   static detect(
@@ -37,6 +40,7 @@ export class RunnerAbility {
       clis.filter((tool) => AiTools.SUPPORTED.includes(tool)),
       pty ? clis : [],
       config.claudeToken === null ? [] : [ClaudeCli.TOOL],
+      config.browserUrl !== null && config.pairingFile !== null,
     );
   }
 
@@ -62,15 +66,17 @@ export class RunnerAbility {
   get line(): string {
     const list = (tools: readonly string[]) => (tools.length > 0 ? tools.join(', ') : '없음');
     const own = this.ownLogins.length > 0 ? ` · 이 컴퓨터의 로그인: ${list(this.ownLogins)}` : '';
-    return `일할 수 있는 AI: ${list(this.tools)} · 웹 로그인: ${list(this.signinTools)}${own}`;
+    const browser = this.browser ? ' · 브라우저 작업: 받음' : '';
+    return `일할 수 있는 AI: ${list(this.tools)} · 웹 로그인: ${list(this.signinTools)}${own}${browser}`;
   }
 
   /** next_jobs에 싣는 값 */
-  toArgs(): { tools: string[]; signin_tools: string[]; own_logins: string[] } {
+  toArgs(): { tools: string[]; signin_tools: string[]; own_logins: string[]; browser: boolean } {
     return {
       tools: [...this.tools],
       signin_tools: [...this.signinTools],
       own_logins: [...this.ownLogins],
+      browser: this.browser,
     };
   }
 }

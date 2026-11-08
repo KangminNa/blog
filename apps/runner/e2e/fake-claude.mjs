@@ -118,7 +118,8 @@ if (!process.argv.includes('--mcp-config')) {
 }
 
 const mcpConfigPath = process.argv[process.argv.indexOf('--mcp-config') + 1];
-const cairn = JSON.parse(readFileSync(mcpConfigPath, 'utf8')).mcpServers.cairn;
+const mcpServers = JSON.parse(readFileSync(mcpConfigPath, 'utf8')).mcpServers;
+const cairn = mcpServers.cairn;
 
 const spy = /\[fake:spy=([^\]]+)\]/.exec(prompt)?.[1];
 if (spy) {
@@ -135,6 +136,9 @@ if (spy) {
       mcpConfigMode: statSync(mcpConfigPath).mode & 0o777,
       mcpUrl: cairn.url,
       runToken: cairn.headers.Authorization.replace('Bearer ', ''),
+      mcpServers: Object.fromEntries(
+        Object.entries(mcpServers).filter(([name]) => name !== 'cairn'),
+      ),
       prompt,
     }),
   );
@@ -159,7 +163,8 @@ const rateLimit = () =>
     },
   });
 
-const servers = [{ name: 'cairn', status: 'connected' }];
+// 진짜 CLI처럼 설정 파일에 적힌 서버를 모두 알린다 (브라우저 작업이면 playwright도)
+const servers = Object.keys(mcpServers).map((name) => ({ name, status: 'connected' }));
 if (has('stray')) servers.push({ name: 'claude.ai Gmail', status: 'connected' });
 say({
   type: 'system',

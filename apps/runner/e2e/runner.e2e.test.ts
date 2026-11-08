@@ -1002,6 +1002,104 @@ describe('브라우저 탭을 읽는다', { skip: TestChromium.skip }, () => {
   });
 });
 
+// 브라우저 작업(browse): 서버 러너가 브라우저(CAIRN_BROWSER_URL)에 붙어 있을 때만 받고, AI CLI에 Playwright MCP를 붙인다.
+// 브라우저에 닿지 못하면 실패로 끝내지 않고 돌려준다. 가짜 CLI라 브라우저를 움직이지는 않는다 (그건 러너 단위 테스트가 본다).
+describe('브라우저 작업', { skip: TestChromium.skip }, () => {
+  let chromium: TestChromium;
+  const SITE = {
+    name: '시험 블로그',
+    startUrl: 'https://blog.example/write',
+    origins: ['https://blog.example'],
+  };
+
+  const browseAgent = async (): Promise<Json> =>
+    ok(
+      await api.request('POST', '/api/agents', owner, {
+        requestId: randomUUID(),
+        name: '브라우저 담당',
+        role: '사이트의 편집기에 글을 채운다',
+        tool: 'claude',
+        scopes: ['read_public', 'browse'],
+      }),
+      201,
+    );
+  const browseTask = async (agent: Json, marks: string): Promise<Json> => {
+    const task = await newTask(agent, marks);
+    await db.sql`
+      UPDATE task.tasks SET kind = 'browse', payload = ${db.sql.json({ site: SITE })}
+      WHERE id = ${String(task.id)}`;
+    return task;
+  };
+  const serverRunner = (browserUrl: string): RunnerProcess => {
+    const file = join(spyDir, `pairing-${randomUUID()}`);
+    writeFileSync(file, api.service(ServerRunnerPolicy).secret());
+    return RunnerProcess.start(api.baseUrl, {
+      CAIRN_RUNNER_TOKEN: '',
+      CAIRN_RUNNER_PAIRING_FILE: file,
+      CAIRN_BROWSER_URL: browserUrl,
+    });
+  };
+  const stopRunner = async (runner: RunnerProcess): Promise<void> => {
+    runner.signal('SIGTERM');
+    await newTask(await newAgent(), ''); // 긴 폴링을 깨워 바로 끝나게 한다
+    assert.equal(await runner.exited(), 0);
+  };
+
+  before(async () => {
+    chromium = await TestChromium.start();
+  });
+  after(async () => {
+    await chromium.stop();
+  });
+
+  test('브라우저에 닿지 못하면 AI를 띄우지 않고 돌려준다 (실패가 아니다)', async () => {
+    const spy = new Spy();
+    const task = await browseTask(await browseAgent(), spy.mark);
+    const runner = serverRunner('http://127.0.0.1:1');
+    try {
+      await runner.logged('브라우저 작업: 받음');
+      await runner.logged(`${task.id}: 브라우저에 닿지 못해 돌려줘요`);
+      const back = await until('돌려줌', async () => {
+        const t = await getTask(task.id);
+        return events(t).some((e) => String(e.body).includes('브라우저에 닿지 못해요')) ? t : null;
+      });
+      assert.equal(back.status, 'queued');
+      assert.equal(existsSync(spy.path), false, 'AI CLI는 뜨지 않았다');
+    } finally {
+      await cancelTask(task);
+      await stopRunner(runner);
+    }
+  });
+
+  test('서버 러너가 브라우저에 붙어 있으면 받아서, AI CLI에 사이트의 Playwright MCP를 붙인다', async () => {
+    const spy = new Spy();
+    const task = await browseTask(await browseAgent(), spy.mark);
+    const runner = serverRunner(chromium.endpoint);
+    try {
+      await runner.logged('브라우저 작업: 받음');
+      const seen = await spy.seen();
+      await taskIn(task.id, 'done');
+      const playwright = (seen.mcpServers as Json).playwright as Json;
+      assert.equal(playwright.type, 'stdio');
+      assert.deepEqual((playwright.args as string[]).slice(1), [
+        '--cdp-endpoint',
+        chromium.endpoint,
+        '--allowed-origins',
+        'https://blog.example',
+      ]);
+      assert.ok((seen.argv as string[]).includes('mcp__playwright__*'), '그 도구를 묻지 않고 허락');
+      assert.match(String(seen.prompt), /# 사이트: 시험 블로그/);
+      assert.equal(
+        JSON.stringify(playwright).includes(String(seen.runToken)),
+        false,
+        '작업 토큰은 cairn에만',
+      );
+    } finally {
+      await stopRunner(runner);
+    }
+  });
+});
+
 describe('러너를 멈춘다', () => {
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     test(`${signal}이면 AI CLI를 끄고 일을 돌려준 뒤 0으로 끝난다`, async () => {

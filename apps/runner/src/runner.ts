@@ -1,5 +1,6 @@
 import { AiLogins } from './ai-login';
 import { Backoff } from './backoff';
+import { BrowserMcp } from './browser-mcp';
 import { BrowserTabs } from './browser-tabs';
 import { CairnServer } from './cairn-server';
 import type { Job } from './job';
@@ -30,6 +31,9 @@ export class Runner {
   /** 일을 빌린 뒤에 토큰을 받지 못했을 때. 돌려준 일이 바로 다시 빌려지므로 쉬지 않으면 빌리고 돌려주기를 되풀이한다 */
   private static readonly LOGIN_WAIT_FIRST_MS = 5_000;
   private static readonly LOGIN_WAIT_MAX_MS = 120_000;
+  /** 브라우저 작업을 빌렸는데 브라우저에 닿지 못했을 때. 돌려준 일이 바로 다시 오므로 쉬어야 한다 */
+  private static readonly BROWSER_WAIT_FIRST_MS = 5_000;
+  private static readonly BROWSER_WAIT_MAX_MS = 120_000;
 
   private readonly stopper = new AbortController();
   private readonly pollCutter = new AbortController();
@@ -37,6 +41,10 @@ export class Runner {
   private readonly backoff = new Backoff(Runner.BACKOFF_FIRST_MS, Runner.BACKOFF_MAX_MS);
   /** next_jobs가 되는 동안에도 늘어나야 해서 backoff와 따로 센다 */
   private readonly loginWait = new Backoff(Runner.LOGIN_WAIT_FIRST_MS, Runner.LOGIN_WAIT_MAX_MS);
+  private readonly browserWait = new Backoff(
+    Runner.BROWSER_WAIT_FIRST_MS,
+    Runner.BROWSER_WAIT_MAX_MS,
+  );
   private readonly redactor: Redactor;
   private readonly log: RunLog;
   private readonly server: CairnServer;
@@ -140,6 +148,15 @@ export class Runner {
         this.stopper.signal,
       );
       return signin.perform();
+    }
+    if (job.isBrowse) {
+      // 브라우저가 꺼졌거나 다시 뜨는 중이면 AI를 띄우지 않고 돌려준다 (실패로 끝내지 않는다)
+      if (!(await BrowserMcp.reachable(this.config.browserUrl))) {
+        this.log.info(`${job.taskId}: 브라우저에 닿지 못해 돌려줘요`);
+        await this.server.release(job.taskId, '브라우저에 닿지 못해요. 다시 뜨면 이어서 해요');
+        return this.browserWait.wait(this.stopper.signal);
+      }
+      this.browserWait.reset();
     }
     const login = await this.logins.forJob(job);
     await new JobRun(

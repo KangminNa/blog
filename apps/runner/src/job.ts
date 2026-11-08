@@ -70,12 +70,41 @@ export class SubtaskResult {
   }
 }
 
+/** 브라우저 작업(browse)의 사이트. 맡길 때의 값이 작업의 payload에 실려 온다 (browser-tabs 패키지) */
+export class BrowseSite {
+  constructor(
+    readonly name: string,
+    readonly startUrl: string,
+    /** 브라우저가 요청할 수 있는 출처 (Playwright MCP의 --allowed-origins) */
+    readonly origins: readonly string[],
+  ) {}
+
+  /** 서버가 이미 걸렀지만 러너도 출처 모양만 본다: http(s)://호스트[:포트], 경로 없음 */
+  static from(raw: Json): BrowseSite | null {
+    const origins = raw.texts('origins').filter((o) => /^https?:\/\/[^/\s;]+$/i.test(o));
+    if (origins.length === 0) return null;
+    return new BrowseSite(raw.text('name'), raw.text('startUrl'), origins);
+  }
+
+  /** 지시문의 한 단락 */
+  get part(): string {
+    return [
+      `# 사이트: ${this.name}`,
+      `시작 주소: ${this.startUrl}`,
+      `갈 수 있는 출처: ${this.origins.join(', ')}`,
+      '브라우저는 playwright MCP 도구로 움직입니다. 이 출처 밖으로는 가지 않습니다.',
+    ].join('\n');
+  }
+}
+
 // next_jobs가 빌려 준 일 하나. run_token은 AI CLI의 MCP 설정에만 쓴다.
 // 연결 확인(ai_test)과 웹 로그인(ai_signin)에는 에이전트도 run_token도 없다. 도구는 작업의 payload에 있고, MCP 없이 지시만 돌린다.
 export class Job {
   private static readonly AI_TEST = 'ai_test';
   /** 웹 AI 로그인: 러너가 로그인 명령을 대신 돌린다 (SigninRun) */
   static readonly AI_SIGNIN = 'ai_signin';
+  /** 서버 브라우저로 하는 일: 사이트(payload.site)가 실려 오고 Playwright MCP를 붙인다 */
+  static readonly BROWSE = 'browse';
 
   constructor(
     readonly taskId: string,
@@ -99,6 +128,8 @@ export class Job {
     readonly subtaskResults: readonly SubtaskResult[] = [],
     /** 앞으로 위임할 수 있는 횟수 */
     readonly roundsLeft = 0,
+    /** 브라우저 작업의 사이트 (그 밖의 일은 null) */
+    readonly site: BrowseSite | null = null,
   ) {}
 
   static from(raw: Json): Job {
@@ -128,6 +159,9 @@ export class Job {
       raw.list('team').map((m) => TeamMember.from(m)),
       raw.list('subtask_results').map((r) => SubtaskResult.from(r)),
       raw.number('rounds_left'),
+      task.text('kind') === Job.BROWSE
+        ? BrowseSite.from(task.child('payload').child('site'))
+        : null,
     );
   }
 
@@ -139,6 +173,11 @@ export class Job {
   /** 주인이 웹에서 누른 AI 로그인. 도구(tool)는 작업의 payload에 있다 */
   get isAiSignin(): boolean {
     return this.kind === Job.AI_SIGNIN;
+  }
+
+  /** 서버 브라우저로 하는 일 */
+  get isBrowse(): boolean {
+    return this.kind === Job.BROWSE;
   }
 
   /**
@@ -168,6 +207,7 @@ export class Job {
           '결과를 모아 할 일을 마무리하고, 무엇을 했는지 짧게 보고하며 끝냅니다.',
         ].join('\n'),
       );
+    if (this.site) parts.push(this.site.part);
     if (this.team.length > 0) parts.push(this.teamPart());
     if (this.skill && skillReady) parts.push(`# 스킬\n${this.skill} 스킬을 따릅니다.`);
     else if (this.skill && skillText)

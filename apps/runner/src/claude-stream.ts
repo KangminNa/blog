@@ -13,9 +13,10 @@ import { PlanWindow, RunEvent } from './progress';
 // assistant 줄은 내용 블록마다 하나씩 나오고 같은 message.id에 같은 usage를 싣는다. 그래서 id별로 늘어난 만큼만 센다.
 // 하위 에이전트까지 든 정확한 합은 result의 modelUsage에 있어서, 끝에서 모자란 만큼을 더한다.
 export class ClaudeStream implements AiStream {
-  /** 허락한 단 하나의 MCP 서버 */
+  /** 늘 허락하는 MCP 서버. 브라우저 작업에서만 playwright를 더한다 (BrowserMcp) */
   static readonly SERVER = 'cairn';
   private static readonly SERVER_PREFIX = `mcp__${ClaudeStream.SERVER}__`;
+  private static readonly BROWSER_PREFIX = 'mcp__playwright__';
   private static readonly READ_TOOLS: ReadonlySet<string> = new Set([
     'Read',
     'Glob',
@@ -26,6 +27,10 @@ export class ClaudeStream implements AiStream {
     'get_session',
     'neighbors',
     'blog_get_post',
+    'browser_snapshot',
+    'browser_navigate',
+    'browser_take_screenshot',
+    'browser_tabs',
   ]);
   /** tool_use 입력에서 대상으로 보여 줄 칸. 내용은 남기지 않는다 */
   private static readonly TARGETS = ['file_path', 'path', 'pattern', 'query', 'url'];
@@ -39,6 +44,11 @@ export class ClaudeStream implements AiStream {
   private failureText: string | null = null;
   private strayServers: readonly string[] = [];
   private planWindows: readonly PlanWindow[] = [];
+
+  constructor(
+    /** 이 실행에서 허락한 MCP 서버. 그 밖의 서버가 보이면 격리가 깨진 것 */
+    private readonly servers: readonly string[] = [ClaudeStream.SERVER],
+  ) {}
 
   /** 마지막 답 */
   get finalText(): string {
@@ -103,7 +113,7 @@ export class ClaudeStream implements AiStream {
     const servers = event.list('mcp_servers');
     this.strayServers = servers
       .map((server) => server.text('name'))
-      .filter((name) => name !== ClaudeStream.SERVER);
+      .filter((name) => !this.servers.includes(name));
     const broken = servers.filter(
       (server) => server.text('name') === ClaudeStream.SERVER && server.text('status') === 'failed',
     );
@@ -208,9 +218,10 @@ export class ClaudeStream implements AiStream {
   }
 
   private static shortName(name: string): string {
-    return name.startsWith(ClaudeStream.SERVER_PREFIX)
-      ? name.slice(ClaudeStream.SERVER_PREFIX.length)
-      : name;
+    const prefix = [ClaudeStream.SERVER_PREFIX, ClaudeStream.BROWSER_PREFIX].find((p) =>
+      name.startsWith(p),
+    );
+    return prefix ? name.slice(prefix.length) : name;
   }
 
   /** 모르는 도구는 쓰기로 본다: 무언가 바꿨을 수 있다 */

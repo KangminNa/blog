@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { AiProcess } from './ai-process';
 import type { AiStream, AiTool } from './ai-tool';
+import { BrowserMcp } from './browser-mcp';
 import { CodexStream } from './codex-stream';
 import type { Job } from './job';
 import { JobWorkspace } from './job-workspace';
@@ -41,10 +42,18 @@ export class CodexCli implements AiTool {
     private readonly authJson: string,
     private readonly mcpUrl: string,
     private readonly skillsDir: string,
+    /** 서버 브라우저의 CDP 주소. 없으면 브라우저 작업에도 붙이지 않는다 */
+    private readonly browserUrl: string | null = null,
   ) {}
 
-  /** CODEX_HOME/config.toml. 이 코드의 고정된 값과 서버 주소뿐이다. mcpUrl이 없으면 MCP 없이 (연결 확인) */
-  static configToml(mcpUrl: string | null): string {
+  /** 이 일에 붙인 브라우저 (어댑터는 일마다 새로 만든다) */
+  private browser: BrowserMcp | null = null;
+
+  /**
+   * CODEX_HOME/config.toml. 이 코드의 고정된 값과 서버 주소뿐이다. mcpUrl이 없으면 MCP 없이 (연결 확인).
+   * 브라우저 작업이면 playwright를 더한다 (셸은 그대로 꺼져 있다)
+   */
+  static configToml(mcpUrl: string | null, browser: BrowserMcp | null = null): string {
     const lines = [
       '# Cairn 러너가 작업마다 만든 설정. 작업이 끝나면 지운다',
       'cli_auth_credentials_store = "file"',
@@ -70,15 +79,27 @@ export class CodexCli implements AiTool {
         `url = ${JSON.stringify(mcpUrl)}`,
         `bearer_token_env_var = "${CodexCli.TOKEN_ENV}"`,
       );
+    if (mcpUrl !== null && browser)
+      lines.push(
+        '',
+        `[mcp_servers.${BrowserMcp.SERVER}]`,
+        `command = ${JSON.stringify(browser.command)}`,
+        `args = [${browser.args.map((a) => JSON.stringify(a)).join(', ')}]`,
+      );
     return `${lines.join('\n')}\n`;
   }
 
   async open(job: Job): Promise<JobWorkspace> {
     const workspace = await JobWorkspace.open(null, null, null, this.skillsDir);
     const mcp = job.runToken === null ? null : this.mcpUrl;
-    await writeFile(join(workspace.configDir, 'config.toml'), CodexCli.configToml(mcp), {
-      mode: 0o600,
-    });
+    this.browser = mcp === null ? null : BrowserMcp.for(job, this.browserUrl);
+    await writeFile(
+      join(workspace.configDir, 'config.toml'),
+      CodexCli.configToml(mcp, this.browser),
+      {
+        mode: 0o600,
+      },
+    );
     await writeFile(join(workspace.configDir, 'auth.json'), this.authJson, { mode: 0o600 });
     return workspace;
   }
@@ -128,7 +149,9 @@ export class CodexCli implements AiTool {
   }
 
   stream(): AiStream {
-    return new CodexStream();
+    return new CodexStream(
+      this.browser ? [CodexStream.SERVER, BrowserMcp.SERVER] : [CodexStream.SERVER],
+    );
   }
 
   async changedCredential(workspace: JobWorkspace): Promise<string | null> {

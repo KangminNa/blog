@@ -1,5 +1,6 @@
 import { AiProcess } from './ai-process';
 import type { AiStream, AiTool } from './ai-tool';
+import { BrowserMcp } from './browser-mcp';
 import { ClaudeStream } from './claude-stream';
 import type { Job } from './job';
 import { JobWorkspace } from './job-workspace';
@@ -7,6 +8,7 @@ import { JobWorkspace } from './job-workspace';
 // Claude Code를 부르는 법. Codex가 들어올 때 공통 모양을 뽑는다 (객체설계 13장: 추상화는 둘째 구현이 생길 때).
 //
 // 격리: 설정·홈은 빈 임시 폴더, MCP는 --strict-mcp-config로 넘긴 cairn 하나, claude.ai 연결은 끈다.
+// 브라우저 작업(browse)에서만 playwright를 더한다 (BrowserMcp: 서버 브라우저에 CDP로, 사이트의 허용 출처만).
 // --bare는 쓰지 않는다: CLAUDE_CODE_OAUTH_TOKEN을 읽지 않는다.
 // 권한: 셸을 주지 않는다. 내장 도구는 파일 도구만, 쓰기는 acceptEdits라 work 폴더 안에서만, MCP는 cairn만 묻지 않고 허락한다.
 // -p는 물을 사람이 없어서 그 밖의 것은 거절된다. 작업 폴더 밖 읽기도 그렇다: Claude가 허락을 묻고, 답할 사람이 없어 거절된다.
@@ -36,19 +38,24 @@ export class ClaudeCli implements AiTool {
   };
 
   readonly id = ClaudeCli.TOOL;
+  /** 이 일에 붙인 브라우저 (어댑터는 일마다 새로 만든다) */
+  private browser: BrowserMcp | null = null;
 
   constructor(
     readonly bin: string,
     private readonly oauthToken: string,
     private readonly mcpUrl: string = '',
     private readonly skillsDir: string = '',
+    /** 서버 브라우저의 CDP 주소. 없으면 브라우저 작업에도 붙이지 않는다 */
+    private readonly browserUrl: string | null = null,
   ) {}
 
   /** 작업 자리: work 밖의 mcp.json(작업 토큰), 설정 폴더의 권한 설정과 스킬 */
   open(job: Job): Promise<JobWorkspace> {
     const { runToken } = job;
+    this.browser = runToken === null ? null : BrowserMcp.for(job, this.browserUrl);
     return JobWorkspace.open(
-      runToken === null ? null : ClaudeCli.mcpConfig(this.mcpUrl, runToken),
+      runToken === null ? null : ClaudeCli.mcpConfig(this.mcpUrl, runToken, this.browser),
       ClaudeCli.settings(process.env.HOME),
       job.skill,
       this.skillsDir,
@@ -56,7 +63,9 @@ export class ClaudeCli implements AiTool {
   }
 
   stream(): AiStream {
-    return new ClaudeStream();
+    return new ClaudeStream(
+      this.browser ? [ClaudeStream.SERVER, BrowserMcp.SERVER] : [ClaudeStream.SERVER],
+    );
   }
 
   /** setup-token의 토큰은 쓰는 동안 바뀌지 않는다 */
@@ -68,17 +77,18 @@ export class ClaudeCli implements AiTool {
     return [this.oauthToken];
   }
 
-  /** mcp.json의 내용. 이 파일에만 작업 토큰을 쓴다 */
-  static mcpConfig(url: string, runToken: string): string {
-    return JSON.stringify({
-      mcpServers: {
-        [ClaudeStream.SERVER]: {
-          type: 'http',
-          url,
-          headers: { Authorization: `Bearer ${runToken}` },
-        },
+  /** mcp.json의 내용. 이 파일에만 작업 토큰을 쓴다. 브라우저 작업이면 playwright를 더한다 */
+  static mcpConfig(url: string, runToken: string, browser: BrowserMcp | null = null): string {
+    const servers: Record<string, object> = {
+      [ClaudeStream.SERVER]: {
+        type: 'http',
+        url,
+        headers: { Authorization: `Bearer ${runToken}` },
       },
-    });
+    };
+    if (browser)
+      servers[BrowserMcp.SERVER] = { type: 'stdio', command: browser.command, args: browser.args };
+    return JSON.stringify({ mcpServers: servers });
   }
 
   /**
@@ -114,6 +124,7 @@ export class ClaudeCli implements AiTool {
       tools.join(','),
       '--allowedTools',
       `mcp__${ClaudeStream.SERVER}__*`,
+      ...(this.browser ? [`mcp__${BrowserMcp.SERVER}__*`] : []),
       ...(workspace.skillReady ? [ClaudeCli.SKILL_TOOL] : []),
       '--permission-mode',
       'acceptEdits',

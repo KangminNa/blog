@@ -16,5 +16,8 @@
     "@swc/core": "1.16.13",
     "@types/node": "24.19.1",
     "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "@playwright/mcp": "0.0.83"
   }
 }

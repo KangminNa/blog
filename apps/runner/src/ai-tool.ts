@@ -49,9 +49,21 @@ export class AiTools {
   /** 일의 도구와 받은 자격으로 어댑터를 만든다. 모르는 도구면 null */
   static for(tool: string, credential: string, config: RunnerConfig): AiTool | null {
     if (tool === ClaudeCli.TOOL)
-      return new ClaudeCli(config.cliPath, credential, config.mcpUrl, config.skillsDir);
+      return new ClaudeCli(
+        config.cliPath,
+        credential,
+        config.mcpUrl,
+        config.skillsDir,
+        config.browserUrl,
+      );
     if (tool === CodexCli.TOOL)
-      return new CodexCli(config.codexCliPath, credential, config.mcpUrl, config.skillsDir);
+      return new CodexCli(
+        config.codexCliPath,
+        credential,
+        config.mcpUrl,
+        config.skillsDir,
+        config.browserUrl,
+      );
     return null;
   }
 }

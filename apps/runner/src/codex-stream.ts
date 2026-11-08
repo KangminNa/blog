@@ -15,7 +15,7 @@ import { type PlanWindow, RunEvent } from './progress';
 // 토큰: Codex는 턴이 끝날 때 한 번 알린다. input에 캐시 읽기가 들어 있어 빼고 output을 더한다 (Claude와 같은 셈).
 // 도중에 끈 실행(취소 등)은 토큰을 알 수 없다. 구독 사용률은 exec가 알려 주지 않아 아직 읽지 않는다.
 export class CodexStream implements AiStream {
-  /** 허락한 단 하나의 MCP 서버 */
+  /** 늘 허락하는 MCP 서버. 브라우저 작업에서만 playwright를 더한다 (BrowserMcp) */
   static readonly SERVER = 'cairn';
   private static readonly READ_TOOLS: ReadonlySet<string> = new Set([
     'search_sessions',
@@ -25,6 +25,10 @@ export class CodexStream implements AiStream {
     'neighbors',
     'blog_get_post',
     'basket_get',
+    'browser_snapshot',
+    'browser_navigate',
+    'browser_take_screenshot',
+    'browser_tabs',
   ]);
   /** 도구 입력에서 대상으로 보여 줄 칸. 내용은 남기지 않는다 */
   private static readonly TARGETS = [
@@ -34,6 +38,7 @@ export class CodexStream implements AiStream {
     'wiki_id',
     'node_id',
     'title',
+    'url',
   ];
 
   private lastText = '';
@@ -41,6 +46,11 @@ export class CodexStream implements AiStream {
   private failureText: string | null = null;
   private lastError: string | null = null;
   private breachText: string | null = null;
+
+  constructor(
+    /** 이 실행에서 허락한 MCP 서버. 그 밖의 서버의 도구를 부르면 격리가 깨진 것 */
+    private readonly servers: readonly string[] = [CodexStream.SERVER],
+  ) {}
 
   get finalText(): string {
     return this.resultText ?? this.lastText;
@@ -119,7 +129,7 @@ export class CodexStream implements AiStream {
 
   private toolCall(item: Json): readonly RunEvent[] {
     const server = item.text('server');
-    if (server !== CodexStream.SERVER) {
+    if (!this.servers.includes(server)) {
       this.breachText ??= `허락하지 않은 MCP 서버: ${server || '(이름 없음)'}`;
       return [];
     }
