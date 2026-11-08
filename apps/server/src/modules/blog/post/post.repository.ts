@@ -1,17 +1,5 @@
-import {
-  and,
-  Database,
-  type DomainEvent,
-  eq,
-  like,
-  ne,
-  Outbox,
-  or,
-  QueryTemplate,
-  RuleViolation,
-  TableRepository,
-} from '../../platform';
-import { posts } from '../blog.schema';
+import { Database, type DomainEvent, Outbox, RuleViolation, TableRepository } from '../../platform';
+import { postRevisions, posts } from '../blog.schema';
 import type { PostRow } from '../blog.tables';
 import { type LoadedPost, Post } from './post';
 
@@ -19,26 +7,6 @@ import { type LoadedPost, Post } from './post';
 // 여기에는 지금 판과 함께 읽는 SQL, 주소 찾기, 딸린 표(판·참고 wiki) 저장이 있다.
 // lock은 휴지통 글도 잠근다. load는 같은 요청이 다시 왔을 때 처음 만든 글을 돌려주려고 잠그지 않고 읽는다.
 export class PostRepository extends TableRepository<PostRow, Post> {
-  /** 공간에서 주소가 slug이거나 패턴(LIKE)에 맞는 글의 주소 (휴지통 글 포함). 뺄 글(except)은 있을 때만 거른다 */
-  private static readonly SLUGS = QueryTemplate.choose<
-    { space: string; slug: string; pattern: string; except: string | null },
-    Pick<PostRow, 'slug'>
-  >(['except'], (q, given) =>
-    q
-      .select({ slug: posts.slug })
-      .from(posts)
-      .where(
-        and(
-          eq(posts.space_id, QueryTemplate.value('space')),
-          or(
-            eq(posts.slug, QueryTemplate.value('slug')),
-            like(posts.slug, QueryTemplate.value('pattern')),
-          ),
-          given('except') ? ne(posts.id, QueryTemplate.value('except')) : undefined,
-        ),
-      ),
-  );
-
   protected readonly table = posts;
   protected readonly noun = '글';
 
@@ -48,12 +16,10 @@ export class PostRepository extends TableRepository<PostRow, Post> {
 
   /** 이 주소이거나 "이 주소-숫자"인 다른 글의 주소들 (휴지통 글 포함). 주소에는 %·_가 없다 (SlugPolicy) */
   async takenSlugs(spaceId: string, base: string, exceptId: string | null): Promise<Set<string>> {
-    const rows = await PostRepository.SLUGS.rows(this.sql, {
-      space: spaceId,
-      slug: base,
-      pattern: `${base}-%`,
-      except: exceptId,
-    });
+    const rows = await this.sql<Pick<PostRow, 'slug'>[]>`
+      SELECT slug FROM blog.posts
+      WHERE space_id = ${spaceId} AND (slug = ${base} OR slug LIKE ${`${base}-%`})
+        ${exceptId === null ? this.sql`` : this.sql`AND id <> ${exceptId}`}`;
     return new Set(rows.map((r) => r.slug));
   }
 
@@ -76,8 +42,7 @@ export class PostRepository extends TableRepository<PostRow, Post> {
   /** 새 판을 넣고, 바뀐 참고 wiki를 글에 맞춘다 */
   protected override async saveParts(post: Post): Promise<void> {
     const revision = post.addedRevision;
-    if (revision)
-      await this.sql`INSERT INTO blog.post_revisions ${this.sql(revision.unsaved as never)}`;
+    if (revision) await this.insertRows(postRevisions, revision.unsaved);
     const refs = post.unsavedRefs;
     if (refs) await this.saveRefs(post.id, refs as string[]);
   }

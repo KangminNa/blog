@@ -41,21 +41,18 @@ export class PostQuery extends BaseQuery {
         ${req.before === null ? this.sql`` : this.sql`AND (${at}, p.id) < (${req.before[0]}, ${req.before[1]})`}
       ORDER BY ${at} DESC, p.id DESC
       LIMIT ${PostQuery.PAGE + 1}`;
-    const page = rows.slice(0, PostQuery.PAGE);
-    const last = page.at(-1);
-    const lastAt = all ? last?.updated_at : last?.published_at;
-    const next =
-      rows.length > PostQuery.PAGE && last && lastAt
-        ? ListPostsInput.cursorAfter(lastAt, last.id)
-        : null;
+    const { items, next } = this.pageOf(rows, PostQuery.PAGE, (last) => {
+      const lastAt = all ? last.updated_at : last.published_at;
+      return lastAt ? ListPostsInput.cursorAfter(lastAt, last.id) : null;
+    });
     return all
       ? new PostPageView(
-          page.map((r) => new PostSummaryView(r, r.revision_count)),
+          items.map((r) => new PostSummaryView(r, r.revision_count)),
           next,
           await this.counts(actor),
         )
       : new PublicPostPageView(
-          page.map((r) => new PublicPostSummaryView(r)),
+          items.map((r) => new PublicPostSummaryView(r)),
           next,
         );
   }

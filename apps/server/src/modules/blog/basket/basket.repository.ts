@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, QueryTemplate, TableRepository } from '../../platform';
+import { TableRepository } from '../../platform';
 import { basketItems, baskets } from '../blog.schema';
 import type { BasketItemRow, BasketRow } from '../blog.tables';
 import { BasketItem } from './basket';
@@ -7,16 +7,7 @@ import { BasketItem } from './basket';
 // 불러오기와 저장은 기반이 하고, 여기에는 상자를 찾고 소재를 지우는 SQL만 있다.
 export class BasketRepository extends TableRepository<BasketItemRow, BasketItem> {
   private static readonly DEFAULT_NAME = '소재';
-  /** 공간의 보관하지 않은 상자 중 처음 만든 것 */
-  private static readonly OPEN_BASKET = QueryTemplate.of<{ space: string }, Pick<BasketRow, 'id'>>(
-    (q) =>
-      q
-        .select({ id: baskets.id })
-        .from(baskets)
-        .where(and(eq(baskets.space_id, QueryTemplate.value('space')), isNull(baskets.archived_at)))
-        .orderBy(asc(baskets.id))
-        .limit(1),
-  );
+
   protected readonly table = basketItems;
   protected readonly noun = '소재';
 
@@ -30,7 +21,11 @@ export class BasketRepository extends TableRepository<BasketItemRow, BasketItem>
    */
   async defaultBasket(spaceId: string): Promise<string> {
     await this.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`basket:${spaceId}`}, 0))`;
-    const found = await BasketRepository.OPEN_BASKET.one(this.sql, { space: spaceId });
+    const found = await this.row(
+      baskets,
+      { space_id: spaceId, archived_at: null },
+      { columns: ['id'], order: ['id'], limit: 1 },
+    );
     if (found) return found.id;
     const basket = { space_id: spaceId, name: BasketRepository.DEFAULT_NAME };
     const [made] = await this.sql<Pick<BasketRow, 'id'>[]>`
@@ -39,7 +34,7 @@ export class BasketRepository extends TableRepository<BasketItemRow, BasketItem>
   }
 
   async remove(item: BasketItem): Promise<void> {
-    await this.sql`DELETE FROM work.basket_items WHERE id = ${item.id}`;
+    await this.deleteRows(basketItems, { id: item.id });
   }
 
   /** 소재는 상자를 거쳐 공간에 속한다 */
