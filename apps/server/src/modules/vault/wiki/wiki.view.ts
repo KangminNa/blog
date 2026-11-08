@@ -2,6 +2,7 @@ import type { WikiRevisionRow, WikiRow } from '../vault.tables';
 
 // wiki의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
 // 표의 칸 중 무엇을 내보내는지는 여기 한 곳에만 적는다. AI에게 주는 답은 snake_case다.
+// 보는 사람마다 View가 다르고(주인 · 방문자 Public…), Query가 고른다.
 
 /** wiki 한 줄과 지금 판의 본문 (wiki_revisions의 body_md · sections) */
 export type WikiDetailRow = WikiRow & Pick<WikiRevisionRow, 'body_md' | 'sections'>;
@@ -12,7 +13,13 @@ export interface WikiHitRow
   excerpt: string | null;
 }
 
-/** wiki 목록의 한 줄 */
+/** 본문의 칸들 (## 제목 단위). 판의 sections 칸에 적힌 그대로 */
+function sectionsOf(row: Readonly<WikiDetailRow>) {
+  const sections = (row.sections ?? []) as readonly { key: string; title: string; body: string }[];
+  return sections.map(({ key, title, body }) => ({ key, title, body }));
+}
+
+/** wiki 목록의 한 줄 (주인) */
 export class WikiSummaryView {
   constructor(private readonly row: Readonly<WikiRow>) {}
 
@@ -30,9 +37,13 @@ export class WikiSummaryView {
       updatedAt: r.updated_at.toISOString(),
     };
   }
+}
 
-  /** 방문자에게 보이는 칸: 만든 쪽과 판 정보는 관리용이다 */
-  toPublicJSON() {
+/** 방문자에게 보이는 wiki 목록의 한 줄: 만든 쪽과 판 정보는 관리용이다 */
+export class PublicWikiSummaryView {
+  constructor(private readonly row: Readonly<WikiRow>) {}
+
+  toJSON() {
     const r = this.row;
     return {
       id: r.node_id,
@@ -44,7 +55,7 @@ export class WikiSummaryView {
   }
 }
 
-/** wiki 목록 한 쪽. next가 있으면 그 값으로 다음 쪽을 부른다 */
+/** wiki 목록 한 쪽 (주인). next가 있으면 그 값으로 다음 쪽을 부른다 */
 export class WikiPageView {
   constructor(
     private readonly wikis: readonly WikiSummaryView[],
@@ -54,13 +65,21 @@ export class WikiPageView {
   toJSON() {
     return { wikis: this.wikis.map((w) => w.toJSON()), next: this.next };
   }
+}
 
-  toPublicJSON() {
-    return { wikis: this.wikis.map((w) => w.toPublicJSON()), next: this.next };
+/** 방문자에게 보이는 wiki 목록 한 쪽 */
+export class PublicWikiPageView {
+  constructor(
+    private readonly wikis: readonly PublicWikiSummaryView[],
+    private readonly next: string | null,
+  ) {}
+
+  toJSON() {
+    return { wikis: this.wikis.map((w) => w.toJSON()), next: this.next };
   }
 }
 
-/** wiki 하나: 목록 정보 + 지금 판 본문 */
+/** wiki 하나 (주인): 목록 정보 + 지금 판 본문 */
 export class WikiDetailView {
   constructor(private readonly row: Readonly<WikiDetailRow>) {}
 
@@ -68,28 +87,23 @@ export class WikiDetailView {
     return {
       ...new WikiSummaryView(this.row).toJSON(),
       bodyMd: this.row.body_md,
-      sections: this.sections,
+      sections: sectionsOf(this.row),
       /** 사람이 고친 칸. AI가 바꾸려 하면 검토로 간다 */
       pinnedSections: this.row.pinned_sections,
     };
   }
+}
 
-  toPublicJSON() {
+/** 방문자에게 보이는 wiki 하나 */
+export class PublicWikiDetailView {
+  constructor(private readonly row: Readonly<WikiDetailRow>) {}
+
+  toJSON() {
     return {
-      ...new WikiSummaryView(this.row).toPublicJSON(),
+      ...new PublicWikiSummaryView(this.row).toJSON(),
       bodyMd: this.row.body_md,
-      sections: this.sections,
+      sections: sectionsOf(this.row),
     };
-  }
-
-  /** 본문의 칸들 (## 제목 단위). 판의 sections 칸에 적힌 그대로 */
-  private get sections() {
-    const sections = (this.row.sections ?? []) as readonly {
-      key: string;
-      title: string;
-      body: string;
-    }[];
-    return sections.map(({ key, title, body }) => ({ key, title, body }));
   }
 }
 
@@ -108,7 +122,7 @@ export class ToolWikiView {
       revision: r.revision_count,
       updated_at: r.updated_at.toISOString(),
       pinned_sections: r.pinned_sections,
-      sections: new WikiDetailView(r).toJSON().sections,
+      sections: sectionsOf(r),
       body_md: r.body_md,
     };
   }

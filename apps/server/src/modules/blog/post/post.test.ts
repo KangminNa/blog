@@ -8,8 +8,10 @@ import {
   Forbidden,
   OwnerActor,
   RuleViolation,
+  VisitorActor,
 } from '../../platform';
 import { type LoadedPost, Post } from './post';
+import type { SavedPostView } from './post.view';
 import { PostContent } from './post-content';
 import { SlugPolicy } from './slug.policy';
 
@@ -65,7 +67,8 @@ function draft(by: Actor = owner): Post {
 }
 
 /** 주인이 보는 글의 모양 (쓰기 결과): 공개 범위, 판 수, 태그, 정렬, 발행일, wiki 연결 */
-const shown = (post: Post) => post.view().toJSON();
+/** 주인의 편집기가 받는 쓰기 결과 (wiki 연결까지) */
+const shown = (post: Post) => (post.view(owner) as SavedPostView).toJSON();
 
 describe('SlugPolicy', () => {
   test('제목에서: 한글은 그대로, 빈칸·기호는 -로, 앞뒤 -는 지우고, 비면 post', () => {
@@ -251,6 +254,14 @@ describe('글 → wiki 연결', () => {
     assert.deepEqual(shown(post).refWikiIds, [C]);
     post.linkWikis(undefined, [], owner, now);
     assert.deepEqual(shown(post).refWikiIds, []);
+  });
+
+  test('쓰기 결과의 wiki 연결은 비공개까지 보는 요청자에게만 (wiki id는 만들어진 때가 드러난다)', () => {
+    const post = linked(Post.DRAFT);
+    assert.equal(shown(post).mainWikiId, A);
+    const seen = post.view(new VisitorActor()).toJSON();
+    assert.equal('mainWikiId' in seen, false);
+    assert.equal('refWikiIds' in seen, false);
   });
 
   test('겹치는 참고와 대표와 같은 참고는 빠지고, 대표로 옮긴 참고도 빠진다', () => {

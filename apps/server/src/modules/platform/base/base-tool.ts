@@ -1,11 +1,15 @@
 import type { Actor } from './actor';
-import type { BaseResponse } from './base-response';
 
 // AI 도구가 부르는 MCP 도구의 기반. 도구 자체는 각 모듈(`*.tool.ts`)에 두고, mcp 모듈이 모아서 연다.
 // MCP SDK는 platform/base의 McpEndpoint만 알고, 도구는 이름·설명·입력 모양·처리만 정한다.
-// 처리는 Controller와 같다: Request.from(raw) → Service·Query 메서드 하나 → Response.
+// 처리는 Controller와 같다: Input.from(raw) → Service·Query 메서드 하나 → View.
 // site는 블로그의 사이트 주소(예: https://blog.example.com). 응답에 관리 화면 링크를 넣을 때 쓴다.
 // 사이트 주소는 account 모듈이 가지고 있어서, 도구가 있는 모듈 대신 MCP 입구(mcp 모듈)가 읽어 넘긴다.
+/** 도구의 답. View처럼 toJSON으로 내보낼 모양을 정한다 (MCP는 snake_case) */
+export interface ToolAnswer {
+  toJSON(): object;
+}
+
 export abstract class BaseTool {
   /** 도구 이름 (예: save_session) */
   abstract readonly name: string;
@@ -32,5 +36,5 @@ export abstract class BaseTool {
     return actor.can(this.scope) || (this.orScope !== null && actor.can(this.orScope));
   }
 
-  abstract handle(actor: Actor, raw: unknown, site: string): Promise<BaseResponse>;
+  abstract handle(actor: Actor, raw: unknown, site: string): Promise<ToolAnswer>;
 }

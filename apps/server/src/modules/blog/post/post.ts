@@ -9,7 +9,7 @@ import {
   TableEntity,
 } from '../../platform';
 import type { PostNew, PostRevisionNew, PostRevisionRow, PostRow } from '../blog.tables';
-import { SavedPostView, ToolDraftView } from './post.view';
+import { PublicSavedPostView, SavedPostView, ToolDraftView } from './post.view';
 import { PostContent } from './post-content';
 
 /** 글 한 줄과 함께 읽는 칸: 지금 판의 제목·본문, 판 수, 참고 wiki */
@@ -306,16 +306,17 @@ export class Post extends TableEntity<PostRow, PostNew> {
     if (this.row.status === Post.PUBLISHED) this.announce('blog.post.published');
   }
 
-  /** 쓰기 결과. 제목과 앞부분은 찾기용 사본이 아니라 지금 판에서 */
-  view(): SavedPostView {
+  /**
+   * 쓰기 결과. 제목과 앞부분은 찾기용 사본이 아니라 지금 판에서.
+   * 비공개까지 보는 요청자(주인의 편집기)에게만 wiki 연결까지 (wiki id는 UUIDv7이라 만들어진 때가 드러난다)
+   */
+  view(by: Actor): SavedPostView | PublicSavedPostView {
     const { title, excerpt, body } = this.head;
-    return new SavedPostView(
-      { ...this.row, title, excerpt },
-      body,
-      this.revisions,
-      this.added !== null,
-      this.refWikis,
-    );
+    const row = { ...this.row, title, excerpt };
+    const revised = this.added !== null;
+    return by.canSeePrivate()
+      ? new SavedPostView(row, body, this.revisions, revised, this.refWikis)
+      : new PublicSavedPostView(row, body, this.revisions, revised);
   }
 
   /** blog_save_draft의 답 */

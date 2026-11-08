@@ -31,7 +31,7 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
 - 없는 대상은 실패가 아니라 `missing`이라 `lockOrNull`로 잠근다. 판(세션 · wiki)은 엔티티가 새 행(`…RevisionNew`)으로 들고 `saveParts`가 넣기만 한다
 - 카테고리의 칸은 `Category.RULES` · `COLUMNS`를 지나 `edit(changes)`로 바뀐다(변경 `category.create` · `category.update`가 칸 묶음을 들고 간다). wiki의 제목 · 본문 · 공개 · 카테고리, 세션의 대표 wiki, 선의 지우기 · 되살리기는 동사 메서드로만 바뀐다
 - `ChangeOp`과 그래프의 View는 표 한 줄이 아니라 그대로 둔다. `ChangeOp`은 판정한 칸을 `change_ops` 한 줄(`toRow`)로 내놓는다
-- wiki · 카테고리의 View는 보는 사람마다 모양이 둘이다: 비공개까지 보는 요청자는 `toJSON`, 아니면 `toPublicJSON` (`WikiResponse` · `CategoryListResponse`가 고른다)
+- wiki · 카테고리의 View는 보는 사람마다 둘이다: 비공개까지 보는 요청자는 `WikiPageView` · `WikiDetailView` · `CategoryListView`, 아니면 `Public…` (`WikiQuery` · `CategoryQuery`가 고른다)
 
 ## 소유 데이터
 스키마 `vault`: node_kinds, edge_kinds, nodes, sessions, session_revisions, attachments, categories, wikis, wiki_revisions, wiki_aliases,

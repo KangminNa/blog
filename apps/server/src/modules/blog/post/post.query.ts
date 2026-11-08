@@ -4,7 +4,16 @@ import { PostWikiQuery } from '../../vault';
 import type { PostRow } from '../blog.tables';
 import { type LoadedPost, Post } from './post';
 import { ListPostsInput, type PostSlugInput, type ReadPostInput } from './post.input';
-import { PostCountsView, PostPageView, PostSummaryView, PostView, ToolPostView } from './post.view';
+import {
+  PostCountsView,
+  PostPageView,
+  PostSummaryView,
+  PostView,
+  PublicPostPageView,
+  PublicPostSummaryView,
+  PublicPostView,
+  ToolPostView,
+} from './post.view';
 
 // 글 읽기. 방문자는 공개 글만 목록에 보이고, 링크만 글은 주소로만 열린다. 임시·휴지통 글은 없는 글과 같다.
 // 비공개까지 볼 수 있는 요청자(주인, read_all 기기)는 전부 본다.
@@ -20,7 +29,8 @@ export class PostQuery extends BaseQuery {
     super(db);
   }
 
-  async list(actor: Actor, req: ListPostsInput): Promise<PostPageView> {
+  /** 주인에게는 공개 범위·판 수·탭별 글 수까지, 그 밖에는 읽을 것만 */
+  async list(actor: Actor, req: ListPostsInput): Promise<PostPageView | PublicPostPageView> {
     const all = actor.canSeePrivate();
     // 주인은 고친 순서, 방문자는 발행한 순서
     const at = all ? this.sql`p.updated_at` : this.sql`p.published_at`;
@@ -34,32 +44,39 @@ export class PostQuery extends BaseQuery {
     const page = rows.slice(0, PostQuery.PAGE);
     const last = page.at(-1);
     const lastAt = all ? last?.updated_at : last?.published_at;
-    return new PostPageView(
-      page.map((r) => new PostSummaryView(r, r.revision_count)),
+    const next =
       rows.length > PostQuery.PAGE && last && lastAt
         ? ListPostsInput.cursorAfter(lastAt, last.id)
-        : null,
-      all ? await this.counts(actor) : null,
-    );
+        : null;
+    return all
+      ? new PostPageView(
+          page.map((r) => new PostSummaryView(r, r.revision_count)),
+          next,
+          await this.counts(actor),
+        )
+      : new PublicPostPageView(
+          page.map((r) => new PublicPostSummaryView(r)),
+          next,
+        );
   }
 
   /** 주소로 글 하나. 방문자는 공개·링크만 글, 주인은 임시 글도 (미리 보기) */
-  async bySlug(actor: Actor, req: PostSlugInput): Promise<PostView> {
+  async bySlug(actor: Actor, req: PostSlugInput): Promise<PostView | PublicPostView> {
     const all = actor.canSeePrivate();
     const [row] = await this.sql<LoadedPost[]>`
       ${this.selectOne()}
       WHERE ${this.inSpace(actor)} AND p.slug = ${req.slug} AND p.deleted_at IS NULL
         ${all ? this.sql`` : this.sql`AND p.status IN (${Post.PUBLISHED}, ${Post.UNLISTED})`}`;
-    return PostQuery.view(PostQuery.found(row));
+    return PostQuery.view(actor, PostQuery.found(row));
   }
 
   /** 편집기가 여는 글 하나 (휴지통 글 포함). 글을 쓸 수 있는 요청자만 */
-  async get(actor: Actor, req: ReadPostInput): Promise<PostView> {
+  async get(actor: Actor, req: ReadPostInput): Promise<PostView | PublicPostView> {
     actor.assertCan(Actor.WRITE);
     const [row] = await this.sql<LoadedPost[]>`
       ${this.selectOne()}
       WHERE ${this.inSpace(actor)} AND p.id = ${req.id}`;
-    return PostQuery.view(PostQuery.found(row));
+    return PostQuery.view(actor, PostQuery.found(row));
   }
 
   /**
@@ -125,8 +142,11 @@ export class PostQuery extends BaseQuery {
     return row;
   }
 
-  /** 제목은 찾기용 사본(posts.title)을 보여 준다 */
-  private static view(r: LoadedPost): PostView {
-    return new PostView(r, r.head_body ?? '', r.revision_count, r.ref_wiki_ids ?? []);
+  /** 제목은 찾기용 사본(posts.title)을 보여 준다. 주인에게는 공개 범위·버전과 wiki 연결까지 */
+  private static view(actor: Actor, r: LoadedPost): PostView | PublicPostView {
+    const body = r.head_body ?? '';
+    return actor.canSeePrivate()
+      ? new PostView(r, body, r.revision_count, r.ref_wiki_ids ?? [])
+      : new PublicPostView(r, body);
   }
 }

@@ -3,6 +3,9 @@ import { Actor, BaseQuery, NotFound } from '../../platform';
 import type { WikiRow } from '../vault.tables';
 import { ListWikisInput, type SearchWikisInput, type WikiIdInput } from './wiki.input';
 import {
+  PublicWikiDetailView,
+  PublicWikiPageView,
+  PublicWikiSummaryView,
   ToolWikiView,
   type WikiDetailRow,
   WikiDetailView,
@@ -23,7 +26,8 @@ export class WikiQuery extends BaseQuery {
   private static readonly EXCERPT = 160;
   private static readonly EXCERPT_LEAD = 40;
 
-  async list(actor: Actor, req: ListWikisInput): Promise<WikiPageView> {
+  /** 비공개까지 보는 요청자(주인)에게는 모든 칸, 그 밖에는 공개 칸만 */
+  async list(actor: Actor, req: ListWikisInput): Promise<WikiPageView | PublicWikiPageView> {
     const rows = await this.sql<WikiRow[]>`
       SELECT w.* FROM vault.wikis w JOIN vault.nodes n ON n.id = w.node_id
       WHERE ${this.inSpace(actor)} AND n.deleted_at IS NULL ${this.visibleTo(actor, 'w.visibility')}
@@ -34,15 +38,23 @@ export class WikiQuery extends BaseQuery {
       LIMIT ${WikiQuery.PAGE + 1}`;
     const page = rows.slice(0, WikiQuery.PAGE);
     const last = page.at(-1);
-    return new WikiPageView(
-      page.map((r) => new WikiSummaryView(r)),
-      rows.length > WikiQuery.PAGE && last ? ListWikisInput.cursorAfter(last.node_id) : null,
-    );
+    const next =
+      rows.length > WikiQuery.PAGE && last ? ListWikisInput.cursorAfter(last.node_id) : null;
+    return actor.canSeePrivate()
+      ? new WikiPageView(
+          page.map((r) => new WikiSummaryView(r)),
+          next,
+        )
+      : new PublicWikiPageView(
+          page.map((r) => new PublicWikiSummaryView(r)),
+          next,
+        );
   }
 
-  /** 볼 수 없는 wiki는 없는 wiki와 똑같이 NotFound */
-  async get(actor: Actor, req: WikiIdInput): Promise<WikiDetailView> {
-    return new WikiDetailView(await this.find(actor, req.id));
+  /** 볼 수 없는 wiki는 없는 wiki와 똑같이 NotFound. 주인에게는 모든 칸, 그 밖에는 공개 칸만 */
+  async get(actor: Actor, req: WikiIdInput): Promise<WikiDetailView | PublicWikiDetailView> {
+    const row = await this.find(actor, req.id);
+    return actor.canSeePrivate() ? new WikiDetailView(row) : new PublicWikiDetailView(row);
   }
 
   /** 키워드로 찾기 (AI 도구의 search_wikis). 제목과 지금 판의 본문에서 찾는다 (pg_bigm: 대소문자 구분) */

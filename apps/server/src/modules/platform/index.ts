@@ -24,7 +24,6 @@ export { BaseLogin, LoginIdentity } from './base/base-login';
 export { BaseQuery } from './base/base-query';
 export { BaseRepository } from './base/base-repository';
 export { BaseRequest, type ColumnReaders, RequestFields, VersionInput } from './base/base-request';
-export { BaseResponse } from './base/base-response';
 export { BaseService, EntityService, type VersionTarget } from './base/base-service';
 export { BaseTool } from './base/base-tool';
 export { Blob, BlobStore } from './base/blob-store';

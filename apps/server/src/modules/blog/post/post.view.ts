@@ -2,7 +2,7 @@ import type { PostRow } from '../blog.tables';
 
 // 글의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
 // 표의 칸 중 무엇을 내보내는지는 여기 한 곳에만 적는다.
-// 보는 사람마다 모양이 달라서 비공개를 볼 수 없는 요청자(방문자)용은 toPublicJSON, 주인용은 toJSON이다.
+// 보는 사람마다 View가 다르다: 비공개를 볼 수 없는 요청자(방문자)용은 Public…, 주인용은 이름 그대로. Query가 고른다.
 
 /** 공개 범위. DB의 CHECK가 Post.STATUSES만 받으니 그대로 좁힌다 */
 function statusOf(r: Readonly<PostRow>) {
@@ -37,21 +37,54 @@ function ownerColumns(r: Readonly<PostRow>, revisionCount: number) {
   };
 }
 
-/** 글 목록의 한 줄 */
+/** 글 페이지의 칸 (방문자와 주인 모두). listed: 목록에 보이는 글인가 (링크만 글은 검색 엔진에도 알리지 않게 화면이 noindex를 단다) */
+function pageColumns(r: Readonly<PostRow>, body: string) {
+  return {
+    ...publicColumns(r),
+    body,
+    align: alignOf(r),
+    listed: r.status === 'published',
+  };
+}
+
+/** 쓰기 결과의 칸 (wiki 연결 빼고) */
+function savedColumns(r: Readonly<PostRow>, body: string, revisionCount: number, revised: boolean) {
+  return {
+    id: r.id,
+    slug: r.slug,
+    title: r.title ?? '',
+    body,
+    excerpt: r.excerpt ?? '',
+    tags: [...r.tags],
+    align: alignOf(r),
+    status: statusOf(r),
+    version: r.version,
+    revisionCount,
+    revised,
+    publishedAt: r.published_at?.toISOString() ?? null,
+    updatedAt: r.updated_at.toISOString(),
+    deletedAt: r.deleted_at?.toISOString() ?? null,
+  };
+}
+
+/** 글 목록의 한 줄 (주인): 공개 범위·판 수·버전까지 */
 export class PostSummaryView {
   constructor(
     private readonly row: Readonly<PostRow>,
     private readonly revisionCount: number,
   ) {}
 
-  /** 방문자: 읽을 것만 */
-  toPublicJSON() {
-    return publicColumns(this.row);
-  }
-
-  /** 주인: 공개 범위·판 수·버전까지 */
   toJSON() {
     return { ...publicColumns(this.row), ...ownerColumns(this.row, this.revisionCount) };
+  }
+}
+
+/** 방문자에게 보이는 글 목록의 한 줄: 읽을 것만 */
+export class PublicPostSummaryView {
+  constructor(private readonly row: Readonly<PostRow>) {}
+
+  toJSON() {
+    return publicColumns(this.row);
   }
 }
 
@@ -74,7 +107,7 @@ export class PostCountsView {
   }
 }
 
-/** 목록 한 쪽. counts는 비공개 글까지 보는 사람(주인)에게만 */
+/** 목록 한 쪽 (주인): 공개 범위·판 수와 탭별 글 수까지 */
 export class PostPageView {
   constructor(
     private readonly posts: readonly PostSummaryView[],
@@ -82,12 +115,6 @@ export class PostPageView {
     private readonly counts: PostCountsView | null,
   ) {}
 
-  /** 방문자: 읽을 것만 */
-  toPublicJSON() {
-    return { posts: this.posts.map((p) => p.toPublicJSON()), next: this.next };
-  }
-
-  /** 주인: 공개 범위·판 수와 탭별 글 수까지 */
   toJSON() {
     return {
       posts: this.posts.map((p) => p.toJSON()),
@@ -97,7 +124,19 @@ export class PostPageView {
   }
 }
 
-/** 글 하나: 목록 정보 + 본문 (방문자의 글 페이지, 주인의 미리 보기·편집기·결재) */
+/** 방문자에게 보이는 목록 한 쪽: 읽을 것만 */
+export class PublicPostPageView {
+  constructor(
+    private readonly posts: readonly PublicPostSummaryView[],
+    private readonly next: string | null,
+  ) {}
+
+  toJSON() {
+    return { posts: this.posts.map((p) => p.toJSON()), next: this.next };
+  }
+}
+
+/** 글 하나 (주인의 미리 보기·편집기·결재): 목록 정보 + 본문, 공개 범위·버전과 wiki 연결까지 */
 export class PostView {
   constructor(
     private readonly row: Readonly<PostRow>,
@@ -106,20 +145,9 @@ export class PostView {
     private readonly refWikiIds: readonly string[],
   ) {}
 
-  /** 방문자의 글 페이지. listed: 목록에 보이는 글인가 (링크만 글은 검색 엔진에도 알리지 않게 화면이 noindex를 단다) */
-  toPublicJSON() {
-    return {
-      ...publicColumns(this.row),
-      body: this.body,
-      align: alignOf(this.row),
-      listed: this.row.status === 'published',
-    };
-  }
-
-  /** 주인의 미리 보기·편집기·결재: 공개 범위·버전과 wiki 연결까지 */
   toJSON() {
     return {
-      ...this.toPublicJSON(),
+      ...pageColumns(this.row, this.body),
       ...ownerColumns(this.row, this.revisionCount),
       mainWikiId: this.row.main_wiki_id,
       refWikiIds: [...this.refWikiIds],
@@ -127,7 +155,19 @@ export class PostView {
   }
 }
 
-/** 쓰기 결과 (편집기에게). revised: 이번 저장으로 새 판이 쌓였는가 */
+/** 방문자의 글 페이지 */
+export class PublicPostView {
+  constructor(
+    private readonly row: Readonly<PostRow>,
+    private readonly body: string,
+  ) {}
+
+  toJSON() {
+    return pageColumns(this.row, this.body);
+  }
+}
+
+/** 쓰기 결과 (주인의 편집기): wiki 연결까지. revised: 이번 저장으로 새 판이 쌓였는가 */
 export class SavedPostView {
   constructor(
     private readonly row: Readonly<PostRow>,
@@ -137,34 +177,26 @@ export class SavedPostView {
     private readonly refWikiIds: readonly string[],
   ) {}
 
-  /** wiki 연결 없이 (비공개까지 볼 수 없는 요청자: wiki id는 UUIDv7이라 만들어진 때가 드러난다) */
-  toPublicJSON() {
-    const r = this.row;
-    return {
-      id: r.id,
-      slug: r.slug,
-      title: r.title ?? '',
-      body: this.body,
-      excerpt: r.excerpt ?? '',
-      tags: [...r.tags],
-      align: alignOf(r),
-      status: statusOf(r),
-      version: r.version,
-      revisionCount: this.revisionCount,
-      revised: this.revised,
-      publishedAt: r.published_at?.toISOString() ?? null,
-      updatedAt: r.updated_at.toISOString(),
-      deletedAt: r.deleted_at?.toISOString() ?? null,
-    };
-  }
-
-  /** 비공개까지 보는 요청자 (주인의 편집기): wiki 연결까지 */
   toJSON() {
     return {
-      ...this.toPublicJSON(),
+      ...savedColumns(this.row, this.body, this.revisionCount, this.revised),
       mainWikiId: this.row.main_wiki_id,
       refWikiIds: [...this.refWikiIds],
     };
+  }
+}
+
+/** 비공개까지 볼 수 없는 요청자의 쓰기 결과: wiki 연결 없이 (wiki id는 UUIDv7이라 만들어진 때가 드러난다) */
+export class PublicSavedPostView {
+  constructor(
+    private readonly row: Readonly<PostRow>,
+    private readonly body: string,
+    private readonly revisionCount: number,
+    private readonly revised: boolean,
+  ) {}
+
+  toJSON() {
+    return savedColumns(this.row, this.body, this.revisionCount, this.revised);
   }
 }
 

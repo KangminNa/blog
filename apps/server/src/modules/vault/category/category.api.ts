@@ -1,29 +1,11 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
-import { type Actor, BaseResponse, CurrentActor } from '../../platform';
+import { type Actor, CurrentActor } from '../../platform';
 import { ChangeService } from '../change/change.service';
 import type { ChangeSet } from '../change/change-set';
 import type { Category } from './category';
 import { CreateCategoryInput, DeleteCategoryInput, UpdateCategoryInput } from './category.input';
 import { CategoryQuery } from './category.query';
-import type { CategoryListView, CategorySavedView } from './category.view';
-
-/** 카테고리 목록. 방문자는 공개 칸만 */
-export class CategoryListResponse extends BaseResponse {
-  private constructor(
-    private readonly view: CategoryListView,
-    private readonly full: boolean,
-  ) {
-    super();
-  }
-
-  static of(view: CategoryListView, actor: Actor): CategoryListResponse {
-    return new CategoryListResponse(view, actor.canSeePrivate());
-  }
-
-  toJSON(): object {
-    return this.full ? this.view.toJSON() : this.view.toPublicJSON();
-  }
-}
+import type { CategoryListView, CategorySavedView, PublicCategoryListView } from './category.view';
 
 // 카테고리 메뉴. 목록은 누구나 (이름은 공개), 쓰기는 주인만 (변경 묶음으로 남는다).
 @Controller('api/categories')
@@ -33,9 +15,10 @@ export class CategoryController {
     private readonly changes: ChangeService,
   ) {}
 
+  /** 주인은 모든 칸, 그 밖에는 공개 칸만 (Query가 고른다) */
   @Get()
-  async list(@CurrentActor() actor: Actor): Promise<CategoryListResponse> {
-    return CategoryListResponse.of(await this.categories.list(actor), actor);
+  list(@CurrentActor() actor: Actor): Promise<CategoryListView | PublicCategoryListView> {
+    return this.categories.list(actor);
   }
 
   @Post()
