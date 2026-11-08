@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      MIGRATE: docker compose run --rm migrate --wait --no-dump-schema --migrations-dir /db/migrations
+      MIGRATE: docker compose run --rm migrate
     steps:
       - uses: actions/checkout@v5
       # 연결 명령과 러너 단위 테스트는 컨테이너 밖에서 돈다
@@ -43,7 +43,7 @@ jobs:
       - run: docker compose up -d --build --wait db
       - run: $MIGRATE up
       - name: 전부 되돌리기
-        run: for f in db/migrations/*.sql; do $MIGRATE rollback; done
+        run: for f in db/migrations/*.sql plugins/*/migrations/*.sql; do $MIGRATE rollback; done
       - run: $MIGRATE up
       - name: 모듈 경계 (DB), 표 인터페이스
         run: pnpm db:check

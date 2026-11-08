@@ -46,12 +46,16 @@ services:
     image: cairn-migrate:${CAIRN_IMAGE_TAG:-dev}
     environment:
       DATABASE_URL: *db-url
-    # 코어와 기능 패키지의 마이그레이션 (이미지에 담긴 plugins/<이름>/migrations)
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - set -- --wait --no-dump-schema --migrations-dir /db/migrations;
-        for d in /plugins/*/migrations; do [ -d "$$d" ] && set -- "$$@" --migrations-dir "$$d"; done;
-        exec dbmate "$$@" up
+    # 코어와 기능 패키지의 마이그레이션 (이미지에 담긴 plugins/<이름>/migrations). 인자는 dbmate 명령 (기본 up)
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        dirs="--migrations-dir /db/migrations"
+        for d in /plugins/*/migrations; do [ -d "$$d" ] && dirs="$$dirs --migrations-dir $$d"; done
+        exec dbmate --wait --no-dump-schema $$dirs "$$@"
+      - migrate
+    command: ["up"]
     depends_on:
       db:
         condition: service_healthy

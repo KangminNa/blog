@@ -37,18 +37,8 @@ docker([
   '-c',
   'DROP DATABASE IF EXISTS cairn_runner_test',
 ]);
-docker([
-  'run',
-  '--rm',
-  '-e',
-  `DATABASE_URL=${testDb}`,
-  'migrate',
-  '--wait',
-  '--no-dump-schema',
-  '--migrations-dir',
-  '/db/migrations',
-  'up',
-]);
+// 코어와 기능 패키지의 마이그레이션 (compose의 migrate가 plugins/*/migrations까지 넘긴다)
+docker(['run', '--rm', '-e', `DATABASE_URL=${testDb}`, 'migrate']);
 docker([
   'run',
   '--rm',
