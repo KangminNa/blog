@@ -114,11 +114,14 @@ export class NextJobsInput extends BaseRequest {
     readonly signinTools: readonly string[] | null,
     /** 러너가 스스로 가진 로그인 (주인 컴퓨터의 환경 변수 등) */
     readonly ownLogins: readonly string[],
+    /** 서버 브라우저에 붙어 있는가. 알리지 않으면 false: 브라우저 작업은 알린 러너에게만 */
+    readonly browser: boolean,
   ) {
     super();
   }
 
   static from(raw: unknown): NextJobsInput {
+    const told = (raw as { browser?: unknown } | null | undefined)?.browser !== undefined;
     return BaseRequest.read(
       raw,
       (f) =>
@@ -128,6 +131,7 @@ export class NextJobsInput extends BaseRequest {
           f.optionalTextList('tools', NextJobsInput.TOOLS_MAX, 40),
           f.optionalTextList('signin_tools', NextJobsInput.TOOLS_MAX, 40),
           f.optionalTextList('own_logins', NextJobsInput.TOOLS_MAX, 40) ?? [],
+          told ? f.boolean('browser') : false,
         ),
     );
   }

@@ -11,5 +11,6 @@ export const SCOPE_LABELS: Record<string, string> = {
   read_all: '전체 읽기',
   tidy: '정리',
   write: '초안 작성',
+  browse: '브라우저 사용',
   run: '작업 실행',
 };

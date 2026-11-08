@@ -836,6 +836,32 @@ describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () =>
     assert.deepEqual(idsOf(await leaseAs({ ...NOTHING, tools: ['claude'] })), [taskId]);
   });
 
+  test('브라우저 작업(browse)은 browser를 알린 러너에게만, browse 권한이 있는 에이전트에게만 준다', async () => {
+    await saveToken(newToken());
+    const both = await api.request('POST', '/api/agents', owner, {
+      requestId: randomUUID(),
+      name: '브라우저와 비공개',
+      tool: 'claude',
+      scopes: ['browse', 'read_all'],
+    });
+    assert.equal(both.status, 422, both.text);
+    const agent = ok(
+      await api.request('POST', '/api/agents', owner, {
+        requestId: randomUUID(),
+        name: '브라우저 담당',
+        tool: 'claude',
+        scopes: ['read_public', 'browse'],
+      }),
+      201,
+    );
+    const browse = await newTask(agent);
+    await db.sql`UPDATE task.tasks SET kind = 'browse' WHERE id = ${String(browse.id)}`;
+    const ability = { ...NOTHING, tools: ['claude'] };
+    assert.equal(idsOf(await leaseAs(ability)).includes(browse.id), false, 'browser를 알리지 않음');
+    assert.equal(idsOf(await leaseAs({ ...ability, browser: false })).includes(browse.id), false);
+    assert.equal(idsOf(await leaseAs({ ...ability, browser: true })).includes(browse.id), true);
+  });
+
   test('웹 로그인은 signin_tools의 도구만 준다', async () => {
     const claudeSignin = await start('claude');
     const codexSignin = await start('codex');

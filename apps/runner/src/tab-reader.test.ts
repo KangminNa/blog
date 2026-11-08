@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { type BrowserTabs, TabText, TabUnreadable } from './browser-tabs';
+import { type BrowserTabs, BrowserUnavailable, TabText, TabUnreadable } from './browser-tabs';
 import type { CairnServer } from './cairn-server';
 import { ToolRefused } from './mcp-client';
 import { Redactor, RunLog } from './redactor';
@@ -56,6 +56,18 @@ describe('TabReader', () => {
       { id: 'a', read: { title: '제목', body: '본문' } },
       { id: 'b', read: { error: '30초 안에 다 뜨지 않았어요' } },
     ]);
+  });
+
+  test('브라우저에 닿지 못하면 실패로 남기지 않는다 (요청은 그대로, 나중에 다시)', async () => {
+    const { saved, stopper, reader } = fakes(
+      [() => [{ id: 'a', url: 'https://ok.example/x' }]],
+      () => {
+        throw new BrowserUnavailable('브라우저(http://127.0.0.1:9222)에 닿지 못했어요');
+      },
+    );
+    setTimeout(() => stopper.abort(), 50);
+    await reader.run(stopper.signal);
+    assert.deepEqual(saved, []);
   });
 
   test('패키지가 꺼져 있으면(도구 없음) 아무것도 남기지 않고 멈출 때까지 기다린다', async () => {

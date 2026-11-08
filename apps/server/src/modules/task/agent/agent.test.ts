@@ -76,6 +76,15 @@ describe('AgentUsage', () => {
   });
 });
 
+describe('권한', () => {
+  test('브라우저(browse)와 비공개 읽기(read_all)는 함께 줄 수 없다', () => {
+    const agent = agentWith(null, null);
+    assert.throws(() => agent.edit({ scopes: ['browse', 'read_all'] }), RuleViolation);
+    agent.edit({ scopes: ['browse', 'read_public'] });
+    assert.deepEqual(agent.scopes, ['read_public', 'browse']);
+  });
+});
+
 describe('한도 칸', () => {
   test('범위를 벗어나면 거절한다', () => {
     const agent = agentWith(null, null);

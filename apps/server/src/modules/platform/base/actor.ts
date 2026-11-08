@@ -11,6 +11,8 @@ export abstract class Actor {
   static readonly WRITE = 'write';
   /** 러너: 일을 빌리고, 진행을 알리고, 끝낸다 */
   static readonly RUN = 'run';
+  /** 에이전트: 서버 브라우저로 하는 작업(browse)을 맡는다. read_all과 함께 줄 수 없다 */
+  static readonly BROWSE = 'browse';
   /** 작업 토큰을 가진 에이전트만의 자격 (request_approval). 기기에 줄 수 있는 권한이 아니다 */
   static readonly AGENT = 'agent';
 

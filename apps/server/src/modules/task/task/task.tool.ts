@@ -57,6 +57,10 @@ export class NextJobsTool extends BaseTool {
         description:
           '러너가 스스로 가진 로그인 (환경 변수 등). 서버의 로그인이 없어도 그 도구의 일을 준다',
       },
+      browser: {
+        type: 'boolean',
+        description: '서버 브라우저에 붙어 있는가. true인 러너에게만 브라우저 작업(browse)을 준다',
+      },
     },
   };
 

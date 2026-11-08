@@ -10,6 +10,8 @@ import { OwnerActor, VisitorActor } from '../base/actor';
 import { BlobStore } from '../base/blob-store';
 import { Database } from '../base/database';
 import { Forbidden, RuleViolation } from '../base/errors';
+import { DomainEvent } from '../base/event';
+import { Work } from '../base/operation';
 import { SealedSecret, SecretBox } from '../base/secret-box';
 import { SecretRotation } from '../base/secret-rotation';
 import { PluginRepository } from './plugin.repository';
@@ -62,6 +64,36 @@ describe('PluginManifest', () => {
     assert.deepEqual([...m.webSlots.keys()], ['post.after']);
     assert.equal(m.setting('token')?.isSecret, true);
     assert.equal(m.setting('mode')?.problemWith('c'), '모드: a, b 중 하나로 넣어 주세요');
+  });
+
+  test('패키지가 남길 수 있는 이벤트: 자기 이름은 늘, task.task.requested는 task:request를 허락받았을 때만', () => {
+    const root = mkdtempSync(join(tmpdir(), 'cairn-plugins-'));
+    const pkg = (name: string, uses: readonly string[]) => {
+      const dir = join(root, name);
+      mkdirSync(join(dir, 'server'), { recursive: true });
+      mkdirSync(join(dir, 'migrations'));
+      writeFileSync(join(dir, 'server/plugin.ts'), '');
+      const json = { name, version: '0.1.0', cairn: '>=0.2', server: 'server/plugin.ts' };
+      return PluginManifest.read(
+        makePlugin(root, name, { ...json, schema: 'test_pkg', uses: ['table', ...uses] }),
+      );
+    };
+    const plain = pkg('test-emit-a', []);
+    const asker = pkg('test-emit-b', ['task:request']);
+    assert.equal(plain.emits('plugin.test_pkg.saved'), true);
+    assert.equal(plain.emits('plugin.other.saved'), false, '다른 패키지의 이름');
+    assert.equal(plain.emits('task.task.requested'), false);
+    assert.equal(asker.emits('task.task.requested'), true);
+    assert.equal(asker.emits('blog.post.published'), false, '코어 이벤트는 허락받은 것만');
+    assert.match(PluginManifest.describeUse('task:request'), /작업을 맡겨요/);
+
+    const work = new Work(undefined as never, 'test_pkg', (n) => plain.emits(n));
+    assert.throws(
+      () => work.record(new DomainEvent('task.task.requested', 1, 's', {})),
+      /남길 수 없는 이벤트/,
+    );
+    work.record(new DomainEvent('plugin.test_pkg.saved', 1, 's', {}));
+    assert.equal(work.events.length, 1);
   });
 
   test('틀린 곳을 모두 모아 알린다', () => {

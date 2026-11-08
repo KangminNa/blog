@@ -27,6 +27,7 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     Actor.READ_ALL,
     Actor.TIDY,
     Actor.WRITE,
+    Actor.BROWSE,
   ];
   private static readonly NAME_MAX = 60;
   private static readonly ROLE_MAX = 2000;
@@ -59,6 +60,11 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
       const unknown = value.filter((s) => !Agent.SCOPES.includes(s));
       if (unknown.length > 0)
         throw new RuleViolation(`에이전트에게 줄 수 없는 권한이에요: ${unknown.join(', ')}`);
+      // 로그인된 브라우저 + 비공개 + 밖으로 보내기가 한 에이전트에 모이지 않게 (브라우저 작업은 비공개를 못 읽는다)
+      if (value.includes(Actor.BROWSE) && value.includes(Actor.READ_ALL))
+        throw new RuleViolation(
+          '브라우저를 쓰는 에이전트는 비공개를 읽을 수 없어요 (browse · read_all)',
+        );
       return Agent.SCOPES.filter((s) => value.includes(s));
     },
     approval_actions: (value) => {

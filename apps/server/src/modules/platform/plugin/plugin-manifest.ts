@@ -23,12 +23,14 @@ const WEB_SLOTS: readonly string[] = ['post.after', 'task.office'];
  *   api           목록 파일 api의 경로를 연다 (/api/p/<이름>/…)
  *   tool:<이름>   MCP 도구를 연다 (목록 파일 tools)
  *   menu          콘솔 메뉴와 화면을 더한다 (목록 파일 menu)
+ *   task:request  동작이 task.task.requested 이벤트로 에이전트에게 일을 맡긴다
  */
 const USES = [
   /^table$/,
   /^api$/,
   /^tool:[a-z][a-z0-9_]*$/,
   /^menu$/,
+  /^task:request$/,
   /^event:[a-z*][a-z_.*]*$/,
   /^job:[a-z][a-z0-9-]*$/,
   /^action:[a-z][a-z0-9-]*$/,
@@ -129,11 +131,21 @@ export class PluginManifest {
     if (use === 'api') return 'API 경로를 열어요 (/api/p/<이름>/…)';
     if (kind === 'tool') return `MCP 도구 "${arg}"을(를) AI에게 열어요`;
     if (use === 'menu') return '콘솔에 메뉴와 화면을 더해요';
+    if (use === 'task:request') return 'AI 에이전트에게 작업을 맡겨요 (결재는 그대로 주인에게)';
     return use;
   }
 
   allows(use: string): boolean {
     return this.uses.has(use);
+  }
+
+  /**
+   * 동작이 남길 수 있는 이벤트 이름. 자기 이름(plugin.<스키마>.<무엇>)은 늘,
+   * 코어의 이벤트는 그 확장 지점을 허락받았을 때만 (task:request → task.task.requested)
+   */
+  emits(name: string): boolean {
+    if (this.schema && name.startsWith(`plugin.${this.schema}.`)) return true;
+    return name === 'task.task.requested' && this.allows('task:request');
   }
 
   setting(key: string): PluginSettingSpec | null {

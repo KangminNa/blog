@@ -7,7 +7,6 @@ import type { DomainEvent } from './event';
 import { type Changes, type How, type RowOf, TableWriter, type Where } from './table-query';
 
 /** 동작의 입력 읽기: BaseRequest와 같은 칸 읽기 · 틀린 칸 모으기 */
-// biome-ignore lint/complexity/noStaticOnlyClass: BaseRequest.read를 동작에 여는 창구
 class OperationInput extends BaseRequest {
   static of<R>(raw: unknown, build: (fields: RequestFields) => R): R {
     return BaseRequest.read(raw, build);
@@ -72,6 +71,8 @@ export class Work extends TableWriter {
     readonly sql: Sql,
     /** 패키지의 스키마. 없으면 표를 쓸 수 없다 */
     private readonly schema: string | null,
+    /** 남겨도 되는 이벤트인가 (목록 파일이 정한다: 자기 이름 + 허락받은 코어 이벤트) */
+    private readonly emits: (name: string) => boolean = () => false,
   ) {
     super();
   }
@@ -129,8 +130,12 @@ export class Work extends TableWriter {
     return super.pageOf(rows, size, cursorOf);
   }
 
-  /** 이벤트를 남긴다 (쓰기 동작만. 커밋과 함께 나간다) */
+  /** 이벤트를 남긴다 (쓰기 동작만. 커밋과 함께 나간다). 허락받지 않은 이름은 실행 중에 막는다 */
   record(event: DomainEvent): void {
+    if (!this.emits(event.name))
+      throw new Error(
+        `기능 패키지가 남길 수 없는 이벤트예요: ${event.name} (자기 이름은 plugin.${this.schema ?? '<스키마>'}.…)`,
+      );
     this.events.push(event);
   }
 

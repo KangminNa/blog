@@ -39,10 +39,11 @@ export class PackageService extends BaseService {
     const { operation, manifest } = found;
     operation.check(actor);
     const input = operation.input(raw);
+    const emits = (name: string) => manifest.emits(name);
     if (!operation.writes)
-      return operation.run(new Work(this.db.sql, manifest.schema), actor, input);
+      return operation.run(new Work(this.db.sql, manifest.schema, emits), actor, input);
     return this.transaction(async (tx) => {
-      const work = new Work(tx, manifest.schema);
+      const work = new Work(tx, manifest.schema, emits);
       const answer = await operation.run(work, actor, input);
       await new Outbox(tx).publish(work.events);
       return answer;

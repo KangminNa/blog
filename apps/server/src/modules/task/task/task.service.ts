@@ -290,6 +290,7 @@ export class TaskService extends BaseService {
       const picked = await tasks.lockNext(spaceId, ready, req.limit, {
         testTools: LeasePolicy.testTools(req.tools, usable),
         signinTools: req.signinTools,
+        browser: req.browser,
       });
       const busy = [...running];
       for (const task of picked) {

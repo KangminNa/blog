@@ -1,5 +1,5 @@
 import { Backoff, pause } from './backoff';
-import { type BrowserTabs, TabUnreadable } from './browser-tabs';
+import { type BrowserTabs, BrowserUnavailable, TabUnreadable } from './browser-tabs';
 import type { CairnServer } from './cairn-server';
 import { AccessDenied, ToolRefused } from './mcp-client';
 import type { RunLog } from './redactor';
@@ -43,13 +43,18 @@ export class TabReader {
           await pause(TabReader.OFF_MS, stop);
           continue;
         }
-        this.log.info(`브라우저 탭: 다시 시도해요: ${(error as Error).message}`);
+        // 브라우저가 없는 동안은 읽어 달라는 주소를 실패로 남기지 않는다: 요청은 그대로 두고 다시 묻는다
+        const why = error instanceof BrowserUnavailable ? '브라우저를 기다려요' : '다시 시도해요';
+        this.log.info(`브라우저 탭: ${why}: ${(error as Error).message}`);
         await this.backoff.wait(stop);
       }
     }
   }
 
-  /** 하나를 읽어 남긴다. 읽지 못했으면 그 이유를 남긴다 (같은 주소를 계속 다시 열지 않게) */
+  /**
+   * 하나를 읽어 남긴다. 페이지를 읽지 못했으면 그 이유를 남긴다 (같은 주소를 계속 다시 열지 않게).
+   * 브라우저에 닿지 못하면(BrowserUnavailable) 남기지 않고 그대로 던져 run이 기다렸다 다시 한다
+   */
   private async readOne(id: string, url: string, stop: AbortSignal): Promise<void> {
     const host = TabReader.hostOf(url);
     try {

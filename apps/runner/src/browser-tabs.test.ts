@@ -3,7 +3,7 @@ import { getEventListeners } from 'node:events';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
-import { BrowserTabs, TabUnreadable } from './browser-tabs';
+import { BrowserTabs, BrowserUnavailable, TabUnreadable } from './browser-tabs';
 import { TestChromium } from './testing/test-chromium';
 
 // 실제 Chromium으로 CDP 흐름을 본다: 새 탭 → 다 뜨면 제목과 보이는 글자 → 탭 닫기.
@@ -54,16 +54,16 @@ describe('BrowserTabs (실제 Chromium)', { skip }, () => {
     );
   });
 
-  test('http · https가 아닌 주소, 열리지 않는 주소, 닿지 않는 브라우저는 TabUnreadable', async () => {
+  test('http · https가 아닌 주소와 열리지 않는 주소는 TabUnreadable, 닿지 않는 브라우저는 BrowserUnavailable', async () => {
     const stop = new AbortController().signal;
     await assert.rejects(new BrowserTabs(endpoint).read('file:///etc/passwd', stop), TabUnreadable);
     await assert.rejects(
       new BrowserTabs(endpoint).read('http://127.0.0.1:1/', stop),
-      /열지 못했어요/,
+      (error: Error) => error instanceof TabUnreadable && /열지 못했어요/.test(error.message),
     );
     await assert.rejects(
       new BrowserTabs('http://127.0.0.1:1').read(siteUrl, stop),
-      /닿지 못했어요/,
+      (error: Error) => error instanceof BrowserUnavailable && /닿지 못했어요/.test(error.message),
     );
   });
 });

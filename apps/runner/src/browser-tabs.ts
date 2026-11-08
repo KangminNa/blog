@@ -22,8 +22,11 @@ export class TabText {
   }
 }
 
-/** 탭을 읽지 못함. 이유는 주인에게 그대로 보인다 (주소의 경로 · 내용은 담지 않는다) */
+/** 이 주소를 읽지 못함 (페이지의 문제). 이유는 주인에게 그대로 보인다 (주소의 경로 · 내용은 담지 않는다) */
 export class TabUnreadable extends Error {}
+
+/** 브라우저에 닿지 못함 (브라우저의 문제: 꺼짐 · 다시 뜨는 중). 읽기 실패로 남기지 않고 나중에 다시 한다 */
+export class BrowserUnavailable extends Error {}
 
 /** 탭 하나와 이야기하는 CDP(Chrome DevTools Protocol) 연결. 보내고 받기와 이벤트 기다리기만 한다 */
 class DevToolsSession {
@@ -41,7 +44,7 @@ class DevToolsSession {
     });
     socket.addEventListener('close', () => {
       for (const id of [...this.waiting.keys()])
-        this.settle(id, new TabUnreadable('브라우저와의 연결이 끊겼어요'));
+        this.settle(id, new BrowserUnavailable('브라우저와의 연결이 끊겼어요'));
     });
   }
 
@@ -52,7 +55,7 @@ class DevToolsSession {
       const fail = () => {
         stop.removeEventListener('abort', fail);
         socket.close();
-        reject(new TabUnreadable('브라우저 탭에 붙지 못했어요'));
+        reject(new BrowserUnavailable('브라우저 탭에 붙지 못했어요'));
       };
       socket.addEventListener(
         'open',
@@ -171,14 +174,14 @@ export class BrowserTabs {
     try {
       res = await fetch(`${this.endpoint}/json/new?about:blank`, { method: 'PUT', signal: stop });
     } catch (error) {
-      throw new TabUnreadable(
+      throw new BrowserUnavailable(
         `브라우저(${this.endpoint})에 닿지 못했어요: ${(error as Error).message}`,
       );
     }
-    if (!res.ok) throw new TabUnreadable(`브라우저가 새 탭을 열지 않았어요 (${res.status})`);
+    if (!res.ok) throw new BrowserUnavailable(`브라우저가 새 탭을 열지 않았어요 (${res.status})`);
     const target = (await res.json()) as { id?: string; webSocketDebuggerUrl?: string };
     if (!target.id || !target.webSocketDebuggerUrl)
-      throw new TabUnreadable('브라우저의 답에 탭 주소가 없어요');
+      throw new BrowserUnavailable('브라우저의 답에 탭 주소가 없어요');
     return { id: target.id, socket: target.webSocketDebuggerUrl };
   }
 

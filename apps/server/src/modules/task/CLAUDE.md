@@ -70,14 +70,14 @@ platform
 - 위임: `waiting`에는 늘 기다리는 것(`wait_reason`: approval · subtasks)이 있다 (DB CHECK). 결재 승인 · 고쳐 달라는 말은 결재를 기다리는 작업에만, 깨우기는 하위 작업을 기다리는 작업에만. 받는 쪽 · 종류 · 한도는 `Task`가 막고 LLM에게 맡기지 않는다
 - 한도 올리기 결재는 서버만 올린다. 승인은 같은 트랜잭션에서 한도를 두 배로 하고 에이전트를 다시 움직인다
 - 쉬기(`Agent.holds`)는 저장하지 않고 그때마다 계산한다. 5시간 토큰이나 구독 사용률에 닿으면 새 일만 안 빌려주고, 달리는 작업은 끝까지 간다. 결재도 `paused`도 없다: `report_progress`가 `paused: true`를 돌려주면 러너가 작업을 돌려주므로 쉬기에는 쓰지 않는다
-- 일의 종류마다 필요한 권한은 `Task.SCOPES`에 적는다 (`tidy_session` → `tidy`). `lockNext`가 SQL에서 거르므로 빌렸다가 돌려주지 않고, 맡을 에이전트가 없는 일은 대기열에 남아 뒤의 일을 막지 않는다
+- 일의 종류마다 필요한 권한은 `Task.SCOPES`에 적는다 (`tidy_session` → `tidy`, `browse` → `browse`). `browse`와 `read_all`은 한 에이전트에 함께 두지 않는다 (`Agent` 규칙 + DB CHECK). `lockNext`가 SQL에서 거르므로 빌렸다가 돌려주지 않고, 맡을 에이전트가 없는 일은 대기열에 남아 뒤의 일을 막지 않는다
 - 쉬는지는 작업을 잠그기 전에 따지고 `lockNext`에서 건너뛴다. 빌렸다가 돌려주지 않는다. 일을 빌릴 때와 `UsageQuery`는 같은 `AgentRepository.usage`를 읽는다
 - 초기화 시각이 지난 `plan_usage`는 없는 것과 같다 (`PlanUsage.validAt`). 쉬는 데 쓰지 않고 화면에는 확인 전으로 보인다
 - `plan_usage`의 도구는 러너의 입력이 아니라 작업의 에이전트로 정한다. 저장은 에이전트 잠금 뒤에, 늘 같은 창 순서로 (서로 막지 않게). 진행 보고처럼 `task.tasks.version`을 올리지 않는다
 
 - AI 토큰은 REST로 돌려주지 않고 로그에 남기지 않는다. 나가는 길은 `ai_login` 하나고, `run` 권한과 함께 기기인지도 본다 (`AiLoginQuery.token`)
 - 웹 로그인(`ai_signin`)도 에이전트·작업 토큰 없이 빌려 주고(`Task.AGENTLESS`), 도구마다 하나다. 러너가 다시 빌리면 단계가 처음(`starting`)으로 돌아간다. 주인이 붙여 넣은 코드는 용도 표시(`ai-signin-code:`)를 붙여 `SecretBox.pack`(10분)으로 작업에 두고, 끝날 때까지 물을 때마다 준다 (응답을 잃어도 러너가 다시 받는다). pack은 작업 토큰과 열쇠가 같아서 용도 표시 없이 싸면 주인이 고른 글이 다른 용도의 값으로 풀릴 수 있다. 작업 상세에는 암호문도 내보내지 않는다(`Task.shownPayload`). 시작은 공간·도구마다 advisory 잠금(`lockSigninSlot`): 아직 로그인 줄이 없을 수 있어 행을 잠글 수 없다. 러너가 알리는 주소·코드·자격은 믿지 않는 입력이라 `AiSigninPolicy`로 거르고, 그 작업의 임대를 쥔 러너만 부를 수 있다. 자격을 받으면 같은 트랜잭션에서 로그인을 저장하고 작업을 끝낸다 (작업 → 로그인). `submit_result`의 done은 거절한다. 끝나거나(완료·실패·취소) 대기열로 돌아가면(돌려줌·임대 끝) payload에는 도구만 남긴다. 자격을 넘긴 러너가 다시 보내면 같은 답을 준다(`signinDoneBy`). 로그인하는 동안 러너는 `ai_signin`만 부르므로 여기서도 닿은 때를 남긴다. 주소·코드·자격은 실행 기록에 쓰지 않는다
-- 러너는 `next_jobs`로 할 수 있는 것(`tools` · `signin_tools` · `own_logins`)을 알리고, 서버가 쓸 수 있는 로그인과 합쳐 그 일만 빌려 준다 (`LeasePolicy`, 에이전트 일은 `ready`를 도구로 거르고 연결 확인 · 웹 로그인은 `lockNext`가 payload의 도구로 거른다). 갱신 토큰이 바뀌는 도구(`AiLogin.ROTATING`: codex)는 서버의 로그인으로 한 번에 하나만 (`canStart`, 한 번의 호출 안에서도)
+- 러너는 `next_jobs`로 할 수 있는 것(`tools` · `signin_tools` · `own_logins` · `browser`)을 알리고, 서버가 쓸 수 있는 로그인과 합쳐 그 일만 빌려 준다 (`LeasePolicy`, 에이전트 일은 `ready`를 도구로 거르고 연결 확인 · 웹 로그인은 `lockNext`가 payload의 도구로, 브라우저 작업은 `browser`로 거른다). 갱신 토큰이 바뀌는 도구(`AiLogin.ROTATING`: codex)는 서버의 로그인으로 한 번에 하나만 (`canStart`, 한 번의 호출 안에서도)
 - `ai_login_refresh`: 바뀌는 자격의 도구만, 그 일을 쥔 러너만, 받은 판일 때만 (`assertVersion`). 만료와 연결 확인 결과는 두고 자격만 바꾼다(`AiLogin.refresh`). 잠그는 순서는 작업 → 로그인
 - Codex의 자격(`auth.json`)은 갱신 토큰이라 만료가 없다 (`expires_at` null)
 - 연결 확인(`ai_test`)은 에이전트도 작업 토큰도 없다. 일을 받을 에이전트가 없어도 빌려 주고, 기다리는 확인은 도구마다 하나다. 결과는 작업이 끝날 때 같은 트랜잭션에서 로그인에 적는다 (잠그는 순서는 작업 → 로그인). 작업에 적힌 로그인의 판이 다르면 옛 토큰의 결과라 버린다

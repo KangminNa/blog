@@ -57,6 +57,8 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   static readonly AI_SIGNIN = 'ai_signin';
   /** 에이전트 없이 러너가 바로 도는 일 */
   static readonly AGENTLESS: readonly string[] = [Task.AI_TEST, Task.AI_SIGNIN];
+  /** 서버 브라우저로 하는 작업. 브라우저가 있다고 알린 러너(next_jobs의 browser)에게만 빌려 준다 */
+  static readonly BROWSE = 'browse';
   /** 웹 로그인의 단계 (payload.step) */
   static readonly SIGNIN_STARTING = 'starting';
   static readonly SIGNIN_OPEN_URL = 'open_url';
@@ -96,6 +98,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   static readonly SCOPES: Readonly<Record<string, readonly string[]>> = {
     // 세션은 기본이 비공개라 정리하려면 비공개까지 읽어야 한다
     tidy_session: [Actor.TIDY, Actor.READ_ALL],
+    browse: [Actor.BROWSE],
   };
 
   private readonly logged: Omit<TaskEventRow, 'id'>[] = [];
