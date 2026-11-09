@@ -21,7 +21,7 @@ plugins/       플러그인 (comments-giscus · sync-github · login-github · o
 scripts/       모듈 경계 검사, 구조 검사, 묶음 생성기(templates/), 플러그인 화면 맞추기
 skills/        AI 도구와 러너의 스킬 (cairn-save · cairn-recall, 러너 전용 cairn-write · cairn-tidy · cairn-browse). 도구 입력 모양을 바꾸면 스킬도 함께 고친다
                앱(ChatGPT·Claude)용 zip은 서버가 여기서 만든다(api/skills). 스크립트 테스트는 packages/cli
-docs/          기획 문서 (기획서 · 테이블 설계 · 객체 설계 · API 설계 · 보관 형식)
+docs/          기획 문서 (기획서 · 테이블 설계 · 객체 설계 · API 설계 · 보관 형식 · 브라우저)
 ```
 
 ## 명령어

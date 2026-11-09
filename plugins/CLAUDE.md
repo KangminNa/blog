@@ -52,7 +52,7 @@ pnpm plugin sync-github check                 관리 동작
 
 ## 기능 패키지 (2026-11-08)
 
-코어를 고치지 않고 자기 표 · API · MCP 도구 · 콘솔 메뉴를 갖는 플러그인. 예: `browser-tabs`. 구조와 코어가 하는 일은 객체설계 12장.
+코어를 고치지 않고 자기 표 · API · MCP 도구 · 콘솔 메뉴를 갖는 플러그인. 예: `browser-tabs` (기능 문서 [docs/브라우저.md](../docs/브라우저.md)). 구조와 코어가 하는 일은 객체설계 12장.
 
 ```
 plugins/<이름>/
