@@ -9,6 +9,8 @@ import type { InstallStatusView } from './space.view';
 export class InstallPolicy {
   static readonly COOKIE = 'cairn_install';
   static readonly PASS_SECONDS = 600;
+  /** 설치 통행증의 용도 (SecretBox.pack): 다른 자리에서 싼 값이 통행증으로 풀리지 않게 */
+  private static readonly PASS_PURPOSE = 'install';
   private static readonly ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
   constructor(private readonly box: SecretBox) {}
@@ -29,11 +31,11 @@ export class InstallPolicy {
   }
 
   issuePass(spaceId: string): string {
-    return this.box.pack(`install:${spaceId}`, InstallPolicy.PASS_SECONDS);
+    return this.box.pack(InstallPolicy.PASS_PURPOSE, spaceId, InstallPolicy.PASS_SECONDS);
   }
 
   isValidPass(pass: string | null, spaceId: string | null): boolean {
-    return spaceId !== null && this.box.unpack(pass) === `install:${spaceId}`;
+    return spaceId !== null && this.box.unpack(InstallPolicy.PASS_PURPOSE, pass) === spaceId;
   }
 
   /** 주인 계정을 만들어도 되는가: 아직 주인이 없고, 설치 통행증을 가진 브라우저일 때만. 공간 id를 돌려준다 */

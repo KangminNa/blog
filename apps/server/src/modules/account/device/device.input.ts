@@ -136,6 +136,8 @@ export class RevokeTokenInput extends BaseRequest {
  */
 export class ConsentInput extends BaseRequest {
   static readonly SECONDS = 600;
+  /** 승인 요청의 용도 (SecretBox.pack): 승인 요청이 로그인 쿠키 같은 다른 자리에서 풀리지 않게 */
+  private static readonly PURPOSE = 'oauth-consent';
 
   private constructor(
     readonly clientId: string,
@@ -160,6 +162,7 @@ export class ConsentInput extends BaseRequest {
     issuer: string,
   ): string {
     return box.pack(
+      ConsentInput.PURPOSE,
       JSON.stringify({ clientId, clientName, redirectUri, codeChallenge, state, issuer }),
       ConsentInput.SECONDS,
     );
@@ -168,7 +171,7 @@ export class ConsentInput extends BaseRequest {
   /** raw: { request, name? } — request는 승인 화면 주소의 ?request= 값 */
   static from(raw: unknown, box: SecretBox): ConsentInput {
     return BaseRequest.read(raw, (f) => {
-      const opened = box.unpack(f.text('request', 4000));
+      const opened = box.unpack(ConsentInput.PURPOSE, f.text('request', 4000));
       if (!opened) f.reject('request', '승인 요청이 만료됐어요. AI 도구에서 다시 연결해 주세요');
       const v = (opened ? JSON.parse(opened) : {}) as Record<string, string | null>;
       return new ConsentInput(

@@ -32,7 +32,7 @@ export class RequestApprovalTool extends BaseTool {
       target_kind: { type: 'string', maxLength: 40, description: '대상의 종류 (예: post)' },
       target_id: { type: 'string', format: 'uuid', description: '대상 id' },
       target_version: { type: 'integer', minimum: 0, description: '결재받을 대상의 판 번호' },
-      note: { type: 'string', maxLength: 4000, description: '주인에게 남길 말' },
+      note: { type: 'string', maxLength: 8000, description: '주인에게 남길 말' },
     },
     required: ['request_id', 'action', 'target_kind', 'target_id', 'target_version'],
   };

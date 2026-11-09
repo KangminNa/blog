@@ -104,6 +104,9 @@ export class TaskService extends BaseService {
           : new Idempotency(tx, runnerId, req.requestId, TaskService.REPORT);
       const repeated = (await once?.previous()) ?? null;
       const task = await tasks.lock(spaceId, req.taskId);
+      // 다시 보낸 보고도 이 러너가 맡았던 일이어야 한다: 남겨 둔 결과에는 작업 id가 없어서,
+      // 확인하지 않으면 옛 request_id에 남의 작업 id를 붙여 그 작업의 상태를 볼 수 있다
+      task.assertWorkedBy(runnerId);
       if (repeated === null) {
         task.acceptReport(runnerId, now);
         for (const e of req.events) task.log(e.kind, e.body, e.tokens, now);

@@ -928,6 +928,14 @@ describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () =>
       'Claude 토큰은 바뀌지 않는다',
     );
     assert.equal((await refresh({ task_id: randomUUID() })).ok, false, '쥔 일이 아니면');
+    // 같은 러너가 맡았어도 다른 도구(Claude)로 일한 작업의 id로는 Codex 로그인을 덮지 못한다
+    await saveToken(newToken());
+    const claudeTask = await newTask(await newAgent());
+    assert.ok(
+      idsOf(await leaseAs({ ...NOTHING, tools: ['claude'], limit: 5 })).includes(claudeTask.id),
+    );
+    const otherTool = await refresh({ task_id: claudeTask.id });
+    assert.equal(otherTool.body.code, 'rule_violation', JSON.stringify(otherTool.body));
 
     const saved = await refresh({});
     assert.equal(saved.ok, true, JSON.stringify(saved.body));
@@ -1003,7 +1011,7 @@ describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () =>
     const task = await takeSignin('claude');
     assert.equal((await relay(task.id, { url: CLAUDE_URL })).ok, true);
     // 다른 용도로 싼 값(예: 작업 토큰 모양)이 코드 자리에 있어도 풀어 주지 않는다
-    const foreign = SecretBox.fromEnv(process.env).pack('agent:{"spaceId":"x"}', 600);
+    const foreign = SecretBox.fromEnv(process.env).pack('agent-run', '{"spaceId":"x"}', 600);
     await db.sql`
       UPDATE task.tasks SET payload = payload || ${db.sql.json({ code: foreign, step: 'verifying' })}
       WHERE id = ${String(task.id)}`;

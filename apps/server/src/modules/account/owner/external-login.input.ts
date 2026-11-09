@@ -34,6 +34,8 @@ export class ExternalStartInput extends BaseRequest {
 export class ExternalCallbackInput extends BaseRequest {
   static readonly COOKIE = 'cairn_login';
   static readonly SECONDS = 600;
+  /** 쿠키 값의 용도 (SecretBox.pack). 로그인 방법까지 묶어 다른 방법의 콜백이나 다른 자리에서 싼 값으로 풀리지 않게 */
+  private static readonly PURPOSE = 'external-login';
 
   private constructor(
     readonly method: string,
@@ -53,6 +55,7 @@ export class ExternalCallbackInput extends BaseRequest {
     userId: string | null,
   ): string {
     return box.pack(
+      ExternalCallbackInput.purposeOf(start.method),
       [state, start.mode, start.returnTo, userId ?? ''].join('|'),
       ExternalCallbackInput.SECONDS,
     );
@@ -66,7 +69,8 @@ export class ExternalCallbackInput extends BaseRequest {
   ): ExternalCallbackInput {
     return BaseRequest.read(query, (f) => {
       const state = f.text('state', 200);
-      const [expected, mode, returnTo, userId] = (box.unpack(cookie) ?? '').split('|');
+      const opened = box.unpack(ExternalCallbackInput.purposeOf(method), cookie);
+      const [expected, mode, returnTo, userId] = (opened ?? '').split('|');
       if (!expected || expected !== state)
         f.reject('state', '로그인을 시작한 브라우저에서 10분 안에 다시 해 주세요');
       const values = new Map<string, string>();
@@ -84,5 +88,9 @@ export class ExternalCallbackInput extends BaseRequest {
 
   get isLink(): boolean {
     return this.mode === ExternalStartInput.LINK;
+  }
+
+  private static purposeOf(method: string): string {
+    return `${ExternalCallbackInput.PURPOSE}:${method}`;
   }
 }

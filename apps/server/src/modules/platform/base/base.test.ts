@@ -615,28 +615,45 @@ describe('SecretBox: 값 만들기와 짧은 값 싸기 (M1)', () => {
     assert.notDeepEqual(box.derive('install-code'), box.derive('pack'));
   });
 
-  test('싼 값은 같은 키로, 만료 전에만 풀린다', () => {
+  test('싼 값은 같은 키 · 같은 용도로, 만료 전에만 풀린다', () => {
     const now = new Date('2026-10-10T00:00:00Z');
-    const token = box.pack('install:abc|/admin', 600, now);
-    assert.equal(box.unpack(token, now), 'install:abc|/admin');
-    assert.equal(box.unpack(token, new Date(now.getTime() + 601_000)), null, '만료');
-    assert.equal(other.unpack(token, now), null, '다른 키');
-    assert.equal(box.unpack(null, now), null);
-    assert.equal(box.unpack('not-a-token', now), null);
+    const token = box.pack('install', 'abc|/admin', 600, now);
+    assert.equal(box.unpack('install', token, now), 'abc|/admin');
+    assert.equal(box.unpack('install', token, new Date(now.getTime() + 601_000)), null, '만료');
+    assert.equal(other.unpack('install', token, now), null, '다른 키');
+    assert.equal(box.unpack('install', null, now), null);
+    assert.equal(box.unpack('install', 'not-a-token', now), null);
+  });
+
+  test('다른 용도로 싼 값은 풀리지 않는다 (용도 이름이 값의 앞부분과 겹쳐도)', () => {
+    const now = new Date('2026-10-10T00:00:00Z');
+    const consent = box.pack('oauth-consent', 'x|link|/|owner|', 600, now);
+    assert.equal(box.unpack('external-login:github', consent, now), null);
+    // 용도 a로 "b..."를 싸도 용도 b로는 풀리지 않는다 (용도 뒤에 줄바꿈을 붙여 구분)
+    assert.equal(box.unpack('install', box.pack('in', 'stall\nabc', 600, now), now), null);
+    assert.equal(
+      box.unpack('external-login:gitlab', box.pack('external-login:github', 'v', 600, now), now),
+      null,
+    );
+    assert.throws(() => box.pack('Bad Purpose', 'v', 600, now), /용도 이름/);
   });
 
   test('싼 값에는 원문이 보이지 않고, 한 글자만 고쳐도 풀리지 않는다. 같은 값도 쌀 때마다 다르다', () => {
     const now = new Date('2026-10-10T00:00:00Z');
-    const token = box.pack('install:abc|/admin', 600, now);
+    const token = box.pack('install', 'abc|/admin', 600, now);
     const raw = Buffer.from(token, 'base64url');
     assert.equal(raw.includes('install'), false, '원문');
     assert.equal(raw.includes(String(Math.floor(now.getTime() / 1000) + 600)), false, '만료 시각');
     for (const at of [0, 14, raw.length - 1]) {
       const forged = Buffer.from(raw);
       forged[at] = (forged[at] ?? 0) ^ 1;
-      assert.equal(box.unpack(forged.toString('base64url'), now), null, `${at}번째 바이트를 바꿈`);
+      assert.equal(
+        box.unpack('install', forged.toString('base64url'), now),
+        null,
+        `${at}번째 바이트를 바꿈`,
+      );
     }
-    assert.notEqual(box.pack('same', 600, now), box.pack('same', 600, now));
+    assert.notEqual(box.pack('install', 'same', 600, now), box.pack('install', 'same', 600, now));
   });
 });
 
@@ -668,8 +685,8 @@ describe('서버 키 교체', () => {
   test('값 만들기와 짧은 값 싸기는 지금 키만 쓴다 (설치 코드가 바뀌고, 이미 싼 값은 풀리지 않는다)', () => {
     assert.notDeepEqual(rotating.derive('install-code'), before.derive('install-code'));
     assert.deepEqual(rotating.derive('install-code'), finished.derive('install-code'));
-    assert.equal(rotating.unpack(before.pack('install:abc', 600)), null);
-    assert.equal(rotating.unpack(rotating.pack('install:abc', 600)), 'install:abc');
+    assert.equal(rotating.unpack('install', before.pack('install', 'abc', 600)), null);
+    assert.equal(rotating.unpack('install', rotating.pack('install', 'abc', 600)), 'abc');
   });
 
   test('키 설정이 틀리면 시작하지 않고, 빈 옛 키는 없는 것으로 본다', () => {
@@ -716,6 +733,23 @@ describe('AttemptLimiter (M1)', () => {
     limiter.fail('owner', 10);
     limiter.fail('owner', 11);
     assert.throws(() => limiter.check('owner', 12), TooManyRequests);
+  });
+
+  test('IP는 한 곳으로 묶어 센다: IPv6는 /64, IPv4를 담은 IPv6는 IPv4', () => {
+    assert.equal(AttemptLimiter.place('203.0.113.7'), '203.0.113.7');
+    assert.equal(AttemptLimiter.place('::ffff:203.0.113.7'), '203.0.113.7');
+    assert.equal(AttemptLimiter.place('2001:db8:1:2:aaaa::1'), '2001:db8:1:2::/64');
+    assert.equal(AttemptLimiter.place('2001:0db8:0001:0002:ffff:1:2:3'), '2001:db8:1:2::/64');
+    assert.equal(AttemptLimiter.place('2001:db8::1'), '2001:db8:0:0::/64');
+    assert.equal(AttemptLimiter.place('::1'), '0:0:0:0::/64');
+    assert.equal(AttemptLimiter.place('fe80::1%eth0'), 'fe80:0:0:0::/64');
+    assert.equal(AttemptLimiter.place('unknown'), 'unknown');
+    // 같은 /64의 주소를 바꿔 가며 보내도 한 곳으로 센다
+    const limiter = new AttemptLimiter(2, 60_000);
+    limiter.hit(AttemptLimiter.place('2001:db8:1:2::a'), 0);
+    limiter.hit(AttemptLimiter.place('2001:db8:1:2::b'), 1);
+    assert.throws(() => limiter.hit(AttemptLimiter.place('2001:db8:1:2::c'), 2), TooManyRequests);
+    limiter.hit(AttemptLimiter.place('2001:db8:1:3::a'), 3);
   });
 });
 

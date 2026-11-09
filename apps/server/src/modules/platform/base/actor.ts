@@ -107,7 +107,7 @@ export class DeviceActor extends Actor {
 export class AgentActor extends Actor {
   private static readonly PREFIX = 'cairn_run_';
   /** 다른 용도로 싼 값이 작업 토큰으로 풀리지 않게 안쪽에 붙이는 표시 */
-  private static readonly PURPOSE = 'agent-run:';
+  private static readonly PURPOSE = 'agent-run';
   readonly kind = 'agent';
 
   constructor(
@@ -126,9 +126,9 @@ export class AgentActor extends Actor {
   /** 작업 토큰을 푼다. 이 서버 키로 싼 작업 토큰이고 만료 전일 때만 */
   static open(box: SecretBox, token: string): AgentActor | null {
     if (!box.ready || !AgentActor.isToken(token)) return null;
-    const opened = box.unpack(token.slice(AgentActor.PREFIX.length));
-    if (!opened?.startsWith(AgentActor.PURPOSE)) return null;
-    const v = JSON.parse(opened.slice(AgentActor.PURPOSE.length)) as {
+    const opened = box.unpack(AgentActor.PURPOSE, token.slice(AgentActor.PREFIX.length));
+    if (opened === null) return null;
+    const v = JSON.parse(opened) as {
       spaceId: string;
       agentId: string;
       taskId: string;
@@ -149,7 +149,7 @@ export class AgentActor extends Actor {
       taskId: this.taskId,
       scopes: [...this.scopes],
     });
-    return `${AgentActor.PREFIX}${box.pack(`${AgentActor.PURPOSE}${value}`, seconds)}`;
+    return `${AgentActor.PREFIX}${box.pack(AgentActor.PURPOSE, value, seconds)}`;
   }
 
   can(scope: string): boolean {

@@ -220,7 +220,8 @@ describe('작업 토큰', () => {
   });
 
   test('다른 용도로 싼 값은 작업 토큰이 아니다', () => {
-    const forged = `cairn_run_${box.pack(JSON.stringify({ agentId: AGENT, scopes: ['write'] }), 60)}`;
+    const value = JSON.stringify({ agentId: AGENT, scopes: ['write'] });
+    const forged = `cairn_run_${box.pack('ai-signin-code', value, 60)}`;
     assert.equal(AgentActor.open(box, forged), null);
   });
 

@@ -775,6 +775,13 @@ describe('중복과 버전', () => {
     await tool(runner, 'report_progress', args);
     await tool(runner, 'report_progress', args);
     assert.equal(((await getTask(task.id)).events as Json[]).length, 1);
+
+    // 같은 request_id에 남의 작업 id를 붙여 다시 보내도 그 작업의 상태를 주지 않는다
+    const others = await newTask(agent);
+    await take();
+    await db.sql`UPDATE task.tasks SET leased_by = ${randomUUID()} WHERE id = ${String(others.id)}`;
+    const peek = await tool(runner, 'report_progress', { ...args, task_id: others.id });
+    assert.equal(peek.ok, false, JSON.stringify(peek.body));
   });
 
   test('버전이 어긋나면 409', async () => {

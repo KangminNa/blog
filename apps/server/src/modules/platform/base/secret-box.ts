@@ -64,20 +64,35 @@ export class SecretBox {
   }
 
   /**
-   * 짧게 쓰는 값을 암호화해 싼다 (승인 요청, 설치 통행증, 로그인 확인값). DB에 저장하지 않고 URL·쿠키로 주고받는다.
+   * 짧게 쓰는 값을 암호화해 싼다 (승인 요청, 설치 통행증, 로그인 확인값, 작업 토큰). DB에 저장하지 않고 URL·쿠키로 주고받는다.
    * 만료 시각도 암호문 안에 넣어서, 받은 쪽은 내용도 만료도 볼 수 없고 고칠 수도 없다.
+   * purpose(용도)도 암호문 안에 넣고, 풀 때 같은 용도일 때만 돌려준다: 모든 용도가 같은 열쇠라
+   * 용도를 적지 않으면 한 자리에서 받은 값(예: 승인 요청)이 다른 자리(예: 로그인 쿠키)에서 풀린다.
    * 모양: base64url(nonce 12바이트 · 암호문 · 확인값 16바이트). 서버 키에서 이 용도만의 키를 따로 만들어 쓴다.
    */
-  pack(value: string, ttlSeconds: number, now: Date = new Date()): string {
+  pack(purpose: string, value: string, ttlSeconds: number, now: Date = new Date()): string {
     const nonce = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', this.derive('pack'), nonce);
-    const plain = `${Math.floor(now.getTime() / 1000) + ttlSeconds}.${value}`;
+    const plain = `${Math.floor(now.getTime() / 1000) + ttlSeconds}.${SecretBox.purposeOf(purpose)}${value}`;
     const body = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
     return Buffer.concat([nonce, body, cipher.getAuthTag()]).toString('base64url');
   }
 
-  /** 이 서버 키로 싼 값이고 만료 전이면 원래 값, 아니면 null */
-  unpack(token: string | null, now: Date = new Date()): string | null {
+  /** 이 서버 키로 이 용도로 싼 값이고 만료 전이면 원래 값, 아니면 null */
+  unpack(purpose: string, token: string | null, now: Date = new Date()): string | null {
+    const opened = this.openPacked(token, now);
+    const head = SecretBox.purposeOf(purpose);
+    return opened?.startsWith(head) ? opened.slice(head.length) : null;
+  }
+
+  /** 용도 표시: 이름 뒤에 줄바꿈. 이름에는 줄바꿈이 없어서 값이 다른 용도의 이름으로 시작해도 섞이지 않는다 */
+  private static purposeOf(purpose: string): string {
+    if (!/^[a-z][a-z0-9-]*(?::[a-z0-9-]+)?$/.test(purpose))
+      throw new Error(`싸는 값의 용도 이름이 틀렸어요: ${purpose}`);
+    return `${purpose}\n`;
+  }
+
+  private openPacked(token: string | null, now: Date): string | null {
     if (!token) return null;
     const raw = Buffer.from(token, 'base64url');
     if (raw.length < 12 + 16 + 2) return null;

@@ -61,13 +61,13 @@ export class OwnerService extends BaseService {
   }
 
   async login(req: LoginInput, ip: string, userAgent: string): Promise<WebSession> {
-    this.byPlace.check(ip);
+    this.byPlace.check(AttemptLimiter.place(ip));
     this.byLogin.check(req.login);
     const found = await new OwnerRepository(this.db.sql).findByLogin(req.login);
     // 아이디가 없어도 같은 계산을 해서, 응답 시간으로 아이디가 있는지 알 수 없게 한다
     const ok = await this.hasher.verify(req.password, found?.passwordHash ?? null);
     if (!found || !ok) {
-      this.byPlace.fail(ip);
+      this.byPlace.fail(AttemptLimiter.place(ip));
       this.byLogin.fail(req.login);
       throw new Unauthenticated(OwnerService.WRONG);
     }

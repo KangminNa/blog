@@ -8,6 +8,7 @@ import {
   RuleViolation,
   SecretBox,
 } from '../../platform';
+import { AgentRepository } from '../agent/agent.repository';
 import { RunnerRepository } from '../runner/runner.repository';
 import { Task } from '../task/task';
 import { TaskRepository } from '../task/task.repository';
@@ -38,7 +39,7 @@ export class AiLoginService extends BaseService {
    * 코드를 쌀 때 앞에 붙이는 용도. SecretBox.pack은 작업 토큰 · 설치 통행증과 열쇠가 같아서,
    * 주인이 고른 글을 그대로 싸면 다른 용도의 값으로 풀릴 수 있다
    */
-  private static readonly CODE_PURPOSE = 'ai-signin-code:';
+  private static readonly CODE_PURPOSE = 'ai-signin-code';
 
   constructor(
     db: Database,
@@ -119,7 +120,8 @@ export class AiLoginService extends BaseService {
     const spaceId = actor.requireSpace();
     AiSigninPolicy.assertBrowserCode(req.code);
     const sealed = this.box.pack(
-      `${AiLoginService.CODE_PURPOSE}${req.code}`,
+      AiLoginService.CODE_PURPOSE,
+      req.code,
       AiLoginService.CODE_SECONDS,
     );
     return this.transaction(async (tx) => {
@@ -180,14 +182,12 @@ export class AiLoginService extends BaseService {
    * 러너는 더 기다리다 시간이 다 되면 실패로 끝낸다
    */
   private openCode(sealed: string | null, now: Date): string | null {
-    const opened = sealed === null ? null : this.box.unpack(sealed, now);
-    if (!opened?.startsWith(AiLoginService.CODE_PURPOSE)) return null;
-    return opened.slice(AiLoginService.CODE_PURPOSE.length);
+    return this.box.unpack(AiLoginService.CODE_PURPOSE, sealed, now);
   }
 
   /**
    * ai_login_refresh (러너): 실행하는 동안 CLI가 갱신한 자격을 되돌려 쓴다 (Codex의 auth.json).
-   * 그 일을 맡았던 러너만(취소된 뒤에도), 받은 판일 때만. 잠그는 순서는 작업 → 로그인
+   * 그 일을 맡았던 러너만(취소된 뒤에도), 그 일이 쓴 도구만, 받은 판일 때만. 잠그는 순서는 작업 → 로그인
    */
   async refresh(actor: Actor, req: AiLoginRefreshInput): Promise<AiLogin> {
     actor.assertCan(Actor.RUN);
@@ -200,6 +200,12 @@ export class AiLoginService extends BaseService {
       // 지금 도는 일이 아니어도 된다 (주인이 취소했어도): 이 러너가 맡았던 일이면 받는다
       const task = await new TaskRepository(tx).lock(spaceId, req.taskId);
       task.assertWorkedBy(runnerId);
+      // 그 일이 쓴 도구의 로그인만 바꾼다: 다른 도구로 일한 작업의 id로 이 도구의 로그인을 덮지 못하게.
+      // 에이전트의 도구는 잠그지 않고 읽는다 (잠그는 순서 작업 → 로그인을 지키고, 도구는 바뀌어도 이 일의 것이 아니다)
+      const used = task.agentless
+        ? task.testedTool
+        : (await new AgentRepository(tx).load(spaceId, task.agentId ?? '')).tool;
+      if (used !== req.tool) throw new RuleViolation(`이 작업은 ${req.tool}로 일하지 않았어요`);
       const logins = new AiLoginRepository(tx);
       const login = await logins.lockTool(spaceId, req.tool);
       if (!login) throw new NotFound(`${req.tool} 로그인이 없어요`);

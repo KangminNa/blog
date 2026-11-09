@@ -60,7 +60,7 @@ export class DeviceService extends EntityService<Device> {
    * 주인이 끊었으면 새로 만든다. 설치가 끝나기 전에는 409 (러너는 기다렸다 다시 묻는다)
    */
   async pairServerRunner(actor: Actor, req: PairServerRunnerInput, ip: string): Promise<Device> {
-    this.pairings.hit(ip);
+    this.pairings.hit(AttemptLimiter.place(ip));
     if (!this.serverRunner.matches(req.secret))
       throw new Forbidden('server_runner', '서버 러너의 연결 값이 맞지 않아요');
     const status = await this.spaces.installStatus(actor, null);
@@ -85,7 +85,7 @@ export class DeviceService extends EntityService<Device> {
   /** AI 도구가 스스로 등록한다 (누구나). 설치가 끝난 블로그만, 한 곳에서 1시간에 20번까지 */
   async registerClient(actor: Actor, req: RegisterClientInput, ip: string): Promise<OAuthClient> {
     try {
-      this.registrations.hit(ip);
+      this.registrations.hit(AttemptLimiter.place(ip));
     } catch (error) {
       if (error instanceof TooManyRequests)
         throw new OAuthError('temporarily_unavailable', '잠시 뒤 다시 등록해 주세요', 429);
