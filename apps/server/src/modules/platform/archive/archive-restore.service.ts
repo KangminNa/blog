@@ -46,7 +46,8 @@ export class ArchiveRestoreService extends BaseService {
     const parts = this.read(files);
     await this.transaction((tx) => ArchiveRestoreService.assertEmpty(tx, parts));
     for (const part of parts) for (const blob of part.blobs) await blob.saveTo(this.blobs);
-    const notes = await this.transaction(async (tx) => {
+    // 큰 복원은 오래 걸리고 steadyRead가 쥔 잠금을 기다리므로 시간 제한 없이 (Database.LIMITS의 예외)
+    const notes = await this.db.unlimitedTransaction(async (tx) => {
       await tx`SELECT pg_advisory_xact_lock(hashtextextended(${ArchiveRestoreService.LOCK}, 0))`;
       await ArchiveRestoreService.assertEmpty(tx, parts);
       const written: string[] = [];
@@ -59,9 +60,10 @@ export class ArchiveRestoreService extends BaseService {
   /**
    * 복원과 겹치지 않게 읽는다. 복원 중이면 끝나기를 기다리고, 읽는 동안에는 복원이 시작되지 못한다.
    * 내보내기는 쿼리 여러 개라, 사이에 복원이 커밋되면 절반만 있는 모습이 나오고 동기화가 나머지를 지운다.
+   * 읽기는 다른 연결로 하고 이 트랜잭션은 잠금만 쥐고 쉬므로 시간 제한 없이 (Database.LIMITS의 예외)
    */
   steadyRead<T>(read: () => Promise<T>): Promise<T> {
-    return this.transaction(async (tx) => {
+    return this.db.unlimitedTransaction(async (tx) => {
       await tx`SELECT pg_advisory_xact_lock_shared(hashtextextended(${ArchiveRestoreService.LOCK}, 0))`;
       return read();
     });

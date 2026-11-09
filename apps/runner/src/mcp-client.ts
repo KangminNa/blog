@@ -22,6 +22,8 @@ export class ToolRefused extends Error {
 export class McpClient {
   /** 서버가 일을 끝내고 답하기까지 기다리는 시간 */
   private static readonly PATIENCE_MS = 15_000;
+  /** 서버의 DB가 잠시 밀림 (잠금 대기 · 긴 쿼리). 거절이 아니라 같은 요청을 다시 보내면 된다 */
+  private static readonly BUSY = 'busy';
   private nextId = 1;
 
   constructor(
@@ -93,12 +95,15 @@ export class McpClient {
       : `서버가 ${res.status}로 답했어요`;
   }
 
-  /** 도구 오류는 첫 글의 JSON에 담겨 온다 (DomainError.toJSON) */
-  private static refusal(result: Json): ToolRefused {
+  /**
+   * 도구 오류는 첫 글의 JSON에 담겨 온다 (DomainError.toJSON). busy만 다시 보낼 수 있는 실패다:
+   * 거절로 받으면 일하던 러너가 그 일을 놓아 버린다 (JobRun.endingOfFailure)
+   */
+  private static refusal(result: Json): ToolRefused | ServerUnreachable {
     const detail = Json.parse(result.list('content')[0]?.text('text') ?? '') ?? Json.of({});
-    return new ToolRefused(
-      detail.text('code') || 'unknown',
-      detail.text('message') || '서버가 거절했어요',
-    );
+    const code = detail.text('code') || 'unknown';
+    const message = detail.text('message') || '서버가 거절했어요';
+    if (code === McpClient.BUSY) return new ServerUnreachable(`서버가 바빠요: ${message}`);
+    return new ToolRefused(code, message);
   }
 }

@@ -74,6 +74,20 @@ describe('MCP 부르기', () => {
     );
   });
 
+  test('busy(서버 DB가 잠시 밀림)는 거절이 아니라 다시 보내도 되는 실패', async () => {
+    const error = { code: 'busy', message: '처리가 밀려 있어요. 잠시 뒤 다시 해 주세요' };
+    answer = json({
+      jsonrpc: '2.0',
+      id: 1,
+      result: { isError: true, content: [{ type: 'text', text: JSON.stringify(error) }] },
+    });
+    await assert.rejects(
+      client().call('report_progress', {}),
+      (e: Error) =>
+        e instanceof ServerUnreachable && !(e instanceof ToolRefused) && e.message.includes('밀려'),
+    );
+  });
+
   test('401은 AccessDenied. 다시 보내지 않는다', async () => {
     answer = (_req, res) => {
       res.writeHead(401);

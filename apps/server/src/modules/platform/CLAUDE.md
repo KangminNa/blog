@@ -32,6 +32,13 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 - `ZipReader` · `ZipLimits`: 믿을 수 없는 zip 읽기. 개수·크기 한도, 위험한 이름 거절, CRC 검사. 넘치면 `TooLarge`
 - 오류: `DomainError`와 단계별 하위 클래스, `DomainEvent`, `CurrentActor`(Controller 인자 데코레이터)
 
+## DB 연결
+- 프로세스(server · worker · 명령줄)마다 풀 하나, 최대 10개 (`Database`). LISTEN은 전용 연결 하나를 따로 쓴다 (server의 `ChangeStream`, worker의 outbox). web · runner는 DB에 닿지 않는다
+- 연결마다 시간 제한 (`Database.LIMITS`): 잠금 대기 5초, 쿼리 30초, 트랜잭션을 연 채 쉬기 60초. 앞의 둘은 입구(REST 필터 · MCP)에서 `Busy`(503 `busy`)가 되고 러너는 busy면 같은 요청을 다시 보낸다. 쉬다 끊긴 트랜잭션은 우리 코드의 버그라 500으로 둔다
+- 시간 제한 없는 트랜잭션(`unlimitedTransaction`)은 복원 쓰기와 `steadyRead` 두 곳만. 새로 쓰기 전에 일을 나눌 수 있는지 먼저 본다
+- 트랜잭션은 짧게: 안에서 외부 호출 · AI 응답 · 파일 저장(`BlobStore`)을 기다리지 않는다. 긴 폴링 · SSE는 트랜잭션 밖에서 LISTEN 신호로 기다린다
+- 일 빌리기는 `SKIP LOCKED`, 잠그는 순서는 모듈 규칙대로 (task: 작업 → 결재 → 에이전트), 줄이 없을 수도 있는 자리는 advisory 잠금(`pg_advisory_xact_lock`, 트랜잭션이 끝나면 풀림)
+
 ## 내보내는 이벤트 / 받는 이벤트
 없음 / 없음 (나중에 알림이 각 모듈의 이벤트를 받는다)
 

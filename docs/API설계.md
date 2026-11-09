@@ -27,7 +27,7 @@
 | 생성 | `requestId`로 중복을 막는다 |
 | 수정 | `version`으로 낙관적 잠금. 어긋나면 409 |
 | 목록 | 커서 방식 `{ <항목들>, next }`. 페이지 번호는 쓰지 않는다 |
-| 오류 | `{ code, message, fields?, scope? }`. 코드는 [객체설계.md](객체설계.md) 3장 |
+| 오류 | `{ code, message, fields?, scope? }`. 코드는 [객체설계.md](객체설계.md) 3장. DB가 잠시 밀리면(잠금 5초 · 쿼리 30초) 503 `busy`: 같은 요청을 다시 하면 된다 (러너는 다시 보낸다) |
 | 형식 | JSON camelCase, ID는 UUIDv7, 시간은 ISO 8601 |
 | 공개 범위 | Query가 Actor를 받아 서버에서 거른 뒤 순위와 개수를 계산한다 |
 | 타입 | 표 인터페이스의 타입만 가져오는 `<이름>.view.ts`의 `toJSON()`이 실제 모양을 돌려주고, 웹은 이 파일만 `import type`으로 가져온다. `pnpm check`가 어긋남을 잡는다. 웹의 `_lib/types.ts`에는 오류 모양(`ApiError`)만 둔다 |

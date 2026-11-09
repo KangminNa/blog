@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Actor } from './actor';
 import type { BaseTool } from './base-tool';
+import { Database } from './database';
 import { DomainError, Forbidden } from './errors';
 
 // MCP 입구. MCP SDK를 가져오는 유일한 파일이다 (외부 라이브러리는 platform/base 안에서만, 객체설계 10장).
@@ -57,10 +58,12 @@ export class McpEndpoint {
           structuredContent: result as Record<string, unknown>,
         };
       } catch (error) {
-        if (!(error instanceof DomainError)) throw error;
+        // DB 시간 제한에 걸린 오류는 busy로 알린다 (러너는 busy를 받으면 같은 요청을 다시 보낸다)
+        const known = error instanceof DomainError ? error : Database.busy(error);
+        if (!known) throw error;
         return {
           isError: true,
-          content: [{ type: 'text' as const, text: JSON.stringify(error.toJSON()) }],
+          content: [{ type: 'text' as const, text: JSON.stringify(known.toJSON()) }],
         };
       }
     });

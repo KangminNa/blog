@@ -88,6 +88,16 @@ export class RuleViolation extends DomainError {
   readonly status = 422;
 }
 
+/** ⑥ 저장: DB가 시간 제한에 걸림 (잠금 대기 · 긴 쿼리, Database.LIMITS). 잠시 뒤 다시 하면 된다 */
+export class Busy extends DomainError {
+  readonly code = 'busy';
+  readonly status = 503;
+
+  constructor() {
+    super('처리가 밀려 있어요. 잠시 뒤 다시 해 주세요');
+  }
+}
+
 /** 외부 서비스(GitHub, SMTP 등)가 실패함 */
 export class ExternalFailure extends DomainError {
   readonly code = 'external_failure';
