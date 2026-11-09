@@ -49,6 +49,7 @@ export { ChangeSignal, Outbox } from './base/outbox';
 export { PasswordHasher } from './base/password-hasher';
 export { SealedSecret, SecretBox } from './base/secret-box';
 export { SecretRotation } from './base/secret-rotation';
+export { Redaction, SensitivePolicy } from './base/sensitive-policy';
 export * as TableColumns from './base/table-columns';
 export { type ColumnRules, TableEntity, type TableRow } from './base/table-entity';
 export { type How, type RowOf, Rule, type Where } from './base/table-query';

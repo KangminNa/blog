@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseService, Database, Idempotency } from '../../platform';
-import { SensitivePolicy } from './sensitive.policy';
+import { Actor, BaseService, Database, Idempotency, SensitivePolicy } from '../../platform';
 import { Session, SessionReceipt } from './session';
 import type { SaveSessionInput } from './session.input';
 import { SessionRepository } from './session.repository';
@@ -26,7 +25,7 @@ export class SessionService extends BaseService {
   async save(actor: Actor, req: SaveSessionInput): Promise<SessionReceipt> {
     actor.assertCan(Actor.UPLOAD);
     const [spaceId, deviceId] = Session.uploader(actor);
-    const note = this.sensitive.clean(SessionNote.write(req.title, req.tags, req.sections));
+    const note = SessionNote.write(req.title, req.tags, req.sections).scrubbedBy(this.sensitive);
     return this.transaction(async (tx) => {
       const once = new Idempotency(tx, deviceId, req.requestId, SessionService.ACTION);
       const before = await once.previous();

@@ -173,6 +173,34 @@ describe('blog_save_draft (기기)', () => {
     assert.equal(revision?.actor_type, 'ai');
   });
 
+  test('초안의 제목 · 본문에 섞인 비밀값은 판이 되기 전에 지운다', async () => {
+    const github = `gh${'p'}_${'a'.repeat(36)}`;
+    const saved = await draft(writer, {
+      title: `배포 메모 ${github}`,
+      body_md: `토큰은 ${github}\n\npassword=hunter2025`,
+    });
+    const [stored] = await db.sql<{ title: string; body_md: string }[]>`
+      SELECT r.title, r.body_md FROM blog.post_revisions r
+      WHERE r.post_id = ${String(saved.post_id)} ORDER BY r.seq DESC LIMIT 1`;
+    assert.equal(stored?.title, '배포 메모 [지움: GitHub 토큰]');
+    assert.equal(stored?.body_md, '토큰은 [지움: GitHub 토큰]\n\npassword=[지움: 비밀번호·키 값]');
+  });
+
+  test('주인이 편집기로 쓴 글은 지우지 않는다 (사람이 정한 것)', async () => {
+    const github = `gh${'p'}_${'b'.repeat(36)}`;
+    const created = ok(
+      await api.request('POST', '/api/posts', owner, {
+        requestId: randomUUID(),
+        title: '주인의 메모',
+        body: `예시 토큰 ${github}`,
+      }),
+      201,
+    );
+    const [stored] = await db.sql<{ body_md: string }[]>`
+      SELECT body_md FROM blog.post_revisions WHERE post_id = ${String(created.id)}`;
+    assert.equal(stored?.body_md, `예시 토큰 ${github}`);
+  });
+
   test('방문자에게는 초안이 보이지 않는다', async () => {
     const saved = await draft(writer, { title: `숨은 초안 ${randomUUID()}` });
     const { posts } = (await api.get('/api/posts')).json() as { posts: { title: string }[] };

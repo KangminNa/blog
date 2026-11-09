@@ -13,7 +13,6 @@ import { NeighborsTool } from './graph/graph.tool';
 import { PostMarkHandler } from './post-mark/post-mark.handler';
 import { PostMarkService } from './post-mark/post-mark.service';
 import { PostWikiQuery } from './post-mark/post-wiki.query';
-import { SensitivePolicy } from './session/sensitive.policy';
 import { SessionController } from './session/session.api';
 import { SessionQuery } from './session/session.query';
 import { SessionService } from './session/session.service';
@@ -38,7 +37,6 @@ import { GetWikiTool, SearchWikisTool } from './wiki/wiki.tool';
 // 그래프 보기, 글 자리 사본, 보관 형식 내보내기.
 @Module({
   providers: [
-    SensitivePolicy,
     SessionService,
     SessionQuery,
     SaveSessionTool,

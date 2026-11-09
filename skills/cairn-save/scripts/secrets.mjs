@@ -1,5 +1,5 @@
 // 비밀값 무늬. 근거 묶음을 만들 때 지우고(evidence.mjs), 초안에 남았는지 검사한다(check.mjs).
-// 서버의 2차 제거(apps/server/src/modules/vault/session/sensitive.policy.ts)와 같은 무늬를 쓴다. 한쪽을 바꾸면 함께 고친다.
+// 서버의 2차 제거(apps/server/src/modules/platform/base/sensitive-policy.ts)와 같은 무늬를 쓴다. 한쪽을 바꾸면 함께 고친다.
 
 /** [이름, 무늬]. 무늬에 이름 붙은 그룹 keep이 있으면 그 부분(예: password=)은 남기고 값만 지운다 */
 export const SECRET_RULES = [

@@ -193,7 +193,8 @@ export function AgentForm({
       <fieldset className="checks">
         <legend>권한</legend>
         <small>
-          세션 정리는 정리와 전체 읽기 권한이 함께 필요. 브라우저 사용은 전체 읽기와 함께 줄 수 없음
+          세션 정리는 정리와 전체 읽기 권한이 함께 필요. 브라우저 사용은 전체 읽기 · 초안 작성과
+          함께 줄 수 없음
         </small>
         {SCOPES.map((s) => (
           <label key={s} className="check">

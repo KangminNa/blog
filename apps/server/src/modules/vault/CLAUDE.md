@@ -5,7 +5,7 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
 지금은 세션 저장·찾기·읽기, wiki · 카테고리 · 연결선, 변경 묶음(검토·되돌리기), 세션 정리 요청, 그래프 보기, 글 자리 사본, 보관 형식 내보내기까지 있다. 대정리는 아직 없다.
 
 - `session/`: 세션(`Session` + 판 `SessionRevision`), 노트(`SessionNote`: 제목·태그·고정 칸 다섯, 해시, 본문 md),
-  2차 민감정보 제거(`SensitivePolicy`), 저장 결과(`SessionReceipt`: saved · unchanged · duplicate).
+  2차 민감정보 제거(platform의 `SensitivePolicy`를 `SessionNote.scrubbedBy`로), 저장 결과(`SessionReceipt`: saved · unchanged · duplicate).
   MCP 도구 `check_session`(`CheckSessionTool`: 올리기 전 검사, 저장하지 않음. request_id·대화 id·같은 대화의 판 수·지울 민감정보)과 `save_session`(`SaveSessionTool`),
   `search_sessions`(`SearchSessionsTool`: 제목·지금 판 본문의 키워드 찾기, pg_bigm `LIKE likequery()`라 대소문자 구분. 순서와 커서는 바뀌지 않는 세션 id)와
   `get_session`(`GetSessionTool`: 지금 판 하나). 두 읽기 도구는 `read_public`이나 `read_all` 중 하나로 열리고(`BaseTool.orScope`), 볼 수 없는 세션은 없는 세션과 똑같이 답한다.
@@ -74,7 +74,7 @@ platform
 - 판(session_revisions · wiki_revisions)은 추가만 한다. 트리거가 UPDATE·DELETE를 막는다
 - 그래프를 바꾸는 쓰기는 모두 `ChangeService`를 거쳐 변경 묶음으로 남긴다 (관리 화면 편집 포함). 이 Service만 여러 데이터 묶음의 Repository를 쓴다 (객체설계 4장 예외). `TidyService`가 세션 Repository로 부르는 `noteTidyRequested` 하나는 요청 기록이라 그래프를 바꾸지 않는다
 - AI 변경의 바로 합치기·검토·거부는 `ReviewPolicy` 한 곳에서만 판단한다. 규칙을 늘릴 때는 `ReviewRule` 하위 클래스 하나
-- 민감정보는 첫 저장 전에 지운다 (판은 고칠 수 없으므로). 새 종류는 `SensitivePolicy.RULES`에 한 줄, 테스트에 한 줄
+- 민감정보는 첫 저장 전에 지운다 (판은 고칠 수 없으므로). 무늬는 platform의 `SensitivePolicy`(blog 초안과 같다). 새 종류는 `SensitivePolicy.RULES`에 한 줄, `session.test.ts`에 한 줄, `skills/cairn-save/scripts/secrets.mjs`도 함께
 - 세션 저장은 변경 묶음이 아니라 판으로만 남는다. 같은 대화의 저장은 대화 자리를 잠가 하나씩 처리한다 (`SessionRepository.lockBySource`)
 - AI는 공개 여부를 정할 수 없다. 새 세션은 비공개 (프로젝트 규칙은 그 관리 화면이 생길 때 읽는다)
 - 사람이 고친 칸·연결(`pinned`)은 AI가 덮지 않고 검토로 남긴다. `HumanOwnedRule`은 주인이 값을 바꿔도 `review`보다 느슨해지지 않는다

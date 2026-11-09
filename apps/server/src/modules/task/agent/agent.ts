@@ -29,6 +29,8 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     Actor.WRITE,
     Actor.BROWSE,
   ];
+  /** browse와 함께 줄 수 없는 권한: 비공개(세션 · wiki)와 임시 글 · 소재를 여는 것. DB CHECK agents_browse_not_private와 같다 */
+  private static readonly NOT_WITH_BROWSE: readonly string[] = [Actor.READ_ALL, Actor.WRITE];
   private static readonly NAME_MAX = 60;
   private static readonly ROLE_MAX = 2000;
   private static readonly PLAN_PERCENT_MAX = 100;
@@ -60,10 +62,11 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
       const unknown = value.filter((s) => !Agent.SCOPES.includes(s));
       if (unknown.length > 0)
         throw new RuleViolation(`에이전트에게 줄 수 없는 권한이에요: ${unknown.join(', ')}`);
-      // 로그인된 브라우저 + 비공개 + 밖으로 보내기가 한 에이전트에 모이지 않게 (브라우저 작업은 비공개를 못 읽는다)
-      if (value.includes(Actor.BROWSE) && value.includes(Actor.READ_ALL))
+      // 로그인된 브라우저 + 비공개 + 밖으로 보내기가 한 에이전트에 모이지 않게 (브라우저 작업은 비공개를 못 읽는다).
+      // write도 임시 글 본문과 소재 메모를 연다 (blog_get_post · basket_get). 재료는 지시문으로 받는다
+      if (value.includes(Actor.BROWSE) && Agent.NOT_WITH_BROWSE.some((s) => value.includes(s)))
         throw new RuleViolation(
-          '브라우저를 쓰는 에이전트는 비공개를 읽을 수 없어요 (browse · read_all)',
+          '브라우저 사용은 전체 읽기 · 초안 작성과 함께 줄 수 없어요 (browse · read_all · write)',
         );
       return Agent.SCOPES.filter((s) => value.includes(s));
     },

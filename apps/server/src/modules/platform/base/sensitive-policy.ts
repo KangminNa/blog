@@ -1,9 +1,27 @@
 import { Injectable } from '@nestjs/common';
-import { Redaction, type SessionNote } from './session-note';
 
-// 2차 민감정보 제거: 노트가 판이 되기 전에 서버가 한 번 더 지운다 (1차는 AI 도구의 스킬).
-// 판은 고칠 수 없으므로 여기서 놓치면 지울 길이 영구 삭제뿐이다. 그래서 확실한 모양만 지우고,
+/** 민감정보를 지운 자리 하나. 값은 남기지 않고 어느 칸에서 무엇을 지웠는지만 */
+export class Redaction {
+  static readonly SECRET = 'secret';
+
+  constructor(
+    readonly section: string,
+    readonly label: string,
+  ) {}
+
+  static restore(raw: Readonly<Record<string, unknown>>): Redaction {
+    return new Redaction(String(raw.section ?? ''), String(raw.label ?? ''));
+  }
+
+  toJSON(): object {
+    return { kind: Redaction.SECRET, section: this.section, label: this.label };
+  }
+}
+
+// 2차 민감정보 제거: AI가 보낸 글이 판이 되기 전에 서버가 한 번 더 지운다 (1차는 AI 도구의 스킬).
+// 판(세션 · wiki · 글)은 고칠 수 없으므로 여기서 놓치면 지울 길이 영구 삭제뿐이다. 그래서 확실한 모양만 지우고,
 // 지운 자리에는 `[지움: 종류]`를 남겨 무엇이 있었는지는 알 수 있게 한다. 값은 어디에도 남기지 않는다.
+// 비밀값의 모양만 보는 판단이라 공통 기반에 둔다: 무엇을 지울지(어느 칸)는 쓰는 모듈이 정한다.
 // 새 종류는 RULES에 한 줄 더한다 (이름, 무늬).
 @Injectable()
 export class SensitivePolicy {
@@ -30,12 +48,7 @@ export class SensitivePolicy {
     ],
   ];
 
-  /** 노트의 제목과 모든 칸에서 지운다. 지운 것은 노트의 redactions에 쌓인다 */
-  clean(note: SessionNote): SessionNote {
-    return note.rewrite((section, text) => this.scrub(section, text));
-  }
-
-  /** 글 하나에서 지운다 (wiki의 판도 고칠 수 없다). [지운 글, 무엇을 지웠는지] */
+  /** 글 하나에서 지운다. section은 지운 자리를 알리는 칸 이름. [지운 글, 무엇을 지웠는지] */
   scrub(section: string, text: string): readonly [string, readonly Redaction[]] {
     const found: Redaction[] = [];
     let cleaned = text;

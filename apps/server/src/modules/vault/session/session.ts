@@ -1,8 +1,8 @@
-import { Actor, BaseEntity, DomainEvent, RuleViolation } from '../../platform';
+import { Actor, BaseEntity, DomainEvent, Redaction, RuleViolation } from '../../platform';
 import { type ChangeWork, type NewNode, TargetEntity } from '../change/change-target';
 import type { SessionNew, SessionRevisionNew, SessionRow } from '../vault.tables';
 import { SessionSavedView } from './session.view';
-import { Redaction, SessionNote } from './session-note';
+import { SessionNote } from './session-note';
 
 /**
  * 세션 저장 한 번의 결과. 같은 request_id가 다시 오면 이 기록(platform.idempotency)을 되살려 그대로 돌려준다.

@@ -5,6 +5,7 @@ import {
   Database,
   EntityService,
   Idempotency,
+  SensitivePolicy,
   type Sql,
   type VersionTarget,
 } from '../../platform';
@@ -24,6 +25,7 @@ import { SlugPolicy } from './slug.policy';
 // 글 쓰기: 새 글, 고쳐 쓰기(새 판), 공개 범위, 휴지통·되살리기. 관리 화면의 편집기가 부른다.
 // 결재한 공개는 일꾼이 publishApproved로 부른다.
 // AI 도구의 초안은 saveDraft 하나로 온다. 무엇을 할 수 있는지는 Post가 정한다: 공개된 글은 주인만 고친다.
+// 초안의 제목 · 본문은 판이 되기 전에 민감정보를 지운다 (판은 고칠 수 없다). 주인이 편집기로 쓴 글은 그대로 둔다.
 // 이을 wiki는 트랜잭션을 열기 전에 vault Query로 확인한다 (vault와 한 트랜잭션에 묶지 않는다).
 @Injectable()
 export class PostService extends EntityService<Post> {
@@ -34,6 +36,7 @@ export class PostService extends EntityService<Post> {
   constructor(
     db: Database,
     private readonly wikis: PostWikiQuery,
+    private readonly sensitive: SensitivePolicy,
   ) {
     super(db);
   }
@@ -94,7 +97,9 @@ export class PostService extends EntityService<Post> {
   async saveDraft(actor: Actor, req: SaveDraftInput): Promise<Post> {
     actor.assertCan(Actor.WRITE);
     const spaceId = Post.spaceOf(actor);
-    const content = PostContent.write(req.title, req.body);
+    const [title] = this.sensitive.scrub('title', req.title);
+    const [body] = this.sensitive.scrub('body', req.body);
+    const content = PostContent.write(title, body);
     const scope = actor instanceof AgentActor ? actor.taskId : (actor.id ?? spaceId);
     await this.wikis.assertVisible(actor, req.wikiIds);
     return this.transaction(async (tx) => {

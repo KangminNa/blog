@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { DeviceActor, OwnerActor, RuleViolation } from '../../platform';
-import { SensitivePolicy } from './sensitive.policy';
+import { DeviceActor, OwnerActor, RuleViolation, SensitivePolicy } from '../../platform';
 import { Session, SessionReceipt } from './session';
 import { SessionNote } from './session-note';
 
@@ -11,6 +10,8 @@ import { SessionNote } from './session-note';
 const SPACE = '0192d2a0-0000-7000-8000-000000000001';
 const device = new DeviceActor(SPACE, '0192d2a0-0000-7000-8000-000000000002', new Set(['upload']));
 const policy = new SensitivePolicy();
+/** 노트의 제목과 모든 칸에서 지운다 (저장 · 검사와 같은 길) */
+const scrub = (n: SessionNote): SessionNote => n.scrubbedBy(policy);
 const github = `gh${'p_'}${'A1b2C3d4'.repeat(5)}`;
 
 function note(did: string, extra: Partial<Record<string, string>> = {}): SessionNote {
@@ -61,7 +62,7 @@ describe('SensitivePolicy', () => {
     const dirty = note(`푸시 토큰 ${github} 로 확인`, {
       quotes: `AWS ${aws}\nslack ${slack}\n${anthropic} ${openai}\n${jwt}\n${pem}`,
     });
-    const clean = policy.clean(dirty);
+    const clean = scrub(dirty);
     const all = JSON.stringify(clean.toJSON());
     for (const secret of [github, aws, slack, anthropic, openai, jwt, 'b3BlbnNzaC1rZXk='])
       assert.equal(all.includes(secret), false, `${secret.slice(0, 6)}…이 남았다`);
@@ -86,14 +87,12 @@ describe('SensitivePolicy', () => {
   });
 
   test('Cairn의 작업 토큰도 지운다', () => {
-    const clean = policy.clean(
-      note(`작업 토큰 cairn_${'run'}_${'a'.repeat(40)}-${'b'.repeat(40)} 사용`),
-    );
+    const clean = scrub(note(`작업 토큰 cairn_${'run'}_${'a'.repeat(40)}-${'b'.repeat(40)} 사용`));
     assert.equal(clean.section('did'), '작업 토큰 [지움: Cairn 토큰] 사용');
   });
 
   test('password=값은 값만 지우고, 코드 속 타입·환경 변수 이름은 그대로 둔다', () => {
-    const clean = policy.clean(
+    const clean = scrub(
       note(
         [
           'DB_PASSWORD 설정: password=hunter2025',
@@ -115,8 +114,8 @@ describe('SensitivePolicy', () => {
   });
 
   test('지운 노트를 다시 지워도 그대로 (이미 지운 자리는 건드리지 않는다)', () => {
-    const once = policy.clean(note(`password=hunter2025 ${github}`));
-    const twice = policy.clean(once);
+    const once = scrub(note(`password=hunter2025 ${github}`));
+    const twice = scrub(once);
     assert.equal(twice.section('did'), once.section('did'));
   });
 });
@@ -151,7 +150,7 @@ describe('Session', () => {
   });
 
   test('남겨 둔 결과를 되살리면 duplicate', () => {
-    const saved = SessionReceipt.saved('s-1', 3, policy.clean(note(`${github}`)).redactions);
+    const saved = SessionReceipt.saved('s-1', 3, scrub(note(`${github}`)).redactions);
     const replay = SessionReceipt.replay(JSON.parse(JSON.stringify(saved)));
     assert.equal(replay.status, SessionReceipt.DUPLICATE);
     assert.deepEqual(JSON.parse(JSON.stringify(replay.warnings)), [

@@ -1,9 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseQuery, Database, NotFound } from '../../platform';
+import { Actor, BaseQuery, Database, NotFound, Redaction, SensitivePolicy } from '../../platform';
 import { sessionRevisions } from '../vault.schema';
 import type { SessionRevisionRow, SessionRow } from '../vault.tables';
-import { SensitivePolicy } from './sensitive.policy';
 import { Session } from './session';
 import {
   type CheckSessionInput,
@@ -28,7 +27,7 @@ import {
   SessionSectionView,
   SessionSummaryView,
 } from './session.view';
-import { Redaction, SessionNote } from './session-note';
+import { SessionNote } from './session-note';
 
 // 세션 읽기. 관리 화면의 목록·상세·판은 비공개까지 볼 수 있는 요청자(주인, read_all 기기)만,
 // AI 도구의 찾기·읽기(search · note)는 read_public이나 read_all 중 하나로, read_public은 공개 세션만 본다.
@@ -56,7 +55,7 @@ export class SessionQuery extends BaseQuery {
   async check(actor: Actor, req: CheckSessionInput, site: string): Promise<SessionCheckView> {
     actor.assertCan(Actor.UPLOAD);
     const [spaceId, deviceId] = Session.uploader(actor);
-    const note = this.sensitive.clean(SessionNote.write(req.title, req.tags, req.sections));
+    const note = SessionNote.write(req.title, req.tags, req.sections).scrubbedBy(this.sensitive);
     const [found] =
       req.sourceSessionId && req.tool
         ? await this.sql<SessionCheckRow[]>`

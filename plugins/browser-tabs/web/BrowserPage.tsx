@@ -195,12 +195,17 @@ function SiteItem({
           <span>맡길 일</span>
           <textarea
             required
-            rows={3}
+            rows={8}
             value={instruction}
-            placeholder="이 소재로 글을 채워 주세요. 발행 직전에 멈추고 결재를 올려 주세요"
+            placeholder={
+              '편집기에 채울 제목과 본문을 여기에 적어 주세요.\n발행 직전에 멈추고 결재를 올려요'
+            }
             onChange={(e) => setInstruction(e.target.value)}
           />
         </label>
+        <p className="note">
+          에이전트는 글 · 소재 · 비공개 세션을 읽지 못해요. 채울 내용은 모두 여기에 적어 주세요
+        </p>
         <button type="submit" className="cta small fit" disabled={busy || instruction === ''}>
           일 맡기기
         </button>

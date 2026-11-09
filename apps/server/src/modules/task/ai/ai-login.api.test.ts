@@ -845,6 +845,14 @@ describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () =>
       scopes: ['browse', 'read_all'],
     });
     assert.equal(both.status, 422, both.text);
+    // write도 임시 글 · 소재를 열어 함께 줄 수 없다
+    const withWrite = await api.request('POST', '/api/agents', owner, {
+      requestId: randomUUID(),
+      name: '브라우저와 초안',
+      tool: 'claude',
+      scopes: ['browse', 'write'],
+    });
+    assert.equal(withWrite.status, 422, withWrite.text);
     const agent = ok(
       await api.request('POST', '/api/agents', owner, {
         requestId: randomUUID(),
@@ -854,6 +862,15 @@ describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () =>
       }),
       201,
     );
+    // 규칙을 거치지 않는 쓰기도 DB가 막는다 (CHECK agents_browse_not_private)
+    for (const scopes of [
+      ['browse', 'read_all'],
+      ['browse', 'write'],
+    ])
+      await assert.rejects(
+        db.sql`UPDATE task.agents SET scopes = ${scopes} WHERE id = ${String(agent.id)}`,
+        /agents_browse_not_private/,
+      );
     const browse = await newTask(agent);
     await db.sql`UPDATE task.tasks SET kind = 'browse' WHERE id = ${String(browse.id)}`;
     const ability = { ...NOTHING, tools: ['claude'] };

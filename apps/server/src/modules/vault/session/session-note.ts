@@ -1,24 +1,6 @@
 import { createHash } from 'node:crypto';
-import { RuleViolation } from '../../platform';
+import { Redaction, RuleViolation, type SensitivePolicy } from '../../platform';
 import type { SessionRevisionNew, SessionRevisionRow } from '../vault.tables';
-
-/** 민감정보를 지운 자리 하나. 값은 남기지 않고 어느 칸에서 무엇을 지웠는지만 */
-export class Redaction {
-  static readonly SECRET = 'secret';
-
-  constructor(
-    readonly section: string,
-    readonly label: string,
-  ) {}
-
-  static restore(raw: Readonly<Record<string, unknown>>): Redaction {
-    return new Redaction(String(raw.section ?? ''), String(raw.label ?? ''));
-  }
-
-  toJSON(): object {
-    return { kind: Redaction.SECRET, section: this.section, label: this.label };
-  }
-}
 
 // 세션 노트: 판 하나의 내용. 제목, 태그, 고정 칸 다섯(한 일 · 결정 · 막힌 점 · 인용 · 기타).
 // 칸 이름과 소제목은 보관 형식(docs/보관형식.md)의 고정 소제목과 같다. 칸 구성을 바꾸면 SCHEMA를 올린다.
@@ -79,6 +61,11 @@ export class SessionNote {
 
   section(name: string): string {
     return this.sections.get(name) ?? '';
+  }
+
+  /** 제목과 모든 칸에서 민감정보를 지운 새 노트. 지운 것은 redactions에 쌓인다 */
+  scrubbedBy(policy: SensitivePolicy): SessionNote {
+    return this.rewrite((section, text) => policy.scrub(section, text));
   }
 
   /**

@@ -7,6 +7,7 @@ import { BlobStore } from './base/blob-store';
 import { Database } from './base/database';
 import { SecretBox } from './base/secret-box';
 import { SecretRotation } from './base/secret-rotation';
+import { SensitivePolicy } from './base/sensitive-policy';
 import { HealthController } from './health/health.api';
 import { HealthQuery } from './health/health.query';
 import { DomainErrorFilter } from './http/domain-error.filter';
@@ -33,6 +34,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     PluginService,
     { provide: SecretBox, useFactory: () => SecretBox.fromEnv(process.env) },
     SecretRotation,
+    SensitivePolicy,
     ArchiveQuery,
     ArchiveRestoreService,
     ChangeStream,
@@ -64,6 +66,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     BlobStore,
     SecretBox,
     SecretRotation,
+    SensitivePolicy,
     PluginRegistry,
     PluginService,
     PackageService,

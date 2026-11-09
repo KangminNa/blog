@@ -48,6 +48,7 @@ export class BlogSaveDraftTool extends BaseTool {
     '고칠 때는 blog_get_post로 받은 version을 base_version에 넣는다. 그사이 바뀌었으면 409가 오니 다시 읽고 고친다.',
     '공개된 글은 고칠 수 없고(403), 공개 범위도 정할 수 없다. 공개는 주인의 결재를 받는다.',
     'main_wiki_id와 ref_wiki_ids는 글을 그래프의 wiki에 잇는다. 보내지 않으면 그대로다.',
+    '제목 · 본문의 비밀값(토큰 · 키 · 비밀번호 값)은 서버가 [지움: 종류]로 바꿔 저장한다. 되살리지 않는다.',
     '없거나 이 연결이 볼 수 없는 wiki면 not_found가 온다.',
     '응답을 받지 못해 다시 보낼 때는 같은 request_id를 쓴다. 응답의 url을 사용자에게 보여 준다.',
   ].join(' ');

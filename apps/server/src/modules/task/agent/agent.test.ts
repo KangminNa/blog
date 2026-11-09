@@ -77,9 +77,11 @@ describe('AgentUsage', () => {
 });
 
 describe('권한', () => {
-  test('브라우저(browse)와 비공개 읽기(read_all)는 함께 줄 수 없다', () => {
+  test('브라우저(browse)는 비공개 읽기(read_all) · 초안 작성(write)과 함께 줄 수 없다', () => {
     const agent = agentWith(null, null);
     assert.throws(() => agent.edit({ scopes: ['browse', 'read_all'] }), RuleViolation);
+    // write도 임시 글 본문과 소재 메모를 연다
+    assert.throws(() => agent.edit({ scopes: ['browse', 'write'] }), RuleViolation);
     agent.edit({ scopes: ['browse', 'read_public'] });
     assert.deepEqual(agent.scopes, ['read_public', 'browse']);
   });

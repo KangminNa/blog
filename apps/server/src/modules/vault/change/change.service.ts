@@ -8,8 +8,8 @@ import {
   Idempotency,
   NotFound,
   RuleViolation,
+  SensitivePolicy,
 } from '../../platform';
-import { SensitivePolicy } from '../session/sensitive.policy';
 import type { DecideChangeInput, EditInput, SubmitChangesInput } from './change.input';
 import { ChangeRepository } from './change.repository';
 import type { ChangeOp, TargetBoard } from './change-op';
