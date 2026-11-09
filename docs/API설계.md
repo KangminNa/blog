@@ -1,6 +1,6 @@
 # Cairn API 설계
 
-> 2026-10-31 확정. 객체 구조는 [객체설계.md](객체설계.md), 테이블은 [테이블설계.md](테이블설계.md), 범위와 단계는 [기획서.md](기획서.md) 6장·10장.
+> 객체 구조는 [객체설계.md](객체설계.md), 테이블은 [테이블설계.md](테이블설계.md), 범위와 단계는 [기획서.md](기획서.md) 6장·10장.
 
 ---
 
@@ -14,7 +14,7 @@
 
 웹은 DB에 닿지 않고 REST만 부른다. REST와 MCP는 같은 Service·Query를 부르며, 진입 계층에 판단을 두지 않는다.
 
-**AI의 입구는 `/mcp` 하나다.** Bearer 토큰(기기·작업)은 `/mcp`에서만 요청자가 되고, REST에서는 방문자와 같다 (`ActorGuard`, 2026-11-06). 방문자가 GET으로 닿는 경로와 응답 코드는 `apps/server/src/modules/platform/http/visitor-surface.api.test.ts`의 표가 원본이다: 새 경로나 열림·막힘이 바뀌면 그 표를 고쳐야 테스트가 통과한다. `/api/health`는 방문자에게 `status`만 주고, 확장·마이그레이션·표 수는 주인과 서버 자신에게만 준다.
+**AI의 입구는 `/mcp` 하나다.** Bearer 토큰(기기·작업)은 `/mcp`에서만 요청자가 되고, REST에서는 방문자와 같다 (`ActorGuard`). 방문자가 GET으로 닿는 경로와 응답 코드는 `apps/server/src/modules/platform/http/visitor-surface.api.test.ts`의 표가 원본이다: 새 경로나 열림·막힘이 바뀌면 그 표를 고쳐야 테스트가 통과한다. `/api/health`는 방문자에게 `status`만 주고, 확장·마이그레이션·표 수는 주인과 서버 자신에게만 준다.
 
 ---
 
@@ -30,7 +30,7 @@
 | 오류 | `{ code, message, fields?, scope? }`. 코드는 [객체설계.md](객체설계.md) 3장 |
 | 형식 | JSON camelCase, ID는 UUIDv7, 시간은 ISO 8601 |
 | 공개 범위 | Query가 Actor를 받아 서버에서 거른 뒤 순위와 개수를 계산한다 |
-| 타입 | import가 없는 `<이름>.view.ts`의 `toJSON()`이 실제 모양을 돌려주고, 웹은 이 파일만 `import type`으로 가져온다. `pnpm check`가 어긋남을 잡는다. 기존 `_lib/types.ts`는 단계적으로 없앤다 |
+| 타입 | 표 인터페이스의 타입만 가져오는 `<이름>.view.ts`의 `toJSON()`이 실제 모양을 돌려주고, 웹은 이 파일만 `import type`으로 가져온다. `pnpm check`가 어긋남을 잡는다. 웹의 `_lib/types.ts`에는 오류 모양(`ApiError`)만 둔다 |
 
 ---
 
@@ -59,7 +59,7 @@
 | 백업 | `GET /api/archive.zip` (주인만, 보관 형식) | 6 |
 | 세션 정리 | `GET·PUT /api/tidy/settings { autoTidy, version }`, `POST /api/tidy/backlog` → `{ requested, remaining }` (주인만. 기본은 꺼짐. 대표 wiki가 없고 이번 판을 아직 요청하지 않은 세션을 오래된 순으로 20개씩 요청. 실패한 세션은 새 판이 생기면 다시 대상이 된다) | 6 |
 | 기능 패키지 | `/api/p/<패키지>/…`: 목록 파일의 `api`가 경로를 정하고 켜진 패키지만 열린다 (꺼지면 404). `browser-tabs`: 탭 읽기 `reads`, 사이트 `sites` · `sites/:id` · `sites/:id/tasks`, 화면 확인 `viewer` (모두 주인만, [브라우저](브라우저.md) 5장) | 패키지 |
-| 스케줄 | `GET·POST /api/schedules`, `PATCH /api/schedules/:id`, `POST /api/schedules/:id/run`. 에이전트의 하트비트로 시작했다 | 7 |
+| 스케줄 | `GET·POST /api/schedules`, `PATCH /api/schedules/:id`, `POST /api/schedules/:id/run`. 에이전트를 정해진 시각에 깨우는 일은 지금 하트비트가 한다 | 7 |
 
 결재는 작업에 묶이지 않는 경우(한도 변경 등)가 있어 작업 아래에 두지 않는다. 결재 메뉴는 위키 제안도 함께 보여 주되, 데이터는 각 모듈이 따로 가진다.
 
@@ -89,7 +89,7 @@
 MCP 입력과 응답은 snake_case다.
 
 - `next_jobs { wait_seconds?, limit?, tools?, signin_tools?, own_logins?, browser? }`는 최대 25초 기다리는 긴 폴링이다. 러너는 할 수 있는 것을 알린다: `tools`는 일할 수 있는 AI CLI, `signin_tools`는 웹 로그인을 대신 돌릴 수 있는 CLI, `own_logins`는 러너가 스스로 가진 로그인(환경 변수 등), `browser`는 서버 브라우저에 붙어 있는지(알리지 않으면 false). 서버는 그 도구의 로그인을 쓸 수 있을 때(또는 `own_logins`에 있을 때)만 에이전트의 일을, `tools`에 있고 서버의 로그인을 쓸 수 있을 때만 연결 확인을, `signin_tools`에 있을 때만 웹 로그인을, `browser`가 true일 때만 브라우저 작업(`browse`)을 빌려 준다. 갱신 토큰이 바뀌는 도구(Codex)는 서버의 로그인으로 공간에서 한 번에 하나만 돈다. 알리지 않은 값은 거르지 않는다(알리기 전의 러너). 일이 생기면 바로 돌려준다. 응답은 `{ jobs: [{ task, instruction, target, skill, revision_note, agent, run_token, goal_chain, team, subtask_results, rounds_left }] }`. `goal_chain: [{ title }]`은 회사 목표부터 이 작업의 목표까지, `team: [{ agent_id, name, role, status, kinds }]`는 바로 아래 팀(없으면 빈 목록), `subtask_results: [{ task_id, title, agent, status, summary, error }]`는 맡긴 하위 작업의 결과(깨어난 일에만, `summary`는 결과 글의 앞 2,000자), `rounds_left`는 남은 위임 횟수다. 러너는 이 칸을 지시문에 넣기만 한다.
-- `report_progress { task_id, events: [{ kind, body?, tokens? }], request_id?, plan_usage? }`는 기록을 모아 남기고 임대를 연장한다. 기록이 없으면 `events`를 비워 부른다 (`heartbeat_jobs`는 두지 않는다). 응답 `{ status, cancelled, paused, lease_until }`의 `cancelled`로 러너가 작업을 멈춘다. `request_id`를 주면 같은 보고의 토큰을 두 번 세지 않는다. `plan_usage: [{ window, percent, resets_at, status? }]`는 러너가 CLI의 `rate_limit_event`에서 읽은 구독 사용률이다. 어느 도구의 값인지는 작업의 에이전트로 정한다.
+- `report_progress { task_id, events: [{ kind, body?, tokens? }], request_id?, plan_usage? }`는 기록을 모아 남기고 임대를 연장한다. 기록이 없으면 `events`를 비워 부른다. 응답 `{ status, cancelled, paused, lease_until }`의 `cancelled`로 러너가 작업을 멈춘다. `request_id`를 주면 같은 보고의 토큰을 두 번 세지 않는다. `plan_usage: [{ window, percent, resets_at, status? }]`는 러너가 CLI의 `rate_limit_event`에서 읽은 구독 사용률이다. 어느 도구의 값인지는 작업의 에이전트로 정한다.
 - `submit_result { task_id, request_id, status: done·failed, result?, error? }`, `release_job { task_id, reason }`. `result`는 자유 형식이고 러너는 마지막 답을 `{ text }`로 보낸다. 응답은 `{ task_id, status }`. 돌려준 이유는 실행 기록에 남는다.
 - `request_approval { request_id, action, target_kind, target_id, target_version, note? }`. `request_id`는 작업마다 따로 센다. 동작은 `blog.post.publish`, `sns.post.send`, `task.agent.raise_limit`로 시작한다. 브라우저 에이전트는 `browser.site.publish`(대상 `browser_site`): 서버는 실행하지 않고, 주인이 화면에서 직접 발행한 뒤 승인한다 ([브라우저](브라우저.md) 4장).
 - `delegate_task { subtasks: [{ request_id, to_agent_id, title, instruction, kind?, target_kind?, target_id?, target_version? }] }` → `{ subtasks: [{ task_id, to_agent_id, title, status }], waiting: "subtasks" }`. 바로 아래 팀원에게만(아니면 `forbidden`), 받는 에이전트의 권한으로 할 수 있는 종류만(`general` · `draft_post` · `tidy_session`, 아니면 `rule_violation`). 한도(한 번에 5개, 작업 하나에 10개, 깊이 3, 라운드 3)를 넘어도 `rule_violation`이고 메시지에 "한도"가 있다. 실행 중이 아니면 `conflict`. 하위 작업은 위 작업의 목표와 우선순위를 물려받는다. 같은 `request_id`들로 다시 보내면 처음 만든 하위 작업을 돌려주고, 일부만 겹치면 `conflict`다. 맡긴 작업은 `waiting`(기다리는 것: `subtasks`)이 되어 러너가 AI를 끄고 제출하지 않으며, 하위 작업이 모두 끝나면(완료 · 실패 · 취소) 대기열로 돌아가 같은 에이전트가 결과를 받는다. 결재는 누가 올리든 주인이 한다.

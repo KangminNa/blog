@@ -6,7 +6,7 @@ import type { Actor } from './actor';
 import type { BaseTool } from './base-tool';
 import { DomainError, Forbidden } from './errors';
 
-// MCP 입구. MCP SDK를 가져오는 유일한 파일이다 (2026-10-10 결정: SDK는 platform/base 안에서만).
+// MCP 입구. MCP SDK를 가져오는 유일한 파일이다 (외부 라이브러리는 platform/base 안에서만, 객체설계 10장).
 // 요청마다 서버를 새로 만드는 상태 없는 방식이라, 서버를 여러 개 띄워도 그대로 동작한다.
 // 도구는 BaseTool만 알면 되고, 오류는 DomainError.toJSON()으로 AI가 고칠 수 있게 돌려준다.
 export class McpEndpoint {

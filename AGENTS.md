@@ -17,7 +17,7 @@ apps/web/      Next.js (App Router). app/(blog)/ 공개 화면, app/admin/<메�
 apps/runner/   러너. 서버에서 일을 빌려 AI CLI로 처리한다. MCP로만 서버와 이야기하고 DB에 닿지 않는다 (서버 러너의 첫 연결만 REST)
 db/            DB 이미지(Postgres 17 + pgvector + pg_bigm)와 SQL 마이그레이션(dbmate)
 packages/cli/  연결 명령 cairn connect · status (스킬 넣기 + MCP 등록 + 로그인). 배포 전에는 pnpm cairn
-plugins/       플러그인 (comments-giscus · sync-github · login-github · office). 규칙은 plugins/CLAUDE.md, 객체설계 12장
+plugins/       플러그인 (comments-giscus · sync-github · login-github · office · browser-tabs). 규칙은 plugins/CLAUDE.md, 객체설계 12장
 scripts/       모듈 경계 검사, 구조 검사, 묶음 생성기(templates/), 플러그인 화면 맞추기
 skills/        AI 도구와 러너의 스킬 (cairn-save · cairn-recall, 러너 전용 cairn-write · cairn-tidy · cairn-browse). 도구 입력 모양을 바꾸면 스킬도 함께 고친다
                앱(ChatGPT·Claude)용 zip은 서버가 여기서 만든다(api/skills). 스크립트 테스트는 packages/cli
@@ -62,7 +62,7 @@ docs/          기획 문서 (기획서 · 테이블 설계 · 객체 설계 · 
 
 [docs/객체설계.md](docs/객체설계.md)를 따른다. 요약:
 
-- 4계층: 진입(Controller·Tool·Guard·Response) → 응용(Request·Service·Query) → 도메인(Entity·Policy·Actor) ← 저장(Repository·Gateway)
+- 4계층: 진입(Controller·Tool·Guard·View) → 응용(Input·Service·Query) → 도메인(Entity·Policy·Actor) ← 저장(Repository·Gateway)
 - 데이터 묶음(항상 같이 바뀌는 데이터) 하나 = 폴더 하나. 쓰기(C·U·D)는 Service 하나, 읽기(R)는 Query 하나에 모은다
 - 쓰기는 반드시 엔티티를 거치고, 읽기는 Query가 View를 바로 만든다. Query는 Actor 없이 부를 수 없다
 - 트랜잭션은 Service만 연다. Controller·Tool은 메서드 하나만 부른다

@@ -65,7 +65,7 @@ export abstract class Command<I = unknown> extends Operation<I> {
 /**
  * 동작이 일하는 자리: 자기 스키마의 표만 조건 규칙으로 읽고 쓰고, 이벤트를 남긴다.
  * 그 기능만의 쿼리(표 잇기 · 모으기)는 work.sql로 쓴다 (자기 스키마만: pnpm check가 본다).
- * 다른 스키마의 표를 넘기면 실행 전에 막는다: 패키지는 코어 표에 쓰지 않는다 (리팩토링계획 7장).
+ * 다른 스키마의 표를 넘기면 실행 전에 막는다: 패키지는 코어 표에 쓰지 않는다 (객체설계 12장).
  */
 export class Work extends TableWriter {
   /** 이 일에서 남긴 이벤트. 쓰기 동작이 끝나면 코어가 같은 트랜잭션의 outbox에 넣는다 */

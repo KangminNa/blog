@@ -2,7 +2,7 @@
 
 ## 하는 일
 에이전트가 일하고 주인이 결재하는 구조. 러너가 일을 빌려 가고, 위험한 동작은 결재를 거치고, 결과가 오면 작업을 끝낸다.
-설계는 docs/객체설계.md 13장, API는 docs/API설계.md, 표는 docs/테이블설계.md 5.5장.
+설계는 docs/객체설계.md 13장, API는 docs/API설계.md, 표는 docs/테이블설계.md 6장.
 
 - `agent/`: 에이전트 (`Agent`). 권한, 결재로 맡길 동작, 토큰 한도(한 달 · 5시간), 구독 사용률 멈춤값, 보고 대상(조직도). `api/agents`
 - `goal/`: 목표 (`Goal`). 회사 목표부터 이어지는 나무. 작업이 목표 하나에 이어진다. `api/goals`
@@ -16,7 +16,7 @@
   `api/ai`, MCP `ai_login` · `ai_login_refresh`(CLI가 갱신한 자격 되돌려 쓰기) · `ai_signin`(러너가 로그인 명령을 대신 돌린다), 받는 값의 모양은 `AiSigninPolicy`
 - `runner/`: 러너의 상태 (`Runner`). 마지막으로 닿은 때, 일 받기 켜기·끄기. `api/runners`. 기기 이름·종류는 account의 것이라 화면이 합친다
 
-파일 구조는 새 규칙의 시범이다 (객체설계 6장): `<이름>.ts` · `.view.ts` · `.input.ts` · `.service.ts` · `.query.ts` · `.api.ts` · `.tool.ts` · `.repository.ts`.
+파일 구조 (객체설계 6장): `<이름>.ts` · `.view.ts` · `.input.ts` · `.service.ts` · `.query.ts` · `.api.ts` · `.tool.ts` · `.repository.ts`.
 엔티티는 `TableEntity`(platform)로 표 한 줄을 들고 바뀐 칸을 기억하고, Repository(`TableRepository`)는 그 칸만 저장한다. 칼럼을 아는 곳은 `task.tables.ts`, Entity의 `RULES`, Input의 `COLUMNS`, View의 `toJSON`이다.
 도구 모양은 docs/API설계.md 4장이 원본이다. `report_progress`는 기록을 모아 받고, 러너가 쓰므로 바꾸면 `apps/runner`도 함께 고친다.
 

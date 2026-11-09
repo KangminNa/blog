@@ -1,6 +1,6 @@
-// 구조 검사 (docs/객체설계.md 6장 "파일 구조"와 "콘솔 메뉴 하나의 구조"). pnpm check가 돌린다.
+// 구조 검사 (docs/객체설계.md 6장 "폴더와 표"의 "콘솔 메뉴 하나의 구조"). pnpm check가 돌린다.
 //
-//   1. 모듈 안의 파일 이름은 .api · .input · .view (옛 .controller · .request · .response는 쓰지 않는다)
+//   1. 모듈 안의 파일 이름은 .api · .input · .view (.controller · .request · .response는 막는다)
 //   2. REST 진입(.api.ts) 옆에는 같은 이름의 .api.test.ts. 다른 파일에서 시험하면
 //      TESTED_ELSEWHERE에 그 파일을 적는다 (적은 파일이 없으면 실패)
 //   3. 콘솔 메뉴(app/admin/menu.tsx의 href)와 app/admin/<주소>/page.tsx가 하나씩 맞는다

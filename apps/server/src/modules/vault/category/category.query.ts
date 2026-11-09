@@ -8,7 +8,7 @@ import {
   PublicCategoryView,
 } from './category.view';
 
-// 카테고리 읽기. 이름은 공개라 방문자도 본다 (MVP 기획서 7장). 방문자는 공간을 모른다 (MVP는 공간 하나).
+// 카테고리 읽기. 이름은 공개라 방문자도 본다 (기획서 9장). 방문자는 공간을 모른다 (MVP는 공간 하나).
 @Injectable()
 export class CategoryQuery extends BaseQuery {
   /** 비공개까지 보는 요청자(주인)에게는 모든 칸, 그 밖에는 공개 칸만 */

@@ -1,7 +1,7 @@
 # 플러그인
 
 코어가 몰라도 되는 기능은 플러그인으로 만든다 (기획서 결정 기록 2026-10-10, 객체설계 12장).
-지금 있는 플러그인: `comments-giscus`(글 아래 giscus 댓글), `sync-github`(보관 형식을 GitHub에 동기화), `login-github`(GitHub 계정으로 로그인).
+지금 있는 플러그인: `comments-giscus`(글 아래 giscus 댓글), `sync-github`(보관 형식을 GitHub에 동기화), `login-github`(GitHub 계정으로 로그인), `office`(콘솔의 픽셀 사무실), `browser-tabs`(서버 브라우저, 기능 패키지).
 
 ## 폴더 하나 = 플러그인 하나
 
@@ -50,7 +50,7 @@ pnpm plugin sync-github check                 관리 동작
 - 로그인 플러그인은 "누구인지"만 알려준다. 주인인지는 코어가 정하므로, 주인이 계정 화면에서 연결한 계정으로만 로그인된다
 - 기능 패키지(자기 표 · API · MCP 도구 · 콘솔 메뉴)는 아래 "기능 패키지"를 따른다
 
-## 기능 패키지 (2026-11-08)
+## 기능 패키지
 
 코어를 고치지 않고 자기 표 · API · MCP 도구 · 콘솔 메뉴를 갖는 플러그인. 예: `browser-tabs` (기능 문서 [docs/브라우저.md](../docs/브라우저.md)). 구조와 코어가 하는 일은 객체설계 12장.
 

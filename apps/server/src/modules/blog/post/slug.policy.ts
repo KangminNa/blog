@@ -1,6 +1,6 @@
 import { RuleViolation } from '../../platform';
 
-// 글 주소(slug). 한글은 그대로 두고 빈칸·기호는 -로 바꾼다 (2026-10-10 결정: 한글 주소 허용).
+// 글 주소(slug). 한글은 그대로 두고(한글 주소 허용) 빈칸·기호는 -로 바꾼다.
 // 같은 공간 안에서 겹치지 않는다. 휴지통 글의 주소도 영구 삭제 전까지는 그 글의 것이다.
 // biome-ignore lint/complexity/noStaticOnlyClass: 상태 없는 주소 규칙 한 곳. 새 글·고쳐 쓰기·요청 검사가 함께 쓴다
 export class SlugPolicy {

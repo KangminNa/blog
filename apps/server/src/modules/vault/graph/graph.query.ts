@@ -12,7 +12,7 @@ type GraphPostRow = Pick<
   'post_id' | 'title' | 'slug' | 'status' | 'main_wiki_id' | 'ref_wiki_ids'
 >;
 
-// 그래프 읽기. 점과 선은 보여도 되는 것만 SQL에서 고른 뒤에 잇는다 (MVP 기획서 7.5, 원칙 4·5).
+// 그래프 읽기. 점과 선은 보여도 되는 것만 SQL에서 고른 뒤에 잇는다 (기획서 9장, 원칙 4·5).
 //   주인      전부
 //   방문자    카테고리 이름, 공개 wiki·세션, 공개(published) 글
 // 글 → wiki 연결은 모두에게 보이므로, 공개 글이 가리키는 비공개 wiki만 자리로 남는다. 이름·내용·날짜는 없다.

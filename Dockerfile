@@ -2,7 +2,7 @@
 #   dev     개발. 소스 전체 + 감시 모드 (docker-compose.yml)
 #   server  운영 서버·일꾼. 컴파일한 JS만 (docker-compose.prod.yml)
 #   web     운영 웹. next build의 standalone 결과만 (docker-compose.prod.yml)
-#   runner  운영 서버 러너. 컴파일한 러너와 Claude CLI (docker-compose.prod.yml의 runner 프로필)
+#   runner  운영 서버 러너. 컴파일한 러너와 AI CLI(Claude · Codex). docker-compose.prod.yml에 함께 뜬다
 # 운영 이미지는 root가 아닌 node 사용자로 돌고, 코드는 root 소유라 실행 중에 고칠 수 없다.
 FROM node:24-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm \

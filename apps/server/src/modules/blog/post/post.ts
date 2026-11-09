@@ -61,7 +61,7 @@ export class PostRevision extends TableEntity<PostRevisionRow, PostRevisionNew> 
 // 글. 저장할 때 내용(제목·본문)이 바뀌었으면 새 판이 쌓인다. 주소·태그·정렬·공개 범위는 판 없이 글에 둔다.
 // posts의 title·excerpt·head_text는 지금 판의 찾기용 사본이라 글이 바뀔 때마다 지금 판에서 다시 적는다.
 // 공개 범위(status): draft 임시(나만) · published 공개(목록에 보임) · unlisted 링크만(목록·검색에는 안 나오고 주소로만).
-// 공개 범위 바꾸기·휴지통·공개된 글 고치기는 주인만 (AI 도구의 글쓰기 권한은 임시 글까지, 2026-10-03 결정).
+// 공개 범위 바꾸기·휴지통·공개된 글 고치기는 주인만 (AI 도구의 글쓰기 권한은 임시 글까지, 원칙 7).
 // 주인이 결재한 공개 하나만 예외다 (publishApproved).
 // 글 → wiki 연결(대표 하나 + 참고 여럿)은 판 없이 글에 둔다. vault에는 이벤트로 알린다 (외래키 없음).
 export class Post extends TableEntity<PostRow, PostNew> {

@@ -1,7 +1,7 @@
 import { crc32, deflateRawSync } from 'node:zlib';
 
-// zip 파일 만들기 (라이브러리 없이, node:zlib로 직접. 2026-10-10 결정).
-// 지금은 ChatGPT·Claude 앱에 올릴 스킬 묶음에 쓴다. 나중에 보관 형식 내보내기(zip)도 이것을 쓴다.
+// zip 파일 만들기 (라이브러리 없이, node:zlib로 직접).
+// ChatGPT·Claude 앱에 올릴 스킬 묶음과 보관 형식 내보내기(zip)에 쓴다.
 // 파일마다 deflate로 줄이고, 이름은 UTF-8로 적는다 (일반 플래그 11번 비트).
 /** zip 안의 파일 하나 */
 class ZipEntry {

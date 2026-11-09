@@ -2,7 +2,7 @@
 
 ## 하는 일
 모든 모듈이 쓰는 공통 기반. DB 연결, 기반 클래스, 오류, 요청자(Actor), 이벤트와 outbox, 변경 신호(`/api/stream`), 서버 상태 확인.
-나중에: 파일 저장(blobs), 알림, 임베딩 모델 목록. AI 일거리는 task 모듈이 맡는다.
+파일 저장(blobs), 보관 형식(archive), 플러그인. 나중에: 알림, 임베딩 모델 목록. AI 일거리는 task 모듈이 맡는다.
 **비즈니스 규칙을 두지 않는다.** 세션·글 같은 단어가 여기 코드에 나오면 잘못 들어온 것이다.
 
 ## 소유 데이터
@@ -28,7 +28,7 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 - `ArchiveRestoreService`: 빈 Cairn에 복원 (`preview` · `apply`). GitHub와 zip이 같은 길이다. 주인과 `SystemActor`만 부른다. `steadyRead`: 복원과 겹치지 않게 읽기
 - `ArchivePart`(모듈의 복원 몫), `ArchiveRecord`(보관 파일의 앞부분·항목 읽기), `ArchiveBlob`, `ArchiveReport`(개수와 알림)
 - `BlobStore`: 내용 주소 파일 저장소 (`Blob`). 트랜잭션 밖에서 부른다
-- `ZipFile`: 라이브러리 없이 zip 만들기 (node:zlib). 앱에 올릴 스킬 묶음, 나중에 보관 형식 내보내기
+- `ZipFile`: 라이브러리 없이 zip 만들기 (node:zlib). 앱에 올릴 스킬 묶음, 보관 형식 내보내기
 - `ZipReader` · `ZipLimits`: 믿을 수 없는 zip 읽기. 개수·크기 한도, 위험한 이름 거절, CRC 검사. 넘치면 `TooLarge`
 - 오류: `DomainError`와 단계별 하위 클래스, `DomainEvent`, `CurrentActor`(Controller 인자 데코레이터)
 

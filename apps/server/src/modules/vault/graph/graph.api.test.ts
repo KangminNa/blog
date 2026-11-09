@@ -4,7 +4,7 @@ import { after, before, describe, test } from 'node:test';
 import { ApiClient, type ApiResult, TestUser } from '../../../testing/api-client';
 import { Database, DomainEvent, Outbox, OutboxWorker } from '../../platform';
 
-// 그래프. 보이는 범위는 서버가 거른다: 방문자에게 비공개 wiki·세션의 이름·id·날짜가 닿지 않는다 (기획서 7.5, 원칙 4·5).
+// 그래프. 보이는 범위는 서버가 거른다: 방문자에게 비공개 wiki·세션의 이름·id·날짜가 닿지 않는다 (기획서 9장, 원칙 4·5).
 // 글 점은 blog 이벤트로 채운 사본(post_marks)으로 그린다.
 
 type Json = Record<string, unknown>;

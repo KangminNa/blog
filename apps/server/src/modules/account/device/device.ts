@@ -63,7 +63,7 @@ export class DeviceCredential {
 export class Device extends TableEntity<DeviceRow, DeviceNew> {
   static readonly ACCESS_MS = 60 * 60_000;
   static readonly REFRESH_MS = 30 * 86_400_000;
-  /** 새 기기의 기본 권한: 올리기 + 공개 읽기 (2026-10-10 결정). 나머지는 관리 화면에서 켠다 */
+  /** 새 기기의 기본 권한: 올리기 + 공개 읽기. 나머지는 관리 화면에서 켠다 */
   static readonly DEFAULT_SCOPES: readonly string[] = [Actor.UPLOAD, Actor.READ_PUBLIC];
   static readonly ALL_SCOPES: readonly string[] = [
     Actor.UPLOAD,

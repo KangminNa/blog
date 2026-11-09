@@ -66,7 +66,7 @@ export interface LoadedSession extends SessionRow {
 
 // 세션: AI 도구의 대화 하나. 같은 대화를 다시 저장하면 새 판이 쌓이고, 지금 판(head)이 새 판으로 바뀐다.
 // 대화는 (공간, 기기, 도구, 대화 id)로 구분한다: 다른 기기가 같은 대화 id를 보내도 다른 세션이다.
-// AI는 공개 여부를 정할 수 없다. 새 세션은 늘 비공개 (2026-10-10 결정, 공개는 사람이나 검토 규칙을 거친다).
+// AI는 공개 여부를 정할 수 없다. 새 세션은 늘 비공개 (원칙 5, 공개는 사람이나 검토 규칙을 거친다).
 // 대표 wiki(도착 구역이면 비어 있음)는 변경 묶음으로만 바꾼다. 사람이 정하면 AI가 바로 바꾸지 못한다.
 // 판(session_revisions)은 추가만 한다. 원본(origin)은 AI 도구가 올린 노트다. 사람 판·합친 판은 관리 화면 편집 때 생긴다.
 export class Session extends TargetEntity<LoadedSession, NewNode<SessionNew>> {
