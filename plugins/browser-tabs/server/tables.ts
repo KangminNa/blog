@@ -28,5 +28,4 @@ export interface SiteRow {
   updated_at: Date;
   version: number;
 }
-export type SiteNew = Partial<SiteRow> &
-  Pick<SiteRow, 'id' | 'space_id' | 'name' | 'start_url' | 'origins'>;
+export type SiteNew = Partial<SiteRow> & Pick<SiteRow, 'id' | 'space_id' | 'name' | 'start_url' | 'origins'>;

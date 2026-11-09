@@ -20,7 +20,9 @@
       "!**/slots.generated.ts",
       "!**/packages.generated.ts",
       "!**/*.tables.ts",
-      "!**/*.schema.ts"
+      "!**/*.schema.ts",
+      "!plugins/*/server/tables.ts",
+      "!plugins/*/server/schema.ts"
     ]
   },
   "formatter": {
