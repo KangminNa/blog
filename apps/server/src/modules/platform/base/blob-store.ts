@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, open, rename, rm, statfs, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
 import { Database } from './database';
-import { NotFound } from './errors';
+import { NotFound, RuleViolation, TooLarge } from './errors';
+import { FileSniff } from './file-sniff';
 
 /** 저장된 파일 하나 (platform.blobs). 이름이 곧 내용의 sha256이라 내용이 같으면 파일도 하나다 */
 export class Blob {
@@ -38,20 +39,75 @@ export class BlobStore {
   /** 저장한다. 내용이 같으면 몇 번을 불러도 파일과 행은 하나다 */
   async save(bytes: Buffer, mime: string): Promise<Blob> {
     const hash = createHash('sha256').update(bytes).digest('hex');
-    await mkdir(this.dir, { recursive: true });
     // 쓰다가 멈춰도 절반만 쓴 파일이 이 이름으로 보이지 않게 임시 파일에 쓰고 이름을 바꾼다
-    const temp = join(this.dir, `.${randomUUID()}.tmp`);
+    const temp = await this.tempFile();
     try {
       await writeFile(temp, bytes, { flag: 'wx', flush: true });
-      await rename(temp, join(this.dir, hash));
+      return await this.commit(temp, hash, mime, bytes.length);
     } finally {
       await rm(temp, { force: true });
     }
+  }
+
+  /**
+   * 흘려 받아 저장한다: 큰 파일도 메모리에 다 올리지 않는다. 받는 동안 크기와 해시를 센다.
+   * maxBytes를 넘으면 그 자리에서 멈추고 TooLarge. expectedHash가 있고 내용이 다르면 RuleViolation.
+   * 어느 쪽이든 아무것도 남기지 않는다. mime은 파일의 앞부분(FileSniff.HEAD_BYTES)을 보고 mimeOf가 정한다
+   */
+  async saveStream(
+    source: AsyncIterable<Uint8Array>,
+    maxBytes: number,
+    mimeOf: (head: Buffer) => string,
+    expectedHash: string | null = null,
+  ): Promise<Blob> {
+    const temp = await this.tempFile();
+    const digest = createHash('sha256');
+    let head = Buffer.alloc(0);
+    let size = 0;
+    try {
+      const file = await open(temp, 'wx');
+      try {
+        for await (const chunk of source) {
+          size += chunk.length;
+          if (size > maxBytes) throw new TooLarge(`파일은 ${maxBytes}바이트까지예요`);
+          digest.update(chunk);
+          if (head.length < FileSniff.HEAD_BYTES)
+            head = Buffer.concat([head, chunk]).subarray(0, FileSniff.HEAD_BYTES);
+          await file.write(chunk);
+        }
+        await file.sync();
+      } finally {
+        await file.close();
+      }
+      const hash = digest.digest('hex');
+      if (expectedHash !== null && hash !== expectedHash)
+        throw new RuleViolation('받은 내용이 알린 해시와 달라요');
+      return await this.commit(temp, hash, mimeOf(head), size);
+    } finally {
+      await rm(temp, { force: true });
+    }
+  }
+
+  /** 파일을 두는 디스크에 남은 바이트 (root가 아닌 사용자가 쓸 수 있는 만큼) */
+  async freeBytes(): Promise<number> {
+    await mkdir(this.dir, { recursive: true });
+    const stats = await statfs(this.dir);
+    return stats.bavail * stats.bsize;
+  }
+
+  private async tempFile(): Promise<string> {
+    await mkdir(this.dir, { recursive: true });
+    return join(this.dir, `.${randomUUID()}.tmp`);
+  }
+
+  /** 다 쓴 임시 파일을 해시 이름으로 옮기고 행을 남긴다. 파일이 먼저라 행이 있으면 파일도 있다 */
+  private async commit(temp: string, hash: string, mime: string, size: number): Promise<Blob> {
+    await rename(temp, join(this.dir, hash));
     await this.db.sql`
       INSERT INTO platform.blobs (hash, mime, size_bytes, storage_key)
-      VALUES (${hash}, ${mime}, ${bytes.length}, ${hash})
+      VALUES (${hash}, ${mime}, ${size}, ${hash})
       ON CONFLICT (hash) DO NOTHING`;
-    return new Blob(hash, mime, bytes.length);
+    return new Blob(hash, mime, size);
   }
 
   /** 파일 정보. 없거나 해시 모양이 아니면 null */

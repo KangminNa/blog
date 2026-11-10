@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { BlobStore } from './blob-store';
 import { Database } from './database';
-import { NotFound } from './errors';
+import { NotFound, RuleViolation, TooLarge } from './errors';
+import { FileSniff } from './file-sniff';
 
 // 파일 저장소를 실제 디스크와 DB로 확인한다.
 
@@ -71,6 +73,47 @@ describe('BlobStore', () => {
       await assert.rejects(store.open(bad), NotFound, JSON.stringify(bad));
       assert.equal(await store.find(bad), null);
     }
+  });
+
+  test('흘려 받아 저장한다: save와 같은 해시 · 크기, mime은 조각으로 나뉜 앞부분으로 정한다', async () => {
+    const bytes = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.from(`본문 ${Date.now()}`)]);
+    const pieces = async function* () {
+      for (let i = 0; i < bytes.length; i += 3) yield bytes.subarray(i, i + 3);
+    };
+    const heads: Buffer[] = [];
+    const blob = await store.saveStream(pieces(), 1024, (head) => {
+      heads.push(head);
+      return FileSniff.mimeOf(head) ?? 'application/octet-stream';
+    });
+    assert.equal(blob.hash, createHash('sha256').update(bytes).digest('hex'));
+    assert.equal(blob.size, bytes.length);
+    assert.equal(blob.mime, 'application/pdf');
+    assert.equal(heads[0]?.length, FileSniff.HEAD_BYTES);
+    assert.deepEqual(await read(blob.hash), bytes);
+  });
+
+  test('한도를 넘거나 해시가 다르면 거절하고 파일도 행도 남기지 않는다', async () => {
+    const bytes = Buffer.from(`넘치는 내용 ${Date.now()}`);
+    const hash = createHash('sha256').update(bytes).digest('hex');
+    const once = async function* () {
+      yield bytes;
+    };
+    const octet = () => 'application/octet-stream';
+    await assert.rejects(store.saveStream(once(), bytes.length - 1, octet), TooLarge);
+    await assert.rejects(
+      store.saveStream(once(), bytes.length, octet, '0'.repeat(64)),
+      RuleViolation,
+    );
+    assert.equal(await store.find(hash), null);
+    const files = await readdir(dir);
+    assert.equal(files.includes(hash), false);
+    assert.equal(files.filter((f) => f.endsWith('.tmp')).length, 0);
+    // 딱 한도이고 해시가 맞으면 저장한다
+    assert.equal((await store.saveStream(once(), bytes.length, octet, hash)).hash, hash);
+  });
+
+  test('디스크에 남은 바이트를 안다', async () => {
+    assert.ok((await store.freeBytes()) > 0);
   });
 
   test('없는 해시는 NotFound', async () => {
