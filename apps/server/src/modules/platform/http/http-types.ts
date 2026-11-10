@@ -11,6 +11,9 @@ export type HttpRequest = {
   actor?: unknown;
 };
 
+/** 본문을 흘려 읽는 요청 (JSON으로 읽지 않은 본문: 결과물 올리기). 받는 쪽이 크기를 세며 읽는다 */
+export type HttpUpload = HttpRequest & AsyncIterable<Uint8Array>;
+
 /** 나가는 HTTP 응답 (머리글, 쿠키, 다른 주소로 보내기) */
 export type HttpResponse = {
   setHeader(name: string, value: string): void;

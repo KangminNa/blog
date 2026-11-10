@@ -100,6 +100,25 @@ export interface HeartbeatRow {
 }
 export type HeartbeatNew = Partial<HeartbeatRow> & Pick<HeartbeatRow, 'id' | 'space_id' | 'agent_id' | 'mode' | 'time_zone'>;
 
+/** task.outputs */
+export interface OutputRow {
+  id: string;
+  space_id: string;
+  task_id: string;
+  run_id: string;
+  name: string;
+  kind: string;
+  mime: string;
+  size_bytes: number;
+  blob_hash: string;
+  version: number;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at: Date | null;
+  purge_after: Date | null;
+}
+export type OutputNew = Partial<OutputRow> & Pick<OutputRow, 'id' | 'space_id' | 'task_id' | 'run_id' | 'name' | 'kind' | 'mime' | 'size_bytes' | 'blob_hash'>;
+
 /** task.plan_usage */
 export interface PlanUsageRow {
   space_id: string;

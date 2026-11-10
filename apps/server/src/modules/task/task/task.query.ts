@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { type Actor, AgentActor, BaseQuery, NotFound } from '../../platform';
+import { Actor, AgentActor, BaseQuery, Forbidden, NotFound, RuleViolation } from '../../platform';
 import { taskRuns, tasks } from '../task.schema';
-import type { GoalRow, TaskEventRow, TaskRow } from '../task.tables';
+import type { GoalRow, OutputRow, TaskEventRow, TaskRow, TaskRunRow } from '../task.tables';
 import { Task } from './task';
 import type { ListTasksInput, TaskIdInput } from './task.input';
 import {
   TaskDetailView,
   TaskEventView,
   TaskGoalView,
+  TaskOutputView,
   TaskPageView,
   TaskRunView,
   TaskView,
@@ -54,6 +55,9 @@ export class TaskQuery extends BaseQuery {
     const goals = row.goal_id === null ? [] : await this.goalChain(row.goal_id);
     const children = await this.rows(tasks, { parent_id: req.id }, { order: ['id'] });
     const runs = await this.rows(taskRuns, { task_id: req.id }, { order: ['seq'] });
+    const made = await this.sql<(OutputRow & { run_seq: number })[]>`
+      SELECT o.*, r.seq AS run_seq FROM task.outputs o JOIN task.task_runs r ON r.id = o.run_id
+      WHERE o.task_id = ${req.id} AND o.deleted_at IS NULL ORDER BY o.id`;
     return new TaskDetailView(
       row,
       Task.shownPayload(row.kind, row.payload),
@@ -61,7 +65,28 @@ export class TaskQuery extends BaseQuery {
       goals,
       children.map((c) => new TaskView(c)),
       runs.map((r) => new TaskRunView(r)),
+      made.map((o) => new TaskOutputView(o, o.run_seq)),
     );
+  }
+
+  /**
+   * 이 러너가 지금 임대를 쥐고 도는 작업의 이번 실행 (결과물 올리기 표를 줄 때, output 묶음이 묻는다).
+   * 진행 중이 아니거나 · 다른 러너의 것이거나 · 임대가 끝났으면 RuleViolation. 잠그지 않고 읽는다:
+   * 표는 허락일 뿐이고, 그사이 취소돼도 받은 파일이 취소된 작업의 결과물로 남을 뿐이다
+   */
+  async heldRun(actor: Actor, taskId: string): Promise<TaskRunRow> {
+    actor.assertCan(Actor.RUN);
+    if (!actor.id || !actor.spaceId) throw new Forbidden(Actor.RUN);
+    const row = await this.row(tasks, { space_id: actor.spaceId, id: taskId });
+    if (!row) throw new NotFound('작업을 찾을 수 없어요');
+    Task.restore(row).assertHeldBy(actor.id, new Date());
+    const run = await this.row(
+      taskRuns,
+      { task_id: taskId, runner_id: actor.id },
+      { order: ['seq desc'], limit: 1 },
+    );
+    if (!run) throw new RuleViolation('이 러너의 실행 기록이 없는 작업이에요');
+    return run;
   }
 
   /** 회사 목표부터 이 목표까지. 목표의 부모는 바뀌지 않는다 */

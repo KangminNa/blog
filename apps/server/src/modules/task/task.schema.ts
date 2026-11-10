@@ -98,6 +98,24 @@ export const heartbeats = taskSchema.table('heartbeats', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
 });
 
+/** task.outputs */
+export const outputs = taskSchema.table('outputs', {
+  id: uuid('id').notNull(),
+  space_id: uuid('space_id').notNull(),
+  task_id: uuid('task_id').notNull(),
+  run_id: uuid('run_id').notNull(),
+  name: text('name').notNull(),
+  kind: text('kind').notNull(),
+  mime: text('mime').notNull(),
+  size_bytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+  blob_hash: text('blob_hash').notNull(),
+  version: integer('version').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
+  deleted_at: timestamp('deleted_at', { withTimezone: true }),
+  purge_after: timestamp('purge_after', { withTimezone: true }),
+});
+
 /** task.plan_usage */
 export const planUsage = taskSchema.table('plan_usage', {
   space_id: uuid('space_id').notNull(),

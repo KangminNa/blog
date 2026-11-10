@@ -1,4 +1,11 @@
-import type { AgentRow, GoalRow, TaskEventRow, TaskRow, TaskRunRow } from '../task.tables';
+import type {
+  AgentRow,
+  GoalRow,
+  OutputRow,
+  TaskEventRow,
+  TaskRow,
+  TaskRunRow,
+} from '../task.tables';
 
 // 작업의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
 // 표의 칸 중 무엇을 내보내는지는 여기 한 곳에만 적는다.
@@ -99,6 +106,27 @@ export class TaskRunView {
   }
 }
 
+/** 작업 상세의 결과물 한 줄 (휴지통 것은 빼고). 몇 번째 실행이 만들었는지까지 */
+export class TaskOutputView {
+  constructor(
+    private readonly row: Readonly<OutputRow>,
+    private readonly runSeq: number,
+  ) {}
+
+  toJSON() {
+    const r = this.row;
+    return {
+      id: r.id,
+      name: r.name,
+      kind: r.kind,
+      mime: r.mime,
+      sizeBytes: r.size_bytes,
+      runSeq: this.runSeq,
+      createdAt: r.created_at.toISOString(),
+    };
+  }
+}
+
 export class TaskDetailView extends TaskView {
   constructor(
     private readonly detail: Readonly<TaskRow>,
@@ -111,6 +139,8 @@ export class TaskDetailView extends TaskView {
     private readonly children: readonly TaskView[],
     /** 실행마다 규칙 판 (처음부터) */
     private readonly runs: readonly TaskRunView[] = [],
+    /** 이 작업이 만든 결과물 (올린 순서) */
+    private readonly outputs: readonly TaskOutputView[] = [],
   ) {
     super(detail);
   }
@@ -125,6 +155,7 @@ export class TaskDetailView extends TaskView {
       goalChain: this.goalChain.map((g) => g.toJSON()),
       children: this.children.map((c) => c.toJSON()),
       runs: this.runs.map((r) => r.toJSON()),
+      outputs: this.outputs.map((o) => o.toJSON()),
     };
   }
 }

@@ -15,6 +15,7 @@
 - `ai/`: AI 도구의 로그인 (`AiLogin`, 도구는 claude · codex). 콘솔에 넣거나 웹 로그인으로 받은 자격을 서버 키로 잠가 두고 서버 러너에게 건넨다.
   `api/ai`, MCP `ai_login` · `ai_login_refresh`(CLI가 갱신한 자격 되돌려 쓰기) · `ai_signin`(러너가 로그인 명령을 대신 돌린다), 받는 값의 모양은 `AiSigninPolicy`
 - `runner/`: 러너의 상태 (`Runner`). 마지막으로 닿은 때, 일 받기 켜기·끄기. `api/runners`. 기기 이름·종류는 account의 것이라 화면이 합친다
+- `output/`: 결과물 (`Output`, 이름 · 종류 · 형식 · 한도 `OutputPolicy`, 올리기 표 `UploadTicket`). 러너가 MCP `begin_upload`로 표를 받아 `PUT api/outputs/upload`(머리글 `x-cairn-upload`)로 파일을 흘려 보낸다. `api/outputs`(주인만: 목록 · 내려받기 · 휴지통), 일꾼 `OutputPurgeJob`
 - `skill/`: 러너 스킬의 콘솔 판 (`Skill`, 파일 규칙과 해시 `SkillFiles`, 쓸 판 고르기 `SkillPackage`, 저장소 판 읽기 `RepoSkillGateway`). `api/runner-skills`. `next_jobs`의 `skill_package`로 러너에게 간다
 
 파일 구조 (객체설계 6장): `<이름>.ts` · `.view.ts` · `.input.ts` · `.service.ts` · `.query.ts` · `.api.ts` · `.tool.ts` · `.repository.ts`.
@@ -22,7 +23,7 @@
 도구 모양은 docs/API설계.md 4장이 원본이다. `report_progress`는 기록을 모아 받고, 러너가 쓰므로 바꾸면 `apps/runner`도 함께 고친다.
 
 ## 소유 데이터
-스키마 `task`: agents, agent_revisions(추가만), goals, heartbeats, tasks, task_events(추가만), task_runs(추가만, model만 한 번), approvals, plan_usage, ai_logins, runners, skills, skill_revisions(추가만)
+스키마 `task`: agents, agent_revisions(추가만), goals, heartbeats, tasks, task_events(추가만), task_runs(추가만, model만 한 번), approvals, plan_usage, ai_logins, runners, skills, skill_revisions(추가만), outputs
 
 ## 데이터 묶음
 - 에이전트: agents + agent_revisions (조직도는 `reports_to`, 설정 판은 `settings_revision`)
@@ -30,6 +31,7 @@
 - 하트비트: heartbeats (에이전트마다 한 줄)
 - 작업: tasks + task_events + task_runs (빌려 줄 때마다 규칙 판 한 줄)
 - 스킬: skills + skill_revisions
+- 결과물: outputs (파일은 platform.blobs를 값으로)
 - 결재: approvals
 - 구독 사용률: plan_usage (창마다 마지막 값 하나. `window`는 Postgres 예약어라 열은 `period`, API는 `window`)
 - AI 로그인: ai_logins (공간과 도구마다 한 줄)
@@ -87,6 +89,11 @@ platform
 
 - 스킬 판 · 에이전트 설정 판 · 실행 기록은 추가만 한다. 스킬 되돌리기는 `active_revision`만 옮기고, 실행 기록은 비어 있는 `model`을 러너의 보고로 한 번 채우는 것 말고 바꾸지 않는다 (DB 트리거). 지시문 글은 실행 기록에 남기지 않는다
 - 콘솔에서 고치는 스킬은 러너 스킬(`cairn-where: runner`)만. 파일 규칙(경로 · 크기 · 앞부분)은 `SkillFiles`가 막고, 러너도 받은 묶음을 다시 거른다(`apps/runner`의 `SkillPackage`)
+
+- 결과물은 AI가 직접 올리지 않는다: 러너가 일이 끝난 뒤(done) 정해진 폴더의 파일만 올린다. 표는 임대를 쥔 이번 실행만 받고(`TaskQuery.heldRun`), 그 실행 · 이름 · 크기 · sha256에 묶여 10분이다. 본문은 표로만 받는다: AI 토큰은 /mcp에서만 통하고 JSON 한도(512KB)로는 파일을 못 받는다
+- 결과물 받기: 트랜잭션 밖에서 파일을 흘려 저장(`BlobStore.saveStream`, 크기 · 해시가 표와 다르면 아무것도 남기지 않음) → 짧은 트랜잭션에서 공간 잠금(`lockSpace`) 뒤 한도(실행 200개 · 1GB, 공간 `CAIRN_OUTPUTS_MAX_GB`, 디스크 여유 `CAIRN_DISK_RESERVE_GB`)를 다시 세고 줄 하나. 같은 실행 · 같은 이름은 한 줄(내용이 다르면 409)
+- 결과물 내려받기는 늘 attachment + sandbox CSP. 미리 보기(inline)는 앞부분으로 알아본 그림 · PDF · 영상만: 이름으로 정한 형식(HTML · SVG · 글자)은 우리 주소에서 열지 않는다
+- 결과물이 가리키는 파일은 `BlobStore.registerUse`로 등록해 둔다 (`OutputQuery.usedBlobs`). 휴지통(30일)을 지나 줄을 지우면 파일은 아무도 쓰지 않을 때 platform이 지운다
 
 ## 하지 말 것
 - blog·vault·account import. 결재 뒤 실행은 이벤트로 잇는다

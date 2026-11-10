@@ -1,5 +1,5 @@
 import { Module, type OnModuleInit } from '@nestjs/common';
-import { CoreWorkers, SecretRotation } from '../platform';
+import { BlobStore, CoreWorkers, SecretRotation } from '../platform';
 import { AgentController } from './agent/agent.api';
 import { AgentQuery } from './agent/agent.query';
 import { AgentService } from './agent/agent.service';
@@ -18,6 +18,12 @@ import { GoalService } from './goal/goal.service';
 import { HeartbeatController } from './heartbeat/heartbeat.api';
 import { HeartbeatJob } from './heartbeat/heartbeat.job';
 import { HeartbeatService } from './heartbeat/heartbeat.service';
+import { OutputController } from './output/output.api';
+import { OutputPolicy } from './output/output.policy';
+import { OutputQuery } from './output/output.query';
+import { OutputService } from './output/output.service';
+import { BeginUploadTool } from './output/output.tool';
+import { OutputPurgeJob } from './output/output-purge.job';
 import { RunnerController } from './runner/runner.api';
 import { RunnerQuery } from './runner/runner.query';
 import { RunnerService } from './runner/runner.service';
@@ -80,6 +86,12 @@ import { UsageQuery } from './usage/usage.query';
     { provide: RepoSkillGateway, useFactory: () => RepoSkillGateway.fromEnv() },
     SkillQuery,
     SkillService,
+    // 결과물의 공간 한도 · 디스크 여유 (CAIRN_OUTPUTS_MAX_GB · CAIRN_DISK_RESERVE_GB)
+    { provide: OutputPolicy, useFactory: () => OutputPolicy.fromEnv() },
+    OutputQuery,
+    OutputService,
+    BeginUploadTool,
+    OutputPurgeJob,
   ],
   controllers: [
     AgentController,
@@ -91,6 +103,7 @@ import { UsageQuery } from './usage/usage.query';
     HeartbeatController,
     RunnerController,
     SkillController,
+    OutputController,
   ],
   exports: [TaskTools, TaskQuery],
 })
@@ -108,6 +121,9 @@ export class TaskModule implements OnModuleInit {
     private readonly heartbeats: HeartbeatJob,
     private readonly rotation: SecretRotation,
     private readonly logins: AiLoginService,
+    private readonly outputPurge: OutputPurgeJob,
+    private readonly blobs: BlobStore,
+    private readonly outputs: OutputQuery,
   ) {}
 
   onModuleInit(): void {
@@ -117,5 +133,10 @@ export class TaskModule implements OnModuleInit {
     this.workers.every(this.leases, TaskModule.LEASE_CHECK_MS);
     this.workers.every(this.heartbeats, TaskModule.HEARTBEAT_CHECK_MS);
     this.rotation.register('task.ai_logins', (actor) => this.logins.resealSecrets(actor));
+    this.workers.every(this.outputPurge, OutputPurgeJob.EVERY_MS);
+    // 결과물이 가리키는 파일: 쓰는 동안 platform이 지우지 않게
+    this.blobs.registerUse(['task.outputs.blob_hash'], (actor, hashes) =>
+      this.outputs.usedBlobs(actor, hashes),
+    );
   }
 }

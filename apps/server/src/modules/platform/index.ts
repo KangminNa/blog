@@ -60,7 +60,7 @@ export { ZipLimits, ZipReader } from './base/zip-reader';
 export { Cookies } from './http/cookies';
 export { CurrentActor } from './http/current-actor';
 export { HttpSetup } from './http/http-setup';
-export type { HttpRequest, HttpResponse } from './http/http-types';
+export type { HttpRequest, HttpResponse, HttpUpload } from './http/http-types';
 export { PlatformModule } from './platform.module';
 export { BasePlugin } from './plugin/base-plugin';
 export { PackageService } from './plugin/package.service';
