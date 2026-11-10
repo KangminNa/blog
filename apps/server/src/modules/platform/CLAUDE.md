@@ -17,7 +17,7 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 ## 공개 API (`index.ts`)
 - 기반 클래스: `BaseService` · `EntityService` · `BaseQuery` · `BaseRepository` · `TableRepository` · `BaseEntity` · `TableEntity` · `BaseRequest`(+`RequestFields` · `VersionInput`) · `BaseGateway` · `BaseTool`
 - 코어의 쿼리 도구 (`base/table-query.ts`, 2026-11-08): 조건 규칙(`Rule`)으로 표 하나를 읽고 쓴다. `TableReader`(`rows` · `row` · `exists` · `pageOf`)는 `BaseQuery`가, `TableWriter`(+ `insertRows` · `updateRows` · `deleteRows`)는 `BaseRepository`가 상속한다. 같은 모양은 한 번만 SQL로 만들어 기억한다. 그 기능만의 쿼리는 각 모듈이 `this.sql`로. 모듈은 `drizzle-orm`을 직접 가져오지 않는다
-- 기능 패키지: 동작(`Operation` · `Read` · `Command`, `Work`), 입구(`PackageController` · `PackageService` · `PackageTool`), 패키지의 생성된 표가 쓰는 `TableColumns` (객체설계 12장)
+- 기능 패키지: 동작(`Operation` · `Read` · `Command`, `Work`), 입구(`PackageController` · `PackageService` · `PackageTool`), 패키지의 생성된 표가 쓰는 `TableColumns` (객체설계 12장). 임대 확인 `Leases` · `LeasedWork`(플러그인 API 0.3): 일을 빌려 주는 모듈이 확인하는 길을 등록하고 패키지는 `work.leased(id)`로 묻는다 (platform은 누가 등록하는지 모른다)
 - `Database`, `Sql`·`Row`(라이브러리 타입 별칭), `Actor`와 `OwnerActor`·`DeviceActor`·`AgentActor`·`ApprovedActor`·`SystemActor`·`VisitorActor`.
   권한은 `assertCan(권한)`(기기·에이전트가 받은 권한), 관리 일은 종류로 묻는다: `assertOwner()`(주인만), `assertOwnerOrSystem()`(주인과 명령줄·일꾼: 플러그인, 서버 키 교체, 복원)
 - 같은 트랜잭션에 들어가는 것: `Outbox`(이벤트, 변경 신호, 일꾼 깨우기), `ChangeSignal`(내용 없는 신호), `Idempotency`(같은 request_id는 한 번만)

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { POST_STATUS_LABELS } from '../../_blog/labels';
 import type { EditablePost } from '../../_blog/types';
 import { api, describe } from '../../_lib/client-api';
@@ -9,7 +9,9 @@ import { useLiveValue } from '../../_lib/use-live';
 import {
   actionLabel,
   MANUAL_ACTIONS,
+  MERGE_PULL,
   PUBLISH_POST,
+  PUBLISH_SITE,
   RAISE_LIMIT,
   TARGET_LABELS,
   TASK_STATUS,
@@ -18,7 +20,7 @@ import {
 } from '../../_task/labels';
 import { APPROVAL_TOPICS, useAgents } from '../../_task/live';
 import { ApprovalPill } from '../../_task/parts';
-import type { Agent, Approval, TaskDetail } from '../../_task/types';
+import type { Agent, Approval, CodePull, TaskDetail } from '../../_task/types';
 import { useNotify } from '../AdminShell';
 
 const DONE_NOTES: Record<string, string> = {
@@ -126,6 +128,8 @@ function Loaded({
         <PostTarget approval={a} post={post.data} status={post.status} error={post.error} />
       ) : a.action === RAISE_LIMIT ? (
         <LimitTarget approval={a} agent={limitAgent ?? null} />
+      ) : a.action === MERGE_PULL ? (
+        <PullTarget approval={a} />
       ) : (
         <OtherTarget approval={a} />
       )}
@@ -257,6 +261,51 @@ function LimitTarget({ approval, agent }: { approval: Approval; agent: Agent | n
   );
 }
 
+/** code.pr.merge: 패키지가 기록한 PR (에이전트의 메모가 아니라). 결재 뒤 PR이 바뀌었으면 알린다 */
+function PullTarget({ approval }: { approval: Approval }) {
+  const [pull, setPull] = useState<CodePull | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const { id, version } = approval.target;
+
+  useEffect(() => {
+    void api<CodePull>('GET', `/api/p/code-github/pulls/${id}`).then((reply) =>
+      reply.ok ? setPull(reply.data) : setProblem(describe(reply.error)),
+    );
+  }, [id]);
+
+  if (problem) return <p className="error">{problem}</p>;
+  if (!pull) return <p className="label-mono">PR 불러오는 중…</p>;
+  const failed = pull.checks.filter((c) => !c.ok);
+  return (
+    <section className="preview" aria-label="PR">
+      <b>
+        <a href={pull.url} target="_blank" rel="noreferrer">
+          {pull.repoName} #{pull.number}
+        </a>
+      </b>
+      {pull.version !== version && (
+        <p className="warn">
+          결재 뒤 PR이 바뀌었어요 (판 {version} → {pull.version}). 승인해도 머지로 남지 않아요
+        </p>
+      )}
+      <dl className="kv">
+        <dt>브랜치</dt>
+        <dd>{pull.branch}</dd>
+        <dt>커밋</dt>
+        <dd>{pull.headSha.slice(0, 7)}</dd>
+        <dt>검사</dt>
+        <dd>
+          {pull.checks.length === 0
+            ? '검사 명령 없음'
+            : failed.length === 0
+              ? `${pull.checks.length}개 통과`
+              : `실패: ${failed.map((c) => c.command).join(', ')}`}
+        </dd>
+      </dl>
+    </section>
+  );
+}
+
 function OtherTarget({ approval }: { approval: Approval }) {
   const { kind, id, version } = approval.target;
   return (
@@ -341,11 +390,14 @@ function Decide({
         {noteProblem && <p className="error">{noteProblem}</p>}
       </div>
       {problem && <p className="error">{problem}</p>}
-      {MANUAL_ACTIONS[approval.action] && (
+      {approval.action === PUBLISH_SITE && (
         <p className="note">
           서버는 실행하지 않아요. <Link href="/admin/p/browser-tabs">브라우저 화면</Link>에서 직접
           발행한 뒤 눌러 주세요
         </p>
+      )}
+      {approval.action === MERGE_PULL && (
+        <p className="note">서버는 머지하지 않아요. GitHub에서 PR을 리뷰 · 머지한 뒤 눌러 주세요</p>
       )}
       <div className="row">
         <button

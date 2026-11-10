@@ -1,3 +1,4 @@
+import type { PullView } from '../../../../plugins/code-github/server/views';
 import type { AgentListView, AgentView } from '../../../server/src/modules/task/agent/agent.view';
 import type {
   ApprovalPageView,
@@ -56,3 +57,5 @@ export type AgentHeartbeat = NonNullable<Agent['heartbeat']>;
 export type Usage = ReturnType<UsageView['toJSON']>;
 export type UsageAgent = Usage['agents'][number];
 export type UsageWindow = Usage['plan'][number];
+/** code-github 패키지의 PR (결재 화면의 code.pr.merge 대상). 패키지의 view가 원본이다 */
+export type CodePull = ReturnType<PullView['toJSON']>;

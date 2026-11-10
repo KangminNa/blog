@@ -61,7 +61,7 @@
 | 변경 묶음 | `GET /api/changes?status=waiting&cursor=`, `POST /api/changes/:id/ops/:seq/decide { version, decision: approve·decline }`, `POST /api/changes/:id/revert { version }` | 6 |
 | 백업 | `GET /api/archive.zip` (주인만, 보관 형식) | 6 |
 | 세션 정리 | `GET·PUT /api/tidy/settings { autoTidy, version }`, `POST /api/tidy/backlog` → `{ requested, remaining }` (주인만. 기본은 꺼짐. 대표 wiki가 없고 이번 판을 아직 요청하지 않은 세션을 오래된 순으로 20개씩 요청. 실패한 세션은 새 판이 생기면 다시 대상이 된다) | 6 |
-| 기능 패키지 | `/api/p/<패키지>/…`: 목록 파일의 `api`가 경로를 정하고 켜진 패키지만 열린다 (꺼지면 404). `browser-tabs`: 탭 읽기 `reads`, 사이트 `sites` · `sites/:id` · `sites/:id/tasks`, 화면 확인 `viewer` (모두 주인만, [브라우저](브라우저.md) 5장) | 패키지 |
+| 기능 패키지 | `/api/p/<패키지>/…`: 목록 파일의 `api`가 경로를 정하고 켜진 패키지만 열린다 (꺼지면 404). `browser-tabs`: 탭 읽기 `reads`, 사이트 `sites` · `sites/:id` · `sites/:id/tasks`, 화면 확인 `viewer` (모두 주인만, [브라우저](브라우저.md) 5장). `code-github`: 저장소 `repos`(목록 · 등록 `{ name, url, base?, setup?, checks? }` · `PATCH repos/:id { version, … }`(주소는 못 바꿈) · `POST repos/:id/archive { version }`), 일 맡기기 `POST repos/:id/tasks { requestId, instruction, paths[], agentId? }`(kind `code`, 그때의 저장소 값을 `payload.code`로), PR `pulls?status=` · `pulls/:id`(모두 주인만, [코드 작업](코드작업.md) 5장) | 패키지 |
 | 스케줄 | `GET·POST /api/schedules`, `PATCH /api/schedules/:id`, `POST /api/schedules/:id/run`. 에이전트를 정해진 시각에 깨우는 일은 지금 하트비트가 한다 | 7 |
 
 결재는 작업에 묶이지 않는 경우(한도 변경 등)가 있어 작업 아래에 두지 않는다. 결재 메뉴는 위키 제안도 함께 보여 주되, 데이터는 각 모듈이 따로 가진다.
@@ -89,6 +89,7 @@
 | `read_*` | `search_wikis`, `get_wiki`, `neighbors` | AI 도구, 에이전트 | 6 |
 | `tidy` | `submit_changes` | 에이전트 | 6 |
 | `run` | `browser_tab_pending {}` → `{ reads: [{ id, url }] }`, `browser_tab_save { id, title?, body?, error? }` → `{ id, status }` | 러너 (탭 읽기, `browser-tabs`가 켜져 있을 때만) | 패키지 |
+| `run` | `code_credential { task_id }` → `{ token, api_url, pull: { number, branch } \| null }`, `code_pull_opened { task_id, number, url, branch, head_sha, checks: [{ command, ok }] }` → `{ pull_id, version }` | 코드 러너 칸 (`code-github`가 켜져 있을 때, 그 code 작업의 임대를 쥔 칸만. 토큰은 메모리에만) | 패키지 |
 
 MCP 입력과 응답은 snake_case다.
 

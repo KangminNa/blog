@@ -38,13 +38,19 @@ export const PUBLISH_POST = 'blog.post.publish';
 export const RAISE_LIMIT = 'task.agent.raise_limit';
 /** browser-tabs 패키지: 에이전트가 발행 직전에 멈추고 올리는 결재. 서버는 실행하지 않고 주인이 직접 발행한다 */
 export const PUBLISH_SITE = 'browser.site.publish';
+/** code-github 패키지의 PR 머지 결재 (주인이 GitHub에서 머지한 뒤 승인) */
+export const MERGE_PULL = 'code.pr.merge';
 
 /** 서버가 실행하지 않고 주인이 직접 하는 동작: 승인 버튼의 말이 바뀐다 */
-export const MANUAL_ACTIONS: Record<string, string> = { [PUBLISH_SITE]: '직접 발행했어요' };
+export const MANUAL_ACTIONS: Record<string, string> = {
+  [PUBLISH_SITE]: '직접 발행했어요',
+  [MERGE_PULL]: '머지했어요',
+};
 
 export const ACTION_LABELS: Record<string, string> = {
   [PUBLISH_POST]: '글 공개',
   [PUBLISH_SITE]: '브라우저에서 발행',
+  [MERGE_PULL]: 'PR 머지',
   'sns.post.send': 'SNS 전송',
   [RAISE_LIMIT]: '한도 변경',
 };
@@ -57,6 +63,7 @@ export const TARGET_LABELS: Record<string, string> = {
   post: '글',
   agent: '에이전트',
   browser_site: '사이트',
+  pull_request: 'PR',
 };
 
 export const EVENT_KINDS: Record<string, string> = {
