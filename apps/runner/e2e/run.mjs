@@ -54,7 +54,8 @@ docker([
   'node',
   '--test',
   '--test-concurrency=1',
-  '--test-timeout=300000',
+  // 파일 하나가 한 시험이라 묶음을 모두 합친 시간보다 넉넉해야 한다 (지금 약 5분)
+  '--test-timeout=600000',
   '--test-force-exit',
   '-r',
   '@swc-node/register',

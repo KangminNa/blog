@@ -725,7 +725,7 @@ describe('서버 러너는 연결 값으로 스스로 연결한다', () => {
 });
 
 // 코드 러너 칸 (docs/코드작업.md 2단계): 칸마다 기기 하나로 스스로 붙고(서버 러너와 다른 연결 값), 코드 작업은 칸에게만 간다.
-// 칸 안의 작업 공간(clone · 셸)은 3단계라, 지금 칸은 AI를 띄우지 않고 실패로 끝낸다.
+// 여기서는 저장소 정보(payload.code)가 없는 코드 작업이라 칸이 AI를 띄우지 않고 실패로 끝낸다. 작업 공간은 아래 '코드 작업 (작업 공간)'.
 describe('코드 러너 칸', () => {
   test('칸 2개가 각자 기기로 붙고, 코드 작업은 칸 하나가 맡는다', async () => {
     const file = join(spyDir, 'code-pairing');
@@ -758,7 +758,7 @@ describe('코드 러너 칸', () => {
       });
       const created = await newTask(coder, '', { kind: 'code' });
       const task = await taskIn(created.id, 'failed');
-      assert.match(String((task.result as Json).error), /아직 코드 작업 공간이 없어요/);
+      assert.match(String((task.result as Json).error), /코드 작업의 저장소 정보가 틀려요/);
       const takers = slots.filter((s) => s.logs.includes(`${created.id}: 일을 맡았어요`));
       assert.equal(takers.length, 1, '칸 하나가 맡는다');
       assert.equal(
