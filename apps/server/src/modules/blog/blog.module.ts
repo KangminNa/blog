@@ -1,5 +1,5 @@
 import { Module, type OnModuleInit } from '@nestjs/common';
-import { CoreWorkers } from '../platform';
+import { BlobStore, CoreWorkers } from '../platform';
 import { VaultModule } from '../vault';
 import { AssetController, FileController } from './asset/asset.api';
 import { AssetQuery } from './asset/asset.query';
@@ -41,10 +41,21 @@ export class BlogModule implements OnModuleInit {
   constructor(
     private readonly workers: CoreWorkers,
     private readonly approved: PublishApprovedHandler,
+    private readonly blobs: BlobStore,
+    private readonly assets: AssetQuery,
+    private readonly basket: BasketQuery,
   ) {}
 
   onModuleInit(): void {
     this.workers.on(PublishApprovedHandler.TOPIC, this.approved);
     this.workers.expect(PublishApprovedHandler.TOPIC);
+    // 파일을 가리키는 칸: 쓰는 동안 platform이 파일을 지우지 않게
+    this.blobs.registerUse(
+      ['blog.assets.blob_hash', 'blog.posts.cover_blob_hash'],
+      (actor, hashes) => this.assets.usedBlobs(actor, hashes),
+    );
+    this.blobs.registerUse(['work.basket_items.blob_hash'], (actor, hashes) =>
+      this.basket.usedBlobs(actor, hashes),
+    );
   }
 }

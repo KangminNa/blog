@@ -71,6 +71,7 @@ change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings
 platform
 
 ## 지켜야 할 것
+- 파일을 가리키는 칸(`attachments` · `graph_snapshots`)은 `BlobStore.registerUse`로 등록해 둔다 (`SessionQuery` · `GraphQuery`의 `usedBlobs`). 새 칸을 만들면 함께 등록한다: 빠뜨리면 platform이 그 파일을 지운다
 - 판(session_revisions · wiki_revisions)은 추가만 한다. 트리거가 UPDATE·DELETE를 막는다
 - 그래프를 바꾸는 쓰기는 모두 `ChangeService`를 거쳐 변경 묶음으로 남긴다 (관리 화면 편집 포함). 이 Service만 여러 데이터 묶음의 Repository를 쓴다 (객체설계 4장 예외). `TidyService`가 세션 Repository로 부르는 `noteTidyRequested` 하나는 요청 기록이라 그래프를 바꾸지 않는다
 - AI 변경의 바로 합치기·검토·거부는 `ReviewPolicy` 한 곳에서만 판단한다. 규칙을 늘릴 때는 `ReviewRule` 하위 클래스 하나

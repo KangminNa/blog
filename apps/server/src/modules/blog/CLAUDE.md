@@ -60,6 +60,7 @@ platform, vault(Query만, 읽기 전용)
 - 기기와 에이전트가 쓴 판의 `actor_type`은 `ai`. `request_id`는 AI가 만들어서 에이전트는 작업마다 따로 센다
 - 사진의 공개 여부는 파일이 아니라 그 파일이 붙은 글로 정한다: 공개·링크 공개 글 하나에라도 붙어 있으면 누구나, 나머지는 주인만. 임시·휴지통 글의 사진은 방문자에게 없는 파일과 똑같이 404
 - 파일은 트랜잭션 밖에서 쓴다. 파일이 먼저고 행이 나중이다. 행 없이 남은 파일은 다시 올리면 그대로 쓰인다
+- 파일을 가리키는 칸(`assets` · `posts.cover_blob_hash` · `basket_items`)은 `BlobStore.registerUse`로 등록해 둔다 (`AssetQuery` · `BasketQuery`의 `usedBlobs`). 새 칸을 만들면 함께 등록한다: 빠뜨리면 platform이 그 파일을 지운다
 - SVG는 스크립트를 담을 수 있어 받지 않는다. 형식은 요청 머리글이 아니라 파일의 앞부분으로만 정한다
 - 소재에는 비공개 자료가 담긴다. REST는 주인만(`assertOwner`, write 권한 기기도 안 된다), MCP는 write 권한으로만 읽는다. 링크는 http·https만
 - 세션·글을 담을 때는 트랜잭션을 열기 전에 Query로 있는지 확인한다

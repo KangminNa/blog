@@ -34,6 +34,16 @@ export class AssetQuery extends BaseQuery {
     super(db);
   }
 
+  /** 넘긴 해시 중 사진 · 글 표지가 가리키는 것 (platform의 BlobStore.sweep이 묻는다. 휴지통 글의 것도 쓰는 것이다) */
+  async usedBlobs(actor: Actor, hashes: readonly string[]): Promise<readonly string[]> {
+    actor.assertOwnerOrSystem();
+    const rows = await this.sql`
+      SELECT blob_hash AS hash FROM blog.assets WHERE blob_hash = ANY(${hashes as string[]}::text[])
+      UNION
+      SELECT cover_blob_hash FROM blog.posts WHERE cover_blob_hash = ANY(${hashes as string[]}::text[])`;
+    return rows.map((row) => String(row.hash));
+  }
+
   async file(actor: Actor, hash: string): Promise<AssetFile> {
     const open = await this.inOpenPost(hash);
     if (!open && actor.kind !== 'owner') throw new NotFound(AssetQuery.MISSING);

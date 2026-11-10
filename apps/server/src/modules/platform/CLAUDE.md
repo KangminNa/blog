@@ -28,7 +28,9 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 - `ArchiveQuery`: 보관 형식 파일 묶음. 내용을 가진 모듈이 `onModuleInit`에서 `register`로 자기 파일을, `registerRestore`로 복원을 등록한다
 - `ArchiveRestoreService`: 빈 Cairn에 복원 (`preview` · `apply`). GitHub와 zip이 같은 길이다. 주인과 `SystemActor`만 부른다. `steadyRead`: 복원과 겹치지 않게 읽기
 - `ArchivePart`(모듈의 복원 몫), `ArchiveRecord`(보관 파일의 앞부분·항목 읽기), `ArchiveBlob`, `ArchiveReport`(개수와 알림)
-- `BlobStore`: 내용 주소 파일 저장소 (`Blob`). 트랜잭션 밖에서 부른다
+- `BlobStore`: 내용 주소 파일 저장소 (`Blob`). 트랜잭션 밖에서 부른다. 큰 파일은 `saveStream`(받으며 크기 · 해시를 세고 한도 · 해시가 틀리면 아무것도 남기지 않음), 디스크 여유는 `freeBytes`
+  - 지우기: 모듈은 파일을 값으로만 가리켜 DB가 지켜 주지 않는다. 파일을 가리키는 칸을 가진 모듈은 `onModuleInit`에서 `registerUse([칸], (actor, hashes) => 쓰는 해시)`로 등록하고, `BlobSweepJob`(6시간마다)이 아무도 쓰지 않는 7일 지난 파일만 지운다. 같은 해시의 저장 · 지우기는 advisory 잠금으로 겹치지 않고, 다시 저장하면 `created_at`이 새로 된다. `blob-sweep.api.test`가 DB의 `*blob_hash` 칸이 모두 등록됐는지 본다
+- `FileSniff`: 파일 앞부분으로 형식 알아보기 (blog의 사진, task의 결과물)
 - `ZipFile`: 라이브러리 없이 zip 만들기 (node:zlib). 앱에 올릴 스킬 묶음, 보관 형식 내보내기
 - `ZipReader` · `ZipLimits`: 믿을 수 없는 zip 읽기. 개수·크기 한도, 위험한 이름 거절, CRC 검사. 넘치면 `TooLarge`
 - 오류: `DomainError`와 단계별 하위 클래스, `DomainEvent`, `CurrentActor`(Controller 인자 데코레이터)

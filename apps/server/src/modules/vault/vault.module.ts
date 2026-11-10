@@ -1,5 +1,5 @@
 import { Module, type OnModuleInit } from '@nestjs/common';
-import { CoreWorkers } from '../platform';
+import { BlobStore, CoreWorkers } from '../platform';
 import { CategoryController } from './category/category.api';
 import { CategoryQuery } from './category/category.query';
 import { ChangeController } from './change/change.api';
@@ -78,10 +78,20 @@ export class VaultModule implements OnModuleInit {
     private readonly workers: CoreWorkers,
     private readonly tidy: TidyRequestHandler,
     private readonly postMarks: PostMarkHandler,
+    private readonly blobs: BlobStore,
+    private readonly sessions: SessionQuery,
+    private readonly graph: GraphQuery,
   ) {}
 
   onModuleInit(): void {
     this.workers.on('vault.session.saved', this.tidy);
     this.workers.on('blog.post.*', this.postMarks);
+    // 파일을 가리키는 칸: 쓰는 동안 platform이 파일을 지우지 않게
+    this.blobs.registerUse(['vault.attachments.blob_hash'], (actor, hashes) =>
+      this.sessions.usedBlobs(actor, hashes),
+    );
+    this.blobs.registerUse(['vault.graph_snapshots.blob_hash'], (actor, hashes) =>
+      this.graph.usedBlobs(actor, hashes),
+    );
   }
 }

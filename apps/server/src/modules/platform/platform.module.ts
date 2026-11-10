@@ -19,6 +19,7 @@ import { PluginService } from './plugin/plugin.service';
 import { PluginRegistry } from './plugin/plugin-registry';
 import { ChangeStream } from './stream/change-stream';
 import { StreamController } from './stream/stream.api';
+import { BlobSweepJob } from './worker/blob-sweep.job';
 import { CoreWorkers } from './worker/core-workers';
 import { OutboxWorker } from './worker/outbox-worker';
 
@@ -29,6 +30,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     PackageService,
     Database,
     BlobStore,
+    BlobSweepJob,
     HealthQuery,
     PluginQuery,
     PluginService,
@@ -81,9 +83,12 @@ export class PlatformModule implements OnModuleInit {
   constructor(
     private readonly rotation: SecretRotation,
     private readonly plugins: PluginService,
+    private readonly workers: CoreWorkers,
+    private readonly sweep: BlobSweepJob,
   ) {}
 
   onModuleInit(): void {
     this.rotation.register('플러그인 설정', (actor) => this.plugins.resealSecrets(actor));
+    this.workers.every(this.sweep, BlobSweepJob.EVERY_MS);
   }
 }
