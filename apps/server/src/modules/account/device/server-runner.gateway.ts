@@ -11,10 +11,10 @@ export class ServerRunnerGateway extends BaseGateway {
   /** 서버 러너 컨테이너는 다른 사용자로 돌아 읽기만 허락한다. 볼륨은 서버와 러너에게만 붙는다 */
   private static readonly SERVER_MODE = 0o644;
   /**
-   * 칸의 러너는 서버와 같은 사용자(node, 1000)다. 칸 안의 AI는 다른 사용자로 돌므로(3단계) 그 사용자는 읽지 못하게.
-   * 칸에 셸이 있으니 연결 값이 AI에게 가면 AI가 스스로 칸 기기가 될 수 있다
+   * 칸의 러너는 root(권한 몇 개만, DAC_OVERRIDE 없음)이고 node 그룹(1000)에 든다. 그래서 그룹이 읽게 둔다.
+   * 칸 안의 AI는 다른 사용자(agent)라 읽지 못한다: 칸에 셸이 있으니 연결 값이 AI에게 가면 AI가 스스로 칸 기기가 될 수 있다
    */
-  private static readonly CODE_MODE = 0o600;
+  private static readonly CODE_MODE = 0o640;
 
   constructor(
     private readonly policy: ServerRunnerPolicy,

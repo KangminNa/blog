@@ -16,8 +16,11 @@ x-code-runner: &code-runner
   read_only: true
   tmpfs:
     - /tmp:size=1g,mode=1777
-    - /home/node:size=256m,uid=1000,gid=1000,mode=700
+    - /root:size=64m,mode=700   # 러너(root)의 홈. AI의 홈은 작업 자리 안에 따로 있다
+  user: "0:0"               # 러너는 root(아래 권한만), AI · setup · checks는 agent(1001, CAIRN_AGENT_USER)
   cap_drop: [ALL]
+  cap_add: [CHOWN, SETUID, SETGID, KILL]   # 작업 자리를 agent에게 넘기기, agent로 띄우기, agent 프로세스 끄기
+  group_add: ["1000"]       # 연결 값 파일(0640, node 그룹)을 읽으려고. agent는 이 그룹에 없다
   security_opt: [no-new-privileges:true]
   mem_limit: 4g             # 칸 하나의 한도. 설치 · 빌드 · 테스트가 이 안에서 돈다
   cpus: 2
@@ -25,6 +28,7 @@ x-code-runner: &code-runner
   networks: [code-internal]   # 바깥으로 가는 길 없음. 서버와 egress만 보인다
   volumes:
     - code-pairing:/run/cairn-code:ro
+    - /work                 # 칸마다 자기 작업 자리 (익명 볼륨: 메모리가 아니라 디스크). 작업이 끝나면 비운다
   depends_on:
     server:
       condition: service_healthy

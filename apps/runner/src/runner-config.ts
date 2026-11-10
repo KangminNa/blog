@@ -1,4 +1,5 @@
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
+import { AgentUser } from './agent-user';
 
 /** 설정이 빠졌거나 틀림. 시작하지 않고 이 문구만 보여 준다 */
 export class ConfigProblem extends Error {}
@@ -10,6 +11,7 @@ export class RunnerConfig {
   /** apps/runner/src 기준 저장소의 skills/ */
   private static readonly DEFAULT_SKILLS = resolve(__dirname, '../../../skills');
   private static readonly SLOT = /^[1-9][0-9]?$/;
+  private static readonly DEFAULT_WORK_DIR = '/work';
 
   constructor(
     /** 끝 슬래시 없는 블로그 주소 */
@@ -34,9 +36,17 @@ export class RunnerConfig {
      * 코드 러너 이미지(CAIRN_SANDBOX=1)에서 연결 값 파일로만 쓴다
      */
     readonly slot: string | null = null,
+    /** 칸에서 AI · setup · checks를 돌릴 사용자 (CAIRN_AGENT_USER). 칸이 아니면 null */
+    readonly agentUser: AgentUser | null = null,
+    /** 칸의 작업 자리들을 둘 폴더 (CAIRN_WORK_DIR, 기본 /work) */
+    readonly workDir: string = RunnerConfig.DEFAULT_WORK_DIR,
   ) {}
 
-  static fromEnv(env: Readonly<Record<string, string | undefined>>): RunnerConfig {
+  /** uid: 이 프로세스의 사용자 (시험이 바꿔 끼운다) */
+  static fromEnv(
+    env: Readonly<Record<string, string | undefined>>,
+    uid: number = process.getuid?.() ?? -1,
+  ): RunnerConfig {
     const token = env.CAIRN_RUNNER_TOKEN?.trim() || null;
     const pairingFile = env.CAIRN_RUNNER_PAIRING_FILE?.trim() || null;
     const missing = [
@@ -56,6 +66,8 @@ export class RunnerConfig {
       env.CAIRN_RUNNER_CODEX_CLI?.trim() || RunnerConfig.DEFAULT_CODEX_CLI,
       env.CAIRN_BROWSER_URL?.trim() ? RunnerConfig.browser(env.CAIRN_BROWSER_URL) : null,
       slot,
+      slot === null ? null : RunnerConfig.agentOf(env, uid),
+      RunnerConfig.workDirOf(env),
     );
   }
 
@@ -71,6 +83,8 @@ export class RunnerConfig {
       this.codexCliPath,
       this.browserUrl,
       this.slot,
+      this.agentUser,
+      this.workDir,
     );
   }
 
@@ -97,6 +111,35 @@ export class RunnerConfig {
         '코드 러너 칸은 연결 값 파일(CAIRN_RUNNER_PAIRING_FILE)로만 붙어요. CAIRN_RUNNER_TOKEN은 비워 두세요',
       );
     return slot;
+  }
+
+  /**
+   * 칸의 AI를 돌릴 사용자. 러너가 root이고 agent가 root가 아닐 때만 벽이 선다 (사용자를 바꾸려면 root가 SETUID를 가져야 한다).
+   * self는 시험용: 같은 사용자라 AI가 러너의 연결 값과 메모리를 읽을 수 있다 (러너가 시작할 때 알린다)
+   */
+  private static agentOf(
+    env: Readonly<Record<string, string | undefined>>,
+    uid: number,
+  ): AgentUser {
+    const raw = env.CAIRN_AGENT_USER?.trim() ?? '';
+    const agent = AgentUser.parse(raw);
+    if (agent === null)
+      throw new ConfigProblem(
+        `CAIRN_AGENT_USER는 "uid:gid"(예: 1001:1001)나 self(시험용)예요: ${raw || '(비어 있음)'}`,
+      );
+    if (agent.isSelf) return agent;
+    if (uid !== 0)
+      throw new ConfigProblem('AI를 다른 사용자로 돌리려면 코드 러너 칸의 러너가 root여야 해요');
+    if (agent.uid === 0 || agent.gid === 0)
+      throw new ConfigProblem('CAIRN_AGENT_USER는 root가 아닌 사용자여야 해요');
+    return agent;
+  }
+
+  private static workDirOf(env: Readonly<Record<string, string | undefined>>): string {
+    const dir = env.CAIRN_WORK_DIR?.trim() || RunnerConfig.DEFAULT_WORK_DIR;
+    if (!isAbsolute(dir) || dir === '/')
+      throw new ConfigProblem(`CAIRN_WORK_DIR은 / 밖의 절대 경로여야 해요: ${dir}`);
+    return dir.replace(/\/+$/, '');
   }
 
   /** CDP 주소: 이 컴퓨터나 같은 망의 브라우저만 (http). 끝 슬래시는 뗀다 */

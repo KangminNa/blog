@@ -44,7 +44,7 @@ RUN pnpm --filter @cairn/server build \
 # 운영 서버·일꾼: 저장소와 같은 모양으로 둔다 (/app/apps/server · /app/plugins · /app/skills).
 # 플러그인은 목록 파일이 가리키는 .ts 옆에 컴파일한 .js를 얹는다. 실행 중에 TS를 읽지 않는다
 # 코드는 root 소유로 두고, 쓸 수 있는 곳은 사진 볼륨(/data/blobs)과 러너 연결 값 볼륨뿐이다.
-# 코드 러너 칸의 연결 값 폴더(/run/cairn-code)는 node만 연다: 칸 안의 AI(다른 사용자)가 읽지 못하게
+# 코드 러너 칸의 연결 값 폴더(/run/cairn-code)는 node와 node 그룹만 연다: 칸의 러너는 그 그룹에 들고, 칸 안의 AI(agent)는 읽지 못한다
 FROM node:24-bookworm-slim AS server
 ENV NODE_ENV=production
 WORKDIR /app/apps/server
@@ -56,7 +56,7 @@ RUN printf '#!/bin/sh\nexec node /app/apps/server/src/main.cli.js "$@"\n' > /usr
     && chmod +x /usr/local/bin/cairn-admin \
     && mkdir -p /data/blobs /run/cairn-runner /run/cairn-code \
     && chown node:node /data/blobs /run/cairn-runner /run/cairn-code \
-    && chmod 700 /run/cairn-code
+    && chmod 750 /run/cairn-code
 USER node
 CMD ["node", "src/main.api.js"]
 
@@ -103,17 +103,20 @@ USER node
 CMD ["node", "src/main.js"]
 
 # 코드 러너 칸 (docs/코드작업.md): 운영 러너에 저장소 작업 도구(git, 네이티브 모듈을 빌드할 make · g++ · python3)를 더한다.
-# 칸에서는 AI가 셸을 쓰므로(3단계) AI를 돌릴 다른 사용자 agent(1001)를 둔다: 러너(node, 1000)의 연결 값과 토큰을 읽지 못하게.
-# CAIRN_SANDBOX=1은 이 이미지에만 있다. 러너는 이 값이 있을 때만 칸 번호(CAIRN_RUNNER_SLOT)를 받는다
+# 칸에서는 AI가 셸을 쓰므로 AI · setup · checks는 다른 사용자 agent(1001)로 돈다: 러너의 메모리 · 환경 · 연결 값과 토큰을 읽지 못하게.
+# 사용자를 바꾸려면 러너가 root여야 한다. compose가 권한을 CHOWN · SETUID · SETGID · KILL만 남긴다 (DAC_OVERRIDE 없음).
+# CAIRN_SANDBOX=1은 이 이미지에만 있다. 러너는 이 값이 있을 때만 칸 번호(CAIRN_RUNNER_SLOT)를 받는다.
+# /work는 작업 자리 (compose가 칸마다 볼륨을 붙인다). /run/cairn-code는 연결 값 볼륨이 붙는 곳 (node 그룹만)
 FROM runner AS code-runner
 USER root
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates make g++ python3 \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --uid 1001 --user-group --no-create-home --shell /usr/sbin/nologin agent \
- && mkdir -p /run/cairn-code && chown node:node /run/cairn-code && chmod 700 /run/cairn-code
-ENV CAIRN_SANDBOX=1
-USER node
+ && mkdir -p /run/cairn-code /work && chown node:node /run/cairn-code && chmod 750 /run/cairn-code
+ENV CAIRN_SANDBOX=1 \
+    CAIRN_AGENT_USER=1001:1001
+USER root
 CMD ["node", "src/main.js"]
 
 # 나가는 프록시 빌드

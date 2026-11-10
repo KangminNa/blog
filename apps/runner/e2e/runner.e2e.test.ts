@@ -728,6 +728,7 @@ describe('코드 러너 칸', () => {
         CAIRN_RUNNER_PAIRING_FILE: file,
         CAIRN_RUNNER_SLOT: slot,
         CAIRN_SANDBOX: '1',
+        CAIRN_AGENT_USER: 'self',
       }),
     );
     try {

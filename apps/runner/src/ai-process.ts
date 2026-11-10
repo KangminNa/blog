@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import type { AgentUser } from './agent-user';
 
 /** AI CLI가 끝난 모습 */
 export class ChildExit {
@@ -31,12 +32,15 @@ export class AiProcess {
     env: Readonly<Record<string, string>>,
     prompt: string,
     onLine: (line: string) => void,
+    /** 코드 러너 칸이면 AI를 돌릴 사용자 (agent). 아니면 러너와 같은 사용자 */
+    user: AgentUser | null = null,
   ) {
     const child = spawn(bin, args, {
       cwd,
       env,
       detached: true,
       stdio: ['pipe', 'pipe', 'pipe'],
+      ...user?.spawnOptions(),
     });
     this.pid = child.pid;
     child.stdin.on('error', () => {});

@@ -12,7 +12,7 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
   `OAuthController`(`/.well-known/*`, `/oauth/*`: 표준 경로라 /api 아래가 아님), `DeviceController`(`api/connect` 승인 화면, `api/devices` 기기 화면)
 - 러너는 OAuth 없이 콘솔에서 만든다 (`POST api/devices/runner`, `Device.forRunner`). 권한은 `run` 하나, 토큰은 응답에 한 번
 - 서버 러너는 스스로 연결한다 (`POST api/devices/server-runner`, `Device.forServerRunner`): 서버 키에서 만든 연결 값(`ServerRunnerPolicy`)을 서버가 시작할 때 볼륨에 쓰고(`ServerRunnerGateway`, `CAIRN_RUNNER_PAIRING_FILE`), 러너가 그 값을 내밀면 토큰을 준다
-- 코드 러너 칸도 같은 길로 붙는다 (`POST api/devices/code-runner { secret, slot }`, `Device.forCodeRunner`, docs/코드작업.md). 연결 값은 서버 러너와 다르고(`codeSecret`, 파일 `CAIRN_CODE_PAIRING_FILE`, 0600) 칸마다 기기 하나("코드 러너 <칸>"). 권한은 `run` · `sandbox`로 정해져 있다
+- 코드 러너 칸도 같은 길로 붙는다 (`POST api/devices/code-runner { secret, slot }`, `Device.forCodeRunner`, docs/코드작업.md). 연결 값은 서버 러너와 다르고(`codeSecret`, 파일 `CAIRN_CODE_PAIRING_FILE`, 0640: 칸의 러너는 root지만 남의 파일을 읽는 권한이 없어 node 그룹으로 읽는다) 칸마다 기기 하나("코드 러너 <칸>"). 권한은 `run` · `sandbox`로 정해져 있다
 - `guard/`: `ActorGuard` (모든 요청: 작업 토큰 → `AgentActor`(작업이 살아 있는지는 mcp 모듈이 묻는다), 그 밖의 Bearer 토큰 → `DeviceActor`. 둘 다 `/mcp`에서만 요청자가 되고 REST에서는 방문자와 같다. 로그인 쿠키 → `OwnerActor`. 로그인 쿠키로 오는 쓰기 요청은 출처가 사이트 주소일 때만, 아니면 403 `origin`)
 
 엔티티는 `TableEntity`(platform)로 표 한 줄을 들고, Repository(`TableRepository`)는 바뀐 칸만 저장한다 (객체설계 6장). 칼럼을 아는 곳은 `account.tables.ts`, Entity의 `RULES`, Input의 `COLUMNS`, View의 `toJSON`이다.

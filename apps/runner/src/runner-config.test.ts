@@ -94,6 +94,7 @@ describe('러너 설정', () => {
       CAIRN_RUNNER_PAIRING_FILE: '/run/cairn-code/pairing',
       CAIRN_RUNNER_SLOT: '2',
       CAIRN_SANDBOX: '1',
+      CAIRN_AGENT_USER: 'self',
     };
     const slot = RunnerConfig.fromEnv(slotEnv);
     assert.equal(slot.slot, '2');
@@ -109,5 +110,41 @@ describe('러너 설정', () => {
     refused({ CAIRN_SANDBOX: undefined }, /코드 러너 이미지/);
     refused({ CAIRN_SANDBOX: 'true' }, /코드 러너 이미지/);
     refused({ CAIRN_RUNNER_TOKEN: 'device-secret' }, /연결 값 파일/);
+  });
+
+  test('칸의 AI 사용자: root인 러너만 다른 사용자로 돌린다. 작업 자리는 / 밖의 절대 경로', () => {
+    const { CAIRN_RUNNER_TOKEN: _token, ...rest } = env;
+    const slotEnv = {
+      ...rest,
+      CAIRN_RUNNER_PAIRING_FILE: '/run/cairn-code/pairing',
+      CAIRN_RUNNER_SLOT: '1',
+      CAIRN_SANDBOX: '1',
+      CAIRN_AGENT_USER: '1001:1001',
+    };
+    const asRoot = RunnerConfig.fromEnv(slotEnv, 0);
+    assert.equal(asRoot.agentUser?.label, '1001:1001');
+    assert.equal(asRoot.workDir, '/work');
+    assert.equal(
+      RunnerConfig.fromEnv({ ...slotEnv, CAIRN_WORK_DIR: '/tmp/w/' }, 0).workDir,
+      '/tmp/w',
+    );
+    assert.equal(RunnerConfig.fromEnv(env).agentUser, null, '칸이 아니면 AI 사용자를 보지 않는다');
+
+    const refused = (changes: Record<string, string | undefined>, uid: number, pattern: RegExp) =>
+      assert.throws(
+        () => RunnerConfig.fromEnv({ ...slotEnv, ...changes }, uid),
+        (error: Error) => error instanceof ConfigProblem && pattern.test(error.message),
+      );
+    refused({}, 1000, /root여야/);
+    refused({ CAIRN_AGENT_USER: undefined }, 0, /CAIRN_AGENT_USER/);
+    refused({ CAIRN_AGENT_USER: 'agent' }, 0, /CAIRN_AGENT_USER/);
+    refused({ CAIRN_AGENT_USER: '0:0' }, 0, /root가 아닌/);
+    refused({ CAIRN_WORK_DIR: 'work' }, 0, /절대 경로/);
+    refused({ CAIRN_WORK_DIR: '/' }, 0, /절대 경로/);
+    assert.equal(
+      RunnerConfig.fromEnv({ ...slotEnv, CAIRN_AGENT_USER: 'self' }, 1000).agentUser?.isSelf,
+      true,
+      'self는 시험용이라 root가 아니어도 된다',
+    );
   });
 });
