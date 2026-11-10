@@ -10,6 +10,7 @@ import type { SkillPackage } from './job';
 //   work/      AI CLI가 도는 빈 폴더
 //   config/    별도 설정 폴더 (CLAUDE_CONFIG_DIR). 권한 설정과, 스킬이 있으면 스킬을 넣는다
 //   home/      빈 홈
+//   work/outputs/ AI가 사람에게 줄 파일을 두는 곳. 일이 잘 끝나면 러너가 결과물로 올린다 (OutputBatch)
 //   mcp.json   작업 토큰이 든 MCP 설정 (600). work 밖에 두어 AI가 파일로 읽지 못하게 한다. 연결 확인에는 없다
 // 코드 작업은 코드 러너 칸의 자리(CodeRoom) 안에 둔다: work는 저장소 사본(repo/), 홈은 그 자리의 home/, 설정은 ai/.
 // 러너(root)가 써 둔 뒤 agent에게 넘긴다 (handOver). 셸이 있으니 mcp.json의 작업 토큰은 AI가 읽을 수 있다: 그 에이전트의 것이다.
@@ -44,7 +45,8 @@ export class JobWorkspace {
     const root = room ? room.aiDir : await mkdtemp(join(await realpath(tmpdir()), 'cairn-run-'));
     if (room) await mkdir(root, { mode: 0o700 });
     await chmod(root, 0o700);
-    for (const dir of room ? ['config'] : ['work', 'config', 'home']) await mkdir(join(root, dir));
+    for (const dir of room ? ['config'] : ['work', 'config', 'home', join('work', 'outputs')])
+      await mkdir(join(root, dir));
     if (mcpConfig !== null) {
       await writeFile(join(root, 'mcp.json'), mcpConfig, { mode: 0o600, flag: 'wx' });
       await chmod(join(root, 'mcp.json'), 0o600);
@@ -69,6 +71,16 @@ export class JobWorkspace {
 
   get workDir(): string {
     return this.room ? this.room.repoDir : join(this.root, 'work');
+  }
+
+  /** AI가 결과물을 두는 폴더. 코드 러너 칸이면 저장소 밖의 자리 폴더 */
+  get outputsDir(): string {
+    return this.room ? this.room.outputsDir : join(this.root, 'work', 'outputs');
+  }
+
+  /** 결과물을 올리기 전에 옮겨 둘 러너만의 폴더. 코드 러너 칸이 아니면 null (제자리에서 읽는다) */
+  get outputsStage(): string | null {
+    return this.room ? this.room.outputsStage : null;
   }
 
   /** AI의 임시 폴더. 코드 러너 칸이 아니면 null (러너의 것을 쓴다) */

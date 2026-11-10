@@ -277,9 +277,14 @@ export class Job {
 
   /**
    * AI CLI에게 줄 글. skillReady: 스킬을 CLI의 스킬 폴더에 넣어 두었는가 (Claude).
-   * skillText: 스킬 폴더를 읽지 못하는 CLI(셸이 없는 Codex)에게 지시문으로 넣을 SKILL.md
+   * skillText: 스킬 폴더를 읽지 못하는 CLI(셸이 없는 Codex)에게 지시문으로 넣을 SKILL.md.
+   * outputsDir: 사람에게 줄 파일을 둘 폴더 (일이 잘 끝나면 러너가 결과물로 올린다)
    */
-  prompt(skillReady: boolean, skillText: string | null = null): string {
+  prompt(
+    skillReady: boolean,
+    skillText: string | null = null,
+    outputsDir: string | null = null,
+  ): string {
     if (this.isAiTest) return this.instruction;
     const parts = [
       `당신은 Cairn의 에이전트 "${this.agentName}"입니다.${this.agentRole ? `\n${this.agentRole}` : ''}`,
@@ -313,6 +318,11 @@ export class Job {
         '# 일하는 법',
         '- 서버의 데이터는 cairn MCP 도구로만 읽고 씁니다.',
         '- 발행, 전송, 삭제는 직접 하지 않고 request_approval로 올린 뒤 바로 끝냅니다. 승인 뒤 실행은 서버가 합니다.',
+        ...(outputsDir
+          ? [
+              `- 사람에게 줄 파일(문서 · 슬라이드 · 표 · 그림 · 영상)을 만들면 ${outputsDir} 바로 아래에 둡니다. 일이 잘 끝나면 그 폴더의 파일만 결과물로 주인에게 갑니다 (하나 100MB, 200개까지. 폴더 · 숨김 파일은 빠집니다).`,
+            ]
+          : []),
       ].join('\n'),
     );
     return parts.join('\n\n');

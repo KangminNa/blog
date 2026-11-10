@@ -7,7 +7,9 @@ import type { CodeStage } from './code-stage';
 import type { Job } from './job';
 import { JobWorkspace } from './job-workspace';
 import { AccessDenied, ServerUnreachable, ToolRefused } from './mcp-client';
-import { ProgressState, type RunEvent, RunResult } from './progress';
+import { OutputBatch } from './output-batch';
+import { OutputRejected, OutputUploader } from './output-uploader';
+import { ProgressState, RunEvent, RunResult } from './progress';
 import { ProgressReporter } from './progress-reporter';
 import type { Redactor, RunLog } from './redactor';
 import type { RunnerConfig } from './runner-config';
@@ -177,20 +179,76 @@ export class JobRun {
     await this.writeBack(tool, workspace);
     const ending = decided
       ? ((await this.flush()) ?? decided)
-      : ((await this.flushForSubmit()) ?? (await this.afterExit(exit, stream, child)));
+      : ((await this.flushForSubmit()) ?? (await this.afterExit(exit, stream, child, workspace)));
     await this.conclude(ending);
   }
 
-  /** AI가 스스로 끝난 뒤. 코드 작업이 잘 끝났으면 검사 · 올리기까지 한 결과가 끝이다 */
-  private async afterExit(exit: ChildExit, stream: AiStream, child: AiProcess): Promise<RunEnding> {
+  /**
+   * AI가 스스로 끝난 뒤. 코드 작업이 잘 끝났으면 검사 · 올리기까지 한 결과가 끝이다.
+   * 잘 끝났으면 결과물(outputs 폴더의 파일)을 올리고 제출한다: 제출하면 작업이 끝나 표를 받을 수 없다
+   */
+  private async afterExit(
+    exit: ChildExit,
+    stream: AiStream,
+    child: AiProcess,
+    workspace: JobWorkspace,
+  ): Promise<RunEnding> {
     const ending = this.fromExit(exit, stream, child);
+    if (!ending.succeeded) return ending;
     const { stage } = this;
-    if (stage === null || !ending.succeeded) return ending;
-    const finished = await this.during((signal) =>
-      stage.finish(stream.finalText, signal, this.note, this.redactor),
+    let finished = ending;
+    if (stage !== null) {
+      finished = await this.during((signal) =>
+        stage.finish(stream.finalText, signal, this.note, this.redactor),
+      );
+      // 단계 뒤에 남은 기록(검사 · 올림)을 보내고, 그사이 취소됐는지 한 번 더 본다
+      const after = await this.flushForSubmit();
+      if (after || !finished.succeeded) return after ?? finished;
+    }
+    const shipped = await this.during((signal) => this.shipOutputs(workspace, signal));
+    return (await this.flushForSubmit()) ?? shipped ?? finished;
+  }
+
+  /**
+   * outputs 폴더의 파일을 결과물로 올린다. 뺀 파일과 서버가 받지 않은 파일은 실행 기록에 남기고 이어 간다.
+   * 끝내 서버에 닿지 못하면 실패로 끝낸다 (만든 파일을 잃은 채 done이 되지 않게). 올릴 것이 없으면 null
+   */
+  private async shipOutputs(
+    workspace: JobWorkspace,
+    signal: AbortSignal,
+  ): Promise<RunEnding | null> {
+    const batch = await OutputBatch.collect(
+      workspace.outputsDir,
+      workspace.outputsStage,
+      workspace.user,
+      signal,
     );
-    // 단계 뒤에 남은 기록(검사 · 올림)을 보내고, 그사이 취소됐는지 한 번 더 본다
-    return (await this.flushForSubmit()) ?? finished;
+    for (const line of batch.skipped)
+      this.note(new RunEvent(RunEvent.ERROR, `결과물에서 뺐어요: ${line}`, 0));
+    if (batch.files.length === 0) return null;
+    const uploader = new OutputUploader(this.server, this.config.serverUrl);
+    let sent = 0;
+    for (const file of batch.files) {
+      try {
+        await uploader.upload(this.job.taskId, file, signal);
+        sent++;
+      } catch (error) {
+        if (signal.aborted) return null;
+        if (!(error instanceof OutputRejected)) {
+          const message = `결과물을 올리지 못했어요 (${file.name}): ${(error as Error).message}`;
+          return RunEnding.submit(message, RunResult.failed(message, this.redactor));
+        }
+        this.note(
+          new RunEvent(
+            RunEvent.ERROR,
+            `결과물을 서버가 받지 않았어요: ${file.name}: ${error.message}`,
+            0,
+          ),
+        );
+      }
+    }
+    if (sent > 0) this.note(new RunEvent(RunEvent.WRITE, `결과물 ${sent}개를 올렸어요`, 0));
+    return null;
   }
 
   /**

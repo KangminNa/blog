@@ -167,7 +167,7 @@ export class CodexCli implements AiTool {
       this.args(workspace),
       workspace.workDir,
       this.env(job, workspace, process.env),
-      job.prompt(false, skill),
+      job.prompt(false, skill, workspace.outputsDir),
       onLine,
       workspace.user,
     );

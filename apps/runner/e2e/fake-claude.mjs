@@ -302,6 +302,26 @@ if (has('error-result')) {
   process.exit(0);
 }
 
+// 결과물: 지시문이 알려 준 폴더에 파일을 둔다. 숨김 파일과 폴더는 러너가 빼야 한다
+if (has('outputs')) {
+  const dir = /만들면 (\S+) 바로 아래에 둡니다/.exec(prompt)?.[1];
+  if (!dir) {
+    process.stderr.write('지시문에 결과물 폴더가 없어요\n');
+    process.exit(5);
+  }
+  writeFileSync(join(dir, '보고서.md'), '# 보고서\n결과물 시험\n');
+  writeFileSync(
+    join(dir, 'chart.png'),
+    Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(32, 7),
+    ]),
+  );
+  writeFileSync(join(dir, '.secret'), '숨김 파일');
+  mkdirSync(join(dir, 'nested'));
+  writeFileSync(join(dir, 'nested', 'inner.txt'), '폴더 안');
+}
+
 const text = '초안을 저장했어요';
 assistant('msg_3', { input_tokens: 50, output_tokens: 10 }, { type: 'text', text });
 say({

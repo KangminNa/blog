@@ -17,7 +17,7 @@ export class SigninReply {
   }
 }
 
-// 러너가 쓰는 MCP 도구 일곱 개. 모양의 원본은 docs/API설계.md 4장이다.
+// 러너가 쓰는 MCP 도구 여덟 개. 모양의 원본은 docs/API설계.md 4장이다.
 export class CairnServer {
   constructor(private readonly mcp: McpClient) {}
 
@@ -99,6 +99,27 @@ export class CairnServer {
 
   async release(taskId: string, reason: string): Promise<void> {
     await this.mcp.call('release_job', { task_id: taskId, reason });
+  }
+
+  /**
+   * 결과물 하나를 올릴 표 (임대를 쥔 실행만). 본문은 표의 path에 PUT으로, 머리글 header: token을 붙여 보낸다.
+   * 이름 · 한도를 넘으면 ToolRefused
+   */
+  async beginUpload(
+    taskId: string,
+    file: { name: string; size: number; sha256: string },
+  ): Promise<{ path: string; header: string; token: string }> {
+    const body = await this.mcp.call('begin_upload', {
+      task_id: taskId,
+      name: file.name,
+      size: file.size,
+      sha256: file.sha256,
+    });
+    return {
+      path: body.text('upload_path'),
+      header: body.text('header'),
+      token: body.text('token'),
+    };
   }
 
   /** 읽어 달라는 브라우저 탭 주소들 (browser-tabs 패키지). 패키지가 꺼져 있으면 도구가 없어 ToolRefused */

@@ -182,6 +182,13 @@ describe('지시문', () => {
     assert.ok(prompt.includes('더 짧게'));
   });
 
+  test('결과물 폴더를 알려 주면 그 폴더와 한도를 담는다', () => {
+    assert.equal(job().prompt(false).includes('결과물'), false);
+    const prompt = job().prompt(false, null, '/tmp/run/work/outputs');
+    assert.match(prompt, /만들면 \/tmp\/run\/work\/outputs 바로 아래에 둡니다/);
+    assert.match(prompt, /100MB, 200개까지/);
+  });
+
   test('스킬은 넣어 둔 때만 말한다', () => {
     const skilled = job({ skill: 'cairn-write' });
     assert.ok(skilled.prompt(true).includes('cairn-write'));

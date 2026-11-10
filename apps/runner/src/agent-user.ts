@@ -1,5 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
-import { readdir, readFile, rm } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { readdir, readFile, rm, stat } from 'node:fs/promises';
+import { pipeline } from 'node:stream/promises';
 import { pause } from './backoff';
 
 /** agent로 돌린 명령 하나의 끝 */
@@ -182,6 +184,37 @@ export class AgentUser {
   }
 
   /** agent 권한으로 파일을 읽는다. 없거나 읽지 못하거나 maxBytes를 넘으면 null */
+  /**
+   * agent 권한으로 파일 하나를 읽어 러너의 파일(to, 600)로 옮긴다 (결과물): AI가 링크를 심어도 root로 남의 파일을 읽지 않게.
+   * maxBytes를 넘거나 읽지 못하면 false이고 to를 남기지 않는다
+   */
+  async copyOut(
+    path: string,
+    to: string,
+    maxBytes: number,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    const child = spawn('head', ['-c', String(maxBytes + 1), '--', path], {
+      cwd: '/',
+      env: { PATH: AgentUser.PATH },
+      stdio: ['ignore', 'pipe', 'ignore'],
+      ...this.spawnOptions(),
+      ...(signal ? { signal } : {}),
+    });
+    const exited = new Promise<number | null>((resolve) => {
+      child.once('error', () => resolve(null));
+      child.once('close', (code) => resolve(code));
+    });
+    try {
+      await pipeline(child.stdout, createWriteStream(to, { flags: 'wx', mode: 0o600 }));
+      if ((await exited) === 0 && (await stat(to)).size <= maxBytes) return true;
+    } catch {
+      child.kill('SIGKILL');
+    }
+    await rm(to, { force: true });
+    return false;
+  }
+
   async readFile(path: string, maxBytes: number): Promise<string | null> {
     if (this.isSelf) {
       const text = await readFile(path).catch(() => null);

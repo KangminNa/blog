@@ -10,6 +10,8 @@ import type { AgentUser } from './agent-user';
 //   repo/         agent: clean의 사본. AI · setup · checks가 여기서 돈다 (AI CLI의 작업 폴더)
 //   home/ · tmp/  agent: AI와 명령들의 홈과 임시 폴더 (공용 /tmp를 쓰지 않는다)
 //   ai/           agent: AI CLI의 설정 폴더와 mcp.json (JobWorkspace가 채운다)
+//   outputs/      agent: AI가 사람에게 줄 파일을 두는 곳. 저장소 밖이라 patch에 들어가지 않는다
+//   runner/outputs/ 러너만: outputs의 파일을 agent 권한으로 읽어 옮겨 둔 사본 (OutputBatch가 올린다)
 // 자리는 작업마다 새로 만들고 끝나면 지운다. agent의 프로세스를 모두 끈 뒤 agent의 것은 agent 권한으로 비운다.
 export class CodeRoom {
   private static readonly TASK_ID = /^[0-9a-f-]{36}$/;
@@ -77,11 +79,22 @@ export class CodeRoom {
     return join(this.dir, 'ai');
   }
 
+  get outputsDir(): string {
+    return join(this.dir, 'outputs');
+  }
+
+  /** 결과물을 올리기 전에 옮겨 두는 러너만의 폴더 */
+  get outputsStage(): string {
+    return join(this.cleanParent, 'outputs');
+  }
+
   /** 깨끗한 clone을 사본으로 떠서 agent에게 넘긴다. 링크는 링크로 (따라가지 않는다). 원격 주소에는 자격이 없다 */
   async handOver(): Promise<void> {
     await CodeRoom.copy(this.cleanDir, this.repoDir);
-    for (const dir of [this.homeDir, this.tmpDir]) await mkdir(dir, { mode: 0o700 });
-    for (const dir of [this.repoDir, this.homeDir, this.tmpDir]) await this.agent.handTo(dir);
+    for (const dir of [this.homeDir, this.tmpDir, this.outputsDir])
+      await mkdir(dir, { mode: 0o700 });
+    for (const dir of [this.repoDir, this.homeDir, this.tmpDir, this.outputsDir])
+      await this.agent.handTo(dir);
   }
 
   /** agent의 명령(setup · checks · patch 만들기)의 환경: 이 자리의 홈과 임시 폴더, 프록시. 러너의 비밀은 없다 */
@@ -104,7 +117,7 @@ export class CodeRoom {
   /** agent의 프로세스를 모두 끄고 자리를 지운다. 없으면 그냥 넘어간다 */
   async close(): Promise<void> {
     await this.agent.killAll();
-    for (const dir of [this.repoDir, this.homeDir, this.tmpDir, this.aiDir])
+    for (const dir of [this.repoDir, this.homeDir, this.tmpDir, this.aiDir, this.outputsDir])
       await this.agent.remove(dir).catch(() => rm(dir, { recursive: true, force: true }));
     await rm(this.dir, { recursive: true, force: true });
   }

@@ -132,11 +132,13 @@ class LossyProxy {
   private async forward(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk as Buffer);
-    const body = Buffer.concat(chunks).toString('utf8');
+    // 바이트 그대로 넘긴다 (결과물 파일은 글자가 아니다). 끊을지는 글자로 본다
+    const raw = Buffer.concat(chunks);
+    const body = raw.toString('utf8');
     const answer = await fetch(`${this.target}${req.url}`, {
       method: req.method,
       headers: req.headers as Record<string, string>,
-      body,
+      ...(raw.length > 0 ? { body: raw } : {}),
     });
     const text = await answer.text();
     if (this.losing(body)) {
@@ -149,6 +151,8 @@ class LossyProxy {
 
   /** 빈 보고는 토큰이 없어 볼 것이 없다. 기록이 든 보고만 잃는다 */
   private losing(body: string): boolean {
+    // MCP가 아닌 요청(결과물 파일 본문)은 끊지 않는다
+    if (!body.startsWith('{')) return false;
     const { method, params } = JSON.parse(body) as {
       method: string;
       params: { name: string; arguments: Json };
@@ -260,6 +264,8 @@ before(async () => {
   chmodSync(FAKE_CLI, 0o755);
   chmodSync(FAKE_CODEX, 0o755);
   spyDir = mkdtempSync(join(tmpdir(), 'cairn-e2e-'));
+  // 결과물: 시험 컴퓨터의 디스크가 작아도 받게 (기본은 20GB를 늘 남긴다)
+  process.env.CAIRN_DISK_RESERVE_GB = '0';
   api = await ApiClient.start();
   owner = await api.signIn();
   db = api.service(Database);
@@ -332,6 +338,24 @@ describe('러너가 일을 처리한다', () => {
     assert.equal(runs[0]?.skill, null, '일반 작업은 스킬이 없다');
   });
 
+  test('outputs 폴더의 파일을 결과물로 올린다: 숨김 파일 · 폴더는 빼고 실행 기록에 남긴다', async () => {
+    const created = await newTask(await newAgent(), '[fake:outputs]');
+    const task = await taskIn(created.id, 'done');
+    const outputs = task.outputs as Json[];
+    assert.deepEqual(outputs.map((o) => o.name).sort(), ['chart.png', '보고서.md']);
+    const chart = outputs.find((o) => o.name === 'chart.png');
+    assert.deepEqual([chart?.kind, chart?.runSeq], ['image', 1]);
+    const bodies = events(task).map((e) => String(e.body));
+    assert.ok(bodies.includes('결과물 2개를 올렸어요'), bodies.join('\n'));
+    assert.ok(bodies.some((b) => b.includes('.secret')));
+    assert.ok(bodies.some((b) => b.includes('nested')));
+    const report = outputs.find((o) => o.name === '보고서.md');
+    const res = await fetch(`${api.baseUrl}/api/outputs/${report?.id}/file`, {
+      headers: { cookie: owner.header },
+    });
+    assert.equal(await res.text(), '# 보고서\n결과물 시험\n');
+  });
+
   test('금방 끝난 실행의 구독 사용률도 서버에 닿고, 닿은 에이전트의 일은 쉬었다가 다시 돈다', async () => {
     await newTask(await newAgent(), '').then((created) => taskIn(created.id, 'done'));
     const usage = ok(await api.get('/api/usage', owner)) as { agents: Json[]; plan: Json[] };
@@ -376,7 +400,7 @@ describe('러너가 일을 처리한다', () => {
     assert.equal(env.CAIRN_RUNNER_TOKEN, undefined);
     assert.equal(env.DATABASE_URL, undefined);
     assert.notEqual(env.HOME, process.env.HOME);
-    assert.deepEqual(seen.cwdEntries, []);
+    assert.deepEqual(seen.cwdEntries, ['outputs'], '빈 작업 폴더에 결과물 폴더만');
     assert.deepEqual(seen.configEntries, ['settings.json']);
     assert.equal(seen.mcpConfigMode, 0o600);
     assert.equal(seen.mcpUrl, `${proxyUrl}/mcp`);
@@ -834,7 +858,9 @@ describe('코드 작업 (작업 공간)', () => {
 
   test('저장소를 받아 셸과 함께 고치고, 맡긴 경로 안의 변경만 커밋 하나로 cairn/<작업>에 올린다', async () => {
     const spy = new Spy();
-    const created = await codeTask(`[fake:edit=src/a.ts] [fake:edit=src/new/b.ts] ${spy.mark}`);
+    const created = await codeTask(
+      `[fake:edit=src/a.ts] [fake:edit=src/new/b.ts] [fake:outputs] ${spy.mark}`,
+    );
     const task = await taskIn(created.id, 'done');
     const branch = `cairn/${created.id}`;
     const text = String(resultOf(task).text);
@@ -843,10 +869,20 @@ describe('코드 작업 (작업 공간)', () => {
     assert.deepEqual([...git.changed('app', branch)].sort(), ['src/a.ts', 'src/new/b.ts']);
     assert.equal(git.show('app', branch, 'src/new/b.ts'), '고친 내용 src/new/b.ts\n');
     assert.ok(git.head('app', 'main'), '기준 브랜치는 그대로');
+    // 결과물은 저장소 밖의 자리 폴더에서 agent 권한으로 옮겨 올린다: 커밋에는 들어가지 않는다
+    assert.deepEqual((task.outputs as Json[]).map((o) => o.name).sort(), [
+      'chart.png',
+      '보고서.md',
+    ]);
 
     const seen = await spy.seen();
     const argv = seen.argv as string[];
     assert.match(argv[argv.indexOf('--tools') + 1] ?? '', /Bash/, '코드 작업에만 셸을 연다');
+    assert.match(
+      argv[argv.indexOf('--add-dir') + 1] ?? '',
+      /\/outputs$/,
+      '결과물 폴더를 열어 준다',
+    );
     assert.match(String(seen.cwd), /\/repo$/, 'AI는 저장소 사본에서 돈다');
     assert.match(String(seen.prompt), /# 고칠 수 있는 곳\n- src/);
     assert.match(String(seen.prompt), /cairn-code 스킬을 따릅니다/);
