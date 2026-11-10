@@ -4,10 +4,19 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
 import { useLiveValue } from '../../_lib/use-live';
-import { CANCELLABLE, clock, EVENT_KINDS, TARGET_LABELS, tokens, when } from '../../_task/labels';
+import {
+  bytes,
+  CANCELLABLE,
+  clock,
+  EVENT_KINDS,
+  OUTPUT_KINDS,
+  TARGET_LABELS,
+  tokens,
+  when,
+} from '../../_task/labels';
 import { useAgents, usePendingApprovals } from '../../_task/live';
 import { TaskPill } from '../../_task/parts';
-import type { Task, TaskDetail, TaskEvent, TaskRun } from '../../_task/types';
+import type { Task, TaskDetail, TaskEvent, TaskOutput, TaskRun } from '../../_task/types';
 import { useNotify } from '../AdminShell';
 
 /** 서버가 상세에 보내는 실행 기록의 최대 개수 (TaskQuery.EVENTS) */
@@ -94,6 +103,7 @@ export function TaskDetailPanel({ id }: { id: string }) {
         <Facts task={t} />
       </section>
       <Result result={t.result} />
+      <Outputs taskId={t.id} outputs={t.outputs} />
       {(t.parentId || t.children.length > 0) && (
         <section className="panel" aria-labelledby="task-family">
           <h2 id="task-family">위임</h2>
@@ -206,6 +216,36 @@ function Result({ result }: { result: unknown }) {
       <h2 id="task-result">결과</h2>
       {typeof error === 'string' && <p className="error">{error}</p>}
       {Object.keys(rest).length > 0 && <pre className="raw">{JSON.stringify(rest, null, 2)}</pre>}
+    </section>
+  );
+}
+
+/** 이 작업이 만든 파일. 미리 보기와 휴지통은 결과물 메뉴에서 */
+function Outputs({ taskId, outputs }: { taskId: string; outputs: readonly TaskOutput[] }) {
+  if (outputs.length === 0) return null;
+  return (
+    <section className="panel" aria-labelledby="task-outputs">
+      <div className="sec-title flat">
+        <h2 id="task-outputs">결과물</h2>
+        <Link className="note" href={`/admin/outputs?task=${taskId}`}>
+          결과물 메뉴에서 보기
+        </Link>
+      </div>
+      <ul className="list" aria-label="결과물">
+        {outputs.map((o) => (
+          <li key={o.id} className="list-cell output-row">
+            <div className="output-main">
+              <b>{o.name}</b>
+              <small>
+                {OUTPUT_KINDS[o.kind] ?? o.kind} · {bytes(o.sizeBytes)} · {o.runSeq}회
+              </small>
+            </div>
+            <a className="ghost" href={`/api/outputs/${o.id}/file`} download={o.name}>
+              내려받기
+            </a>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

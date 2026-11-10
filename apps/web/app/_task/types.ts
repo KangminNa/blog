@@ -5,6 +5,10 @@ import type {
 } from '../../../server/src/modules/task/approval/approval.view';
 import type { GoalListView, GoalView } from '../../../server/src/modules/task/goal/goal.view';
 import type {
+  OutputPageView,
+  OutputSavedView,
+} from '../../../server/src/modules/task/output/output.view';
+import type {
   RunnerListView,
   RunnerView,
 } from '../../../server/src/modules/task/runner/runner.view';
@@ -30,6 +34,11 @@ export type TaskDetail = ReturnType<TaskDetailView['toJSON']>;
 export type TaskEvent = TaskDetail['events'][number];
 export type TaskGoal = TaskDetail['goalChain'][number];
 export type TaskRun = TaskDetail['runs'][number];
+export type TaskOutput = TaskDetail['outputs'][number];
+export type OutputPage = ReturnType<OutputPageView['toJSON']>;
+export type Output = OutputPage['outputs'][number];
+export type OutputUsage = OutputPage['usage'];
+export type OutputSaved = ReturnType<OutputSavedView['toJSON']>;
 export type Goal = ReturnType<GoalView['toJSON']>;
 export type GoalList = ReturnType<GoalListView['toJSON']>;
 export type SkillList = ReturnType<SkillListView['toJSON']>;

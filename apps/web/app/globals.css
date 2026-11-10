@@ -1578,6 +1578,54 @@ a.chip {
   padding: 10px 14px;
 }
 
+/* 결과물 한 줄: 작은 그림(또는 확장자) · 이름 · 단추 */
+.list > .output-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.output-thumb {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 11px;
+  object-fit: cover;
+  text-transform: uppercase;
+}
+
+.output-main {
+  display: flex;
+  /* 좁은 화면에서는 이름이 줄어들지 않고 단추가 아래 줄로 내려간다 */
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.output-main b {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.output-main small {
+  color: var(--faint);
+  font-size: 12.5px;
+}
+
+.output-preview {
+  max-width: 100%;
+  max-height: 70vh;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 .list-row {
   width: 100%;
   display: flex;

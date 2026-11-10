@@ -75,6 +75,8 @@ services:
       PORT: 4000
       CAIRN_WEB_URL: ${CAIRN_WEB_URL:-http://localhost:${WEB_PORT:-3000}}   # 사람이 여는 웹 주소 (설치 코드 안내에 씀)
       CAIRN_BLOBS_DIR: /data/blobs   # 올린 사진. DB와 함께 백업한다
+      CAIRN_OUTPUTS_MAX_GB: ${CAIRN_OUTPUTS_MAX_GB:-80}     # 결과물(AI가 만든 파일)을 모두 더한 한도
+      CAIRN_DISK_RESERVE_GB: ${CAIRN_DISK_RESERVE_GB:-20}   # 디스크에 늘 남길 몫. 이보다 적으면 결과물을 받지 않는다 (DB를 지키려고)
       CAIRN_RUNNER_PAIRING_FILE: /run/cairn-runner/pairing   # 서버 러너의 연결 값. 서버가 시작할 때 쓴다
     ports:
       - "127.0.0.1:${SERVER_PORT:-4000}:4000"   # 이 컴퓨터에서만. 밖에는 앞의 https 프록시만 연다

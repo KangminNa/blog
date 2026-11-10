@@ -170,3 +170,45 @@ export function tokens(n: number): string {
   const man = n / 10_000;
   return `${(Number.isInteger(man) ? man : Math.round(man * 10) / 10).toLocaleString('ko-KR')}만`;
 }
+
+/** 결과물의 종류 (서버 OutputPolicy.KINDS) */
+export const OUTPUT_KINDS: Record<string, string> = {
+  document: '문서',
+  slides: '슬라이드',
+  sheet: '표',
+  image: '이미지',
+  video: '영상',
+  other: '기타',
+};
+
+/** 미리 보기를 열 수 있는 형식 (서버가 앞부분으로 확인한 것만 inline을 준다: OutputPolicy.canInline) */
+export const INLINE_MIMES: readonly string[] = [
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'application/pdf',
+  'video/mp4',
+  'video/webm',
+];
+
+/** 글자로 미리 볼 수 있는 형식 (내려받아 글자로만 보인다) */
+export const TEXT_MIMES: readonly string[] = [
+  'text/markdown',
+  'text/plain',
+  'text/csv',
+  'text/tab-separated-values',
+];
+
+/** 바이트를 사람이 읽는 크기로 */
+export function bytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let value = n / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value >= 10 ? Math.round(value) : Math.round(value * 10) / 10}${units[unit]}`;
+}
