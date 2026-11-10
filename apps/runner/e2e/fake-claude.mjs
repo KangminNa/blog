@@ -9,11 +9,13 @@
 //   [fake:approval]     작업 토큰으로 결재를 올린다 (MCP 설정 파일을 읽어서)
 //   [fake:delegate]     지시문의 "내 팀"에게 하위 작업을 하나씩 맡기고 끝난다. 결과를 받아 깨어난 실행은 맡기지 않고 끝낸다
 //   [fake:stray]        허락하지 않은 MCP 서버가 붙은 것처럼 보인다
+//   [fake:edit=<경로>]  작업 폴더의 그 경로에 파일을 쓴다 (코드 작업. 여러 번 쓸 수 있다)
 // 연결 확인(MCP 설정 없음)은 ok라고 답한다. 토큰에 wrong이 들어 있으면 로그인 실패처럼 끝난다
 // setup-token은 웹 로그인이다: 터미널이어야 뜨고, 주소를 보이고, 붙여 넣은 코드로 토큰을 그린다.
 //   코드에 wrong이 있으면 실패. 코드와 Enter가 한 덩어리로 오면 Ink처럼 붙여 넣기로 보고 제출하지 않는다
 import { randomUUID } from 'node:crypto';
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 if (process.argv[2] === 'setup-token') await setupToken();
 
@@ -142,6 +144,13 @@ if (spy) {
       prompt,
     }),
   );
+}
+
+// 코드 작업: 셸이 있는 AI처럼 작업 폴더(저장소 사본)의 파일을 고친다
+for (const [, path] of prompt.matchAll(/\[fake:edit=([^\]]+)\]/g)) {
+  const file = join(process.cwd(), path);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `고친 내용 ${path}\n`);
 }
 
 // 실제 실행에서 받은 줄 그대로 (2026-11-01). 초기화 시각만 지금 기준으로 둔다: 고정하면 시각이 지난 뒤 테스트가 깨진다

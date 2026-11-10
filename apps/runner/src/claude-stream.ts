@@ -33,7 +33,8 @@ export class ClaudeStream implements AiStream {
     'browser_tabs',
   ]);
   /** tool_use 입력에서 대상으로 보여 줄 칸. 내용은 남기지 않는다 */
-  private static readonly TARGETS = ['file_path', 'path', 'pattern', 'query', 'url'];
+  private static readonly TARGETS = ['file_path', 'path', 'pattern', 'query', 'url', 'command'];
+  private static readonly SHELL = 'Bash';
 
   private readonly countedByMessage = new Map<string, number>();
   private counted = 0;
@@ -43,11 +44,15 @@ export class ClaudeStream implements AiStream {
   private resultText: string | null = null;
   private failureText: string | null = null;
   private strayServers: readonly string[] = [];
+  /** 셸을 열지 않은 일에서 셸을 쓴 명령 (설정이 먹지 않은 것) */
+  private shellUsed: string | null = null;
   private planWindows: readonly PlanWindow[] = [];
 
   constructor(
     /** 이 실행에서 허락한 MCP 서버. 그 밖의 서버가 보이면 격리가 깨진 것 */
     private readonly servers: readonly string[] = [ClaudeStream.SERVER],
+    /** 셸을 연 일인가 (코드 러너 칸의 코드 작업). 아니면 셸이 보일 때 격리가 깨진 것 */
+    private readonly shellAllowed = false,
   ) {}
 
   /** 마지막 답 */
@@ -66,9 +71,9 @@ export class ClaudeStream implements AiStream {
   }
 
   get breach(): string | null {
-    return this.strayServers.length > 0
-      ? `허락하지 않은 MCP 서버: ${this.strayServers.join(', ')}`
-      : null;
+    if (this.strayServers.length > 0)
+      return `허락하지 않은 MCP 서버: ${this.strayServers.join(', ')}`;
+    return this.shellUsed === null ? null : `셸이 열려 있어요: ${this.shellUsed}`;
   }
 
   /** 가장 최근에 본 구독 사용률을 꺼낸다. 새로 본 것이 없으면 비어 있다 */
@@ -129,6 +134,8 @@ export class ClaudeStream implements AiStream {
         this.lastText = block.text('text') || this.lastText;
       } else if (block.text('type') === 'tool_use') {
         const name = block.text('name');
+        if (name === ClaudeStream.SHELL && !this.shellAllowed)
+          this.shellUsed ??= block.child('input').text('command') || '(명령)';
         const kind = ClaudeStream.kindOf(name);
         events.push(
           new RunEvent(kind, ClaudeStream.describe(name, block.child('input')), this.takeOwed()),

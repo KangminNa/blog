@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -10,6 +18,7 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { ServerRunnerPolicy } from '../../server/src/modules/account/device/server-runner.policy';
 import { Database, OutboxWorker } from '../../server/src/modules/platform';
 import { ApiClient, type ApiResult, type TestUser } from '../../server/src/testing/api-client';
+import { GitServer } from '../src/testing/git-server';
 import { TestChromium } from '../src/testing/test-chromium';
 
 // 러너 전체: 실제 서버, 실제 러너 프로세스, 표준 입출력만 흉내 낸 가짜 AI CLI (fake-claude.mjs).
@@ -761,6 +770,133 @@ describe('코드 러너 칸', () => {
       const codes = await Promise.all(slots.map((s) => s.stop('SIGTERM')));
       assert.deepEqual(codes, [0, 0]);
     }
+  });
+});
+
+// 코드 작업 (docs/코드작업.md 3단계): 칸이 저장소를 받아 AI에게 셸과 함께 맡기고, 맡긴 경로 안의 변경만 cairn/<작업>에 올린다.
+// GitHub 대신 이 컴퓨터의 시험용 git 서버(http-backend)에 붙는다. AI 사용자는 self(시험용): 사용자 나누기는 Docker 시험에서 본다.
+describe('코드 작업 (작업 공간)', () => {
+  let git: GitServer;
+  let repoUrl: string;
+  let work: string;
+  let slot: RunnerProcess;
+  let coder: Json;
+  const code = (more: Json = {}) => ({
+    repo: { url: repoUrl, base: 'main' },
+    paths: ['src'],
+    setup: 'test -f README.md',
+    checks: ['test -f src/a.ts'],
+    ...more,
+  });
+  const codeTask = (marks: string, more: Json = {}) =>
+    newTask(coder, marks, { kind: 'code', payload: { code: code(more) } });
+  const resultOf = (task: Json) => task.result as Json;
+  const roomsLeft = () =>
+    until('작업 자리를 지움', () => (readdirSync(work).length === 0 ? true : null));
+
+  before(async () => {
+    git = await GitServer.start();
+    repoUrl = git.create('app', { 'src/a.ts': 'export const a = 1;\n', 'README.md': '# app\n' });
+    work = mkdtempSync(join(tmpdir(), 'cairn-work-'));
+    const file = join(spyDir, 'code-pairing-3');
+    writeFileSync(file, api.service(ServerRunnerPolicy).codeSecret());
+    slot = RunnerProcess.start(api.baseUrl, {
+      CAIRN_RUNNER_TOKEN: '',
+      CAIRN_RUNNER_PAIRING_FILE: file,
+      CAIRN_RUNNER_SLOT: '3',
+      CAIRN_SANDBOX: '1',
+      CAIRN_AGENT_USER: 'self',
+      CAIRN_WORK_DIR: work,
+    });
+    await slot.logged('코드 러너 칸 3로 연결했어요');
+    coder = await newAgent({
+      name: '코드 담당',
+      scopes: ['read_public', 'code'],
+      approvalActions: [],
+    });
+  });
+
+  after(async () => {
+    assert.equal(await slot.stop('SIGTERM'), 0);
+    git.close();
+    rmSync(work, { recursive: true, force: true });
+  });
+
+  test('저장소를 받아 셸과 함께 고치고, 맡긴 경로 안의 변경만 커밋 하나로 cairn/<작업>에 올린다', async () => {
+    const spy = new Spy();
+    const created = await codeTask(`[fake:edit=src/a.ts] [fake:edit=src/new/b.ts] ${spy.mark}`);
+    const task = await taskIn(created.id, 'done');
+    const branch = `cairn/${created.id}`;
+    const text = String(resultOf(task).text);
+    assert.match(text, new RegExp(`${branch} 브랜치에 올렸어요`));
+    assert.match(text, /- test -f src\/a.ts: 통과/);
+    assert.deepEqual([...git.changed('app', branch)].sort(), ['src/a.ts', 'src/new/b.ts']);
+    assert.equal(git.show('app', branch, 'src/new/b.ts'), '고친 내용 src/new/b.ts\n');
+    assert.ok(git.head('app', 'main'), '기준 브랜치는 그대로');
+
+    const seen = await spy.seen();
+    const argv = seen.argv as string[];
+    assert.match(argv[argv.indexOf('--tools') + 1] ?? '', /Bash/, '코드 작업에만 셸을 연다');
+    assert.match(String(seen.cwd), /\/repo$/, 'AI는 저장소 사본에서 돈다');
+    assert.match(String(seen.prompt), /# 고칠 수 있는 곳\n- src/);
+    assert.match(String(seen.prompt), /cairn-code 스킬을 따릅니다/);
+    const env = seen.env as Record<string, string>;
+    assert.equal(env.CAIRN_RUNNER_PAIRING_FILE, undefined, '러너의 설정은 AI에게 가지 않는다');
+    const bodies = events(task).map((e) => String(e.body));
+    assert.ok(bodies.includes('setup 통과'), bodies.join(' | '));
+    assert.ok(bodies.some((b) => b.startsWith(`${branch}에 올렸어요`)));
+    await roomsLeft();
+  });
+
+  test('맡긴 경로 밖을 고치면 올리지 않고 실패로 끝낸다 (어느 파일인지 적는다)', async () => {
+    const created = await codeTask('[fake:edit=src/ok.ts] [fake:edit=README.md]');
+    const task = await taskIn(created.id, 'failed');
+    assert.match(String(resultOf(task).error), /맡긴 경로 밖을 고쳐서 올리지 않았어요: README.md/);
+    assert.equal(git.head('app', `cairn/${created.id}`), null);
+    await roomsLeft();
+  });
+
+  test('.github/workflows는 저장소 전체를 맡겨도 막는다', async () => {
+    const created = await codeTask('[fake:edit=.github/workflows/ci.yml]', { paths: ['.'] });
+    const task = await taskIn(created.id, 'failed');
+    assert.match(String(resultOf(task).error), /\.github\/workflows\/ci.yml/);
+    assert.equal(git.head('app', `cairn/${created.id}`), null);
+  });
+
+  test('setup이 실패하면 AI를 띄우지 않는다', async () => {
+    const spy = new Spy();
+    const created = await codeTask(spy.mark, { setup: 'echo 설치 실패 >&2; exit 7' });
+    const task = await taskIn(created.id, 'failed');
+    assert.match(
+      String(resultOf(task).error),
+      /setup이 코드 7로 끝나 AI를 띄우지 않았어요\n설치 실패/,
+    );
+    assert.equal(existsSync(spy.path), false);
+    await roomsLeft();
+  });
+
+  test('검사가 실패해도 올리고, 실패한 명령과 끝부분을 결과에 적는다', async () => {
+    const created = await codeTask('[fake:edit=src/c.ts]', {
+      checks: ['test -f src/c.ts', 'echo 테스트 망함 >&2; exit 1'],
+    });
+    const task = await taskIn(created.id, 'done');
+    const text = String(resultOf(task).text);
+    assert.match(text, /- test -f src\/c.ts: 통과/);
+    assert.match(text, /- echo 테스트 망함 >&2; exit 1: 코드 1/);
+    assert.match(text, /테스트 망함/);
+    assert.ok(git.head('app', `cairn/${created.id}`));
+  });
+
+  test('바꾼 파일이 없으면 올리지 않고 끝낸다. 없는 저장소는 실패', async () => {
+    const quiet = await codeTask('');
+    const done = await taskIn(quiet.id, 'done');
+    assert.match(String(resultOf(done).text), /바꾼 파일이 없어 올리지 않았어요/);
+    assert.equal(git.head('app', `cairn/${quiet.id}`), null);
+
+    const missing = await codeTask('', { repo: { url: `${git.baseUrl}/없음.git`, base: 'main' } });
+    const failed = await taskIn(missing.id, 'failed');
+    assert.match(String(resultOf(failed).error), /저장소를 받지 못했어요/);
+    await roomsLeft();
   });
 });
 

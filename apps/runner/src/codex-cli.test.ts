@@ -69,6 +69,18 @@ describe('Codex 설정', () => {
     assert.equal(CodexCli.configToml(null).includes('mcp_servers'), false, '연결 확인은 MCP 없이');
   });
 
+  test('코드 러너 칸의 코드 작업만 셸을 연다: Codex sandbox는 끄고(칸이 벽) 셸에 환경을 넘긴다', () => {
+    const toml = CodexCli.configToml('http://cairn-server:4000/mcp', null, true);
+    for (const want of [
+      'shell_tool = true',
+      'sandbox_mode = "danger-full-access"',
+      'inherit = "all"',
+      'approval_policy = "never"',
+    ])
+      assert.ok(toml.includes(want), want);
+    assert.equal(toml.includes('workspace-write'), false);
+  });
+
   test('작업 자리: config/에 config.toml과 auth.json(600), Claude의 settings.json은 없다', async () => {
     const cli = new CodexCli('codex', AUTH, 'http://127.0.0.1:4000/mcp', skills);
     const workspace = await cli.open(job());

@@ -11,7 +11,9 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
+import { AgentUser } from './agent-user';
 import { ClaudeCli } from './claude-cli';
+import { CodeRoom } from './code-room';
 import { Job } from './job';
 import { JobWorkspace } from './job-workspace';
 import { Json } from './json';
@@ -235,5 +237,55 @@ describe('지시문', () => {
 
   test('임대 끝을 시각으로 읽는다', () => {
     assert.equal(job().leaseUntil?.toISOString(), '2026-11-01T00:15:00.000Z');
+  });
+});
+
+describe('코드 러너 칸의 코드 작업', () => {
+  const TASK = '0190f5a2-0000-7000-8000-0000000000c1';
+  const codeJob = (kind = 'code') =>
+    Job.from(
+      Json.of({
+        task: { id: TASK, kind, title: '고치기', payload: { code: {} } },
+        instruction: '고쳐 주세요',
+        agent: { name: '코드 담당', role: '', tool: 'claude' },
+        run_token: 'run-token',
+      }),
+    );
+  const self = AgentUser.parse('self') as AgentUser;
+
+  test('칸의 자리 안에서 셸과 찾기를 묻지 않고 허락한다. 작업 폴더는 저장소 사본, 홈 · 임시는 그 자리', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'cairn-room-'));
+    const room = await CodeRoom.open(base, TASK, self);
+    mkdirSync(room.cleanDir);
+    await room.handOver();
+    const cli = new ClaudeCli('claude', 'oauth-token', 'http://cairn-server:4000/mcp', skillsDir);
+    const workspace = await cli.open(codeJob(), room);
+    await workspace.handOver();
+    const args = [...cli.args(workspace)];
+    assert.equal(args[args.indexOf('--tools') + 1], 'Read,Write,Edit,Bash,Glob,Grep');
+    for (const tool of ['Bash', 'Glob', 'Grep']) assert.ok(args.includes(tool), tool);
+    assert.equal(workspace.workDir, room.repoDir);
+    assert.equal(workspace.user, self);
+    const env = cli.env(workspace, {
+      PATH: '/bin',
+      HTTPS_PROXY: 'http://egress:3128',
+      CAIRN_RUNNER_TOKEN: 'x',
+    });
+    assert.equal(env.HOME, room.homeDir);
+    assert.equal(env.TMPDIR, room.tmpDir);
+    assert.equal(env.HTTPS_PROXY, 'http://egress:3128', '바깥은 나가는 프록시로');
+    assert.equal(env.CAIRN_RUNNER_TOKEN, undefined);
+    await workspace.remove();
+    assert.ok(existsSync(workspace.mcpConfigPath), '칸의 자리는 CodeRoom이 지운다');
+    await room.close();
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  test('칸의 자리 밖이면 코드 작업이어도 셸을 열지 않는다', async () => {
+    const cli = new ClaudeCli('claude', 'oauth-token', 'http://cairn-server:4000/mcp', skillsDir);
+    const workspace = await cli.open(codeJob());
+    const args = cli.args(workspace).join(' ');
+    assert.equal(args.includes('Bash'), false);
+    await workspace.remove();
   });
 });

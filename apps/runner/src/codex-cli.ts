@@ -58,27 +58,36 @@ export class CodexCli implements AiTool {
 
   /** 이 일에 붙인 브라우저 (어댑터는 일마다 새로 만든다) */
   private browser: BrowserMcp | null = null;
+  /** 셸을 여는가: 코드 러너 칸의 자리에서 하는 코드 작업만 */
+  private shell = false;
 
   /**
    * CODEX_HOME/config.toml. 이 코드의 고정된 값과 서버 주소뿐이다. mcpUrl이 없으면 MCP 없이 (연결 확인).
    * 브라우저 작업이면 playwright를 더한다 (셸은 그대로 꺼져 있다)
    */
-  static configToml(mcpUrl: string | null, browser: BrowserMcp | null = null): string {
+  static configToml(
+    mcpUrl: string | null,
+    browser: BrowserMcp | null = null,
+    shell = false,
+  ): string {
+    // 셸을 연 코드 작업: Codex의 sandbox는 끄고 칸이 벽이다 (Claude Code와 같은 조건. Docker 안에서 Codex sandbox가 도는지도 불확실).
+    // 셸 명령은 Codex가 받은 환경(프록시 · 칸의 홈)을 그대로 쓴다
+    const sandbox = shell
+      ? ['sandbox_mode = "danger-full-access"']
+      : ['sandbox_mode = "workspace-write"'];
     const lines = [
       '# Cairn 러너가 작업마다 만든 설정. 작업이 끝나면 지운다',
       'cli_auth_credentials_store = "file"',
       'approval_policy = "never"',
-      'sandbox_mode = "workspace-write"',
+      ...sandbox,
       'web_search = "disabled"',
-      '',
-      '[sandbox_workspace_write]',
-      'network_access = false',
+      ...(shell ? [] : ['', '[sandbox_workspace_write]', 'network_access = false']),
       '',
       '[shell_environment_policy]',
-      'inherit = "core"',
+      `inherit = "${shell ? 'all' : 'core'}"`,
       '',
       '[features]',
-      'shell_tool = false',
+      `shell_tool = ${shell}`,
       'unified_exec = false',
       'view_image = false',
     ];
@@ -103,9 +112,10 @@ export class CodexCli implements AiTool {
     const workspace = await JobWorkspace.open(null, null, null, this.skillsDir, room);
     const mcp = job.runToken === null ? null : this.mcpUrl;
     this.browser = mcp === null ? null : BrowserMcp.for(job, this.browserUrl);
+    this.shell = job.isCode && room !== null && mcp !== null;
     await writeFile(
       join(workspace.configDir, 'config.toml'),
-      CodexCli.configToml(mcp, this.browser),
+      CodexCli.configToml(mcp, this.browser, this.shell),
       {
         mode: 0o600,
       },
@@ -122,7 +132,7 @@ export class CodexCli implements AiTool {
       '--skip-git-repo-check',
       '--ephemeral',
       '--sandbox',
-      'workspace-write',
+      this.shell ? 'danger-full-access' : 'workspace-write',
       '--cd',
       workspace.workDir,
       '-',
@@ -163,6 +173,7 @@ export class CodexCli implements AiTool {
   stream(): AiStream {
     return new CodexStream(
       this.browser ? [CodexStream.SERVER, BrowserMcp.SERVER] : [CodexStream.SERVER],
+      this.shell,
     );
   }
 

@@ -12,6 +12,7 @@ import { JobWorkspace } from './job-workspace';
 // 브라우저 작업(browse)에서만 playwright를 더한다 (BrowserMcp: 서버 브라우저에 CDP로, 사이트의 허용 출처만).
 // --bare는 쓰지 않는다: CLAUDE_CODE_OAUTH_TOKEN을 읽지 않는다.
 // 권한: 셸을 주지 않는다. 내장 도구는 파일 도구만, 쓰기는 acceptEdits라 work 폴더 안에서만, MCP는 cairn만 묻지 않고 허락한다.
+// 예외: 코드 러너 칸의 코드 작업은 셸 · 찾기(Bash · Glob · Grep)를 묻지 않고 허락한다. 칸 안의 agent로 돌고 바깥은 허용 목록뿐이다.
 // -p는 물을 사람이 없어서 그 밖의 것은 거절된다. 작업 폴더 밖 읽기도 그렇다: Claude가 허락을 묻고, 답할 사람이 없어 거절된다.
 // 그래도 주인의 홈은 settings.json의 deny로 막는다 (ClaudeCli.settings): 거절이 더 확실하고 권한 모드가 바뀌어도 남는다.
 // 주인의 컴퓨터나 서버의 러너 컨테이너에서 돌아가므로 AI가 지시문에 속아도 이 안에 머문다.
@@ -19,6 +20,8 @@ import { JobWorkspace } from './job-workspace';
 export class ClaudeCli implements AiTool {
   static readonly TOOL = 'claude';
   private static readonly FILE_TOOLS = ['Read', 'Write', 'Edit'];
+  /** 코드 러너 칸의 코드 작업에만 더한다: 셸과 찾기 */
+  private static readonly CODE_TOOLS = ['Bash', 'Glob', 'Grep'];
   private static readonly SKILL_TOOL = 'Skill';
   /** 사용자 환경에서 넘기는 것. 나머지(기기 토큰 포함)는 AI CLI에게 가지 않는다 */
   private static readonly PASSED_ENV = [
@@ -48,6 +51,8 @@ export class ClaudeCli implements AiTool {
   readonly id = ClaudeCli.TOOL;
   /** 이 일에 붙인 브라우저 (어댑터는 일마다 새로 만든다) */
   private browser: BrowserMcp | null = null;
+  /** 셸을 여는가: 코드 러너 칸의 자리에서 하는 코드 작업만 */
+  private shell = false;
 
   constructor(
     readonly bin: string,
@@ -62,6 +67,7 @@ export class ClaudeCli implements AiTool {
   open(job: Job, room: CodeRoom | null = null): Promise<JobWorkspace> {
     const { runToken } = job;
     this.browser = runToken === null ? null : BrowserMcp.for(job, this.browserUrl);
+    this.shell = job.isCode && room !== null && runToken !== null;
     return JobWorkspace.open(
       runToken === null ? null : ClaudeCli.mcpConfig(this.mcpUrl, runToken, this.browser),
       ClaudeCli.settings(process.env.HOME),
@@ -74,6 +80,7 @@ export class ClaudeCli implements AiTool {
   stream(): AiStream {
     return new ClaudeStream(
       this.browser ? [ClaudeStream.SERVER, BrowserMcp.SERVER] : [ClaudeStream.SERVER],
+      this.shell,
     );
   }
 
@@ -122,9 +129,11 @@ export class ClaudeCli implements AiTool {
     ];
     // 연결 확인: MCP도 도구도 없이 답만 받는다. --tools는 값을 여럿 받으므로 맨 뒤에 둔다
     if (!workspace.mcpReady) return [...print, '--tools', ''];
-    const tools = workspace.skillReady
-      ? [...ClaudeCli.FILE_TOOLS, ClaudeCli.SKILL_TOOL]
-      : ClaudeCli.FILE_TOOLS;
+    const tools = [
+      ...ClaudeCli.FILE_TOOLS,
+      ...(this.shell ? ClaudeCli.CODE_TOOLS : []),
+      ...(workspace.skillReady ? [ClaudeCli.SKILL_TOOL] : []),
+    ];
     return [
       ...print,
       '--mcp-config',
@@ -135,6 +144,7 @@ export class ClaudeCli implements AiTool {
       `mcp__${ClaudeStream.SERVER}__*`,
       ...(this.browser ? [`mcp__${BrowserMcp.SERVER}__*`] : []),
       ...(workspace.skillReady ? [ClaudeCli.SKILL_TOOL] : []),
+      ...(this.shell ? ClaudeCli.CODE_TOOLS : []),
       '--permission-mode',
       'acceptEdits',
     ];

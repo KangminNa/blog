@@ -110,6 +110,23 @@ describe('codex exec --json', () => {
     assert.match(String(shell.stream.breach), /셸이 열려 있어요/);
   });
 
+  test('셸을 연 코드 작업: 셸 명령은 기록이고 격리 위반이 아니다. 실패한 명령은 오류로', () => {
+    const stream = new CodexStream([CodexStream.SERVER], true);
+    const events = [
+      item('started', { type: 'command_execution', command: 'pnpm test', status: 'in_progress' }),
+      item('completed', { type: 'command_execution', command: 'pnpm test', exit_code: 1 }),
+      item('completed', { type: 'command_execution', command: 'ls', exit_code: 0 }),
+    ].flatMap((l) => stream.read(l));
+    assert.equal(stream.breach, null);
+    assert.deepEqual(
+      events.map((e) => [e.kind, e.body]),
+      [
+        ['write', '셸 pnpm test'],
+        ['error', '셸 pnpm test: 코드 1'],
+      ],
+    );
+  });
+
   test('JSON이 아니거나 모르는 줄은 넘어간다', () => {
     const { events, stream } = read(
       'Reading prompt from stdin...',

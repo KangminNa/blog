@@ -237,7 +237,9 @@ export class AgentUser {
     for (const pid of pids) {
       const status = await readFile(`/proc/${pid}/status`, 'utf8').catch(() => '');
       const uid = /^Uid:\s+(\d+)/m.exec(status)?.[1];
-      if (uid !== undefined && Number(uid) === this.uid) found.push(Number(pid));
+      // 이미 끝나 거두기만 기다리는 것(좀비)은 아무것도 못 한다. 거두는 것은 1번 프로세스(compose의 init)의 일이다
+      const zombie = /^State:\s+Z/m.test(status);
+      if (uid !== undefined && Number(uid) === this.uid && !zombie) found.push(Number(pid));
     }
     return found;
   }

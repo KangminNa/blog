@@ -4,7 +4,7 @@ import { type PlanWindow, RunEvent } from './progress';
 
 // codex exec --json의 줄을 실행 기록으로 바꾼다. 한 줄 = 사건 하나 (Codex 0.164.0으로 확인한 모양).
 //   item.started  mcp_tool_call     →  read · write. 허락하지 않은 서버면 격리가 깨진 것
-//                 command_execution →  셸은 꺼 두었으니 보이면 격리가 깨진 것
+//                 command_execution →  셸은 꺼 두었으니 보이면 격리가 깨진 것. 코드 러너 칸의 코드 작업만 write
 //   item.completed agent_message    →  마지막 답으로 기억한다
 //                  mcp_tool_call    →  실패했으면 error
 //                  file_change      →  write (작업 폴더 안)
@@ -50,6 +50,8 @@ export class CodexStream implements AiStream {
   constructor(
     /** 이 실행에서 허락한 MCP 서버. 그 밖의 서버의 도구를 부르면 격리가 깨진 것 */
     private readonly servers: readonly string[] = [CodexStream.SERVER],
+    /** 셸을 연 일인가 (코드 러너 칸의 코드 작업) */
+    private readonly shellAllowed = false,
   ) {}
 
   get finalText(): string {
@@ -98,7 +100,9 @@ export class CodexStream implements AiStream {
       case 'mcp_tool_call':
         return this.toolCall(item);
       case 'command_execution':
-        return this.shellOpened(item);
+        return this.shellAllowed
+          ? [new RunEvent(RunEvent.WRITE, `셸 ${item.text('command')}`.trim(), 0)]
+          : this.shellOpened(item);
       default:
         return [];
     }
@@ -112,7 +116,7 @@ export class CodexStream implements AiStream {
       case 'mcp_tool_call':
         return CodexStream.toolFailed(item);
       case 'command_execution':
-        return this.shellOpened(item);
+        return this.shellAllowed ? CodexStream.shellFailed(item) : this.shellOpened(item);
       case 'file_change': {
         const paths = item
           .list('changes')
@@ -143,6 +147,13 @@ export class CodexStream implements AiStream {
     if (!failed) return [];
     const why = item.child('error').text('message') || '도구가 실패했어요';
     return [new RunEvent(RunEvent.ERROR, `${item.text('tool')}: ${why}`, 0)];
+  }
+
+  /** 셸을 연 일에서 실패한 명령만 기록한다 (시작은 started에서 적었다) */
+  private static shellFailed(item: Json): readonly RunEvent[] {
+    const code = item.optionalNumber('exit_code');
+    if (code === null || code === 0) return [];
+    return [new RunEvent(RunEvent.ERROR, `셸 ${item.text('command')}: 코드 ${code}`, 0)];
   }
 
   /** 셸은 꺼 두었다 (CodexCli). 셸 명령이 보이면 설정이 먹지 않은 것이라 끈다 */

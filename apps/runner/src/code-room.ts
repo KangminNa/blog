@@ -33,11 +33,13 @@ export class CodeRoom {
   /** 새 자리. 같은 작업의 자리가 남아 있으면(지난 실행이 죽음) 지우고 새로 만든다 */
   static async open(base: string, taskId: string, agent: AgentUser): Promise<CodeRoom> {
     if (!CodeRoom.TASK_ID.test(taskId)) throw new Error(`작업 id가 틀려요: ${taskId}`);
+    // 부모와 자리는 711: agent는 자기 자리(repo · home · tmp · ai)로 들어갈 수만 있고 목록은 보지 못한다
     await mkdir(base, { recursive: true });
+    await chmod(base, 0o711);
     const room = new CodeRoom(join(base, taskId), agent);
     await room.close();
-    await mkdir(room.dir, { mode: 0o755 });
-    await chmod(room.dir, 0o755);
+    await mkdir(room.dir, { mode: 0o711 });
+    await chmod(room.dir, 0o711);
     for (const own of [room.cleanParent, room.gitHome]) await mkdir(own, { mode: 0o700 });
     return room;
   }

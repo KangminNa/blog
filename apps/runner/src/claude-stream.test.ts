@@ -301,3 +301,28 @@ describe('Claude 출력 읽기', () => {
     assert.deepEqual(stream.finish(), []);
   });
 });
+
+describe('셸', () => {
+  const bash = assistant(
+    'm1',
+    { input_tokens: 1, output_tokens: 1 },
+    {
+      type: 'tool_use',
+      name: 'Bash',
+      input: { command: 'pnpm test' },
+    },
+  );
+
+  test('셸을 열지 않은 일에서 셸이 보이면 격리가 깨진 것이다', () => {
+    const stream = new ClaudeStream();
+    stream.read(bash);
+    assert.match(String(stream.breach), /셸이 열려 있어요: pnpm test/);
+  });
+
+  test('셸을 연 코드 작업에서는 명령을 기록한다', () => {
+    const stream = new ClaudeStream([ClaudeStream.SERVER], true);
+    const events = stream.read(bash);
+    assert.equal(stream.breach, null);
+    assert.match(events[0]?.body ?? '', /Bash.*pnpm test/);
+  });
+});
