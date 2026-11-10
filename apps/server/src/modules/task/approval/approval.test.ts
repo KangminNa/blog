@@ -182,8 +182,12 @@ describe('에이전트', () => {
       created_at: NOW,
     } as AgentRow);
     who.edit({ name: '정리' });
-    assert.deepEqual(who.unsaved, { name: '정리' });
+    assert.deepEqual(
+      who.unsaved,
+      { name: '정리', settings_revision: 2 },
+      '설정이 바뀌면 판이 오른다',
+    );
     who.pause();
-    assert.deepEqual(who.unsaved, { name: '정리', status: Agent.PAUSED });
+    assert.deepEqual(who.unsaved, { name: '정리', settings_revision: 2, status: Agent.PAUSED });
   });
 });

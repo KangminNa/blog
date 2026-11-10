@@ -107,6 +107,49 @@ export class BrowseSite {
   }
 }
 
+/**
+ * 서버가 실어 보낸 스킬 한 판 (next_jobs의 skill_package). 러너는 디스크의 skills/ 대신 이것으로 깐다:
+ * 콘솔에서 고친 판이 배포 없이 바로 쓰이고, 어느 러너든 같은 판으로 돈다.
+ * 서버가 걸렀지만 러너도 경로 모양을 본다 (스킬 폴더 밖에 쓰지 않게). 틀리면 스킬이 없는 것으로 본다
+ */
+export class SkillPackage {
+  static readonly ENTRY = 'SKILL.md';
+  private static readonly NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
+  private static readonly PATH = /^(SKILL\.md|references\/[a-z0-9][a-z0-9._-]{0,60}\.md)$/;
+
+  private constructor(
+    readonly name: string,
+    /** repo(저장소 판) · console(콘솔 판) */
+    readonly source: string,
+    readonly revision: number | null,
+    readonly hash: string,
+    readonly files: ReadonlyMap<string, string>,
+  ) {}
+
+  static from(raw: Json): SkillPackage | null {
+    const name = raw.text('name');
+    const files = raw.field('files');
+    if (!SkillPackage.NAME.test(name) || typeof files !== 'object' || files === null) return null;
+    const entries = Object.entries(files as Record<string, unknown>);
+    const ok = entries.every(
+      ([path, text]) => SkillPackage.PATH.test(path) && typeof text === 'string',
+    );
+    if (!ok || !entries.some(([path]) => path === SkillPackage.ENTRY)) return null;
+    return new SkillPackage(
+      name,
+      raw.text('source'),
+      raw.optionalNumber('revision'),
+      raw.text('hash'),
+      new Map(entries as [string, string][]),
+    );
+  }
+
+  /** SKILL.md (스킬 폴더를 읽지 못하는 CLI에게 지시문으로 준다) */
+  get skillMd(): string {
+    return this.files.get(SkillPackage.ENTRY) ?? '';
+  }
+}
+
 // next_jobs가 빌려 준 일 하나. run_token은 AI CLI의 MCP 설정에만 쓴다.
 // 연결 확인(ai_test)과 웹 로그인(ai_signin)에는 에이전트도 run_token도 없다. 도구는 작업의 payload에 있고, MCP 없이 지시만 돌린다.
 export class Job {
@@ -146,6 +189,8 @@ export class Job {
     readonly codePayload: unknown = null,
     /** 코드 작업에서 AI에게 더 주는 단락 (저장소 · 고칠 곳 · 검사). CodeStage가 붙인다 */
     readonly brief: string | null = null,
+    /** 서버가 실어 보낸 스킬 한 판. 옛 서버면 null (그때는 디스크의 skills/에서 이름으로 찾는다) */
+    readonly skillPackage: SkillPackage | null = null,
   ) {}
 
   static from(raw: Json): Job {
@@ -179,6 +224,8 @@ export class Job {
         ? BrowseSite.from(task.child('payload').child('site'))
         : null,
       task.text('kind') === Job.CODE ? task.child('payload').field('code') : null,
+      null,
+      raw.field('skill_package') ? SkillPackage.from(raw.child('skill_package')) : null,
     );
   }
 
@@ -204,6 +251,7 @@ export class Job {
       this.site,
       this.codePayload,
       brief,
+      this.skillPackage,
     );
   }
 

@@ -1,5 +1,5 @@
 import { TableRepository } from '../../platform';
-import { agents } from '../task.schema';
+import { agentRevisions, agents } from '../task.schema';
 import type { AgentRow } from '../task.tables';
 import { PlanUsage } from '../usage/plan-usage';
 import { PlanUsageRepository } from '../usage/plan-usage.repository';
@@ -12,6 +12,12 @@ export class AgentRepository extends TableRepository<AgentRow, Agent> {
 
   protected toEntity(row: AgentRow): Agent {
     return Agent.restore(row);
+  }
+
+  /** 바뀐 설정의 판을 남긴다 (추가만) */
+  protected override async saveParts(agent: Agent): Promise<void> {
+    const revision = agent.addedRevision;
+    if (revision) await this.insertRows(agentRevisions, revision);
   }
 
   /** 공간의 모든 에이전트 (만든 순서). 잠그지 않는다: 위임할 때 바로 아래 팀을 찾는다 */

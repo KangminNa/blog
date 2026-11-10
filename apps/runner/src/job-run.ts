@@ -103,7 +103,12 @@ export class JobRun {
       workspace = await this.tool.open(this.job, stage?.workspaceRoom ?? null);
       await workspace.handOver();
       const { skill } = this.job;
-      if (skill && JobWorkspace.skillText(skill, this.config.skillsDir) === null)
+      const shipped = this.job.skillPackage;
+      if (shipped)
+        this.log.info(
+          `스킬 ${shipped.name}: ${shipped.source === 'console' ? `콘솔 판 ${shipped.revision}` : '저장소 판'} (${shipped.hash.slice(0, 7)})`,
+        );
+      else if (skill && JobWorkspace.skillText(skill, this.config.skillsDir) === null)
         this.log.info(`스킬 ${skill}이 없어 지시만으로 해요`);
       await this.supervise(workspace, this.tool);
     } catch (error) {
@@ -157,6 +162,7 @@ export class JobRun {
     const child = tool.start(job, workspace, (line) => {
       this.reporter.add(stream.read(line));
       this.reporter.notePlan(stream.takePlanUsage());
+      this.reporter.noteModel(stream.model);
       if (stream.breach !== null) wake.abort();
     });
     void child.exited.then(() => wake.abort());

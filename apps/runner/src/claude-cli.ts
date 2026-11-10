@@ -74,6 +74,7 @@ export class ClaudeCli implements AiTool {
       job.skill,
       this.skillsDir,
       room,
+      job.skillPackage,
     );
   }
 

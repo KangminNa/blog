@@ -9,6 +9,7 @@ const ICONS: Record<string, ReactNode> = {
       <path d="m5.2 8 2 2 3.6-4" />
     </>
   ),
+  scroll: <path d="M4 2.5h8v11H4zM6 5.5h4M6 8h4M6 10.5h2.5" />,
   stamp: <path d="M6 2.5h4v3.2c0 1.2 2.8 1.6 2.8 4H3.2c0-2.4 2.8-2.8 2.8-4zM3 12.8h10" />,
   flag: <path d="M3.5 14V2.5M3.5 3h8.5l-2 3 2 3H3.5" />,
   runner: (
@@ -88,6 +89,7 @@ export const MENU = [
       { href: '/admin/agents', name: '에이전트', icon: 'people' },
       { href: '/admin/goals', name: '목표', icon: 'flag' },
       { href: '/admin/runners', name: '러너', icon: 'runner' },
+      { href: '/admin/skills', name: '스킬', icon: 'scroll' },
       { href: '/admin/office', name: '오피스', icon: 'office' },
     ],
   },

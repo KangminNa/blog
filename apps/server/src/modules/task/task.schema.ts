@@ -6,6 +6,15 @@ import { bigint, boolean, customType, integer, jsonb, pgSchema, text, timestamp,
 const byteaColumn = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
 const taskSchema = pgSchema('task');
 
+/** task.agent_revisions */
+export const agentRevisions = taskSchema.table('agent_revisions', {
+  id: uuid('id').notNull(),
+  agent_id: uuid('agent_id').notNull(),
+  revision: integer('revision').notNull(),
+  settings: jsonb('settings').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
 /** task.agents */
 export const agents = taskSchema.table('agents', {
   id: uuid('id').notNull(),
@@ -22,6 +31,7 @@ export const agents = taskSchema.table('agents', {
   five_hour_limit: bigint('five_hour_limit', { mode: 'number' }),
   plan_stop_percent: integer('plan_stop_percent'),
   reports_to: uuid('reports_to'),
+  settings_revision: integer('settings_revision').notNull(),
 });
 
 /** task.ai_logins */
@@ -110,6 +120,30 @@ export const runners = taskSchema.table('runners', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
 });
 
+/** task.skill_revisions */
+export const skillRevisions = taskSchema.table('skill_revisions', {
+  id: uuid('id').notNull(),
+  skill_id: uuid('skill_id').notNull(),
+  revision: integer('revision').notNull(),
+  files: jsonb('files').notNull(),
+  hash: text('hash').notNull(),
+  based_on: text('based_on').notNull(),
+  note: text('note').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
+/** task.skills */
+export const skills = taskSchema.table('skills', {
+  id: uuid('id').notNull(),
+  space_id: uuid('space_id').notNull(),
+  name: text('name').notNull(),
+  active_revision: integer('active_revision'),
+  revisions: integer('revisions').notNull(),
+  version: integer('version').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
+});
+
 /** task.task_events */
 export const taskEvents = taskSchema.table('task_events', {
   id: bigint('id', { mode: 'number' }).notNull(),
@@ -118,6 +152,25 @@ export const taskEvents = taskSchema.table('task_events', {
   kind: text('kind').notNull(),
   body: text('body').notNull(),
   tokens: integer('tokens').notNull(),
+});
+
+/** task.task_runs */
+export const taskRuns = taskSchema.table('task_runs', {
+  id: uuid('id').notNull(),
+  space_id: uuid('space_id').notNull(),
+  task_id: uuid('task_id').notNull(),
+  seq: integer('seq').notNull(),
+  runner_id: uuid('runner_id').notNull(),
+  agent_id: uuid('agent_id'),
+  agent_revision: integer('agent_revision'),
+  skill: text('skill'),
+  skill_source: text('skill_source'),
+  skill_revision: integer('skill_revision'),
+  skill_hash: text('skill_hash'),
+  runner_build: text('runner_build'),
+  cli_version: text('cli_version'),
+  model: text('model'),
+  started_at: timestamp('started_at', { withTimezone: true }).notNull(),
 });
 
 /** task.tasks */

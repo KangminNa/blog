@@ -12,6 +12,9 @@ export class ProgressReporter {
   private static readonly BYTES_MAX = 256 * 1024;
   private queue: RunEvent[] = [];
   private plan: readonly PlanWindow[] = [];
+  /** 아직 보내지 않은 모델 이름. 한 번만 보낸다 */
+  private model: string | null = null;
+  private modelSent = false;
   private unsent: ProgressBatch | null = null;
   private lease: Date | null;
 
@@ -31,6 +34,11 @@ export class ProgressReporter {
   /** 새로 본 구독 사용률. 아직 보내지 않은 값은 새 값으로 바뀐다 */
   notePlan(windows: readonly PlanWindow[]): void {
     if (windows.length > 0) this.plan = windows;
+  }
+
+  /** AI CLI가 알린 모델. 처음 본 것 하나만 다음 보고에 싣는다 */
+  noteModel(model: string | null): void {
+    if (model && !this.modelSent && this.model === null) this.model = model;
   }
 
   /** 보낼 것이 남지 않았는가 */
@@ -63,6 +71,11 @@ export class ProgressReporter {
     }
     const plan = this.plan;
     this.plan = [];
-    return ProgressBatch.of(this.queue.splice(0, count), plan);
+    const model = this.model;
+    if (model !== null) {
+      this.model = null;
+      this.modelSent = true;
+    }
+    return ProgressBatch.of(this.queue.splice(0, count), plan, model);
   }
 }

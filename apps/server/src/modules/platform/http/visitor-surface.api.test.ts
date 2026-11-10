@@ -39,6 +39,7 @@ const VISITOR_GET: Readonly<Record<string, number>> = {
   // 주인만
   'GET /api/auth/me': 401,
   'GET /api/agents': 403,
+  'GET /api/agents/:id/revisions': 403,
   'GET /api/ai': 403,
   'GET /api/approvals': 403,
   'GET /api/approvals/:id': 403,
@@ -50,6 +51,9 @@ const VISITOR_GET: Readonly<Record<string, number>> = {
   'GET /api/goals': 403,
   'GET /api/graph': 403,
   'GET /api/posts/:id': 403,
+  'GET /api/runner-skills': 403,
+  'GET /api/runner-skills/:name': 403,
+  'GET /api/runner-skills/:name/revisions/:revision': 403,
   'GET /api/runners': 403,
   'GET /api/sessions': 403,
   'GET /api/sessions/:id': 403,

@@ -1,9 +1,10 @@
-import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { AgentUser } from './agent-user';
 import type { CodeRoom } from './code-room';
+import type { SkillPackage } from './job';
 
 // 일 하나의 자리. 사용자의 연결(connector), MCP 서버, 설정, 스킬을 물려받지 않게 작업마다 새로 만들고 지운다.
 //   work/      AI CLI가 도는 빈 폴더
@@ -37,6 +38,8 @@ export class JobWorkspace {
     skill: string | null,
     skillsDir: string,
     room: CodeRoom | null = null,
+    /** 서버가 실어 보낸 스킬. 있으면 디스크의 skills/ 대신 이것을 깐다 */
+    skillPackage: SkillPackage | null = null,
   ): Promise<JobWorkspace> {
     const root = room ? room.aiDir : await mkdtemp(join(await realpath(tmpdir()), 'cairn-run-'));
     if (room) await mkdir(root, { mode: 0o700 });
@@ -48,7 +51,9 @@ export class JobWorkspace {
     }
     if (settings !== null)
       await writeFile(join(root, 'config', 'settings.json'), settings, { flag: 'wx' });
-    const skillReady = skill !== null && JobWorkspace.install(skill, skillsDir, root);
+    const skillReady = skillPackage
+      ? JobWorkspace.installPackage(skillPackage, root)
+      : skill !== null && JobWorkspace.install(skill, skillsDir, root);
     return new JobWorkspace(root, mcpConfig !== null, skillReady, room);
   }
 
@@ -102,6 +107,17 @@ export class JobWorkspace {
     const file = join(skillsDir, skill, 'SKILL.md');
     if (!JobWorkspace.SKILL_NAME.test(skill) || !existsSync(file)) return null;
     return readFileSync(file, 'utf8');
+  }
+
+  /** 서버가 보낸 판을 config/skills/<이름>/에 쓴다. 경로 모양은 SkillPackage.from이 이미 봤다 */
+  private static installPackage(skill: SkillPackage, root: string): boolean {
+    const to = join(root, 'config', 'skills', skill.name);
+    for (const [path, text] of skill.files) {
+      const file = join(to, path);
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, text.split('{{SKILL_DIR}}').join(to));
+    }
+    return true;
   }
 
   /** 이름은 서버가 보낸 값이라 경로로 쓰기 전에 모양을 본다. 스킬은 저장소에 든 것만 넣는다 */

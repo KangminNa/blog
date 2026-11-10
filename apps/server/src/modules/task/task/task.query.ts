@@ -1,10 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { type Actor, AgentActor, BaseQuery, NotFound } from '../../platform';
-import { tasks } from '../task.schema';
+import { taskRuns, tasks } from '../task.schema';
 import type { GoalRow, TaskEventRow, TaskRow } from '../task.tables';
 import { Task } from './task';
 import type { ListTasksInput, TaskIdInput } from './task.input';
-import { TaskDetailView, TaskEventView, TaskGoalView, TaskPageView, TaskView } from './task.view';
+import {
+  TaskDetailView,
+  TaskEventView,
+  TaskGoalView,
+  TaskPageView,
+  TaskRunView,
+  TaskView,
+} from './task.view';
 
 // 작업 읽기. 목록과 상세는 주인만. mcp 모듈은 작업 토큰이 아직 살아 있는지 여기에 묻는다.
 @Injectable()
@@ -46,12 +53,14 @@ export class TaskQuery extends BaseQuery {
       ) e ORDER BY id`;
     const goals = row.goal_id === null ? [] : await this.goalChain(row.goal_id);
     const children = await this.rows(tasks, { parent_id: req.id }, { order: ['id'] });
+    const runs = await this.rows(taskRuns, { task_id: req.id }, { order: ['seq'] });
     return new TaskDetailView(
       row,
       Task.shownPayload(row.kind, row.payload),
       events.map((e) => new TaskEventView(e)),
       goals,
       children.map((c) => new TaskView(c)),
+      runs.map((r) => new TaskRunView(r)),
     );
   }
 

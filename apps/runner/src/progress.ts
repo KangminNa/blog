@@ -104,10 +104,16 @@ export class ProgressBatch {
     readonly requestId: string | null,
     readonly events: readonly RunEvent[],
     readonly planUsage: readonly PlanWindow[],
+    /** AI CLI가 알린 모델 (실행 기록에 한 번 남긴다). 새로 본 것이 없으면 null */
+    readonly model: string | null = null,
   ) {}
 
-  static of(events: readonly RunEvent[], planUsage: readonly PlanWindow[]): ProgressBatch {
-    return new ProgressBatch(events.length === 0 ? null : randomUUID(), events, planUsage);
+  static of(
+    events: readonly RunEvent[],
+    planUsage: readonly PlanWindow[],
+    model: string | null = null,
+  ): ProgressBatch {
+    return new ProgressBatch(events.length === 0 ? null : randomUUID(), events, planUsage, model);
   }
 }
 

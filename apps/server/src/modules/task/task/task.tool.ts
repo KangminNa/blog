@@ -58,6 +58,17 @@ export class NextJobsTool extends BaseTool {
         description:
           '러너가 스스로 가진 로그인 (환경 변수 등). 서버의 로그인이 없어도 그 도구의 일을 준다',
       },
+      runner_build: {
+        type: 'string',
+        maxLength: NextJobsInput.BUILD_MAX,
+        description: '러너의 빌드 (git 커밋 등). 빌려 준 실행의 기록에 남긴다',
+      },
+      cli_versions: {
+        type: 'object',
+        additionalProperties: { type: 'string', maxLength: NextJobsInput.BUILD_MAX },
+        description:
+          '도구마다 CLI 버전 (예: {"claude": "2.1.302 (Claude Code)"}). 실행의 기록에 남긴다',
+      },
       browser: {
         type: 'boolean',
         description: '서버 브라우저에 붙어 있는가. true인 러너에게만 브라우저 작업(browse)을 준다',
@@ -111,6 +122,11 @@ export class ReportProgressTool extends BaseTool {
           },
           required: ['kind'],
         },
+      },
+      model: {
+        type: 'string',
+        maxLength: ReportProgressInput.MODEL_MAX,
+        description: 'AI CLI가 알린 모델. 이 실행의 기록에 한 번 남긴다 (이미 있으면 그대로)',
       },
       plan_usage: {
         type: 'array',

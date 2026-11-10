@@ -289,3 +289,63 @@ describe('코드 러너 칸의 코드 작업', () => {
     await workspace.remove();
   });
 });
+
+describe('서버가 실어 보낸 스킬', () => {
+  const withPackage = (pkg: unknown) =>
+    Job.from(
+      Json.of({
+        task: { id: 'task-1', kind: 'draft_post', title: '초안', payload: {} },
+        instruction: '글을 써 주세요',
+        agent: { name: '글쓰기', role: '', tool: 'claude' },
+        run_token: 'run-token',
+        skill: 'cairn-write',
+        skill_package: pkg,
+      }),
+    );
+  const pkg = {
+    name: 'cairn-write',
+    source: 'console',
+    revision: 3,
+    hash: 'a'.repeat(64),
+    files: {
+      'SKILL.md':
+        '---\nname: cairn-write\ncairn-where: runner\n---\n콘솔 판. {{SKILL_DIR}}/references/style.md를 읽는다',
+      'references/style.md': '콘솔 문체',
+    },
+  };
+
+  test('받은 판을 깐다: 디스크의 skills/는 보지 않는다', async () => {
+    const job = withPackage(pkg);
+    assert.equal(job.skillPackage?.revision, 3);
+    const cli = new ClaudeCli('claude', 'oauth-token', 'http://x/mcp', skillsDir);
+    const workspace = await cli.open(job);
+    const to = join(workspace.configDir, 'skills', 'cairn-write');
+    assert.equal(workspace.skillReady, true);
+    assert.equal(
+      readFileSync(join(to, 'SKILL.md'), 'utf8').includes(`${to}/references/style.md`),
+      true,
+      '{{SKILL_DIR}}는 깐 자리로',
+    );
+    assert.equal(readFileSync(join(to, 'references', 'style.md'), 'utf8'), '콘솔 문체');
+    assert.equal(existsSync(join(to, 'agents')), false, '디스크의 판(agents/ 포함)을 섞지 않는다');
+    await workspace.remove();
+  });
+
+  test('경로가 스킬 폴더 밖이거나 SKILL.md가 없으면 받은 판은 없는 것이다 (옛 길로 디스크의 판을 쓴다)', async () => {
+    for (const files of [
+      { 'SKILL.md': 'x', '../escape.md': 'x' },
+      { 'SKILL.md': 'x', 'scripts/run.sh': 'x' },
+      { 'references/a.md': 'x' },
+      { 'SKILL.md': 1 },
+    ])
+      assert.equal(withPackage({ ...pkg, files }).skillPackage, null, JSON.stringify(files));
+    assert.equal(withPackage({ ...pkg, name: '../x' }).skillPackage, null);
+    const old = withPackage(null);
+    assert.equal(old.skillPackage, null);
+    const workspace = await new ClaudeCli('claude', 'oauth-token', 'http://x/mcp', skillsDir).open(
+      old,
+    );
+    assert.equal(workspace.skillReady, true, '옛 서버: 디스크의 cairn-write');
+    await workspace.remove();
+  });
+});

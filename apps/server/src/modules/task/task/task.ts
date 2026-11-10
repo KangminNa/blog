@@ -12,9 +12,11 @@ import {
 import type { Agent } from '../agent/agent';
 import { AiSigninRelayView, AiTestView } from '../ai/ai-login.view';
 import type { Goal } from '../goal/goal';
-import type { TaskEventRow, TaskNew, TaskRow } from '../task.tables';
+import type { SkillPackage } from '../skill/skill-package';
+import type { TaskEventRow, TaskNew, TaskRow, TaskRunNew } from '../task.tables';
 import {
   DelegatedView,
+  type JobSkillView,
   JobStateView,
   JobSubtaskResultView,
   JobView,
@@ -112,6 +114,8 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   };
 
   private readonly logged: Omit<TaskEventRow, 'id'>[] = [];
+  /** 이번 임대의 실행 기록 */
+  private run: TaskRunNew | null = null;
 
   /** 새 작업. 담당·입력·시도·임대·위임 칸은 표에 기본값이 있어도 규칙이 저장 전에 읽어서 적어 둔다 */
   static open(
@@ -310,6 +314,41 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   /** 이 러너가 자격을 넘겨 이미 끝난 웹 로그인인가. 응답을 잃은 러너가 다시 보내도 같은 답을 준다 */
   signinDoneBy(runnerId: string): boolean {
     return this.isAiSignin && this.row.status === Task.DONE && this.row.leased_by === runnerId;
+  }
+
+  /**
+   * 이번 실행의 규칙 판을 남긴다 (임대할 때): 에이전트 설정 판, 스킬 판, 러너 빌드, CLI 버전.
+   * 몇 번째 실행인지는 Repository가 매긴다 (attempts는 고쳐 달라 · 깨우기에서 0으로 돌아간다)
+   */
+  recordRun(
+    runnerId: string,
+    agent: Agent | null,
+    skill: SkillPackage | null,
+    runnerBuild: string | null,
+    cliVersion: string | null,
+    now: Date,
+  ): void {
+    this.run = {
+      id: BaseEntity.newId(),
+      space_id: this.row.space_id,
+      task_id: this.id,
+      seq: 0,
+      runner_id: runnerId,
+      agent_id: agent?.id ?? null,
+      agent_revision: agent?.settingsRevision ?? null,
+      skill: skill?.name ?? null,
+      skill_source: skill?.source ?? null,
+      skill_revision: skill?.revision ?? null,
+      skill_hash: skill?.hash ?? null,
+      runner_build: runnerBuild,
+      cli_version: cliVersion,
+      started_at: now,
+    };
+  }
+
+  /** 남길 실행 기록 (Repository가 seq를 매겨 넣는다) */
+  get addedRun(): TaskRunNew | null {
+    return this.run;
   }
 
   /** 이번에 쌓인 실행 기록 (Repository가 저장한다) */
@@ -565,6 +604,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     goals: readonly Goal[],
     org: readonly Agent[],
     children: readonly Task[],
+    skill: JobSkillView | null = null,
   ): JobView {
     const runToken =
       agent && this.actorFor(agent.id, agent.scopes).seal(box, Task.RUN_TOKEN_SECONDS);
@@ -579,6 +619,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
       team.map((a) => a.memberView(Task.delegableWith(a.scopes))),
       children.map((c) => c.resultView(org.find((a) => a.id === c.row.agent_id)?.name ?? null)),
       Math.max(0, Task.ROUNDS_MAX - this.row.rounds),
+      skill,
     );
   }
 
@@ -609,6 +650,12 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     return new JobSubtaskResultView(this.row, agentName, summary, this.failure);
   }
 
+  /** 에이전트 없는 일(연결 확인 · 웹 로그인)의 도구. 없으면 null */
+  get payloadTool(): string | null {
+    const tool = this.payload.tool;
+    return typeof tool === 'string' ? tool : null;
+  }
+
   private get payload(): Readonly<Record<string, unknown>> {
     return (this.row.payload ?? {}) as Readonly<Record<string, unknown>>;
   }
@@ -622,7 +669,8 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   }
 
   /** 러너가 쓸 스킬. 없으면 지시만으로 일한다 */
-  private get skill(): string | null {
+  /** 이 일의 스킬 이름 (Task.SKILLS). 없으면 null */
+  get skill(): string | null {
     return Task.SKILLS[this.row.kind] ?? null;
   }
 

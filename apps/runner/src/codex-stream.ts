@@ -67,6 +67,11 @@ export class CodexStream implements AiStream {
     return this.breachText;
   }
 
+  /** codex exec --json은 모델을 알리지 않는다 (0.164.0) */
+  get model(): string | null {
+    return null;
+  }
+
   takePlanUsage(): readonly PlanWindow[] {
     return [];
   }

@@ -321,6 +321,15 @@ describe('러너가 일을 처리한다', () => {
     assert.equal(events(task)[1]?.body, 'blog_save_draft');
     assert.equal(tokens(task), FAKE_TOKENS);
     assert.equal(JSON.stringify(task).includes('본문은 기록에 남기지 않는다'), false);
+    // 실행 기록: 어떤 규칙으로 돌았는지 (스킬 판 · CLI 버전 · 러너가 처음 알린 모델)
+    const runs = task.runs as Json[];
+    assert.equal(runs.length, 1);
+    assert.equal(runs[0]?.seq, 1);
+    assert.equal(runs[0]?.agentRevision, 1);
+    assert.equal(runs[0]?.cliVersion, '2.1.302 (Claude Code)');
+    assert.equal(runs[0]?.model, 'fake');
+    assert.ok(String(runs[0]?.runnerBuild).length > 0);
+    assert.equal(runs[0]?.skill, null, '일반 작업은 스킬이 없다');
   });
 
   test('금방 끝난 실행의 구독 사용률도 서버에 닿고, 닿은 에이전트의 일은 쉬었다가 다시 돈다', async () => {
@@ -743,7 +752,8 @@ describe('코드 러너 칸', () => {
     try {
       await slots[0]?.logged('코드 러너 칸 1로 연결했어요');
       await slots[1]?.logged('코드 러너 칸 2로 연결했어요');
-      assert.ok(slots.every((s) => s.logs.includes('코드 작업만 받음')));
+      // 능력 줄은 연결 뒤 CLI 버전을 읽고 나서 찍힌다
+      await Promise.all(slots.map((s) => s.logged('코드 작업만 받음')));
       const { devices } = ok(await api.get('/api/devices', owner)) as {
         devices: { name: string; scopes: string[]; revokedAt: string | null }[];
       };
@@ -1053,6 +1063,15 @@ describe('Codex로 일한다', () => {
     const task = await taskIn(created.id, 'done');
     assert.deepEqual(task.result, { text: 'codex 끝' });
     assert.equal(tokens(task), 220, '300 - 캐시 100 + 20');
+    const [run] = task.runs as Json[];
+    assert.ok(run);
+    assert.equal(run.cliVersion, 'codex-cli 0.164.0');
+    assert.equal(run.model, null, 'codex의 이벤트에는 모델이 없다');
+    const skill = run.skill as Json;
+    assert.deepEqual(
+      { name: skill.name, source: skill.source },
+      { name: 'cairn-write', source: 'repo' },
+    );
     const env = seen.env as Json;
     assert.ok(String(env.CODEX_HOME).length > 0);
     assert.notEqual(env.HOME, process.env.HOME, '빈 홈');

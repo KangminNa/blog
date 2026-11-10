@@ -7,7 +7,7 @@ import { useLiveValue } from '../../_lib/use-live';
 import { CANCELLABLE, clock, EVENT_KINDS, TARGET_LABELS, tokens, when } from '../../_task/labels';
 import { useAgents, usePendingApprovals } from '../../_task/live';
 import { TaskPill } from '../../_task/parts';
-import type { Task, TaskDetail, TaskEvent } from '../../_task/types';
+import type { Task, TaskDetail, TaskEvent, TaskRun } from '../../_task/types';
 import { useNotify } from '../AdminShell';
 
 /** 서버가 상세에 보내는 실행 기록의 최대 개수 (TaskQuery.EVENTS) */
@@ -125,6 +125,7 @@ export function TaskDetailPanel({ id }: { id: string }) {
           )}
         </section>
       )}
+      <Runs runs={t.runs} />
       <section className="panel" aria-labelledby="task-log">
         <div className="sec-title flat">
           <h2 id="task-log">실행 로그</h2>
@@ -205,6 +206,45 @@ function Result({ result }: { result: unknown }) {
       <h2 id="task-result">결과</h2>
       {typeof error === 'string' && <p className="error">{error}</p>}
       {Object.keys(rest).length > 0 && <pre className="raw">{JSON.stringify(rest, null, 2)}</pre>}
+    </section>
+  );
+}
+
+/** 실행마다 어떤 규칙으로 돌았는지: 결과가 바뀌었을 때 무엇이 바뀌어서인지 비교한다 */
+function Runs({ runs }: { runs: readonly TaskRun[] }) {
+  if (runs.length === 0) return null;
+  return (
+    <section className="panel" aria-labelledby="task-runs">
+      <h2 id="task-runs">실행</h2>
+      <ol className="list" aria-label="실행">
+        {runs.map((r) => (
+          <li key={r.seq} className="list-cell stack">
+            <div>
+              <b>{r.seq}회</b> <span className="label-mono">{when(r.startedAt)}</span>
+            </div>
+            <dl className="kv">
+              {r.agentRevision !== null && (
+                <>
+                  <dt>에이전트 설정</dt>
+                  <dd>판 {r.agentRevision}</dd>
+                </>
+              )}
+              <dt>스킬</dt>
+              <dd>
+                {r.skill === null
+                  ? '없음'
+                  : `${r.skill.name} · ${r.skill.source === 'console' ? `콘솔 판 ${r.skill.revision}` : '저장소 판'} · ${(r.skill.hash ?? '').slice(0, 7)}`}
+              </dd>
+              <dt>러너 빌드</dt>
+              <dd>{r.runnerBuild ?? '알 수 없음'}</dd>
+              <dt>CLI</dt>
+              <dd>{r.cliVersion ?? '알 수 없음'}</dd>
+              <dt>모델</dt>
+              <dd>{r.model ?? '보고 전'}</dd>
+            </dl>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }

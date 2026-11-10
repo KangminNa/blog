@@ -1,4 +1,4 @@
-import type { AgentRow, HeartbeatRow } from '../task.tables';
+import type { AgentRevisionRow, AgentRow, HeartbeatRow } from '../task.tables';
 
 // 에이전트의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
 // 표의 칸 중 무엇을 내보내는지는 여기 한 곳에만 적는다.
@@ -54,7 +54,24 @@ export class AgentSavedView {
       reportsTo: r.reports_to,
       status: r.status,
       version: r.version,
+      /** 설정 판: 주인이 정하는 칸이 바뀔 때마다 오른다 (실행 기록이 이 번호를 남긴다) */
+      settingsRevision: r.settings_revision,
       createdAt: r.created_at.toISOString(),
+    };
+  }
+}
+
+/** 에이전트 설정 판 목록 (새 판부터). settings는 그 판의 설정 칸 전부 */
+export class AgentRevisionListView {
+  constructor(private readonly rows: readonly Readonly<AgentRevisionRow>[]) {}
+
+  toJSON() {
+    return {
+      revisions: this.rows.map((r) => ({
+        revision: r.revision,
+        settings: r.settings as Record<string, unknown>,
+        createdAt: r.created_at.toISOString(),
+      })),
     };
   }
 }

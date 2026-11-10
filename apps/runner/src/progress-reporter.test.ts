@@ -206,3 +206,30 @@ describe('끝 알리기', () => {
     assert.equal(failed.error?.includes('secret'), false);
   });
 });
+
+describe('모델 알리기 (실행 기록)', () => {
+  test('처음 본 모델 하나만 한 번 싣는다. 응답을 잃으면 같은 묶음으로 다시 보낸다', async () => {
+    const server = new RecordingServer(1);
+    const reporter = reporterOn(server);
+    reporter.noteModel(null);
+    reporter.noteModel('claude-a');
+    reporter.noteModel('claude-b');
+    await assert.rejects(reporter.send(), ServerUnreachable);
+    await reporter.send();
+    reporter.noteModel('claude-c');
+    await reporter.send();
+    assert.deepEqual(
+      server.batches.map((b) => b.model),
+      ['claude-a', 'claude-a', null],
+    );
+  });
+
+  test('Claude 스트림은 system/init의 모델을 알린다', () => {
+    const stream = new ClaudeStream();
+    assert.equal(stream.model, null);
+    stream.read(
+      JSON.stringify({ type: 'system', subtype: 'init', model: 'claude-x', mcp_servers: [] }),
+    );
+    assert.equal(stream.model, 'claude-x');
+  });
+});

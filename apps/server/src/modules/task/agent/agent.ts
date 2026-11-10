@@ -8,7 +8,7 @@ import {
   TableEntity,
 } from '../../platform';
 import { JobTeamMemberView } from '../task/task.view';
-import type { AgentNew, AgentRow } from '../task.tables';
+import type { AgentNew, AgentRevisionNew, AgentRow } from '../task.tables';
 import { AgentUsageView } from '../usage/usage.view';
 import { AgentSavedView } from './agent.view';
 
@@ -17,6 +17,8 @@ import { AgentSavedView } from './agent.view';
 // 한 달 한도는 넘기면 멈추고 결재를 받는다. 5시간 한도와 구독 사용률은 닿으면 새 일만 쉬고 시간이 지나면 저절로 돌아온다 (holds).
 // 조직도: 보고 대상(reports_to)이 없으면 주인에게 보고한다. 보고 대상은 reportTo로만 바꾼다 (순환 · 깊이 검사).
 export class Agent extends TableEntity<AgentRow, AgentNew> {
+  /** 이번 저장에서 쌓을 설정 판 */
+  private pendingRevision: AgentRevisionNew | null = null;
   static readonly ACTIVE = 'active';
   static readonly PAUSED = 'paused';
   static readonly TOOLS: readonly string[] = ['claude', 'codex'];
@@ -34,6 +36,18 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
   private static readonly NOT_WITH_BROWSE: readonly string[] = [Actor.READ_ALL, Actor.WRITE];
   /** code와 함께 줄 수 없는 권한: 비공개 지식과 코드 작업을 섞지 않는다. DB CHECK agents_code_not_private와 같다 */
   private static readonly NOT_WITH_CODE: readonly string[] = [Actor.READ_ALL, Actor.WRITE];
+  /** 설정 판에 남기는 칸: 주인이 정하는 것 전부 (상태 · 사용량은 빼고) */
+  private static readonly SETTINGS: readonly (keyof AgentRow)[] = [
+    'name',
+    'role',
+    'tool',
+    'scopes',
+    'approval_actions',
+    'monthly_limit',
+    'five_hour_limit',
+    'plan_stop_percent',
+    'reports_to',
+  ];
   private static readonly NAME_MAX = 60;
   private static readonly ROLE_MAX = 2000;
   private static readonly PLAN_PERCENT_MAX = 100;
@@ -162,9 +176,38 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     return this.row.status === Agent.PAUSED;
   }
 
-  /** 주인이 고친 칸을 적는다 */
+  /** 주인이 고친 칸을 적는다. 설정이 바뀌면 설정 판을 하나 올린다 */
   edit(changes: Partial<AgentRow>): void {
+    const before = this.settingsSnapshot();
     this.accept(changes, Agent.RULES);
+    this.noteSettings(before);
+  }
+
+  /** 지금 설정 판 (실행 기록에 남긴다) */
+  get settingsRevision(): number {
+    return this.row.settings_revision ?? 1;
+  }
+
+  /** 이번에 쌓을 설정 판 (Repository가 넣는다) */
+  get addedRevision(): AgentRevisionNew | null {
+    return this.pendingRevision;
+  }
+
+  /** 설정 칸 전부 (판의 내용) */
+  private settingsSnapshot(): Record<string, unknown> {
+    return Object.fromEntries(Agent.SETTINGS.map((column) => [column, this.row[column] ?? null]));
+  }
+
+  /**
+   * 설정이 바뀌었으면 판을 쌓는다. 새 에이전트는 판 1. 한 번의 저장 안에서 여러 번 바뀌면(고치기 + 보고 대상)
+   * 판은 하나만 올리고 마지막 모습을 남긴다
+   */
+  private noteSettings(before: Record<string, unknown>): void {
+    const after = this.settingsSnapshot();
+    if (!this.isNew && JSON.stringify(after) === JSON.stringify(before)) return;
+    const revision = this.pendingRevision?.revision ?? (this.isNew ? 1 : this.settingsRevision + 1);
+    if (revision !== this.row.settings_revision) this.put('settings_revision', revision);
+    this.pendingRevision = { id: BaseEntity.newId(), agent_id: this.id, revision, settings: after };
   }
 
   /**
@@ -184,7 +227,9 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     if (level + Agent.heightOf(this.id, org) - 1 > Agent.ORG_DEPTH_MAX)
       throw new RuleViolation(`조직도는 ${Agent.ORG_DEPTH_MAX}단계까지예요`);
     if (managerId === this.row.reports_to) return;
+    const before = this.settingsSnapshot();
     this.put('reports_to', managerId);
+    this.noteSettings(before);
   }
 
   /** 이 에이전트의 바로 아래 팀원인가 (위임은 바로 아래에게만) */

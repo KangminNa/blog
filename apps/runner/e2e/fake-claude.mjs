@@ -17,6 +17,11 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+// 러너가 시작할 때 버전을 묻는다 (실행 기록의 cli_version)
+if (process.argv[2] === '--version') {
+  process.stdout.write('2.1.302 (Claude Code)\n');
+  process.exit(0);
+}
 if (process.argv[2] === 'setup-token') await setupToken();
 
 /** claude setup-token의 화면 (색, 하이퍼링크). 화면의 문구는 실제 CLI의 것 */

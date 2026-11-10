@@ -158,7 +158,10 @@ export class CodexCli implements AiTool {
   }
 
   start(job: Job, workspace: JobWorkspace, onLine: (line: string) => void): AiProcess {
-    const skill = job.skill === null ? null : JobWorkspace.skillText(job.skill, this.skillsDir);
+    // 서버가 실어 보낸 판이 먼저, 옛 서버면 디스크의 skills/
+    const skill =
+      job.skillPackage?.skillMd ??
+      (job.skill === null ? null : JobWorkspace.skillText(job.skill, this.skillsDir));
     return new AiProcess(
       this.bin,
       this.args(workspace),

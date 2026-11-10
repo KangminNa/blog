@@ -21,6 +21,10 @@ import { HeartbeatService } from './heartbeat/heartbeat.service';
 import { RunnerController } from './runner/runner.api';
 import { RunnerQuery } from './runner/runner.query';
 import { RunnerService } from './runner/runner.service';
+import { RepoSkillGateway } from './skill/repo-skill.gateway';
+import { SkillController } from './skill/skill.api';
+import { SkillQuery } from './skill/skill.query';
+import { SkillService } from './skill/skill.service';
 import { DelegateTaskTool } from './task/delegate.tool';
 import { LeaseJob } from './task/lease.job';
 import { SubtaskSettledHandler } from './task/subtask-settled.handler';
@@ -72,6 +76,10 @@ import { UsageQuery } from './usage/usage.query';
     SubtaskSettledHandler,
     ApprovalResultHandler,
     LeaseJob,
+    // 저장소 skills/의 러너 스킬 (서버 이미지에 함께 든 판). 처음 한 번 읽는다
+    { provide: RepoSkillGateway, useFactory: () => RepoSkillGateway.fromEnv() },
+    SkillQuery,
+    SkillService,
   ],
   controllers: [
     AgentController,
@@ -82,6 +90,7 @@ import { UsageQuery } from './usage/usage.query';
     GoalController,
     HeartbeatController,
     RunnerController,
+    SkillController,
   ],
   exports: [TaskTools, TaskQuery],
 })

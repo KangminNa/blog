@@ -94,7 +94,10 @@ RUN pnpm --filter @cairn/runner build
 # Codex는 웹 로그인(codex login --device-auth)과 Codex 에이전트의 일(codex exec, 셸 없이)에 쓴다. 로그인 명령의 PTY는 기본으로 든 script(util-linux)로 만든다.
 # 비밀값은 이미지와 홈에 두지 않는다. 기기 토큰은 환경 변수, AI 토큰은 일마다 서버에서 받아 메모리에만 둔다
 FROM node:24-bookworm-slim AS runner
-ENV NODE_ENV=production
+# 러너의 빌드 (지시문 틀의 판). 실행 기록에 남는다: --build-arg CAIRN_RUNNER_BUILD=$(git rev-parse --short HEAD)
+ARG CAIRN_RUNNER_BUILD=unknown
+ENV NODE_ENV=production \
+    CAIRN_RUNNER_BUILD=$CAIRN_RUNNER_BUILD
 WORKDIR /app/apps/runner
 RUN npm install -g @anthropic-ai/claude-code@2.1.302 @openai/codex@0.164.0
 COPY skills /app/skills

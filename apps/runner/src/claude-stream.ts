@@ -44,6 +44,7 @@ export class ClaudeStream implements AiStream {
   private resultText: string | null = null;
   private failureText: string | null = null;
   private strayServers: readonly string[] = [];
+  private modelName: string | null = null;
   /** 셸을 열지 않은 일에서 셸을 쓴 명령 (설정이 먹지 않은 것) */
   private shellUsed: string | null = null;
   private planWindows: readonly PlanWindow[] = [];
@@ -63,6 +64,11 @@ export class ClaudeStream implements AiStream {
   /** CLI가 실패로 끝냈다면 그 이유 */
   get failure(): string | null {
     return this.failureText;
+  }
+
+  /** CLI가 처음에 알린 모델 (system/init). 모르면 null */
+  get model(): string | null {
+    return this.modelName;
   }
 
   /** 허락하지 않은 MCP 서버 이름들. 있으면 격리가 깨진 것이다 */
@@ -115,6 +121,7 @@ export class ClaudeStream implements AiStream {
       return [new RunEvent(RunEvent.ERROR, `API 재시도 ${tries}: ${event.text('error')}`, 0)];
     }
     if (subtype !== 'init') return [];
+    this.modelName = event.optionalText('model') ?? this.modelName;
     const servers = event.list('mcp_servers');
     this.strayServers = servers
       .map((server) => server.text('name'))

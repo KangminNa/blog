@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { AiTools } from './ai-tool';
@@ -13,16 +14,23 @@ import { SigninTerminal } from './signin-terminal';
 //   ownLogins    러너가 스스로 가진 로그인 (환경 변수의 Claude 토큰)
 //   browser      서버 브라우저에 붙어 있는가: 서버 러너(연결 값 파일)이고 CAIRN_BROWSER_URL이 있을 때만.
 //                내 컴퓨터 러너의 브라우저는 탭 읽기에만 쓴다 (평소 쓰는 계정에 가까워 AI에게 맡기지 않는다)
+//   runnerBuild  러너의 빌드 (이미지의 CAIRN_RUNNER_BUILD, 내 컴퓨터는 git 커밋): 지시문 틀(Job.prompt)의 판이라 실행 기록에 남는다
+//   cliVersions  도구마다 CLI 버전 (--version). 실행 기록에 남는다
 //   slot         코드 러너 칸의 번호 (CAIRN_RUNNER_SLOT). 칸은 코드 작업만 받는다. next_jobs에는 싣지 않는다:
 //                칸인지는 서버가 기기의 권한(sandbox)으로 정한다 (러너가 말한 값을 믿지 않게)
 // 설치는 시작할 때 한 번 본다. CLI를 새로 깔면 러너를 다시 켠다.
 export class RunnerAbility {
+  private static readonly VERSION_MS = 5_000;
+  /** 서버가 받는 길이 (NextJobsInput.BUILD_MAX) */
+  private static readonly TEXT_MAX = 80;
   constructor(
     readonly tools: readonly string[],
     readonly signinTools: readonly string[],
     readonly ownLogins: readonly string[],
     readonly browser = false,
     readonly slot: string | null = null,
+    readonly runnerBuild: string | null = null,
+    readonly cliVersions: Readonly<Record<string, string>> = {},
   ) {}
 
   static detect(
@@ -45,7 +53,46 @@ export class RunnerAbility {
       config.claudeToken === null ? [] : [ClaudeCli.TOOL],
       config.browserUrl !== null && config.pairingFile !== null && config.slot === null,
       config.slot,
+      env.CAIRN_RUNNER_BUILD?.trim() || RunnerAbility.gitBuild() || 'unknown',
+      Object.fromEntries(
+        clis.flatMap((tool) => {
+          const bin = tool === ClaudeCli.TOOL ? config.cliPath : config.codexCliPath;
+          const version = RunnerAbility.versionOf(bin, env);
+          return version === null ? [] : [[tool, version] as const];
+        }),
+      ),
     );
+  }
+
+  /** CLI의 버전 (--version의 첫 줄). 실행하지 못하면 null */
+  static versionOf(bin: string, env: Readonly<Record<string, string | undefined>>): string | null {
+    try {
+      const out = execFileSync(bin, ['--version'], {
+        env: { PATH: env.PATH ?? '', HOME: env.HOME ?? '' },
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: RunnerAbility.VERSION_MS,
+      });
+      return out.toString('utf8').trim().split('\n')[0]?.slice(0, RunnerAbility.TEXT_MAX) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** 저장소에서 도는 러너의 git 커밋. 저장소가 아니면 null */
+  private static gitBuild(): string | null {
+    try {
+      return (
+        execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+          cwd: __dirname,
+          stdio: ['ignore', 'pipe', 'ignore'],
+          timeout: RunnerAbility.VERSION_MS,
+        })
+          .toString('utf8')
+          .trim() || null
+      );
+    } catch {
+      return null;
+    }
   }
 
   /** 코드 러너 칸인가 */
@@ -81,12 +128,23 @@ export class RunnerAbility {
   }
 
   /** next_jobs에 싣는 값 */
-  toArgs(): { tools: string[]; signin_tools: string[]; own_logins: string[]; browser: boolean } {
+  toArgs(): {
+    tools: string[];
+    signin_tools: string[];
+    own_logins: string[];
+    browser: boolean;
+    runner_build?: string;
+    cli_versions?: Record<string, string>;
+  } {
     return {
       tools: [...this.tools],
       signin_tools: [...this.signinTools],
       own_logins: [...this.ownLogins],
       browser: this.browser,
+      ...(this.runnerBuild === null ? {} : { runner_build: this.runnerBuild }),
+      ...(Object.keys(this.cliVersions).length === 0
+        ? {}
+        : { cli_versions: { ...this.cliVersions } }),
     };
   }
 }

@@ -110,7 +110,46 @@ describe('한도 칸', () => {
   test('바뀐 열만 기억하고 null로 비울 수 있다', () => {
     const agent = agentWith(100, 80);
     agent.edit({ five_hour_limit: null, plan_stop_percent: 90 });
-    assert.deepEqual(agent.unsaved, { five_hour_limit: null, plan_stop_percent: 90 });
+    assert.deepEqual(agent.unsaved, {
+      five_hour_limit: null,
+      plan_stop_percent: 90,
+      settings_revision: 2,
+    });
+  });
+});
+
+describe('설정 판', () => {
+  test('설정이 바뀌면 판을 하나 올리고 그 판의 설정 전부를 남긴다. 같은 값이면 그대로', () => {
+    const agent = agentWith(100, 80);
+    agent.edit({ five_hour_limit: 100 });
+    assert.equal(agent.settingsRevision, 1, '같은 값');
+    agent.edit({ role: '짧게 쓴다' });
+    assert.equal(agent.settingsRevision, 2);
+    const added = agent.addedRevision;
+    assert.ok(added);
+    assert.equal(added.revision, 2);
+    const settings = added.settings as Record<string, unknown>;
+    assert.equal(settings.role, '짧게 쓴다');
+    assert.equal(settings.five_hour_limit, 100);
+  });
+
+  test('한 번의 저장 안에서 여러 번 바뀌어도 판은 하나 (마지막 모습)', () => {
+    const agent = agentWith(null, null);
+    agent.edit({ role: '하나' });
+    agent.edit({ role: '둘' });
+    assert.equal(agent.settingsRevision, 2);
+    const added = agent.addedRevision;
+    assert.ok(added);
+    assert.equal((added.settings as Record<string, unknown>).role, '둘');
+  });
+
+  test('새 에이전트는 판 1. 멈춤 · 다시 시작은 설정 판이 아니다', () => {
+    const fresh = Agent.open('space', { name: '새', tool: 'claude' }, new Date());
+    assert.equal(fresh.addedRevision?.revision, 1);
+    const agent = agentWith(null, null);
+    agent.pause();
+    agent.resume();
+    assert.equal(agent.addedRevision, null);
   });
 });
 
@@ -139,7 +178,7 @@ describe('조직도 (Agent.reportTo)', () => {
     assert.equal(managerOf(member), null);
     member.reportTo(lead.id, all);
     assert.equal(managerOf(member), lead.id);
-    assert.deepEqual(member.unsaved, { reports_to: lead.id });
+    assert.deepEqual(member.unsaved, { reports_to: lead.id, settings_revision: 2 });
     assert.equal(lead.manages(member), true);
     assert.equal(member.manages(lead), false);
     member.reportTo(null, all);

@@ -20,6 +20,9 @@ import { Approval } from '../approval/approval';
 import { ApprovalRepository } from '../approval/approval.repository';
 import { GoalRepository } from '../goal/goal.repository';
 import { RunnerRepository } from '../runner/runner.repository';
+import { RepoSkillGateway } from '../skill/repo-skill.gateway';
+import { SkillRepository } from '../skill/skill.repository';
+import { SkillPackage } from '../skill/skill-package';
 import { PlanUsage } from '../usage/plan-usage';
 import { PlanUsageRepository } from '../usage/plan-usage.repository';
 import { LeasePolicy } from './lease.policy';
@@ -51,6 +54,7 @@ export class TaskService extends BaseService {
     db: Database,
     private readonly box: SecretBox,
     private readonly changes: ChangeStream,
+    private readonly repoSkills: RepoSkillGateway,
   ) {
     super(db);
   }
@@ -111,6 +115,7 @@ export class TaskService extends BaseService {
         task.acceptReport(runnerId, now);
         for (const e of req.events) task.log(e.kind, e.body, e.tokens, now);
         await tasks.saveLease(task);
+        if (req.model !== null) await tasks.noteModel(task.id, runnerId, req.model);
         await this.charge(tx, task, req.tokens, now);
         await this.notePlan(tx, task, req, now);
         await once?.remember({ reported: true });
@@ -309,6 +314,16 @@ export class TaskService extends BaseService {
           continue;
         if (agent) busy.push(agent.tool);
         task.lease(runnerId, agent?.id ?? null, now);
+        const skill = await this.skillOf(tx, task);
+        const tool = agent?.tool ?? task.payloadTool;
+        task.recordRun(
+          runnerId,
+          agent ?? null,
+          skill,
+          req.runnerBuild,
+          tool === null ? null : (req.cliVersions.get(tool) ?? null),
+          now,
+        );
         await tasks.save(task);
         jobs.push(
           await this.jobOf(
@@ -316,6 +331,7 @@ export class TaskService extends BaseService {
             task,
             agent,
             usage.map((u) => u.agent),
+            skill,
           ),
         );
       }
@@ -323,16 +339,25 @@ export class TaskService extends BaseService {
     });
   }
 
-  /** 빌려 준 일 하나. 목표 사슬, 바로 아래 팀, 깨어난 일이면 하위 작업의 결과를 함께 싣는다 */
+  /** 빌려 준 일 하나. 목표 사슬, 바로 아래 팀, 깨어난 일이면 하위 작업의 결과, 스킬의 지금 판을 함께 싣는다 */
   private async jobOf(
     tx: Sql,
     task: Task,
     agent: Agent | null,
     org: readonly Agent[],
+    skill: SkillPackage | null,
   ): Promise<JobView> {
     const goals = task.goalId === null ? [] : await new GoalRepository(tx).chain(task.goalId);
     const children = await new TaskRepository(tx).children(task.id);
-    return task.jobView(agent, this.box, goals, org, children);
+    return task.jobView(agent, this.box, goals, org, children, skill?.jobView() ?? null);
+  }
+
+  /** 스킬의 지금 판: 주인이 콘솔에서 고친 판이 있으면 그것, 없으면 서버 이미지의 저장소 판 (러너는 이것으로 깐다) */
+  private async skillOf(tx: Sql, task: Task): Promise<SkillPackage | null> {
+    const name = task.skill;
+    if (name === null) return null;
+    const active = await new SkillRepository(tx).activeRevision(task.spaceId, name);
+    return SkillPackage.pick(name, active, this.repoSkills.get(name));
   }
 
   private async expire(tx: Sql, now: Date): Promise<number> {

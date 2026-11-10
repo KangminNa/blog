@@ -104,6 +104,7 @@ export class NextJobsInput extends BaseRequest {
   static readonly LIMIT_MAX = 10;
 
   static readonly TOOLS_MAX = 10;
+  static readonly BUILD_MAX = 80;
 
   private constructor(
     readonly waitSeconds: number,
@@ -116,6 +117,10 @@ export class NextJobsInput extends BaseRequest {
     readonly ownLogins: readonly string[],
     /** 서버 브라우저에 붙어 있는가. 알리지 않으면 false: 브라우저 작업은 알린 러너에게만 */
     readonly browser: boolean,
+    /** 러너의 빌드 (지시문 틀의 판). 실행 기록에 남긴다 */
+    readonly runnerBuild: string | null,
+    /** 도구마다 CLI 버전 (claude → "2.1.302 (Claude Code)"). 실행 기록에 남긴다 */
+    readonly cliVersions: ReadonlyMap<string, string>,
   ) {
     super();
   }
@@ -132,6 +137,8 @@ export class NextJobsInput extends BaseRequest {
           f.optionalTextList('signin_tools', NextJobsInput.TOOLS_MAX, 40),
           f.optionalTextList('own_logins', NextJobsInput.TOOLS_MAX, 40) ?? [],
           told ? f.boolean('browser') : false,
+          f.optionalText('runner_build', NextJobsInput.BUILD_MAX),
+          f.textMap('cli_versions', NextJobsInput.BUILD_MAX),
         ),
     );
   }
@@ -185,12 +192,15 @@ export class ReportedPlanUsage extends BaseRequest {
 export class ReportProgressInput extends BaseRequest {
   static readonly EVENTS_MAX = 100;
   static readonly PLAN_USAGE_MAX = 10;
+  static readonly MODEL_MAX = 120;
 
   private constructor(
     readonly taskId: string,
     readonly requestId: string | null,
     readonly events: readonly ReportedEvent[],
     readonly planUsage: readonly ReportedPlanUsage[],
+    /** AI CLI가 알린 모델. 이 실행의 기록에 한 번 남긴다 */
+    readonly model: string | null,
   ) {
     super();
   }
@@ -208,6 +218,7 @@ export class ReportProgressInput extends BaseRequest {
           f.optionalText('request_id', 200),
           f.nestedList('events', ReportProgressInput.EVENTS_MAX).map((e) => ReportedEvent.from(e)),
           ReportProgressInput.planUsageOf(raw, f),
+          f.optionalText('model', ReportProgressInput.MODEL_MAX),
         ),
     );
   }

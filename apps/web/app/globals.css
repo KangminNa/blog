@@ -1573,6 +1573,11 @@ a.chip {
   border-top: 1px solid var(--line);
 }
 
+/* 누르지 않는 줄 (판 목록, 실행 기록). 안의 배치는 .row · .stack과 함께 쓴다 */
+.list > .list-cell {
+  padding: 10px 14px;
+}
+
 .list-row {
   width: 100%;
   display: flex;

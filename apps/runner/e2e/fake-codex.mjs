@@ -14,6 +14,11 @@ import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+// 러너가 시작할 때 버전을 묻는다 (실행 기록의 cli_version)
+if (process.argv[2] === '--version') {
+  process.stdout.write('codex-cli 0.164.0\n');
+  process.exit(0);
+}
 if (process.argv[2] === 'exec') await exec();
 
 /** 러너가 2초마다 화면을 보므로 그보다 넉넉히 둔다 */

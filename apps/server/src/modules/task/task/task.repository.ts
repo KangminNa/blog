@@ -1,6 +1,6 @@
 import { ChangeSignal, Rule, TableRepository } from '../../platform';
 import type { Agent } from '../agent/agent';
-import { taskEvents, tasks } from '../task.schema';
+import { taskEvents, taskRuns, tasks } from '../task.schema';
 import type { TaskRow } from '../task.tables';
 import { Task } from './task';
 
@@ -208,8 +208,27 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
     await this.saveParts(task);
   }
 
-  /** 쌓인 실행 기록을 남긴다 (추가만) */
+  /**
+   * AI CLI가 알린 모델을 이 러너의 가장 최근 실행에 한 번 남긴다 (이미 있으면 그대로).
+   * 실행 기록은 고치지 않는 표라 트리거가 비어 있는 model을 채우는 것만 허락한다
+   */
+  async noteModel(taskId: string, runnerId: string, model: string): Promise<void> {
+    await this.sql`
+      UPDATE task.task_runs SET model = ${model}
+      WHERE model IS NULL AND id = (
+        SELECT id FROM task.task_runs WHERE task_id = ${taskId} AND runner_id = ${runnerId}
+        ORDER BY seq DESC LIMIT 1)`;
+  }
+
+  /** 쌓인 실행 기록과, 임대했으면 이번 실행의 규칙 판을 남긴다 (추가만) */
   protected override async saveParts(task: Task): Promise<void> {
+    const run = task.addedRun;
+    if (run) {
+      // 작업 줄을 잠근 채라 다른 임대와 겹치지 않는다
+      const [last] = await this.sql<{ seq: number | null }[]>`
+        SELECT max(seq) AS seq FROM task.task_runs WHERE task_id = ${task.id}`;
+      await this.insertRows(taskRuns, { ...run, seq: (last?.seq ?? 0) + 1 });
+    }
     const entries = task.addedLog;
     if (entries.length === 0) return;
     await this.insertRows(taskEvents, entries);

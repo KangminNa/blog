@@ -1,4 +1,4 @@
-import type { AgentRow, GoalRow, TaskEventRow, TaskRow } from '../task.tables';
+import type { AgentRow, GoalRow, TaskEventRow, TaskRow, TaskRunRow } from '../task.tables';
 
 // 작업의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
 // 표의 칸 중 무엇을 내보내는지는 여기 한 곳에만 적는다.
@@ -70,6 +70,35 @@ export class TaskGoalView {
 }
 
 /** 작업 하나: 목록 정보 + 지시, 입력, 결과, 실행 기록, 목표 사슬 */
+/**
+ * 실행 한 번 (임대 하나): 어떤 규칙 판으로 돌았는지. 결과가 바뀌었을 때 무엇을 바꿔서인지 비교한다.
+ * 스킬은 콘솔 판이면 판 번호, 저장소 판이면 해시로 가린다
+ */
+export class TaskRunView {
+  constructor(private readonly row: Readonly<TaskRunRow>) {}
+
+  toJSON() {
+    const r = this.row;
+    return {
+      seq: r.seq,
+      startedAt: r.started_at.toISOString(),
+      agentRevision: r.agent_revision,
+      skill:
+        r.skill === null
+          ? null
+          : {
+              name: r.skill,
+              source: r.skill_source,
+              revision: r.skill_revision,
+              hash: r.skill_hash,
+            },
+      runnerBuild: r.runner_build,
+      cliVersion: r.cli_version,
+      model: r.model,
+    };
+  }
+}
+
 export class TaskDetailView extends TaskView {
   constructor(
     private readonly detail: Readonly<TaskRow>,
@@ -80,6 +109,8 @@ export class TaskDetailView extends TaskView {
     private readonly goalChain: readonly TaskGoalView[],
     /** 이 작업이 맡긴 하위 작업 (맡긴 순서) */
     private readonly children: readonly TaskView[],
+    /** 실행마다 규칙 판 (처음부터) */
+    private readonly runs: readonly TaskRunView[] = [],
   ) {
     super(detail);
   }
@@ -93,6 +124,7 @@ export class TaskDetailView extends TaskView {
       events: this.events.map((e) => e.toJSON()),
       goalChain: this.goalChain.map((g) => g.toJSON()),
       children: this.children.map((c) => c.toJSON()),
+      runs: this.runs.map((r) => r.toJSON()),
     };
   }
 }
@@ -149,6 +181,30 @@ export class JobSubtaskResultView {
 }
 
 /**
+ * 러너에게 실어 보내는 스킬 한 판 (next_jobs의 skill_package). 러너는 디스크의 skills/ 대신 이것으로 깐다.
+ * source: repo(서버 이미지의 저장소 판) · console(주인이 고친 판, revision은 그 판 번호)
+ */
+export class JobSkillView {
+  constructor(
+    readonly name: string,
+    private readonly source: string,
+    private readonly revision: number | null,
+    private readonly hash: string,
+    private readonly files: Readonly<Record<string, string>>,
+  ) {}
+
+  toJSON() {
+    return {
+      name: this.name,
+      source: this.source,
+      revision: this.revision,
+      hash: this.hash,
+      files: this.files,
+    };
+  }
+}
+
+/**
  * 러너가 빌려 간 일 하나 (next_jobs). MCP 도구의 모양이라 snake_case. run_token은 여기서 한 번만 나간다.
  * 연결 확인(task.kind가 ai_test)에는 에이전트도 run_token도 없다. 어느 도구인지는 task.payload.tool에 있다.
  */
@@ -167,6 +223,8 @@ export class JobView {
     private readonly subtaskResults: readonly JobSubtaskResultView[],
     /** 앞으로 위임할 수 있는 횟수 */
     private readonly roundsLeft: number,
+    /** 스킬의 지금 판 (파일까지). 스킬이 없는 일이면 null */
+    private readonly skillPackage: JobSkillView | null = null,
   ) {}
 
   toJSON() {
@@ -183,6 +241,7 @@ export class JobView {
       instruction: r.instruction,
       target: targetOf(r),
       skill: this.skill,
+      skill_package: this.skillPackage?.toJSON() ?? null,
       revision_note: this.revisionNote,
       agent: a === null ? null : { id: a.id, name: a.name, role: a.role, tool: a.tool },
       run_token: this.runToken,

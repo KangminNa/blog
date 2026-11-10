@@ -2,6 +2,16 @@
 // 표 하나에 인터페이스 하나. 칼럼 이름은 DB 그대로다.
 // <이름>New는 새 행에 꼭 적어야 하는 칸이고, 나머지는 DB가 채운다.
 
+/** task.agent_revisions */
+export interface AgentRevisionRow {
+  id: string;
+  agent_id: string;
+  revision: number;
+  settings: unknown;
+  created_at: Date;
+}
+export type AgentRevisionNew = Partial<AgentRevisionRow> & Pick<AgentRevisionRow, 'id' | 'agent_id' | 'revision' | 'settings'>;
+
 /** task.agents */
 export interface AgentRow {
   id: string;
@@ -18,6 +28,7 @@ export interface AgentRow {
   five_hour_limit: number | null;
   plan_stop_percent: number | null;
   reports_to: string | null;
+  settings_revision: number;
 }
 export type AgentNew = Partial<AgentRow> & Pick<AgentRow, 'id' | 'space_id' | 'name' | 'tool'>;
 
@@ -113,6 +124,32 @@ export interface RunnerRow {
 }
 export type RunnerNew = Partial<RunnerRow> & Pick<RunnerRow, 'id' | 'space_id' | 'device_id'>;
 
+/** task.skill_revisions */
+export interface SkillRevisionRow {
+  id: string;
+  skill_id: string;
+  revision: number;
+  files: unknown;
+  hash: string;
+  based_on: string;
+  note: string;
+  created_at: Date;
+}
+export type SkillRevisionNew = Partial<SkillRevisionRow> & Pick<SkillRevisionRow, 'id' | 'skill_id' | 'revision' | 'files' | 'hash' | 'based_on'>;
+
+/** task.skills */
+export interface SkillRow {
+  id: string;
+  space_id: string;
+  name: string;
+  active_revision: number | null;
+  revisions: number;
+  version: number;
+  created_at: Date;
+  updated_at: Date;
+}
+export type SkillNew = Partial<SkillRow> & Pick<SkillRow, 'id' | 'space_id' | 'name'>;
+
 /** task.task_events */
 export interface TaskEventRow {
   id: number;
@@ -123,6 +160,26 @@ export interface TaskEventRow {
   tokens: number;
 }
 export type TaskEventNew = Partial<TaskEventRow> & Pick<TaskEventRow, 'id' | 'task_id' | 'kind'>;
+
+/** task.task_runs */
+export interface TaskRunRow {
+  id: string;
+  space_id: string;
+  task_id: string;
+  seq: number;
+  runner_id: string;
+  agent_id: string | null;
+  agent_revision: number | null;
+  skill: string | null;
+  skill_source: string | null;
+  skill_revision: number | null;
+  skill_hash: string | null;
+  runner_build: string | null;
+  cli_version: string | null;
+  model: string | null;
+  started_at: Date;
+}
+export type TaskRunNew = Partial<TaskRunRow> & Pick<TaskRunRow, 'id' | 'space_id' | 'task_id' | 'seq' | 'runner_id'>;
 
 /** task.tasks */
 export interface TaskRow {

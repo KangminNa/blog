@@ -138,6 +138,8 @@ services:
     build:
       context: .
       target: runner
+      args:
+        CAIRN_RUNNER_BUILD: ${CAIRN_RUNNER_BUILD:-unknown}   # 실행 기록에 남는 러너 빌드 (git rev-parse --short HEAD)
     image: cairn-runner:${CAIRN_IMAGE_TAG:-dev}
     restart: unless-stopped
     init: true                # AI CLI가 남긴 손자 프로세스를 거둔다

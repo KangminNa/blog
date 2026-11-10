@@ -3,7 +3,7 @@ import { type Actor, CurrentActor, VersionInput } from '../../platform';
 import { CreateAgentInput, UpdateAgentInput } from './agent.input';
 import { AgentQuery } from './agent.query';
 import { AgentService } from './agent.service';
-import type { AgentListView, AgentSavedView } from './agent.view';
+import type { AgentListView, AgentRevisionListView, AgentSavedView } from './agent.view';
 
 // 에이전트 메뉴. 주인만 (Service·Query 첫 줄에서 확인).
 // 바꾼 뒤에는 에이전트 하나를 돌려주고, 화면은 그 version으로 다음 변경을 보낸다.
@@ -13,6 +13,12 @@ export class AgentController {
     private readonly agents: AgentQuery,
     private readonly service: AgentService,
   ) {}
+
+  /** 설정 판 목록 (새 판부터) */
+  @Get(':id/revisions')
+  revisions(@CurrentActor() actor: Actor, @Param('id') id: string): Promise<AgentRevisionListView> {
+    return this.agents.revisions(actor, id);
+  }
 
   @Get()
   list(@CurrentActor() actor: Actor): Promise<AgentListView> {

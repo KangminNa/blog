@@ -20,6 +20,8 @@ export interface AiStream {
   readonly breach: string | null;
   /** 가장 최근에 본 구독 사용률. 새로 본 것이 없으면 비어 있다 */
   takePlanUsage(): readonly PlanWindow[];
+  /** CLI가 알린 모델. 모르면 null */
+  readonly model: string | null;
 }
 
 /**

@@ -15,19 +15,21 @@
 - `ai/`: AI 도구의 로그인 (`AiLogin`, 도구는 claude · codex). 콘솔에 넣거나 웹 로그인으로 받은 자격을 서버 키로 잠가 두고 서버 러너에게 건넨다.
   `api/ai`, MCP `ai_login` · `ai_login_refresh`(CLI가 갱신한 자격 되돌려 쓰기) · `ai_signin`(러너가 로그인 명령을 대신 돌린다), 받는 값의 모양은 `AiSigninPolicy`
 - `runner/`: 러너의 상태 (`Runner`). 마지막으로 닿은 때, 일 받기 켜기·끄기. `api/runners`. 기기 이름·종류는 account의 것이라 화면이 합친다
+- `skill/`: 러너 스킬의 콘솔 판 (`Skill`, 파일 규칙과 해시 `SkillFiles`, 쓸 판 고르기 `SkillPackage`, 저장소 판 읽기 `RepoSkillGateway`). `api/runner-skills`. `next_jobs`의 `skill_package`로 러너에게 간다
 
 파일 구조 (객체설계 6장): `<이름>.ts` · `.view.ts` · `.input.ts` · `.service.ts` · `.query.ts` · `.api.ts` · `.tool.ts` · `.repository.ts`.
 엔티티는 `TableEntity`(platform)로 표 한 줄을 들고 바뀐 칸을 기억하고, Repository(`TableRepository`)는 그 칸만 저장한다. 칼럼을 아는 곳은 `task.tables.ts`, Entity의 `RULES`, Input의 `COLUMNS`, View의 `toJSON`이다.
 도구 모양은 docs/API설계.md 4장이 원본이다. `report_progress`는 기록을 모아 받고, 러너가 쓰므로 바꾸면 `apps/runner`도 함께 고친다.
 
 ## 소유 데이터
-스키마 `task`: agents, goals, heartbeats, tasks, task_events(추가만), approvals, plan_usage, ai_logins, runners
+스키마 `task`: agents, agent_revisions(추가만), goals, heartbeats, tasks, task_events(추가만), task_runs(추가만, model만 한 번), approvals, plan_usage, ai_logins, runners, skills, skill_revisions(추가만)
 
 ## 데이터 묶음
-- 에이전트: agents (조직도는 `reports_to`)
+- 에이전트: agents + agent_revisions (조직도는 `reports_to`, 설정 판은 `settings_revision`)
 - 목표: goals
 - 하트비트: heartbeats (에이전트마다 한 줄)
-- 작업: tasks + task_events
+- 작업: tasks + task_events + task_runs (빌려 줄 때마다 규칙 판 한 줄)
+- 스킬: skills + skill_revisions
 - 결재: approvals
 - 구독 사용률: plan_usage (창마다 마지막 값 하나. `window`는 Postgres 예약어라 열은 `period`, API는 `window`)
 - AI 로그인: ai_logins (공간과 도구마다 한 줄)
@@ -82,6 +84,9 @@ platform
 - `ai_login_refresh`: 바뀌는 자격의 도구만, 그 일을 쥔 러너만, 그 일이 쓴 도구(에이전트의 도구, 에이전트 없는 일은 payload의 도구)만, 받은 판일 때만 (`assertVersion`). 만료와 연결 확인 결과는 두고 자격만 바꾼다(`AiLogin.refresh`). 잠그는 순서는 작업 → 로그인
 - Codex의 자격(`auth.json`)은 갱신 토큰이라 만료가 없다 (`expires_at` null)
 - 연결 확인(`ai_test`)은 에이전트도 작업 토큰도 없다. 일을 받을 에이전트가 없어도 빌려 주고, 기다리는 확인은 도구마다 하나다. 결과는 작업이 끝날 때 같은 트랜잭션에서 로그인에 적는다 (잠그는 순서는 작업 → 로그인). 작업에 적힌 로그인의 판이 다르면 옛 토큰의 결과라 버린다
+
+- 스킬 판 · 에이전트 설정 판 · 실행 기록은 추가만 한다. 스킬 되돌리기는 `active_revision`만 옮기고, 실행 기록은 비어 있는 `model`을 러너의 보고로 한 번 채우는 것 말고 바꾸지 않는다 (DB 트리거). 지시문 글은 실행 기록에 남기지 않는다
+- 콘솔에서 고치는 스킬은 러너 스킬(`cairn-where: runner`)만. 파일 규칙(경로 · 크기 · 앞부분)은 `SkillFiles`가 막고, 러너도 받은 묶음을 다시 거른다(`apps/runner`의 `SkillPackage`)
 
 ## 하지 말 것
 - blog·vault·account import. 결재 뒤 실행은 이벤트로 잇는다
