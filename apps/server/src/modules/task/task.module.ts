@@ -1,5 +1,5 @@
 import { Module, type OnModuleInit } from '@nestjs/common';
-import { BlobStore, CoreWorkers, SecretRotation } from '../platform';
+import { BlobStore, CoreWorkers, Leases, SecretRotation } from '../platform';
 import { AgentController } from './agent/agent.api';
 import { AgentQuery } from './agent/agent.query';
 import { AgentService } from './agent/agent.service';
@@ -124,6 +124,8 @@ export class TaskModule implements OnModuleInit {
     private readonly outputPurge: OutputPurgeJob,
     private readonly blobs: BlobStore,
     private readonly outputs: OutputQuery,
+    private readonly leaseChecks: Leases,
+    private readonly tasks: TaskQuery,
   ) {}
 
   onModuleInit(): void {
@@ -134,6 +136,8 @@ export class TaskModule implements OnModuleInit {
     this.workers.every(this.heartbeats, TaskModule.HEARTBEAT_CHECK_MS);
     this.rotation.register('task.ai_logins', (actor) => this.logins.resealSecrets(actor));
     this.workers.every(this.outputPurge, OutputPurgeJob.EVERY_MS);
+    // 기능 패키지의 도구(code-github의 code_credential 등)가 묻는 임대 확인
+    this.leaseChecks.register((actor, id) => this.tasks.leasedWork(actor, id));
     // 결과물이 가리키는 파일: 쓰는 동안 platform이 지우지 않게
     this.blobs.registerUse(['task.outputs.blob_hash'], (actor, hashes) =>
       this.outputs.usedBlobs(actor, hashes),

@@ -4,6 +4,7 @@ import { Database } from '../base/database';
 import { DomainEvent } from '../base/event';
 import { Outbox } from '../base/outbox';
 import type { OutboxRow } from '../platform.tables';
+import { Leases } from '../plugin/leases';
 import { PackageService } from '../plugin/package.service';
 import type { ScheduledJob } from '../plugin/plugin-context';
 import { PluginRegistry } from '../plugin/plugin-registry';
@@ -36,8 +37,10 @@ export class OutboxWorker implements OnApplicationShutdown {
     private readonly db: Database,
     private readonly registry: PluginRegistry,
     private readonly core: CoreWorkers,
+    /** 이벤트로 도는 패키지 동작에는 러너가 없어 쓰지 않지만, 동작을 돌리는 길이 같아 함께 넘긴다 */
+    leases: Leases = new Leases(),
   ) {
-    this.packages = new PackageService(db, registry);
+    this.packages = new PackageService(db, registry, leases);
   }
 
   start(fallbackMs = OutboxWorker.FALLBACK_MS): void {

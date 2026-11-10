@@ -63,6 +63,7 @@ export { HttpSetup } from './http/http-setup';
 export type { HttpRequest, HttpResponse, HttpUpload } from './http/http-types';
 export { PlatformModule } from './platform.module';
 export { BasePlugin } from './plugin/base-plugin';
+export { LeasedWork, Leases } from './plugin/leases';
 export { PackageService } from './plugin/package.service';
 export { PackageTool } from './plugin/package.tool';
 export { PluginService } from './plugin/plugin.service';

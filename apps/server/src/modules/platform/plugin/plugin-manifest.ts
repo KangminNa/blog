@@ -5,7 +5,7 @@ import { join } from 'node:path';
 // 서버를 시작할 때 들어 있는 플러그인을 모두 읽고 검사한다. 틀리면 시작하지 않는다.
 
 /** 플러그인이 지원하는 Cairn 플러그인 API 버전 */
-const CAIRN_PLUGIN_API = '0.2';
+const CAIRN_PLUGIN_API = '0.3';
 
 /** 웹 화면 자리. 늘릴 때는 웹의 <Slot>과 문서를 함께 고친다 */
 const WEB_SLOTS: readonly string[] = ['post.after', 'task.office'];

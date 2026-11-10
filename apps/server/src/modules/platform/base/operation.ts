@@ -1,4 +1,5 @@
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
+import type { LeasedWork } from '../plugin/leases';
 import type { Actor } from './actor';
 import { BaseRequest, type RequestFields } from './base-request';
 import type { ToolAnswer } from './base-tool';
@@ -78,8 +79,16 @@ export class Work extends TableWriter {
     private readonly schema: string | null,
     /** 남겨도 되는 이벤트인가 (목록 파일이 정한다: 자기 이름 + 허락받은 코어 이벤트) */
     private readonly emits: (name: string) => boolean = () => false,
+    /** 요청자가 지금 임대를 쥔 일 (코어의 Leases). 러너가 부른 도구를 그 일에 묶을 때 */
+    private readonly lease: (id: string) => Promise<LeasedWork> = () =>
+      Promise.reject(new Error('임대를 확인할 수 없어요')),
   ) {
     super();
+  }
+
+  /** 요청자(러너)가 지금 임대를 쥔 일. 쥐고 있지 않으면 코어가 거절한다 (RuleViolation · NotFound) */
+  leased(id: string): Promise<LeasedWork> {
+    return this.lease(id);
   }
 
   override rows<T extends PgTable>(

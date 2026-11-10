@@ -6,6 +6,7 @@ import { Database } from '../base/database';
 import { NotFound } from '../base/errors';
 import { Work } from '../base/operation';
 import { Outbox } from '../base/outbox';
+import { Leases } from './leases';
 import type { PackageOperation } from './plugin-context';
 import { PluginRegistry } from './plugin-registry';
 
@@ -17,6 +18,7 @@ export class PackageService extends BaseService {
   constructor(
     db: Database,
     private readonly registry: PluginRegistry,
+    private readonly leases: Leases,
   ) {
     super(db);
   }
@@ -40,10 +42,11 @@ export class PackageService extends BaseService {
     operation.check(actor);
     const input = operation.input(raw);
     const emits = (name: string) => manifest.emits(name);
+    const leased = (id: string) => this.leases.of(actor, id);
     if (!operation.writes)
-      return operation.run(new Work(this.db.sql, manifest.schema, emits), actor, input);
+      return operation.run(new Work(this.db.sql, manifest.schema, emits, leased), actor, input);
     return this.transaction(async (tx) => {
-      const work = new Work(tx, manifest.schema, emits);
+      const work = new Work(tx, manifest.schema, emits, leased);
       const answer = await operation.run(work, actor, input);
       await new Outbox(tx).publish(work.events);
       return answer;

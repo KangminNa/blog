@@ -11,6 +11,7 @@ import { SensitivePolicy } from './base/sensitive-policy';
 import { HealthController } from './health/health.api';
 import { HealthQuery } from './health/health.query';
 import { DomainErrorFilter } from './http/domain-error.filter';
+import { Leases } from './plugin/leases';
 import { PackageController } from './plugin/package.api';
 import { PackageService } from './plugin/package.service';
 import { PluginController } from './plugin/plugin.api';
@@ -28,6 +29,7 @@ import { OutboxWorker } from './worker/outbox-worker';
 @Module({
   providers: [
     PackageService,
+    Leases,
     Database,
     BlobStore,
     BlobSweepJob,
@@ -72,6 +74,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     PluginRegistry,
     PluginService,
     PackageService,
+    Leases,
     ArchiveQuery,
     ArchiveRestoreService,
     ChangeStream,

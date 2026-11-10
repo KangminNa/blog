@@ -10,6 +10,7 @@ const ICONS: Record<string, ReactNode> = {
     </>
   ),
   scroll: <path d="M4 2.5h8v11H4zM6 5.5h4M6 8h4M6 10.5h2.5" />,
+  code: <path d="M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5M9 3 7 13" />,
   box: <path d="M2.5 5 8 2.5 13.5 5v6.5L8 14l-5.5-2.5zM2.5 5 8 7.5 13.5 5M8 7.5V14" />,
   stamp: <path d="M6 2.5h4v3.2c0 1.2 2.8 1.6 2.8 4H3.2c0-2.4 2.8-2.8 2.8-4zM3 12.8h10" />,
   flag: <path d="M3.5 14V2.5M3.5 3h8.5l-2 3 2 3H3.5" />,

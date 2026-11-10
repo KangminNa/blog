@@ -1,6 +1,7 @@
 // 플러그인이 가져다 쓸 수 있는 유일한 입구. 플러그인 서버 파일은 이 파일만 import한다 (pnpm check가 막는다).
 // 여기서 내보내는 것을 바꾸면 플러그인 API 버전(CAIRN_PLUGIN_API)과 docs/객체설계.md 12장을 함께 고친다.
 // 0.2 (2026-11-08): 기능 패키지 — 동작(Read · Command)과 일하는 자리(Work: 자기 스키마의 조건 규칙), 오류
+// 0.3 (2026-11-10): work.leased(id) — 러너가 부른 도구를 그 러너가 임대를 쥔 일(LeasedWork)에 묶는다 (code-github)
 export {
   ActionResult,
   Actor,
@@ -19,6 +20,7 @@ export {
   ExternalFailure,
   type How,
   InvalidRequest,
+  LeasedWork,
   LoginIdentity,
   NotFound,
   Operation,

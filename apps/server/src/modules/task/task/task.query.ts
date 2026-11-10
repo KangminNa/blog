@@ -1,5 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, AgentActor, BaseQuery, Forbidden, NotFound, RuleViolation } from '../../platform';
+import {
+  Actor,
+  AgentActor,
+  BaseQuery,
+  Forbidden,
+  LeasedWork,
+  NotFound,
+  RuleViolation,
+} from '../../platform';
 import { taskRuns, tasks } from '../task.schema';
 import type { GoalRow, OutputRow, TaskEventRow, TaskRow, TaskRunRow } from '../task.tables';
 import { Task } from './task';
@@ -87,6 +95,19 @@ export class TaskQuery extends BaseQuery {
     );
     if (!run) throw new RuleViolation('이 러너의 실행 기록이 없는 작업이에요');
     return run;
+  }
+
+  /**
+   * 기능 패키지가 묻는 임대 확인 (platform의 Leases에 등록한다): 이 러너가 지금 쥔 작업의 id · 종류 · 입력.
+   * 진행 중이 아니거나 · 다른 러너의 것이거나 · 임대가 끝났으면 RuleViolation. 입력은 상세와 같이 보인 모양만
+   */
+  async leasedWork(actor: Actor, taskId: string): Promise<LeasedWork> {
+    actor.assertCan(Actor.RUN);
+    if (!actor.id || !actor.spaceId) throw new Forbidden(Actor.RUN);
+    const row = await this.row(tasks, { space_id: actor.spaceId, id: taskId });
+    if (!row) throw new NotFound('작업을 찾을 수 없어요');
+    Task.restore(row).assertHeldBy(actor.id, new Date());
+    return new LeasedWork(row.id, row.kind, Task.shownPayload(row.kind, row.payload));
   }
 
   /** 회사 목표부터 이 목표까지. 목표의 부모는 바뀌지 않는다 */
