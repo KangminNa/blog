@@ -1,0 +1,19 @@
+{
+  "name": "@cairn/egress",
+  "version": "0.0.0",
+  "private": true,
+  "description": "코드 러너 칸의 나가는 프록시. 허용 목록의 호스트로만 HTTPS 터널(CONNECT)을 연다",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "start": "node -r @swc-node/register src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test -r @swc-node/register \"src/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@swc-node/register": "1.12.1",
+    "@swc/core": "1.16.13",
+    "@types/node": "24.19.1",
+    "typescript": "5.9.3"
+  }
+}

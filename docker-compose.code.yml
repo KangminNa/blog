@@ -1,0 +1,28 @@
+# 코드 작업 (선택, docs/코드작업.md). 운영 구성에 더해 쓴다: .env에 COMPOSE_FILE=docker-compose.prod.yml:docker-compose.code.yml
+# 코드 러너 칸은 바깥으로 나가는 길이 없는 내부망(code-internal)에만 둔다. 바깥에는 나가는 프록시(egress)를 거쳐
+# 허용 목록(egress/allow.txt)의 호스트로만 닿고, 서버에는 내부망으로 바로 닿는다 (MCP). DB와 브라우저는 내부망에 없다.
+# 지금은 1단계(나가는 프록시)까지다. 코드 러너 칸(code-runner)은 2단계에서 더한다.
+services:
+  egress:
+    build:
+      context: .
+      target: egress
+    image: cairn-egress:${CAIRN_IMAGE_TAG:-dev}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    pids_limit: 64
+    networks: [default, code-internal]   # 두 망에 붙는 유일한 문
+    volumes:
+      - ./egress/allow.txt:/etc/cairn/allow.txt:ro
+
+  server:
+    networks:
+      code-internal:
+        aliases: [cairn-server]   # 칸이 MCP로 서버에 바로 닿게
+
+networks:
+  code-internal:
+    internal: true   # 바깥으로 나가는 길이 없는 망

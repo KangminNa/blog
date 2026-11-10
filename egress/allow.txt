@@ -1,0 +1,22 @@
+# 코드 러너 칸이 나갈 수 있는 곳 (docs/코드작업.md). 나가는 프록시(apps/egress)가 시작할 때 읽는다. 바꾸면 egress를 다시 시작한다.
+# 한 줄에 호스트 하나. 앞에 점(.example.com)을 붙이면 하위 도메인 전부(자기 자신은 빼고). # 뒤는 주석.
+# 늘릴 때는 "칸이 왜 거기에 닿아야 하는지"를 주석으로 남긴다: 허용한 곳은 지시문에 속은 에이전트가 데이터를 보낼 수 있는 곳이기도 하다.
+
+# Git과 GitHub: clone · fetch · push(러너), PR(러너)
+github.com
+api.github.com
+codeload.github.com
+objects.githubusercontent.com
+
+# 패키지 저장소: 저장소의 setup (pnpm · npm · pip)
+registry.npmjs.org
+registry.yarnpkg.com
+pypi.org
+files.pythonhosted.org
+
+# AI 회사 API: 칸 안의 AI CLI가 모델을 부른다 (Claude Code · Codex).
+# 2단계에서 실제 CLI로 칸을 띄울 때 필요한 이름을 다시 확인해 고친다
+api.anthropic.com
+api.openai.com
+chatgpt.com
+auth.openai.com

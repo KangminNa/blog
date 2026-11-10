@@ -3,6 +3,7 @@
 #   server  운영 서버·일꾼. 컴파일한 JS만 (docker-compose.prod.yml)
 #   web     운영 웹. next build의 standalone 결과만 (docker-compose.prod.yml)
 #   runner  운영 서버 러너. 컴파일한 러너와 AI CLI(Claude · Codex). docker-compose.prod.yml에 함께 뜬다
+#   egress  코드 러너 칸의 나가는 프록시. 허용 목록의 호스트로만 HTTPS 터널을 연다 (docker-compose.code.yml)
 # 운영 이미지는 root가 아닌 node 사용자로 돌고, 코드는 root 소유라 실행 중에 고칠 수 없다.
 FROM node:24-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm \
@@ -18,6 +19,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY apps/runner/package.json apps/runner/
+COPY apps/egress/package.json apps/egress/
 COPY packages/cli/package.json packages/cli/
 RUN pnpm install --frozen-lockfile
 
@@ -95,3 +97,18 @@ COPY skills /app/skills
 COPY --from=runner-build /repo/apps/runner/dist /app/apps/runner/src
 USER node
 CMD ["node", "src/main.js"]
+
+# 나가는 프록시 빌드
+FROM deps AS egress-build
+COPY apps/egress/src apps/egress/src
+COPY apps/egress/tsconfig.json apps/egress/tsconfig.build.json apps/egress/
+RUN pnpm --filter @cairn/egress build
+
+# 나가는 프록시: 런타임 의존 패키지가 없어 컴파일한 JS만 둔다. 허용 목록은 compose가 읽기 전용으로 붙인다 (egress/allow.txt)
+FROM node:24-bookworm-slim AS egress
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=egress-build /repo/apps/egress/dist /app
+USER node
+EXPOSE 3128
+CMD ["node", "main.js"]

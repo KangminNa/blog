@@ -55,6 +55,10 @@ docker([
   ...extra,
 ]);
 execFileSync('pnpm', ['--filter', '@cairn/cli', 'test', ...extra], { cwd: root, stdio: 'inherit' });
+execFileSync('pnpm', ['--filter', '@cairn/egress', 'test', ...extra], {
+  cwd: root,
+  stdio: 'inherit',
+});
 for (const script of ['test', 'test:e2e'])
   execFileSync('pnpm', ['--filter', '@cairn/runner', script, ...extra], {
     cwd: root,

@@ -15,6 +15,7 @@ apps/server/   NestJS. src/modules/<모듈>/ (platform · account · vault · bl
                모듈마다 CLAUDE.md에 그 모듈의 규칙이 있다
 apps/web/      Next.js (App Router). app/(blog)/ 공개 화면, app/admin/<메뉴>/ 콘솔, app/_task/ 작업·결재·에이전트 공용
 apps/runner/   러너. 서버에서 일을 빌려 AI CLI로 처리한다. MCP로만 서버와 이야기하고 DB에 닿지 않는다 (서버 러너의 첫 연결만 REST)
+apps/egress/   코드 러너 칸의 나가는 프록시. 허용 목록(egress/allow.txt)의 호스트로만 HTTPS 터널을 연다 (docs/코드작업.md)
 db/            DB 이미지(Postgres 17 + pgvector + pg_bigm)와 SQL 마이그레이션(dbmate)
 packages/cli/  연결 명령 cairn connect · status (스킬 넣기 + MCP 등록 + 로그인). 배포 전에는 pnpm cairn
 plugins/       플러그인 (comments-giscus · sync-github · login-github · office · browser-tabs). 규칙은 plugins/CLAUDE.md, 객체설계 12장
@@ -30,7 +31,7 @@ docs/          기획 문서 (기획서 · 테이블 설계 · 객체 설계 · 
 |---|---|
 | `pnpm dev` | Docker Compose로 db → migrate → server(:4000) · worker(일꾼) → web(:3000) |
 | `pnpm check` | Biome 린트 + 타입 검사 + 모듈 경계 검사 + 구조 검사(새 파일 이름, 옆의 API 테스트, 메뉴와 화면, 웹 타입의 출처). 작업을 끝내기 전에 반드시 통과시킨다 |
-| `pnpm test` | 테스트 전용 DB(`cairn_test`)를 새로 만들어 단위 + API 테스트, 러너 통합 테스트까지. 개발 DB는 건드리지 않는다. `-- --test-name-pattern=<이름>`으로 골라서 |
+| `pnpm test` | 테스트 전용 DB(`cairn_test`)를 새로 만들어 단위 + API 테스트, 러너 통합 테스트, 나가는 프록시 시험까지. 개발 DB는 건드리지 않는다. `-- --test-name-pattern=<이름>`으로 골라서 |
 | `pnpm slot <1~9> <스크립트>` | 슬롯별 compose 프로젝트·포트·이미지로 실행 (`test`, `dev`, `db:reset` 등). 작업 트리에서 병렬로 일할 때 쓴다 |
 | `pnpm db:check` | DB의 모듈 경계 (모듈 사이 외래키, 주인 없는 스키마), 표 인터페이스가 DB와 같은지 |
 | `pnpm db:rows` | 마이그레이션 뒤 표 인터페이스(`<모듈>.tables.ts`)를 다시 만든다 |
