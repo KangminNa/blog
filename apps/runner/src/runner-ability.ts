@@ -13,6 +13,8 @@ import { SigninTerminal } from './signin-terminal';
 //   ownLogins    러너가 스스로 가진 로그인 (환경 변수의 Claude 토큰)
 //   browser      서버 브라우저에 붙어 있는가: 서버 러너(연결 값 파일)이고 CAIRN_BROWSER_URL이 있을 때만.
 //                내 컴퓨터 러너의 브라우저는 탭 읽기에만 쓴다 (평소 쓰는 계정에 가까워 AI에게 맡기지 않는다)
+//   slot         코드 러너 칸의 번호 (CAIRN_RUNNER_SLOT). 칸은 코드 작업만 받는다. next_jobs에는 싣지 않는다:
+//                칸인지는 서버가 기기의 권한(sandbox)으로 정한다 (러너가 말한 값을 믿지 않게)
 // 설치는 시작할 때 한 번 본다. CLI를 새로 깔면 러너를 다시 켠다.
 export class RunnerAbility {
   constructor(
@@ -20,6 +22,7 @@ export class RunnerAbility {
     readonly signinTools: readonly string[],
     readonly ownLogins: readonly string[],
     readonly browser = false,
+    readonly slot: string | null = null,
   ) {}
 
   static detect(
@@ -40,8 +43,14 @@ export class RunnerAbility {
       clis.filter((tool) => AiTools.SUPPORTED.includes(tool)),
       pty ? clis : [],
       config.claudeToken === null ? [] : [ClaudeCli.TOOL],
-      config.browserUrl !== null && config.pairingFile !== null,
+      config.browserUrl !== null && config.pairingFile !== null && config.slot === null,
+      config.slot,
     );
+  }
+
+  /** 코드 러너 칸인가 */
+  get sandbox(): boolean {
+    return this.slot !== null;
   }
 
   /** 실행할 수 있는 파일인가. 경로가 없으면 PATH에서 찾는다 */
@@ -67,7 +76,8 @@ export class RunnerAbility {
     const list = (tools: readonly string[]) => (tools.length > 0 ? tools.join(', ') : '없음');
     const own = this.ownLogins.length > 0 ? ` · 이 컴퓨터의 로그인: ${list(this.ownLogins)}` : '';
     const browser = this.browser ? ' · 브라우저 작업: 받음' : '';
-    return `일할 수 있는 AI: ${list(this.tools)} · 웹 로그인: ${list(this.signinTools)}${own}${browser}`;
+    const code = this.sandbox ? ` · 코드 러너 칸 ${this.slot}: 코드 작업만 받음` : '';
+    return `일할 수 있는 AI: ${list(this.tools)} · 웹 로그인: ${list(this.signinTools)}${own}${browser}${code}`;
   }
 
   /** next_jobs에 싣는 값 */

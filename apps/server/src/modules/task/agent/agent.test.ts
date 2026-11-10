@@ -85,6 +85,18 @@ describe('권한', () => {
     agent.edit({ scopes: ['browse', 'read_public'] });
     assert.deepEqual(agent.scopes, ['read_public', 'browse']);
   });
+
+  test('코드 작업(code)은 비공개 읽기(read_all) · 초안 작성(write)과 함께 줄 수 없다', () => {
+    const agent = agentWith(null, null);
+    assert.throws(() => agent.edit({ scopes: ['code', 'read_all'] }), RuleViolation);
+    assert.throws(() => agent.edit({ scopes: ['code', 'write'] }), RuleViolation);
+    agent.edit({ scopes: ['code', 'read_public', 'tidy'] });
+    assert.deepEqual(agent.scopes, ['read_public', 'tidy', 'code']);
+  });
+
+  test('sandbox는 기기의 권한이라 에이전트에게 줄 수 없다', () => {
+    assert.throws(() => agentWith(null, null).edit({ scopes: ['sandbox'] }), RuleViolation);
+  });
 });
 
 describe('한도 칸', () => {

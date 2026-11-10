@@ -1,8 +1,57 @@
 # 코드 작업 (선택, docs/코드작업.md). 운영 구성에 더해 쓴다: .env에 COMPOSE_FILE=docker-compose.prod.yml:docker-compose.code.yml
 # 코드 러너 칸은 바깥으로 나가는 길이 없는 내부망(code-internal)에만 둔다. 바깥에는 나가는 프록시(egress)를 거쳐
 # 허용 목록(egress/allow.txt)의 호스트로만 닿고, 서버에는 내부망으로 바로 닿는다 (MCP). DB와 브라우저는 내부망에 없다.
-# 지금은 1단계(나가는 프록시)까지다. 코드 러너 칸(code-runner)은 2단계에서 더한다.
+# 칸은 서버 러너처럼 연결 값으로 스스로 붙는다. 값과 볼륨은 서버 러너와 따로다 (code-pairing): 칸이 서버 러너로 붙어
+# 브라우저 작업을 받거나, 서버 러너가 칸으로 붙어 셸 있는 일을 받지 못하게. 칸마다 기기 하나("코드 러너 <칸>")다.
+# 칸을 늘리려면 code-runner-N을 하나 더 적는다 (칸 번호는 1~99, 서비스마다 달라야 한다).
+
+x-code-runner: &code-runner
+  build:
+    context: .
+    target: code-runner
+  image: cairn-code-runner:${CAIRN_IMAGE_TAG:-dev}
+  restart: unless-stopped
+  init: true                # AI CLI가 남긴 손자 프로세스를 거둔다
+  stop_grace_period: 40s    # 기다리는 next_jobs(25초)가 끝나기를 기다렸다가 일을 돌려준다
+  read_only: true
+  tmpfs:
+    - /tmp:size=1g,mode=1777
+    - /home/node:size=256m,uid=1000,gid=1000,mode=700
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 4g             # 칸 하나의 한도. 설치 · 빌드 · 테스트가 이 안에서 돈다
+  cpus: 2
+  pids_limit: 512
+  networks: [code-internal]   # 바깥으로 가는 길 없음. 서버와 egress만 보인다
+  volumes:
+    - code-pairing:/run/cairn-code:ro
+  depends_on:
+    server:
+      condition: service_healthy
+    egress:
+      condition: service_started
+
+x-code-runner-env: &code-runner-env
+  CAIRN_RUNNER_URL: http://cairn-server:4000
+  CAIRN_RUNNER_PAIRING_FILE: /run/cairn-code/pairing
+  HTTPS_PROXY: http://egress:3128   # git · npm · AI CLI는 프록시로만 나간다 (러너가 서버에 닿는 fetch는 프록시를 쓰지 않는다)
+  HTTP_PROXY: http://egress:3128    # 평문 HTTP는 프록시가 거절한다 (405)
+  NO_PROXY: cairn-server            # AI CLI가 MCP로 서버에 닿을 때는 바로
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"   # 허용 목록 밖의 텔레메트리 · 오류 보고를 보내지 않는다
+
 services:
+  code-runner-1:
+    <<: *code-runner
+    environment:
+      <<: *code-runner-env
+      CAIRN_RUNNER_SLOT: "1"
+
+  code-runner-2:
+    <<: *code-runner
+    environment:
+      <<: *code-runner-env
+      CAIRN_RUNNER_SLOT: "2"
+
   egress:
     build:
       context: .
@@ -22,7 +71,14 @@ services:
     networks:
       code-internal:
         aliases: [cairn-server]   # 칸이 MCP로 서버에 바로 닿게
+    environment:
+      CAIRN_CODE_PAIRING_FILE: /run/cairn-code/pairing   # 코드 러너 칸의 연결 값. 서버가 시작할 때 쓴다 (node만 읽는다)
+    volumes:
+      - code-pairing:/run/cairn-code   # 서버와 칸만 붙는다. 서버 러너는 이 볼륨을 보지 않는다
 
 networks:
   code-internal:
     internal: true   # 바깥으로 나가는 길이 없는 망
+
+volumes:
+  code-pairing:   # 코드 러너 칸의 연결 값 (서버가 쓰고 칸이 읽는다). 지워도 서버가 다시 뜰 때 다시 쓴다

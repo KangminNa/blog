@@ -61,4 +61,25 @@ describe('러너가 할 수 있는 것', () => {
     assert.deepEqual(ability.toArgs().own_logins, ['claude']);
     assert.match(ability.line, /일할 수 있는 AI: claude/);
   });
+
+  test('코드 러너 칸: 칸 번호를 로그에 알리고 브라우저 작업은 받지 않는다. next_jobs에는 싣지 않는다', async () => {
+    const claude = await tool('claude');
+    const slot = new RunnerConfig(
+      'http://localhost',
+      null,
+      null,
+      claude,
+      '/없는',
+      '/run/cairn-code/pairing',
+      '/없는/codex',
+      'http://browser:9222',
+      '1',
+    );
+    const ability = RunnerAbility.detect(slot, { PATH: process.env.PATH });
+    assert.equal(ability.sandbox, true);
+    assert.equal(ability.browser, false, '칸에는 브라우저 작업을 주지 않는다');
+    assert.match(ability.line, /코드 러너 칸 1: 코드 작업만 받음/);
+    assert.equal('sandbox' in ability.toArgs(), false, '칸인지는 서버가 기기로 정한다');
+    assert.equal(RunnerAbility.detect(config(claude, '/없는/codex')).sandbox, false);
+  });
 });

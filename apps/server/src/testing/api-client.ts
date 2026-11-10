@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../app.module';
-import { InstallPolicy } from '../modules/account';
+import { InstallPolicy, ServerRunnerPolicy } from '../modules/account';
 import { Database, HttpSetup, SecretBox } from '../modules/platform';
 
 /** 테스트에서 요청하는 사람: 쿠키 묶음. 방문자는 쿠키가 없다 */
@@ -209,6 +209,20 @@ export class ApiClient {
     });
     if (token.status !== 200) throw new Error(`토큰 받기 실패: ${token.text}`);
     return String(token.json().access_token);
+  }
+
+  /**
+   * 코드 러너 칸 하나를 연결하고 기기 토큰을 돌려준다 (칸이 하는 그대로: 칸의 연결 값 + 칸 번호).
+   * 다른 모듈의 테스트가 칸 기기(run · sandbox)를 쓸 때. 연결 자체는 device.api.test.ts가 본다
+   */
+  async codeRunner(slot: string): Promise<string> {
+    const secret = this.service(ServerRunnerPolicy).codeSecret();
+    const paired = await this.request('POST', '/api/devices/code-runner', TestUser.visitor, {
+      secret,
+      slot,
+    });
+    if (paired.status !== 200) throw new Error(`코드 러너 칸 연결 실패: ${paired.text}`);
+    return String(paired.json().token);
   }
 
   /**

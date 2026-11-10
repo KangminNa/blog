@@ -146,6 +146,51 @@ describe('할 수 있는 것을 알리고 빌린다', () => {
   });
 });
 
+describe('코드 작업 (코드 러너 칸)', () => {
+  const codeJob = {
+    task: { id: 'task-code', kind: 'code', title: '고치기', payload: {} },
+    instruction: '버그를 고쳐 주세요',
+    agent: { name: '코드 담당', role: '', tool: 'claude' },
+    run_token: 'cairn_run_x',
+  };
+
+  for (const [who, slot, why] of [
+    ['칸', '1', /아직 코드 작업 공간이 없어요/],
+    ['칸이 아닌 러너', null, /코드 러너 칸이 아니라서/],
+  ] as const)
+    test(`${who}: AI를 띄우지 않고 로그인도 묻지 않고 실패로 끝낸다 (돌려주면 끝없이 다시 빌린다)`, async () => {
+      answers.next_jobs = (res) => {
+        answers.next_jobs = (late) => setTimeout(() => result(late, { jobs: [] }), 10);
+        result(res, { jobs: [codeJob] });
+      };
+      answers.submit_result = (res) => result(res, { status: 'failed' });
+      const loop = new Runner(
+        new RunnerConfig(
+          url,
+          'device-token',
+          null,
+          process.execPath,
+          '/없는',
+          null,
+          '/없는/codex',
+          null,
+          slot,
+        ),
+      );
+      const running = loop.run();
+      await until('결과를 보냄', () => count('submit_result') === 1);
+      loop.stop();
+      await running;
+      const sent = calls.find((c) => c.tool === 'submit_result')?.args;
+      assert.equal(sent?.task_id, 'task-code');
+      assert.equal(sent?.status, 'failed');
+      assert.match(String(sent?.error), why);
+      assert.equal(count('ai_login'), 0);
+      assert.equal(count('release_job'), 0);
+      assert.equal('sandbox' in (calls.find((c) => c.tool === 'next_jobs')?.args ?? {}), false);
+    });
+});
+
 describe('서버에 닿을 때의 실패', () => {
   test('기기 토큰이 틀리면 멈춘다', async () => {
     answers.next_jobs = (res) => status(res, 401);

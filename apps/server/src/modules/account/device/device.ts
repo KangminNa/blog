@@ -6,6 +6,7 @@ import {
   Conflict,
   DomainEvent,
   InvalidRequest,
+  RuleViolation,
   TableEntity,
 } from '../../platform';
 import type { DeviceNew, DeviceRow, DeviceTokenNew, OauthTokenNew } from '../account.tables';
@@ -78,6 +79,12 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
   private static readonly RUNNER_CLIENT = '러너';
   /** 배포 서버 안의 러너: 이름과 도구 이름. 공간마다 살아 있는 것은 하나 (살아 있는 기기 이름의 유일 인덱스) */
   static readonly SERVER_RUNNER = '서버 러너';
+  /**
+   * 코드 러너 칸 (docs/코드작업.md): 도구 이름. 기기 이름은 "코드 러너 <칸>"이고 칸마다 살아 있는 것은 하나.
+   * 권한은 run · sandbox로 정해져 있고 주인이 바꾸지 못한다 (sandbox는 이 기기만 가진다, DB CHECK devices_sandbox_only)
+   */
+  static readonly CODE_RUNNER = '코드 러너';
+  private static readonly CODE_RUNNER_SCOPES: readonly string[] = [Actor.RUN, Actor.SANDBOX];
 
   /** 주인이 정하는 칸과 그 규칙. 권한은 정해진 순서로 둔다 */
   private static readonly RULES: ColumnRules<DeviceRow> = {
@@ -133,6 +140,26 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
     return device;
   }
 
+  /** 코드 러너 칸 하나: 서버 러너처럼 연결 값으로 스스로 연결한다. 주인이 없고 셸 있는 일을 빌리는 권한만 갖는다 */
+  static forCodeRunner(spaceId: string, slot: string, now: Date): Device {
+    const device = Device.open(
+      spaceId,
+      null,
+      Device.codeRunnerName(slot),
+      Device.CODE_RUNNER_SCOPES,
+      null,
+      Device.CODE_RUNNER,
+      now,
+    );
+    device.issueDeviceToken(now);
+    return device;
+  }
+
+  /** 칸의 기기 이름 */
+  static codeRunnerName(slot: string): string {
+    return `${Device.CODE_RUNNER} ${slot}`;
+  }
+
   /** presented: 갱신 토큰으로 찾았을 때 그 토큰 */
   static restore(row: DeviceRow, presented: DeviceCredential | null = null): Device {
     return new Device(row, presented);
@@ -184,6 +211,11 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
     return this.meta.clientName === Device.SERVER_RUNNER;
   }
 
+  /** 코드 러너 칸인가 (같은 이름을 쓰는 다른 기기가 아니라) */
+  get isCodeRunner(): boolean {
+    return this.meta.clientName === Device.CODE_RUNNER;
+  }
+
   /** 칸이 그대로여도 저장하면 version이 오른다: 토큰만 바뀌어도 화면이 든 기기는 옛것이 된다 */
   override get unsaved(): Partial<DeviceRow> {
     const changed = super.unsaved;
@@ -228,6 +260,9 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
 
   /** 주인이 고친 칸 (이름·권한) */
   edit(changes: Partial<DeviceRow>): void {
+    // 칸은 이름으로 다시 찾고(연결할 때), 권한은 칸에 맞춰 정해져 있다. 바꾸면 칸이 새 기기를 만들어 쌓인다
+    if (this.isCodeRunner && (changes.name !== undefined || changes.scopes !== undefined))
+      throw new RuleViolation('코드 러너 칸의 이름 · 권한은 바꿀 수 없어요');
     this.accept(changes, Device.RULES);
   }
 

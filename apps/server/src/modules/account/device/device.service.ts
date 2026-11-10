@@ -18,6 +18,7 @@ import { Device, DeviceCredential } from './device';
 import {
   type AddRunnerInput,
   type ConsentInput,
+  type PairCodeRunnerInput,
   type PairServerRunnerInput,
   type RegisterClientInput,
   type RevokeTokenInput,
@@ -36,7 +37,7 @@ import { ServerRunnerPolicy } from './server-runner.policy';
 export class DeviceService extends EntityService<Device> {
   /** 스스로 등록은 한 곳(IP)에서 1시간에 20번까지 */
   private readonly registrations = new AttemptLimiter(20, 3_600_000);
-  /** 서버 러너의 연결은 한 곳(IP)에서 1시간에 30번까지. 러너가 다시 뜰 때마다 한 번이라 넉넉하다 */
+  /** 서버 러너 · 코드 러너 칸의 연결은 한 곳(IP)에서 1시간에 30번까지. 러너가 다시 뜰 때마다 한 번이라 넉넉하다 */
   private readonly pairings = new AttemptLimiter(30, 3_600_000);
   private static readonly ADD_RUNNER = 'add_runner';
   /** 하루가 지나도록 토큰을 한 번도 받지 않은 등록은 새 등록이 들어올 때 지운다 */
@@ -76,6 +77,34 @@ export class DeviceService extends EntityService<Device> {
           `다른 기기가 "${Device.SERVER_RUNNER}" 이름을 쓰고 있어요. 그 기기의 이름을 바꿔 주세요`,
         );
       const device = live ?? Device.forServerRunner(spaceId, now);
+      if (live) live.rotateDeviceToken(now);
+      await devices.save(device);
+      return device;
+    });
+  }
+
+  /**
+   * 코드 러너 칸이 연결 값과 칸 번호를 내밀고 토큰을 받는다 (서버 러너와 같은 길, 값과 기기는 따로).
+   * 칸마다 기기 하나("코드 러너 <칸>"). 있으면 토큰을 바꾸고 없으면 만든다. 횟수 제한은 서버 러너와 함께 센다
+   */
+  async pairCodeRunner(actor: Actor, req: PairCodeRunnerInput, ip: string): Promise<Device> {
+    this.pairings.hit(AttemptLimiter.place(ip));
+    if (!this.serverRunner.matchesCode(req.secret))
+      throw new Forbidden('code_runner', '코드 러너의 연결 값이 맞지 않아요');
+    const status = await this.spaces.installStatus(actor, null);
+    if (!status.installed || !status.spaceId)
+      throw new Conflict('설치가 끝나면 코드 러너가 연결돼요');
+    const spaceId = status.spaceId;
+    const name = Device.codeRunnerName(req.slot);
+    const now = new Date();
+    return this.transaction(async (tx) => {
+      const devices = new DeviceRepository(tx);
+      const live = await devices.lockLiveByName(spaceId, name);
+      if (live && !live.isCodeRunner)
+        throw new Conflict(
+          `다른 기기가 "${name}" 이름을 쓰고 있어요. 그 기기의 이름을 바꿔 주세요`,
+        );
+      const device = live ?? Device.forCodeRunner(spaceId, req.slot, now);
       if (live) live.rotateDeviceToken(now);
       await devices.save(device);
       return device;

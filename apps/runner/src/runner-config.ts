@@ -9,6 +9,7 @@ export class RunnerConfig {
   private static readonly DEFAULT_CODEX_CLI = 'codex';
   /** apps/runner/src 기준 저장소의 skills/ */
   private static readonly DEFAULT_SKILLS = resolve(__dirname, '../../../skills');
+  private static readonly SLOT = /^[1-9][0-9]?$/;
 
   constructor(
     /** 끝 슬래시 없는 블로그 주소 */
@@ -28,6 +29,11 @@ export class RunnerConfig {
     readonly codexCliPath: string = RunnerConfig.DEFAULT_CODEX_CLI,
     /** 로그인된 브라우저의 CDP 주소 (browser-tabs 패키지). 없으면 브라우저 탭을 읽지 않는다 */
     readonly browserUrl: string | null = null,
+    /**
+     * 코드 러너 칸의 번호 (docs/코드작업.md). 있으면 칸 기기로 연결해 코드 작업만 받는다.
+     * 코드 러너 이미지(CAIRN_SANDBOX=1)에서 연결 값 파일로만 쓴다
+     */
+    readonly slot: string | null = null,
   ) {}
 
   static fromEnv(env: Readonly<Record<string, string | undefined>>): RunnerConfig {
@@ -39,6 +45,7 @@ export class RunnerConfig {
     ];
     if (missing.length > 0)
       throw new ConfigProblem(`러너 설정이 빠졌어요: ${missing.join(', ')} (.env.example 참고)`);
+    const slot = RunnerConfig.slotOf(env, token);
     return new RunnerConfig(
       RunnerConfig.address(env.CAIRN_RUNNER_URL ?? ''),
       token,
@@ -48,6 +55,7 @@ export class RunnerConfig {
       token ? null : pairingFile,
       env.CAIRN_RUNNER_CODEX_CLI?.trim() || RunnerConfig.DEFAULT_CODEX_CLI,
       env.CAIRN_BROWSER_URL?.trim() ? RunnerConfig.browser(env.CAIRN_BROWSER_URL) : null,
+      slot,
     );
   }
 
@@ -62,11 +70,33 @@ export class RunnerConfig {
       this.pairingFile,
       this.codexCliPath,
       this.browserUrl,
+      this.slot,
     );
   }
 
   get mcpUrl(): string {
     return `${this.serverUrl}/mcp`;
+  }
+
+  /**
+   * 칸 번호 (CAIRN_RUNNER_SLOT). 칸은 셸이 있는 일을 받으므로 코드 러너 이미지에서만, 연결 값으로만 붙는다:
+   * 내 컴퓨터에서 칸 번호를 잘못 넣어도 시작하지 않는다 (서버도 칸 기기에만 코드 작업을 준다)
+   */
+  private static slotOf(
+    env: Readonly<Record<string, string | undefined>>,
+    token: string | null,
+  ): string | null {
+    const slot = env.CAIRN_RUNNER_SLOT?.trim() || null;
+    if (slot === null) return null;
+    if (!RunnerConfig.SLOT.test(slot))
+      throw new ConfigProblem(`CAIRN_RUNNER_SLOT은 1~99예요: ${slot}`);
+    if (env.CAIRN_SANDBOX !== '1')
+      throw new ConfigProblem('CAIRN_RUNNER_SLOT은 코드 러너 이미지(CAIRN_SANDBOX=1)에서만 써요');
+    if (token !== null || !env.CAIRN_RUNNER_PAIRING_FILE?.trim())
+      throw new ConfigProblem(
+        '코드 러너 칸은 연결 값 파일(CAIRN_RUNNER_PAIRING_FILE)로만 붙어요. CAIRN_RUNNER_TOKEN은 비워 두세요',
+      );
+    return slot;
   }
 
   /** CDP 주소: 이 컴퓨터나 같은 망의 브라우저만 (http). 끝 슬래시는 뗀다 */

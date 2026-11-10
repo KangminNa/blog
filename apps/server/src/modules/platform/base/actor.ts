@@ -13,6 +13,13 @@ export abstract class Actor {
   static readonly RUN = 'run';
   /** 에이전트: 서버 브라우저로 하는 작업(browse)을 맡는다. read_all과 함께 줄 수 없다 */
   static readonly BROWSE = 'browse';
+  /** 에이전트: 코드 작업(code)을 맡는다. read_all · write와 함께 줄 수 없다 (docs/코드작업.md) */
+  static readonly CODE = 'code';
+  /**
+   * 기기: 코드 러너 칸. 셸이 있는 일(Task.SANDBOXED)을 빌린다. 칸으로 연결할 때만 생기고 주인이 줄 수 없다.
+   * 러너가 알리는 값이 아니라 이 권한으로 판단한다: 내 컴퓨터 러너가 칸이라고 말해도 셸 있는 일을 받지 못하게
+   */
+  static readonly SANDBOX = 'sandbox';
   /** 작업 토큰을 가진 에이전트만의 자격 (request_approval). 기기에 줄 수 있는 권한이 아니다 */
   static readonly AGENT = 'agent';
 
@@ -54,6 +61,14 @@ export abstract class Actor {
   requireSpace(): string {
     if (!this.spaceId) throw new Forbidden('owner');
     return this.spaceId;
+  }
+
+  /**
+   * 코드 러너 칸의 기기인가 (셸이 있는 일을 빌린다). 권한 이름만으로 묻지 않는다: 주인은 모든 권한을 가진다.
+   * 러너가 알리는 값이 아니라 기기의 권한으로 정한다
+   */
+  inSandbox(): boolean {
+    return this.kind === 'device' && this.can(Actor.SANDBOX);
   }
 
   /** 비공개 데이터까지 볼 수 있는가 */

@@ -6,6 +6,7 @@ import { CairnServer } from './cairn-server';
 import type { Job } from './job';
 import { CliUnavailable, JobRun } from './job-run';
 import { AccessDenied, McpClient, ToolRefused } from './mcp-client';
+import { RunResult } from './progress';
 import { Redactor, RunLog } from './redactor';
 import { RunnerAbility } from './runner-ability';
 import type { RunnerConfig } from './runner-config';
@@ -148,6 +149,15 @@ export class Runner {
         this.stopper.signal,
       );
       return signin.perform();
+    }
+    if (job.isCode) {
+      // 코드 작업은 칸 안에서 셸과 함께 한다 (3단계 CodeWorkspace). 그전에는 AI를 띄우지 않고 실패로 끝낸다:
+      // 돌려주면(release) 같은 칸이 곧바로 다시 빌려 끝없이 돈다. 칸이 아닌 러너는 서버가 주지 않지만 여기서도 막는다
+      const why = this.ability.sandbox
+        ? '이 칸은 아직 코드 작업 공간이 없어요 (코드 작업 3단계)'
+        : '코드 러너 칸이 아니라서 코드 작업을 하지 않아요';
+      this.log.info(`${job.taskId}: ${why}`);
+      return this.server.submit(job.taskId, RunResult.failed(why, this.redactor));
     }
     if (job.isBrowse) {
       // 브라우저가 꺼졌거나 다시 뜨는 중이면 AI를 띄우지 않고 돌려준다 (실패로 끝내지 않는다)

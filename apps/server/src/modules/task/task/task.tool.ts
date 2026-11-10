@@ -22,6 +22,7 @@ export class NextJobsTool extends BaseTool {
     '할 일을 빌린다 (임대 15분). 일이 없으면 wait_seconds까지 기다리다가 일이 생기면 바로 돌려준다.',
     '일마다 지시, 대상, 스킬, 에이전트, 작업 토큰(run_token)이 온다. AI CLI에게는 run_token만 넘긴다.',
     '일하는 동안 report_progress로 임대를 늘리고, 끝나면 submit_result, 못 하면 release_job을 부른다.',
+    '코드 작업(code)은 코드 러너 칸 기기에만, 칸에는 코드 작업만 준다 (러너가 알리는 값이 아니라 기기로 정한다).',
   ].join(' ');
   readonly inputSchema = {
     properties: {

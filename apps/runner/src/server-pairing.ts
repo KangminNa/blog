@@ -3,6 +3,7 @@ import { Backoff } from './backoff';
 import type { RunLog } from './redactor';
 
 // 서버 러너의 연결: 서버와 러너만 보는 볼륨의 연결 값을 내밀고 기기 토큰을 받는다 (서버의 POST /api/devices/server-runner).
+// 코드 러너 칸도 같은 길로 붙는다: 칸에만 붙는 볼륨의 값과 칸 번호 (POST /api/devices/code-runner).
 // 사람이 토큰을 옮기지 않는다. 받은 토큰은 메모리에만 둔다: 러너가 다시 뜨면 다시 받고, 서버는 앞 토큰을 바로 막는다.
 // 러너가 서버와 나누는 말은 MCP뿐이고, 이 연결만 그 앞의 한 번이다.
 // 설치 전(409), 파일이 아직 없음, 서버가 아직 안 뜸은 기다렸다 다시 묻는다. 멈추라고 하면 null.
@@ -16,6 +17,8 @@ export class ServerPairing {
     private readonly file: string,
     private readonly log: RunLog,
     private readonly backoff = new Backoff(1_000, 30_000),
+    /** 코드 러너 칸의 번호. 있으면 칸으로 연결한다 (POST /api/devices/code-runner, 서버 러너와 다른 연결 값) */
+    private readonly slot: string | null = null,
   ) {}
 
   async token(stop: AbortSignal): Promise<string | null> {
@@ -24,7 +27,9 @@ export class ServerPairing {
         const token = await this.ask(await this.secret(), stop);
         this.backoff.reset();
         this.lastNote = null;
-        this.log.info('서버 러너로 연결했어요');
+        this.log.info(
+          this.slot === null ? '서버 러너로 연결했어요' : `코드 러너 칸 ${this.slot}로 연결했어요`,
+        );
         return token;
       } catch (error) {
         if (stop.aborted) break;
@@ -44,10 +49,11 @@ export class ServerPairing {
   private async ask(secret: string, stop: AbortSignal): Promise<string> {
     let res: Response;
     try {
-      res = await fetch(`${this.serverUrl}/api/devices/server-runner`, {
+      const path = this.slot === null ? 'server-runner' : 'code-runner';
+      res = await fetch(`${this.serverUrl}/api/devices/${path}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ secret }),
+        body: JSON.stringify(this.slot === null ? { secret } : { secret, slot: this.slot }),
         signal: AbortSignal.any([stop, AbortSignal.timeout(ServerPairing.TIMEOUT_MS)]),
       });
     } catch (error) {
@@ -64,6 +70,7 @@ export class ServerPairing {
   private note(message: string): void {
     if (message === this.lastNote) return;
     this.lastNote = message;
-    this.log.info(`서버 러너 연결을 기다려요: ${message}`);
+    const who = this.slot === null ? '서버 러너' : `코드 러너 칸 ${this.slot}`;
+    this.log.info(`${who} 연결을 기다려요: ${message}`);
   }
 }

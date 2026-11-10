@@ -715,6 +715,54 @@ describe('서버 러너는 연결 값으로 스스로 연결한다', () => {
   });
 });
 
+// 코드 러너 칸 (docs/코드작업.md 2단계): 칸마다 기기 하나로 스스로 붙고(서버 러너와 다른 연결 값), 코드 작업은 칸에게만 간다.
+// 칸 안의 작업 공간(clone · 셸)은 3단계라, 지금 칸은 AI를 띄우지 않고 실패로 끝낸다.
+describe('코드 러너 칸', () => {
+  test('칸 2개가 각자 기기로 붙고, 코드 작업은 칸 하나가 맡는다', async () => {
+    const file = join(spyDir, 'code-pairing');
+    const secret = api.service(ServerRunnerPolicy).codeSecret();
+    writeFileSync(file, secret);
+    const slots = ['1', '2'].map((slot) =>
+      RunnerProcess.start(api.baseUrl, {
+        CAIRN_RUNNER_TOKEN: '',
+        CAIRN_RUNNER_PAIRING_FILE: file,
+        CAIRN_RUNNER_SLOT: slot,
+        CAIRN_SANDBOX: '1',
+      }),
+    );
+    try {
+      await slots[0]?.logged('코드 러너 칸 1로 연결했어요');
+      await slots[1]?.logged('코드 러너 칸 2로 연결했어요');
+      assert.ok(slots.every((s) => s.logs.includes('코드 작업만 받음')));
+      const { devices } = ok(await api.get('/api/devices', owner)) as {
+        devices: { name: string; scopes: string[]; revokedAt: string | null }[];
+      };
+      const live = devices.filter((d) => d.revokedAt === null && d.name.startsWith('코드 러너'));
+      assert.deepEqual(live.map((d) => d.name).sort(), ['코드 러너 1', '코드 러너 2']);
+      for (const device of live) assert.deepEqual(device.scopes, ['run', 'sandbox']);
+
+      const coder = await newAgent({
+        name: '코드 담당',
+        scopes: ['read_public', 'code'],
+        approvalActions: [],
+      });
+      const created = await newTask(coder, '', { kind: 'code' });
+      const task = await taskIn(created.id, 'failed');
+      assert.match(String((task.result as Json).error), /아직 코드 작업 공간이 없어요/);
+      const takers = slots.filter((s) => s.logs.includes(`${created.id}: 일을 맡았어요`));
+      assert.equal(takers.length, 1, '칸 하나가 맡는다');
+      assert.equal(
+        slots.some((s) => s.logs.includes(secret)),
+        false,
+        '연결 값은 로그에 없다',
+      );
+    } finally {
+      const codes = await Promise.all(slots.map((s) => s.stop('SIGTERM')));
+      assert.deepEqual(codes, [0, 0]);
+    }
+  });
+});
+
 // 웹 AI 로그인: 주인이 AI 메뉴에서 누르면 러너가 로그인 명령을 PTY(script)에서 대신 돌린다.
 // 토큰 없이 뜬 러너(서버 러너와 같은 처지)가 로그인 일만 받아 로그인하고, 받은 토큰으로 이어서 일한다.
 describe('웹 AI 로그인', () => {

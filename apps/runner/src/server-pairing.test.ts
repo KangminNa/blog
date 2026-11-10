@@ -42,8 +42,8 @@ after(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function pairing(file: string): ServerPairing {
-  return new ServerPairing(url, file, new RunLog(new Redactor([])), new Backoff(5, 20));
+function pairing(file: string, slot: string | null = null): ServerPairing {
+  return new ServerPairing(url, file, new RunLog(new Redactor([])), new Backoff(5, 20), slot);
 }
 
 describe('서버 러너 연결 (ServerPairing)', () => {
@@ -73,6 +73,16 @@ describe('서버 러너 연결 (ServerPairing)', () => {
     const token = await pairing(file).token(new AbortController().signal);
     assert.equal(token, 'cairn_dt_after');
     assert.match(seen.at(-1) ?? '', /"secret":"(old|new)"/);
+  });
+
+  test('코드 러너 칸은 칸 번호와 함께 칸의 입구로 연결한다', async () => {
+    const file = join(dir, 'code-pairing');
+    writeFileSync(file, 'code-secret\n');
+    seen.length = 0;
+    replies = [[200, { id: 'd2', token: 'cairn_dt_slot' }]];
+    const token = await pairing(file, '3').token(new AbortController().signal);
+    assert.equal(token, 'cairn_dt_slot');
+    assert.deepEqual(seen, ['POST /api/devices/code-runner {"secret":"code-secret","slot":"3"}']);
   });
 
   test('멈추라고 하면 토큰 없이 null', async () => {

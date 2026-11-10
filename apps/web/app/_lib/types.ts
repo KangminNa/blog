@@ -12,5 +12,7 @@ export const SCOPE_LABELS: Record<string, string> = {
   tidy: '정리',
   write: '초안 작성',
   browse: '브라우저 사용',
+  code: '코드 작업',
   run: '작업 실행',
+  sandbox: '코드 러너 칸',
 };

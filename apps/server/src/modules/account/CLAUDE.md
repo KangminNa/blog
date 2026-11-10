@@ -12,6 +12,7 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
   `OAuthController`(`/.well-known/*`, `/oauth/*`: 표준 경로라 /api 아래가 아님), `DeviceController`(`api/connect` 승인 화면, `api/devices` 기기 화면)
 - 러너는 OAuth 없이 콘솔에서 만든다 (`POST api/devices/runner`, `Device.forRunner`). 권한은 `run` 하나, 토큰은 응답에 한 번
 - 서버 러너는 스스로 연결한다 (`POST api/devices/server-runner`, `Device.forServerRunner`): 서버 키에서 만든 연결 값(`ServerRunnerPolicy`)을 서버가 시작할 때 볼륨에 쓰고(`ServerRunnerGateway`, `CAIRN_RUNNER_PAIRING_FILE`), 러너가 그 값을 내밀면 토큰을 준다
+- 코드 러너 칸도 같은 길로 붙는다 (`POST api/devices/code-runner { secret, slot }`, `Device.forCodeRunner`, docs/코드작업.md). 연결 값은 서버 러너와 다르고(`codeSecret`, 파일 `CAIRN_CODE_PAIRING_FILE`, 0600) 칸마다 기기 하나("코드 러너 <칸>"). 권한은 `run` · `sandbox`로 정해져 있다
 - `guard/`: `ActorGuard` (모든 요청: 작업 토큰 → `AgentActor`(작업이 살아 있는지는 mcp 모듈이 묻는다), 그 밖의 Bearer 토큰 → `DeviceActor`. 둘 다 `/mcp`에서만 요청자가 되고 REST에서는 방문자와 같다. 로그인 쿠키 → `OwnerActor`. 로그인 쿠키로 오는 쓰기 요청은 출처가 사이트 주소일 때만, 아니면 403 `origin`)
 
 엔티티는 `TableEntity`(platform)로 표 한 줄을 들고, Repository(`TableRepository`)는 바뀐 칸만 저장한다 (객체설계 6장). 칼럼을 아는 곳은 `account.tables.ts`, Entity의 `RULES`, Input의 `COLUMNS`, View의 `toJSON`이다.
@@ -30,7 +31,8 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
 
 ## 공개 API (`index.ts`)
 `AccountModule`(Guard 포함), 설치 코드(`InstallPolicy`)와 설치 상태(`SpaceQuery`): 명령줄·서버 시작 로그가 쓴다.
-`DeviceQuery`: mcp 모듈이 401 안내 주소를 만들 때. `ServerRunnerGateway`: 서버 시작 때 서버 러너의 연결 값을 쓴다 (`main.api.ts`)
+`DeviceQuery`: mcp 모듈이 401 안내 주소를 만들 때. `ServerRunnerGateway`: 서버 시작 때 서버 러너 · 코드 러너 칸의 연결 값을 쓴다 (`main.api.ts`).
+`ServerRunnerPolicy`: 테스트가 서버 러너 · 칸처럼 연결할 때 (`ApiClient.codeRunner`, 러너 통합 테스트)
 
 ## 내보내는 이벤트 / 받는 이벤트
 `account.owner.claimed`(주인이 정해짐), `account.device.connected`, `account.device.revoked` / 없음
@@ -53,6 +55,7 @@ platform
 - 돌려보낼 주소(redirect_uri)는 이 컴퓨터(localhost · 127.0.0.1 · [::1])와, 주인이 "앱 연결 허용"을 켰을 때만 claude.ai · chatgpt.com의 정해진 콜백 주소(`OAuthClient`의 목록). 남이 보낸 승인 링크를 눌러도 열쇠는 내 컴퓨터나 직접 켠 앱으로만 간다. 앱의 연결이면 승인 화면이 앱 이름(`ConsentView.app`)과 경고를 보인다. 승인 응답에는 `iss`(RFC 9207)
 - 스스로 등록(`/oauth/register`)은 한 곳(IPv4 하나, IPv6는 /64, `AttemptLimiter.place`)에서 1시간 20번. 하루가 지나도록 토큰을 받지 않은 등록은 새 등록 때 지운다
 - 서버 러너: 공간마다 살아 있는 것은 하나 (살아 있는 기기 이름의 유일 인덱스, 이름 "서버 러너"). 연결할 때마다 같은 기기의 기기 토큰을 모두 막고 새로 준다. 주인(user)이 없다. 연결은 한 곳에서 1시간 30번, 설치 전에는 409. 연결 값과 토큰은 로그·응답 밖으로 내보내지 않는다 (토큰은 연결 응답에 한 번)
+- 코드 러너 칸: `sandbox`는 칸으로 연결할 때만 생긴다. 주인이 다른 기기에 줄 수 없고(`ALL_SCOPES`에 없음), 칸 기기의 이름 · 권한은 바꿀 수 없다 (`Device.edit`, 바꾸면 칸이 새 기기를 만들어 쌓인다). DB도 `sandbox` 기기는 `run` · `sandbox`만 갖게 막는다 (CHECK `devices_sandbox_only`). 연결 값은 서버 러너와 섞지 않는다: 칸이 서버 러너로 붙어 브라우저 작업을 받거나, 서버 러너가 칸으로 붙어 셸 있는 일을 받지 못하게
 - URL·쿠키에 싣는 짧은 값은 `SecretBox.pack`으로 암호화한다 (서명만 하지 않는다). 용도를 꼭 넣는다: 승인 요청 `oauth-consent`, 외부 로그인 쿠키 `external-login:<방법>`, 설치 통행증 `install`. 열쇠가 같아 용도가 없으면 한 자리의 값이 다른 자리에서 풀린다
 
 ## 하지 말 것

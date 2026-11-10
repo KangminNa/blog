@@ -34,10 +34,14 @@ import { SpaceService } from './space/space.service';
       inject: [SecretBox],
     },
     {
-      // 서버 러너의 연결 값을 쓸 파일. 러너를 두지 않는 배포와 테스트에는 없다
+      // 서버 러너 · 코드 러너 칸의 연결 값을 쓸 파일. 러너를 두지 않는 배포와 테스트에는 없다
       provide: ServerRunnerGateway,
       useFactory: (policy: ServerRunnerPolicy) =>
-        new ServerRunnerGateway(policy, process.env.CAIRN_RUNNER_PAIRING_FILE?.trim() || null),
+        new ServerRunnerGateway(
+          policy,
+          process.env.CAIRN_RUNNER_PAIRING_FILE?.trim() || null,
+          process.env.CAIRN_CODE_PAIRING_FILE?.trim() || null,
+        ),
       inject: [ServerRunnerPolicy],
     },
     { provide: PasswordHasher, useValue: new PasswordHasher() },

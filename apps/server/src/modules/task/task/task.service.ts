@@ -80,7 +80,7 @@ export class TaskService extends BaseService {
       const accepting = await this.transaction((tx) =>
         new RunnerRepository(tx).seen(spaceId, runnerId, new Date()),
       );
-      const jobs = accepting ? await this.lease(spaceId, runnerId, req) : [];
+      const jobs = accepting ? await this.lease(spaceId, runnerId, actor.inSandbox(), req) : [];
       const left = deadline - Date.now();
       if (jobs.length > 0 || left <= 0 || this.changes.closed) return jobs;
       await this.changes.wait(
@@ -267,6 +267,7 @@ export class TaskService extends BaseService {
   private lease(
     spaceId: string,
     runnerId: string,
+    sandbox: boolean,
     req: NextJobsInput,
   ): Promise<readonly JobView[]> {
     const now = new Date();
@@ -294,6 +295,7 @@ export class TaskService extends BaseService {
         testTools: LeasePolicy.testTools(req.tools, usable),
         signinTools: req.signinTools,
         browser: req.browser,
+        sandbox,
       });
       const busy = [...running];
       for (const task of picked) {

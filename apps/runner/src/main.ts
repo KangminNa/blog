@@ -17,7 +17,7 @@ async function main(): Promise<void> {
     });
   const log = new RunLog(new Redactor([config.deviceToken]));
   const pairing = config.pairingFile
-    ? new ServerPairing(config.serverUrl, config.pairingFile, log)
+    ? new ServerPairing(config.serverUrl, config.pairingFile, log, undefined, config.slot)
     : null;
 
   while (!stopper.signal.aborted) {

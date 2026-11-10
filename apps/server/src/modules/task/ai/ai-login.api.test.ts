@@ -879,6 +879,57 @@ describe('웹 로그인 (러너가 로그인 명령을 대신 돌린다)', () =>
     assert.equal(idsOf(await leaseAs({ ...ability, browser: true })).includes(browse.id), true);
   });
 
+  test('코드 작업(code)은 코드 러너 칸(sandbox 기기)에게만, 칸은 code만 받는다', async () => {
+    await saveToken(newToken());
+    for (const scopes of [
+      ['code', 'read_all'],
+      ['code', 'write'],
+    ]) {
+      const mixed = await api.request('POST', '/api/agents', owner, {
+        requestId: randomUUID(),
+        name: '코드와 비공개',
+        tool: 'claude',
+        scopes,
+      });
+      assert.equal(mixed.status, 422, mixed.text);
+    }
+    const coder = ok(
+      await api.request('POST', '/api/agents', owner, {
+        requestId: randomUUID(),
+        name: '코드 담당',
+        tool: 'claude',
+        scopes: ['read_public', 'code'],
+      }),
+      201,
+    );
+    // 규칙을 거치지 않는 쓰기도 DB가 막는다 (CHECK agents_code_not_private)
+    await assert.rejects(
+      db.sql`UPDATE task.agents SET scopes = ${['code', 'read_all']} WHERE id = ${String(coder.id)}`,
+      /agents_code_not_private/,
+    );
+    const codeTask = async (): Promise<unknown> => {
+      const task = await newTask(coder);
+      await db.sql`UPDATE task.tasks SET kind = 'code' WHERE id = ${String(task.id)}`;
+      return task.id;
+    };
+    const code = await codeTask();
+    const general = await newTask(await newAgent());
+    const { taskId: check } = await startTest();
+    const ability = { ...NOTHING, tools: ['claude'], signin_tools: ['claude'], browser: true };
+
+    // 코드 러너 칸 기기 (run · sandbox): 일반 일 · 연결 확인은 받지 않는다
+    const slot = await api.codeRunner('7');
+    const bySlot = await tool(slot, 'next_jobs', { limit: 10, ...ability });
+    assert.equal(bySlot.ok, true, JSON.stringify(bySlot.body));
+    assert.deepEqual(idsOf(bySlot.body.jobs as Json[]), [code], '칸은 code만');
+
+    // 일반 러너: 칸이라고 알려도 서버는 그 값을 보지 않고 기기 권한으로 정한다
+    const another = await codeTask();
+    const plain = idsOf(await leaseAs({ ...ability, sandbox: true }, 10));
+    assert.equal(plain.includes(another), false, '일반 러너에게 code를 주지 않는다');
+    assert.deepEqual(plain.sort(), [check, general.id].sort());
+  });
+
   test('웹 로그인은 signin_tools의 도구만 준다', async () => {
     const claudeSignin = await start('claude');
     const codexSignin = await start('codex');

@@ -4,6 +4,7 @@ import { AuthorizationPolicy } from './authorization.policy';
 import {
   AddRunnerInput,
   ConsentInput,
+  PairCodeRunnerInput,
   PairServerRunnerInput,
   UpdateDeviceInput,
 } from './device.input';
@@ -72,6 +73,21 @@ export class DeviceController {
   ): Promise<DeviceSavedView> {
     const input = PairServerRunnerInput.from(body);
     return (await this.service.pairServerRunner(actor, input, req.ip ?? '')).view();
+  }
+
+  /**
+   * 코드 러너 칸이 스스로 연결한다: { secret, slot } → 칸의 기기와 토큰 (docs/코드작업.md).
+   * 로그인 없이 부른다. 칸에만 붙는 볼륨의 연결 값이 곧 권한이다 (서버 러너와 값이 다르다)
+   */
+  @HttpCode(200)
+  @Post('devices/code-runner')
+  async pairCodeRunner(
+    @CurrentActor() actor: Actor,
+    @Req() req: HttpRequest,
+    @Body() body: unknown,
+  ): Promise<DeviceSavedView> {
+    const input = PairCodeRunnerInput.from(body);
+    return (await this.service.pairCodeRunner(actor, input, req.ip ?? '')).view();
   }
 
   /** 이름·권한 바꾸기: { name?, scopes?, version } */

@@ -7,6 +7,8 @@ import { SCOPE_LABELS } from '../../_lib/types';
 import { ConnectGuide } from './ConnectGuide';
 
 const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write', 'run'];
+/** 코드 러너 칸 기기만 가진 권한 (서버의 Actor.SANDBOX). 주인이 주거나 뺄 수 없다 */
+const SANDBOX = 'sandbox';
 
 // 기기: 연결하는 법(도구별), 연결된 기기의 권한 바꾸기·끊기, 예비 기기 토큰.
 // 설치 마법사의 마지막 단계도 이 목록을 보며 첫 기기가 붙기를 기다린다.
@@ -121,20 +123,27 @@ export function DevicesPanel({
                 끊기
               </button>
             </div>
-            <fieldset className="row" style={{ border: 0, margin: 0, padding: 0 }}>
-              <legend className="sr">권한</legend>
-              {SCOPES.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  className="chip"
-                  aria-pressed={d.scopes.includes(s)}
-                  onClick={() => toggle(d, s)}
-                >
-                  {SCOPE_LABELS[s]}
-                </button>
-              ))}
-            </fieldset>
+            {d.scopes.includes(SANDBOX) ? (
+              // 코드 러너 칸: 권한이 정해져 있어 서버가 바꾸기를 거절한다
+              <p className="label-mono">
+                {d.scopes.map((s) => SCOPE_LABELS[s] ?? s).join(' · ')} (칸 기기는 바꿀 수 없음)
+              </p>
+            ) : (
+              <fieldset className="row" style={{ border: 0, margin: 0, padding: 0 }}>
+                <legend className="sr">권한</legend>
+                {SCOPES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="chip"
+                    aria-pressed={d.scopes.includes(s)}
+                    onClick={() => toggle(d, s)}
+                  >
+                    {SCOPE_LABELS[s]}
+                  </button>
+                ))}
+              </fieldset>
+            )}
             <button type="button" className="ghost" onClick={() => issue(d)}>
               예비 토큰 만들기 (OAuth를 못 쓰는 도구용)
             </button>

@@ -15,7 +15,10 @@ pypi.org
 files.pythonhosted.org
 
 # AI 회사 API: 칸 안의 AI CLI가 모델을 부른다 (Claude Code · Codex).
-# 2단계에서 실제 CLI로 칸을 띄울 때 필요한 이름을 다시 확인해 고친다
+# 2026-11-10 고정한 CLI를 이 프록시로 띄워 확인 (docs/코드작업.md 8장):
+#   Claude 2.1.302  api.anthropic.com만 쓴다 (불필요한 트래픽을 꺼도 켜도 같다)
+#   Codex 0.164.0   api.openai.com(응답, WebSocket) · chatgpt.com · auth.openai.com(자격 갱신).
+#                   ab.chatgpt.com(실험 설정)은 넣지 않았다: 거절돼도 다음 요청으로 넘어간다. 실제 로그인으로 다시 본다
 api.anthropic.com
 api.openai.com
 chatgpt.com

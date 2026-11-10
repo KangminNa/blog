@@ -28,9 +28,12 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     Actor.TIDY,
     Actor.WRITE,
     Actor.BROWSE,
+    Actor.CODE,
   ];
   /** browse와 함께 줄 수 없는 권한: 비공개(세션 · wiki)와 임시 글 · 소재를 여는 것. DB CHECK agents_browse_not_private와 같다 */
   private static readonly NOT_WITH_BROWSE: readonly string[] = [Actor.READ_ALL, Actor.WRITE];
+  /** code와 함께 줄 수 없는 권한: 비공개 지식과 코드 작업을 섞지 않는다. DB CHECK agents_code_not_private와 같다 */
+  private static readonly NOT_WITH_CODE: readonly string[] = [Actor.READ_ALL, Actor.WRITE];
   private static readonly NAME_MAX = 60;
   private static readonly ROLE_MAX = 2000;
   private static readonly PLAN_PERCENT_MAX = 100;
@@ -67,6 +70,11 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
       if (value.includes(Actor.BROWSE) && Agent.NOT_WITH_BROWSE.some((s) => value.includes(s)))
         throw new RuleViolation(
           '브라우저 사용은 전체 읽기 · 초안 작성과 함께 줄 수 없어요 (browse · read_all · write)',
+        );
+      // 셸이 있는 칸 + 비공개가 한 에이전트에 모이지 않게: 저장소 파일에 심은 지시문에 속아도 비공개를 내보내지 못한다
+      if (value.includes(Actor.CODE) && Agent.NOT_WITH_CODE.some((s) => value.includes(s)))
+        throw new RuleViolation(
+          '코드 작업은 전체 읽기 · 초안 작성과 함께 줄 수 없어요 (code · read_all · write)',
         );
       return Agent.SCOPES.filter((s) => value.includes(s));
     },

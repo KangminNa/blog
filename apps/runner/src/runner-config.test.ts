@@ -86,4 +86,28 @@ describe('러너 설정', () => {
     assert.equal(both.deviceToken, 'device-secret');
     assert.equal(both.pairingFile, null, '사람이 넣은 토큰이 먼저');
   });
+
+  test('코드 러너 칸은 코드 러너 이미지에서 연결 값 파일로만 시작한다', () => {
+    const { CAIRN_RUNNER_TOKEN: _token, ...rest } = env;
+    const slotEnv = {
+      ...rest,
+      CAIRN_RUNNER_PAIRING_FILE: '/run/cairn-code/pairing',
+      CAIRN_RUNNER_SLOT: '2',
+      CAIRN_SANDBOX: '1',
+    };
+    const slot = RunnerConfig.fromEnv(slotEnv);
+    assert.equal(slot.slot, '2');
+    assert.equal(slot.withToken('got').slot, '2');
+    assert.equal(RunnerConfig.fromEnv(env).slot, null, '칸 번호가 없으면 칸이 아니다');
+
+    const refused = (changes: Record<string, string | undefined>, pattern: RegExp) =>
+      assert.throws(
+        () => RunnerConfig.fromEnv({ ...slotEnv, ...changes }),
+        (error: Error) => error instanceof ConfigProblem && pattern.test(error.message),
+      );
+    for (const bad of ['0', '100', 'a', '1a']) refused({ CAIRN_RUNNER_SLOT: bad }, /1~99/);
+    refused({ CAIRN_SANDBOX: undefined }, /코드 러너 이미지/);
+    refused({ CAIRN_SANDBOX: 'true' }, /코드 러너 이미지/);
+    refused({ CAIRN_RUNNER_TOKEN: 'device-secret' }, /연결 값 파일/);
+  });
 });

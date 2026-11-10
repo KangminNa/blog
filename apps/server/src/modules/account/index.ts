@@ -3,6 +3,7 @@
 export { AccountModule } from './account.module';
 export { DeviceQuery } from './device/device.query';
 export { ServerRunnerGateway } from './device/server-runner.gateway';
+export { ServerRunnerPolicy } from './device/server-runner.policy';
 export { OwnerService } from './owner/owner.service';
 export { InstallPolicy } from './space/install.policy';
 export { SpaceQuery } from './space/space.query';

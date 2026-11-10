@@ -59,6 +59,13 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   static readonly AGENTLESS: readonly string[] = [Task.AI_TEST, Task.AI_SIGNIN];
   /** 서버 브라우저로 하는 작업. 브라우저가 있다고 알린 러너(next_jobs의 browser)에게만 빌려 준다 */
   static readonly BROWSE = 'browse';
+  /** 코드 작업: 코드 러너 칸에서 셸로 저장소를 고친다 (docs/코드작업.md) */
+  static readonly CODE = 'code';
+  /**
+   * 셸이 있는 칸(sandbox 기기)에서만 도는 일. 칸은 이 일만 받고, 다른 러너는 이 일을 받지 않는다 (lockNext).
+   * 칸 수가 곧 이 일의 병렬 수라서 칸에 다른 일을 넣지 않는다
+   */
+  static readonly SANDBOXED: readonly string[] = [Task.CODE];
   /** 웹 로그인의 단계 (payload.step) */
   static readonly SIGNIN_STARTING = 'starting';
   static readonly SIGNIN_OPEN_URL = 'open_url';
@@ -100,6 +107,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     // 세션은 기본이 비공개라 정리하려면 비공개까지 읽어야 한다
     tidy_session: [Actor.TIDY, Actor.READ_ALL],
     browse: [Actor.BROWSE],
+    code: [Actor.CODE],
   };
 
   private readonly logged: Omit<TaskEventRow, 'id'>[] = [];

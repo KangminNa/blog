@@ -44,6 +44,8 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
       testTools: readonly string[] | null;
       signinTools: readonly string[] | null;
       browser: boolean;
+      /** 코드 러너 칸(sandbox 기기)인가. 칸은 SANDBOXED만, 다른 러너는 SANDBOXED가 아닌 일만 */
+      sandbox: boolean;
     },
   ): Promise<readonly Task[]> {
     const agentIds = ready.map((a) => a.id);
@@ -57,6 +59,11 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
         ${this.byTool(Task.AI_TEST, tools.testTools)}
         ${this.byTool(Task.AI_SIGNIN, tools.signinTools)}
         ${tools.browser ? this.sql`` : this.sql`AND kind <> ${Task.BROWSE}`}
+        ${
+          tools.sandbox
+            ? this.sql`AND kind = ANY(${Task.SANDBOXED as string[]}::text[])`
+            : this.sql`AND kind <> ALL(${Task.SANDBOXED as string[]}::text[])`
+        }
       ORDER BY priority DESC, id
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED`;

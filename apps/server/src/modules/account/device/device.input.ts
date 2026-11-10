@@ -215,6 +215,26 @@ export class PairServerRunnerInput extends BaseRequest {
   }
 }
 
+/** POST /api/devices/code-runner: 코드 러너 칸의 연결 값과 칸 번호 (1~99) */
+export class PairCodeRunnerInput extends BaseRequest {
+  private static readonly SLOT = /^[1-9][0-9]?$/;
+
+  private constructor(
+    readonly secret: string,
+    readonly slot: string,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): PairCodeRunnerInput {
+    return BaseRequest.read(raw, (f) => {
+      const slot = f.text('slot', 2);
+      if (slot && !PairCodeRunnerInput.SLOT.test(slot)) f.reject('slot', '칸 번호는 1~99예요');
+      return new PairCodeRunnerInput(f.text('secret', 200), slot);
+    });
+  }
+}
+
 /** 주인이 바꾸는 칸. 칸 하나에 한 줄이다. 보내지 않거나 비운 칸은 그대로 둔다 */
 const COLUMNS: ColumnReaders<DeviceRow> = {
   name: (f, n) => f.optionalText(n, 60) ?? undefined,

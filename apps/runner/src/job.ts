@@ -115,6 +115,8 @@ export class Job {
   static readonly AI_SIGNIN = 'ai_signin';
   /** 서버 브라우저로 하는 일: 사이트(payload.site)가 실려 오고 Playwright MCP를 붙인다 */
   static readonly BROWSE = 'browse';
+  /** 코드 작업: 코드 러너 칸에서 셸로 저장소를 고친다 (docs/코드작업.md) */
+  static readonly CODE = 'code';
 
   constructor(
     readonly taskId: string,
@@ -188,6 +190,11 @@ export class Job {
   /** 서버 브라우저로 하는 일 */
   get isBrowse(): boolean {
     return this.kind === Job.BROWSE;
+  }
+
+  /** 코드 러너 칸에서 하는 일 */
+  get isCode(): boolean {
+    return this.kind === Job.CODE;
   }
 
   /**

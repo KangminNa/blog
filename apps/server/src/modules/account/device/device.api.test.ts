@@ -547,6 +547,87 @@ describe('서버 러너 (연결 값으로 스스로 연결)', () => {
   });
 });
 
+describe('코드 러너 칸 (칸마다 기기 하나, 서버 러너와 다른 연결 값)', () => {
+  const pair = (secret: string, slot: unknown = '1') =>
+    api.request('POST', '/api/devices/code-runner', TestUser.visitor, { secret, slot });
+  const secret = () => api.service(ServerRunnerPolicy).codeSecret();
+  type Paired = { id: string; name: string; scopes: string[]; token: string; version: number };
+
+  test('칸마다 "코드 러너 <칸>" 기기 하나. 권한은 run · sandbox, 다시 연결하면 같은 기기에 새 토큰', async () => {
+    const one = await pair(secret(), '1');
+    assert.equal(one.status, 200, one.text);
+    const first = one.json() as Paired;
+    assert.equal(first.name, '코드 러너 1');
+    assert.deepEqual(first.scopes, ['run', 'sandbox']);
+    assert.equal((await api.mcp(first.token, 'tools/list')).status, 200);
+
+    const two = (await pair(secret(), '2')).json() as Paired;
+    assert.equal(two.name, '코드 러너 2');
+    assert.notEqual(two.id, first.id, '칸이 다르면 기기도 다르다');
+
+    const again = (await pair(secret(), '1')).json() as Paired;
+    assert.equal(again.id, first.id);
+    assert.equal((await api.mcp(first.token, 'tools/list')).status, 401, '앞 토큰은 바로 무효');
+    assert.equal((await api.mcp(two.token, 'tools/list')).status, 200, '다른 칸은 그대로');
+  });
+
+  test('서버 러너와 연결 값이 다르다: 서로의 값으로는 붙지 못한다 (403)', async () => {
+    const policy = api.service(ServerRunnerPolicy);
+    assert.notEqual(policy.codeSecret(), policy.secret());
+    const swapped = await pair(policy.secret());
+    assert.equal(swapped.status, 403, swapped.text);
+    assert.equal(swapped.json().token, undefined);
+    const reverse = await api.request('POST', '/api/devices/server-runner', TestUser.visitor, {
+      secret: policy.codeSecret(),
+    });
+    assert.equal(reverse.status, 403, reverse.text);
+  });
+
+  test('칸 번호는 1~99, 모양이 틀리면 400', async () => {
+    for (const slot of ['0', '100', 'a', '1 ', '', '01', 1, null])
+      assert.equal((await pair(secret(), slot)).status, 400, String(slot));
+  });
+
+  test('주인은 칸 기기의 이름 · 권한을 바꾸지 못하고, sandbox는 다른 기기에 줄 수 없다', async () => {
+    const slot = (await pair(secret(), '3')).json() as Paired;
+    for (const changes of [
+      { scopes: ['run'] },
+      { scopes: ['run', 'read_all'] },
+      { name: '딴 이름' },
+    ]) {
+      const tried = await api.request('PATCH', `/api/devices/${slot.id}`, owner, {
+        ...changes,
+        version: slot.version,
+      });
+      assert.equal(tried.status, 422, tried.text);
+    }
+    // 콘솔에서 만든 러너 (OAuth 등록 없이: 등록 횟수 한도를 쓰지 않게)
+    const laptop = (
+      await api.request('POST', '/api/devices/runner', owner, {
+        requestId: randomUUID(),
+        name: 'laptop-sandbox',
+      })
+    ).json() as Paired;
+    const granted = await api.request('PATCH', `/api/devices/${laptop.id}`, owner, {
+      scopes: ['run', 'sandbox'],
+      version: laptop.version,
+    });
+    assert.equal(granted.status, 400, granted.text);
+  });
+
+  test('다른 기기가 칸의 이름을 쓰고 있으면 409', async () => {
+    const imposter = await api.request('POST', '/api/devices/runner', owner, {
+      requestId: randomUUID(),
+      name: '코드 러너 9',
+    });
+    assert.equal(imposter.status, 201, imposter.text);
+    const blocked = await pair(secret(), '9');
+    assert.equal(blocked.status, 409, blocked.text);
+    await api.request('POST', `/api/devices/${imposter.json().id}/revoke`, owner);
+    assert.equal((await pair(secret(), '9')).status, 200);
+  });
+});
+
 describe('갱신과 끊기', () => {
   test('갱신하면 새 토큰 한 쌍. 이미 쓴 갱신 토큰이 다시 오면 기기를 끊는다 (도난 감지)', async () => {
     const first = await connect('laptop-a');
