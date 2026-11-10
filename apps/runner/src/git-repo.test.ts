@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
+import { promisify } from 'node:util';
 import { CodeSpec } from './code-spec';
 import { GitRepo, PatchRejected, RepoRefused, RepoUnreachable } from './git-repo';
 import { GitServer } from './testing/git-server';

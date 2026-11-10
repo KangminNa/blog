@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { after, before, beforeEach, describe, mock, test } from 'node:test';
+import { AgentUser } from './agent-user';
 import { Runner, RunnerHalted } from './runner';
 import { RunnerConfig } from './runner-config';
 
@@ -148,47 +152,71 @@ describe('할 수 있는 것을 알리고 빌린다', () => {
 
 describe('코드 작업 (코드 러너 칸)', () => {
   const codeJob = {
-    task: { id: 'task-code', kind: 'code', title: '고치기', payload: {} },
+    task: {
+      id: '0190f5a2-0000-7000-8000-00000000c0de',
+      kind: 'code',
+      title: '고치기',
+      payload: {},
+    },
     instruction: '버그를 고쳐 주세요',
     agent: { name: '코드 담당', role: '', tool: 'claude' },
     run_token: 'cairn_run_x',
   };
 
-  for (const [who, slot, why] of [
-    ['칸', '1', /아직 코드 작업 공간이 없어요/],
-    ['칸이 아닌 러너', null, /코드 러너 칸이 아니라서/],
-  ] as const)
-    test(`${who}: AI를 띄우지 않고 로그인도 묻지 않고 실패로 끝낸다 (돌려주면 끝없이 다시 빌린다)`, async () => {
-      answers.next_jobs = (res) => {
-        answers.next_jobs = (late) => setTimeout(() => result(late, { jobs: [] }), 10);
-        result(res, { jobs: [codeJob] });
-      };
-      answers.submit_result = (res) => result(res, { status: 'failed' });
-      const loop = new Runner(
+  /** 일 하나를 빌려 주고, 결과를 받으면 끝낸다 */
+  async function runOnce(config: RunnerConfig): Promise<Record<string, unknown> | undefined> {
+    answers.next_jobs = (res) => {
+      answers.next_jobs = (late) => setTimeout(() => result(late, { jobs: [] }), 10);
+      result(res, { jobs: [codeJob] });
+    };
+    answers.submit_result = (res) => result(res, { status: 'failed' });
+    answers.report_progress = (res) => result(res, { status: 'running', cancelled: false });
+    const loop = new Runner(config);
+    const running = loop.run();
+    await until('결과를 보냄', () => count('submit_result') === 1);
+    loop.stop();
+    await running;
+    return calls.find((c) => c.tool === 'submit_result')?.args;
+  }
+
+  test('칸이 아닌 러너: AI를 띄우지 않고 로그인도 묻지 않고 실패로 끝낸다 (돌려주면 끝없이 다시 빌린다)', async () => {
+    const sent = await runOnce(
+      new RunnerConfig(url, 'device-token', null, process.execPath, '/없는', null, '/없는/codex'),
+    );
+    assert.equal(sent?.task_id, '0190f5a2-0000-7000-8000-00000000c0de');
+    assert.equal(sent?.status, 'failed');
+    assert.match(String(sent?.error), /코드 러너 칸이 아니라서/);
+    assert.equal(count('ai_login'), 0);
+    assert.equal(count('release_job'), 0);
+  });
+
+  test('칸: 저장소 정보가 틀리면 자리만 만들었다 지우고, AI 없이 이유와 함께 실패로 끝낸다', async () => {
+    const work = await mkdtemp(join(tmpdir(), 'runner-work-'));
+    try {
+      const sent = await runOnce(
         new RunnerConfig(
           url,
           'device-token',
-          null,
+          'env-token',
           process.execPath,
           '/없는',
           null,
           '/없는/codex',
           null,
-          slot,
+          '1',
+          AgentUser.parse('self'),
+          work,
         ),
       );
-      const running = loop.run();
-      await until('결과를 보냄', () => count('submit_result') === 1);
-      loop.stop();
-      await running;
-      const sent = calls.find((c) => c.tool === 'submit_result')?.args;
-      assert.equal(sent?.task_id, 'task-code');
       assert.equal(sent?.status, 'failed');
-      assert.match(String(sent?.error), why);
-      assert.equal(count('ai_login'), 0);
+      assert.match(String(sent?.error), /저장소 정보가 틀려요: payload.code가 없어요/);
       assert.equal(count('release_job'), 0);
       assert.equal('sandbox' in (calls.find((c) => c.tool === 'next_jobs')?.args ?? {}), false);
-    });
+      assert.deepEqual(await readdir(work), [], '작업 자리는 남지 않는다');
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('서버에 닿을 때의 실패', () => {

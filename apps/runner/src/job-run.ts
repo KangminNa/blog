@@ -3,10 +3,11 @@ import type { AiProcess, ChildExit } from './ai-process';
 import { type AiStream, type AiTool, AiTools } from './ai-tool';
 import { Backoff, pause } from './backoff';
 import type { CairnServer } from './cairn-server';
+import type { CodeStage } from './code-stage';
 import type { Job } from './job';
 import { JobWorkspace } from './job-workspace';
 import { AccessDenied, ServerUnreachable, ToolRefused } from './mcp-client';
-import { ProgressState, RunResult } from './progress';
+import { ProgressState, type RunEvent, RunResult } from './progress';
 import { ProgressReporter } from './progress-reporter';
 import type { Redactor, RunLog } from './redactor';
 import type { RunnerConfig } from './runner-config';
@@ -15,7 +16,7 @@ import type { RunnerConfig } from './runner-config';
 export class CliUnavailable extends Error {}
 
 /** 실행을 어떻게 끝낼지. 서버에 보낼 것이 없으면 note만 남긴다 */
-class RunEnding {
+export class RunEnding {
   private constructor(
     readonly note: string,
     /** release_job의 이유 */
@@ -35,6 +36,11 @@ class RunEnding {
   static submit(note: string, result: RunResult): RunEnding {
     return new RunEnding(note, null, result);
   }
+
+  /** 잘 끝나 결과를 낼 끝인가 */
+  get succeeded(): boolean {
+    return this.result?.status === 'done';
+  }
 }
 
 // 일 하나의 처음부터 끝까지: 자리를 만들고, AI CLI를 띄우고, 기록을 보내며 서버의 답을 보고, 끝을 알리고, 자리를 지운다.
@@ -45,6 +51,7 @@ class RunEnding {
 //   paused        → 끄고 돌려준다 (release_job). 에이전트가 다시 움직이면 다른 실행이 맡는다
 //   거절           → 끄고 끝. 임대를 잃었으니 이 일은 이제 이 러너의 것이 아니다
 // AI CLI가 스스로 끝나면 남은 기록을 먼저 보내고 답을 본 뒤 제출한다: 결재를 올리자마자 끝난 실행을 done으로 보내면 안 된다.
+// 코드 작업(stage)은 AI 앞(clone · setup)과 뒤(checks · push)가 더 있다. 그동안에도 같은 고리로 보고해 임대를 늘리고 취소를 듣는다.
 export class JobRun {
   private static readonly REPORT_MS = 3_000;
   private static readonly RETRY_FIRST_MS = 1_000;
@@ -67,6 +74,8 @@ export class JobRun {
     private readonly log: RunLog,
     redactor: Redactor,
     private readonly stop: AbortSignal,
+    /** 코드 작업의 앞뒤 (코드 러너 칸). 그 밖의 일은 null */
+    private readonly stage: CodeStage | null = null,
   ) {
     this.tool = login.token === null ? null : AiTools.for(job.tool, login.token, config);
     // 자격 안의 토큰까지 (Codex auth.json의 access · refresh) 로그와 기록에서 지운다
@@ -84,7 +93,15 @@ export class JobRun {
       if (unfit) return await this.conclude(unfit);
       // 토큰이 없는 것은 일의 실패가 아니다. 돌려주고, 주인이 토큰을 넣으면 다시 맡는다
       if (this.tool === null) return await this.conclude(RunEnding.release(this.login.problem));
-      workspace = await this.tool.open(this.job);
+      const { stage } = this;
+      if (stage) {
+        const ending = await this.during((signal) =>
+          stage.prepare(signal, this.note, this.redactor),
+        );
+        if (ending) return await this.conclude(ending);
+      }
+      workspace = await this.tool.open(this.job, stage?.workspaceRoom ?? null);
+      await workspace.handOver();
       const { skill } = this.job;
       if (skill && JobWorkspace.skillText(skill, this.config.skillsDir) === null)
         this.log.info(`스킬 ${skill}이 없어 지시만으로 해요`);
@@ -95,6 +112,33 @@ export class JobRun {
       throw error;
     } finally {
       await workspace?.remove();
+      await this.stage?.close();
+    }
+  }
+
+  /** 실행 기록 한 줄 (코드 작업의 단계) */
+  private readonly note = (event: RunEvent): void => this.reporter.add([event]);
+
+  /**
+   * 오래 걸리는 단계(clone · setup · checks · push) 동안에도 보고 고리를 돌린다: 임대를 늘리고 취소 · 멈춤 · 러너 멈춤을 듣는다.
+   * 끝낼 이유가 생기면 단계를 그만두게(signal) 하고 그 끝을 준다. 단계가 스스로 끝나면 단계의 값
+   */
+  private async during<T>(work: (signal: AbortSignal) => Promise<T>): Promise<T | RunEnding> {
+    const cut = new AbortController();
+    const wake = new AbortController();
+    const running = work(AbortSignal.any([cut.signal, this.stop])).finally(() => wake.abort());
+    const alarm = AbortSignal.any([wake.signal, this.stop]);
+    for (;;) {
+      await pause(JobRun.REPORT_MS, alarm);
+      if (wake.signal.aborted) return running;
+      const ending = this.stop.aborted
+        ? RunEnding.release(JobRun.STOPPING)
+        : await this.reportOnce();
+      if (ending) {
+        cut.abort();
+        await running.catch(() => {});
+        return ending;
+      }
     }
   }
 
@@ -109,7 +153,8 @@ export class JobRun {
   private async supervise(workspace: JobWorkspace, tool: AiTool): Promise<void> {
     const stream = tool.stream();
     const wake = new AbortController();
-    const child = tool.start(this.job, workspace, (line) => {
+    const job = this.stage?.aiJob() ?? this.job;
+    const child = tool.start(job, workspace, (line) => {
       this.reporter.add(stream.read(line));
       this.reporter.notePlan(stream.takePlanUsage());
       if (stream.breach !== null) wake.abort();
@@ -126,8 +171,20 @@ export class JobRun {
     await this.writeBack(tool, workspace);
     const ending = decided
       ? ((await this.flush()) ?? decided)
-      : ((await this.flushForSubmit()) ?? this.fromExit(exit, stream, child));
+      : ((await this.flushForSubmit()) ?? (await this.afterExit(exit, stream, child)));
     await this.conclude(ending);
+  }
+
+  /** AI가 스스로 끝난 뒤. 코드 작업이 잘 끝났으면 검사 · 올리기까지 한 결과가 끝이다 */
+  private async afterExit(exit: ChildExit, stream: AiStream, child: AiProcess): Promise<RunEnding> {
+    const ending = this.fromExit(exit, stream, child);
+    const { stage } = this;
+    if (stage === null || !ending.succeeded) return ending;
+    const finished = await this.during((signal) =>
+      stage.finish(stream.finalText, signal, this.note, this.redactor),
+    );
+    // 단계 뒤에 남은 기록(검사 · 올림)을 보내고, 그사이 취소됐는지 한 번 더 본다
+    return (await this.flushForSubmit()) ?? finished;
   }
 
   /**

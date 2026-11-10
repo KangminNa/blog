@@ -1,8 +1,9 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { AiProcess } from './ai-process';
 import type { AiStream, AiTool } from './ai-tool';
 import { BrowserMcp } from './browser-mcp';
+import type { CodeRoom } from './code-room';
 import { CodexStream } from './codex-stream';
 import type { Job } from './job';
 import { JobWorkspace } from './job-workspace';
@@ -30,7 +31,16 @@ export class CodexCli implements AiTool {
     'TZ',
     'TMPDIR',
     'USER',
+    // 코드 러너 칸은 나가는 프록시로만 바깥(모델 API)에 닿는다
+    'HTTPS_PROXY',
+    'HTTP_PROXY',
+    'NO_PROXY',
+    'https_proxy',
+    'http_proxy',
+    'no_proxy',
   ];
+  /** auth.json의 크기 한도 (되돌려 쓸 때 읽는다) */
+  private static readonly AUTH_MAX = 64 * 1024;
   /** auth.json 안에서 로그에서 지울 만큼 긴 값 (토큰) */
   private static readonly SECRET_MIN = 16;
 
@@ -89,8 +99,8 @@ export class CodexCli implements AiTool {
     return `${lines.join('\n')}\n`;
   }
 
-  async open(job: Job): Promise<JobWorkspace> {
-    const workspace = await JobWorkspace.open(null, null, null, this.skillsDir);
+  async open(job: Job, room: CodeRoom | null = null): Promise<JobWorkspace> {
+    const workspace = await JobWorkspace.open(null, null, null, this.skillsDir, room);
     const mcp = job.runToken === null ? null : this.mcpUrl;
     this.browser = mcp === null ? null : BrowserMcp.for(job, this.browserUrl);
     await writeFile(
@@ -131,6 +141,7 @@ export class CodexCli implements AiTool {
     return {
       ...Object.fromEntries(passed),
       HOME: workspace.homeDir,
+      ...(workspace.tmpDir === null ? {} : { TMPDIR: workspace.tmpDir }),
       CODEX_HOME: workspace.configDir,
       ...(job.runToken === null ? {} : { [CodexCli.TOKEN_ENV]: job.runToken }),
     };
@@ -145,6 +156,7 @@ export class CodexCli implements AiTool {
       this.env(job, workspace, process.env),
       job.prompt(false, skill),
       onLine,
+      workspace.user,
     );
   }
 
@@ -155,12 +167,8 @@ export class CodexCli implements AiTool {
   }
 
   async changedCredential(workspace: JobWorkspace): Promise<string | null> {
-    try {
-      const now = await readFile(join(workspace.configDir, 'auth.json'), 'utf8');
-      return now.trim() !== '' && now !== this.authJson ? now : null;
-    } catch {
-      return null;
-    }
+    const now = await workspace.readConfig('auth.json', CodexCli.AUTH_MAX);
+    return now !== null && now.trim() !== '' && now !== this.authJson ? now : null;
   }
 
   /** auth.json 안의 토큰들 (access · refresh · id). 모양이 바뀌어도 긴 문자열은 모두 지운다 */

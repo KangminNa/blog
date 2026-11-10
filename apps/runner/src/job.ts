@@ -142,6 +142,10 @@ export class Job {
     readonly roundsLeft = 0,
     /** 브라우저 작업의 사이트 (그 밖의 일은 null) */
     readonly site: BrowseSite | null = null,
+    /** 코드 작업의 payload.code 그대로. 모양은 CodeSpec이 본다 (그 밖의 일은 null) */
+    readonly codePayload: unknown = null,
+    /** 코드 작업에서 AI에게 더 주는 단락 (저장소 · 고칠 곳 · 검사). CodeStage가 붙인다 */
+    readonly brief: string | null = null,
   ) {}
 
   static from(raw: Json): Job {
@@ -174,6 +178,32 @@ export class Job {
       task.text('kind') === Job.BROWSE
         ? BrowseSite.from(task.child('payload').child('site'))
         : null,
+      task.text('kind') === Job.CODE ? task.child('payload').field('code') : null,
+    );
+  }
+
+  /** 지시에 단락 하나를 더한 같은 일 (코드 작업의 저장소 단락) */
+  withBrief(brief: string): Job {
+    return new Job(
+      this.taskId,
+      this.kind,
+      this.title,
+      this.instruction,
+      this.target,
+      this.skill,
+      this.revisionNote,
+      this.agentName,
+      this.agentRole,
+      this.tool,
+      this.runToken,
+      this.leaseUntil,
+      this.goalChain,
+      this.team,
+      this.subtaskResults,
+      this.roundsLeft,
+      this.site,
+      this.codePayload,
+      brief,
     );
   }
 
@@ -225,6 +255,7 @@ export class Job {
         ].join('\n'),
       );
     if (this.site) parts.push(this.site.part);
+    if (this.brief) parts.push(this.brief);
     if (this.team.length > 0) parts.push(this.teamPart());
     if (this.skill && skillReady) parts.push(`# 스킬\n${this.skill} 스킬을 따릅니다.`);
     else if (this.skill && skillText)

@@ -3,6 +3,8 @@ import { Backoff } from './backoff';
 import { BrowserMcp } from './browser-mcp';
 import { BrowserTabs } from './browser-tabs';
 import { CairnServer } from './cairn-server';
+import { CodeRoom } from './code-room';
+import { CodeStage } from './code-stage';
 import type { Job } from './job';
 import { CliUnavailable, JobRun } from './job-run';
 import { AccessDenied, McpClient, ToolRefused } from './mcp-client';
@@ -35,6 +37,9 @@ export class Runner {
   /** 브라우저 작업을 빌렸는데 브라우저에 닿지 못했을 때. 돌려준 일이 바로 다시 오므로 쉬어야 한다 */
   private static readonly BROWSER_WAIT_FIRST_MS = 5_000;
   private static readonly BROWSER_WAIT_MAX_MS = 120_000;
+  /** 코드 작업을 빌렸는데 저장소에 닿지 못했을 때. 돌려준 일이 바로 다시 오므로 쉬어야 한다 */
+  private static readonly REPO_WAIT_FIRST_MS = 10_000;
+  private static readonly REPO_WAIT_MAX_MS = 300_000;
 
   private readonly stopper = new AbortController();
   private readonly pollCutter = new AbortController();
@@ -46,6 +51,7 @@ export class Runner {
     Runner.BROWSER_WAIT_FIRST_MS,
     Runner.BROWSER_WAIT_MAX_MS,
   );
+  private readonly repoWait = new Backoff(Runner.REPO_WAIT_FIRST_MS, Runner.REPO_WAIT_MAX_MS);
   private readonly redactor: Redactor;
   private readonly log: RunLog;
   private readonly server: CairnServer;
@@ -83,6 +89,13 @@ export class Runner {
     const swept = await SigninRun.sweep();
     if (swept > 0) this.log.info(`지난번에 남은 로그인 폴더 ${swept}개를 지웠어요`);
     this.log.info(this.ability.line);
+    const agent = this.config.agentUser;
+    if (this.ability.sandbox && agent) {
+      if (agent.isSelf)
+        this.log.info('AI가 러너와 같은 사용자로 돌아요 (시험용). 칸에서는 쓰지 마세요');
+      const rooms = await CodeRoom.sweep(this.config.workDir, agent);
+      if (rooms > 0) this.log.info(`지난번에 남은 작업 자리 ${rooms}개를 지웠어요`);
+    }
     if (this.ability.tools.length === 0 && this.ability.signinTools.length === 0)
       this.log.info('이 컴퓨터에서 쓸 수 있는 AI CLI가 없어요. 설치한 뒤 러너를 다시 켜 주세요');
     if (this.config.claudeToken === null)
@@ -150,14 +163,17 @@ export class Runner {
       );
       return signin.perform();
     }
+    let stage: CodeStage | null = null;
     if (job.isCode) {
-      // 코드 작업은 칸 안에서 셸과 함께 한다 (3단계 CodeWorkspace). 그전에는 AI를 띄우지 않고 실패로 끝낸다:
-      // 돌려주면(release) 같은 칸이 곧바로 다시 빌려 끝없이 돈다. 칸이 아닌 러너는 서버가 주지 않지만 여기서도 막는다
-      const why = this.ability.sandbox
-        ? '이 칸은 아직 코드 작업 공간이 없어요 (코드 작업 3단계)'
-        : '코드 러너 칸이 아니라서 코드 작업을 하지 않아요';
-      this.log.info(`${job.taskId}: ${why}`);
-      return this.server.submit(job.taskId, RunResult.failed(why, this.redactor));
+      // 코드 작업은 칸 안에서 셸과 함께 한다 (CodeStage). 칸이 아닌 러너는 서버가 주지 않지만 여기서도 막는다:
+      // AI를 띄우지 않고 실패로 끝낸다 (돌려주면 같은 러너가 곧바로 다시 빌려 끝없이 돈다)
+      const agent = this.config.agentUser;
+      if (!this.ability.sandbox || agent === null) {
+        const why = '코드 러너 칸이 아니라서 코드 작업을 하지 않아요';
+        this.log.info(`${job.taskId}: ${why}`);
+        return this.server.submit(job.taskId, RunResult.failed(why, this.redactor));
+      }
+      stage = new CodeStage(job, this.config, agent, this.log);
     }
     if (job.isBrowse) {
       // 브라우저가 꺼졌거나 다시 뜨는 중이면 AI를 띄우지 않고 돌려준다 (실패로 끝내지 않는다)
@@ -177,9 +193,12 @@ export class Runner {
       this.log,
       this.redactor,
       this.stopper.signal,
+      stage,
     ).perform();
     if (login.token === null) await this.loginWait.wait(this.stopper.signal);
     else this.loginWait.reset();
+    if (stage?.unreachable) await this.repoWait.wait(this.stopper.signal);
+    else if (stage) this.repoWait.reset();
   }
 
   private static fatal(error: unknown): boolean {

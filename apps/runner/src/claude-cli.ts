@@ -2,6 +2,7 @@ import { AiProcess } from './ai-process';
 import type { AiStream, AiTool } from './ai-tool';
 import { BrowserMcp } from './browser-mcp';
 import { ClaudeStream } from './claude-stream';
+import type { CodeRoom } from './code-room';
 import type { Job } from './job';
 import { JobWorkspace } from './job-workspace';
 
@@ -29,6 +30,13 @@ export class ClaudeCli implements AiTool {
     'TMPDIR',
     'SHELL',
     'USER',
+    // 코드 러너 칸은 나가는 프록시로만 바깥(모델 API)에 닿는다
+    'HTTPS_PROXY',
+    'HTTP_PROXY',
+    'NO_PROXY',
+    'https_proxy',
+    'http_proxy',
+    'no_proxy',
   ];
   private static readonly HEADLESS_ENV: Readonly<Record<string, string>> = {
     ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
@@ -51,7 +59,7 @@ export class ClaudeCli implements AiTool {
   ) {}
 
   /** 작업 자리: work 밖의 mcp.json(작업 토큰), 설정 폴더의 권한 설정과 스킬 */
-  open(job: Job): Promise<JobWorkspace> {
+  open(job: Job, room: CodeRoom | null = null): Promise<JobWorkspace> {
     const { runToken } = job;
     this.browser = runToken === null ? null : BrowserMcp.for(job, this.browserUrl);
     return JobWorkspace.open(
@@ -59,6 +67,7 @@ export class ClaudeCli implements AiTool {
       ClaudeCli.settings(process.env.HOME),
       job.skill,
       this.skillsDir,
+      room,
     );
   }
 
@@ -143,6 +152,7 @@ export class ClaudeCli implements AiTool {
       ...Object.fromEntries(passed),
       ...ClaudeCli.HEADLESS_ENV,
       HOME: workspace.homeDir,
+      ...(workspace.tmpDir === null ? {} : { TMPDIR: workspace.tmpDir }),
       CLAUDE_CONFIG_DIR: workspace.configDir,
       CLAUDE_CODE_OAUTH_TOKEN: this.oauthToken,
     };
@@ -156,6 +166,7 @@ export class ClaudeCli implements AiTool {
       this.env(workspace, process.env),
       job.prompt(workspace.skillReady),
       onLine,
+      workspace.user,
     );
   }
 }

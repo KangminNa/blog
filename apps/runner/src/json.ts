@@ -40,6 +40,11 @@ export class Json {
     return typeof value === 'number' && Number.isFinite(value) ? value : null;
   }
 
+  /** 칸의 값 그대로 (모양을 읽는 쪽이 엄격하게 따로 볼 때, 예: CodeSpec) */
+  field(name: string): unknown {
+    return this.value[name];
+  }
+
   flag(name: string): boolean {
     return this.value[name] === true;
   }
