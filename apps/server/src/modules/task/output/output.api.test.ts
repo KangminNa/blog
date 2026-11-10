@@ -54,10 +54,18 @@ async function leased(): Promise<string> {
     }),
     201,
   );
-  const { body } = await mcp(runner, 'next_jobs', { wait_seconds: 0, tools: ['claude'] });
-  const job = (body.jobs as Json[]).find((j) => (j.task as Json).id === task.id);
-  assert.ok(job, '빌린 일이 없다');
-  return String(task.id);
+  // 같은 DB를 쓰는 다른 시험 파일이 남긴 일이 먼저 올 수 있다: 이 일이 올 때까지 빌린다 (먼저 온 일은 그대로 둔다)
+  for (let round = 0; round < 20; round++) {
+    const { body } = await mcp(runner, 'next_jobs', {
+      wait_seconds: 0,
+      limit: 10,
+      tools: ['claude'],
+    });
+    const jobs = body.jobs as Json[];
+    if (jobs.some((j) => (j.task as Json).id === task.id)) return String(task.id);
+    if (jobs.length === 0) break;
+  }
+  throw new Error('빌린 일이 없다');
 }
 
 async function ticketFor(
