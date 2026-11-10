@@ -173,7 +173,7 @@ export class Runner {
         this.log.info(`${job.taskId}: ${why}`);
         return this.server.submit(job.taskId, RunResult.failed(why, this.redactor));
       }
-      stage = new CodeStage(job, this.config, agent, this.log);
+      stage = new CodeStage(job, this.config, agent, this.log, this.server);
     }
     if (job.isBrowse) {
       // 브라우저가 꺼졌거나 다시 뜨는 중이면 AI를 띄우지 않고 돌려준다 (실패로 끝내지 않는다)

@@ -40,9 +40,10 @@ x-code-runner: &code-runner
 x-code-runner-env: &code-runner-env
   CAIRN_RUNNER_URL: http://cairn-server:4000
   CAIRN_RUNNER_PAIRING_FILE: /run/cairn-code/pairing
-  HTTPS_PROXY: http://egress:3128   # git · npm · AI CLI는 프록시로만 나간다 (러너가 서버에 닿는 fetch는 프록시를 쓰지 않는다)
+  HTTPS_PROXY: http://egress:3128   # git · npm · AI CLI는 프록시로만 나간다
   HTTP_PROXY: http://egress:3128    # 평문 HTTP는 프록시가 거절한다 (405)
-  NO_PROXY: cairn-server            # AI CLI가 MCP로 서버에 닿을 때는 바로
+  NO_PROXY: cairn-server            # 러너 · AI CLI가 MCP로 서버에 닿을 때는 바로
+  NODE_USE_ENV_PROXY: "1"           # 러너의 fetch도 위 프록시 설정을 따른다: GitHub PR API는 프록시로, 서버는 NO_PROXY로 바로 (Node 24)
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"   # 허용 목록 밖의 텔레메트리 · 오류 보고를 보내지 않는다
 
 services:

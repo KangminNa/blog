@@ -17,7 +17,7 @@ export class SigninReply {
   }
 }
 
-// 러너가 쓰는 MCP 도구 여덟 개. 모양의 원본은 docs/API설계.md 4장이다.
+// 러너가 쓰는 MCP 도구 (코어 여덟 개 + 기능 패키지 code-github 둘). 모양의 원본은 docs/API설계.md 4장이다.
 export class CairnServer {
   constructor(private readonly mcp: McpClient) {}
 
@@ -120,6 +120,68 @@ export class CairnServer {
       header: body.text('header'),
       token: body.text('token'),
     };
+  }
+
+  /**
+   * code-github: 빌린 code 작업의 저장소 토큰과, "고쳐 달라"로 다시 온 일이면 이미 연 PR (칸 러너만).
+   * 패키지가 꺼져 있거나 토큰이 없으면 ToolRefused
+   */
+  async codeCredential(
+    taskId: string,
+    stop?: AbortSignal,
+  ): Promise<{ token: string; apiUrl: string; pull: { number: number; branch: string } | null }> {
+    const body = await this.mcp.call('code_credential', { task_id: taskId }, 0, stop);
+    const pull = body.field('pull') ? body.child('pull') : null;
+    return {
+      token: body.text('token'),
+      apiUrl: body.text('api_url'),
+      pull: pull ? { number: pull.number('number'), branch: pull.text('branch') } : null,
+    };
+  }
+
+  /** code-github: 연(고친) PR을 남긴다. 결재(code.pr.merge)는 받은 pull_id · version으로 올린다 */
+  async codePullOpened(
+    taskId: string,
+    pull: {
+      number: number;
+      url: string;
+      branch: string;
+      headSha: string;
+      checks: readonly { command: string; ok: boolean }[];
+    },
+  ): Promise<{ pullId: string; version: number }> {
+    const body = await this.mcp.call('code_pull_opened', {
+      task_id: taskId,
+      number: pull.number,
+      url: pull.url,
+      branch: pull.branch,
+      head_sha: pull.headSha,
+      checks: pull.checks,
+    });
+    return { pullId: body.text('pull_id'), version: body.number('version') };
+  }
+
+  /**
+   * 결재를 올린다. 작업 토큰(에이전트)으로 연 CairnServer에서만 부른다: 결재는 에이전트의 이름으로 올라가고,
+   * 에이전트의 approval_actions에 그 동작이 있어야 한다 (없으면 ToolRefused)
+   */
+  async requestApproval(approval: {
+    requestId: string;
+    action: string;
+    targetKind: string;
+    targetId: string;
+    targetVersion: number;
+    note: string;
+  }): Promise<string> {
+    const body = await this.mcp.call('request_approval', {
+      request_id: approval.requestId,
+      action: approval.action,
+      target_kind: approval.targetKind,
+      target_id: approval.targetId,
+      target_version: approval.targetVersion,
+      note: approval.note,
+    });
+    return body.text('approval_id');
   }
 
   /** 읽어 달라는 브라우저 탭 주소들 (browser-tabs 패키지). 패키지가 꺼져 있으면 도구가 없어 ToolRefused */

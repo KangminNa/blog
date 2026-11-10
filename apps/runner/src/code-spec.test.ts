@@ -29,6 +29,14 @@ describe('코드 작업의 저장소 정보', () => {
     assert.deepEqual(spec({ checks: undefined }).checks, []);
   });
 
+  test('repo.id가 있으면 code-github가 맡긴 일 (PR · 결재까지), 없으면 브랜치까지. 모양이 틀리면 거절', () => {
+    assert.equal(spec().repoId, null);
+    const id = '0190f5a2-0000-7000-8000-0000000000ab';
+    assert.equal(spec({ repo: { ...good.repo, id } }).repoId, id);
+    refused({ repo: { ...good.repo, id: 'not-a-uuid' } }, '틀린 id');
+    refused({ repo: { ...good.repo, id: 7 } }, '숫자 id');
+  });
+
   test('고쳐도 되는 곳: 폴더 아래 전부와 파일 하나. 이름이 비슷한 이웃은 아니다', () => {
     const s = spec();
     assert.equal(s.allows('apps/server/src/modules/blog/post/post.ts'), true);

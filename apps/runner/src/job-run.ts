@@ -206,7 +206,12 @@ export class JobRun {
       if (after || !finished.succeeded) return after ?? finished;
     }
     const shipped = await this.during((signal) => this.shipOutputs(workspace, signal));
-    return (await this.flushForSubmit()) ?? shipped ?? finished;
+    const afterShip = (await this.flushForSubmit()) ?? shipped;
+    if (afterShip || stage === null || !stage.awaitsApproval) return afterShip ?? finished;
+    // code-github: PR의 머지 결재를 결과물 뒤에 올린다 (결재 대기가 되면 임대가 끝나 결과물을 올릴 수 없다).
+    // 올리면 작업은 결재 대기가 되고, 아래 보고에서 그것을 보고 제출하지 않고 끝낸다
+    const asked = await this.during((signal) => stage.requestApproval(signal, this.redactor));
+    return (await this.flushForSubmit()) ?? asked ?? finished;
   }
 
   /**

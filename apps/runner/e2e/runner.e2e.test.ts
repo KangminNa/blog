@@ -18,6 +18,7 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { ServerRunnerPolicy } from '../../server/src/modules/account/device/server-runner.policy';
 import { Database, OutboxWorker } from '../../server/src/modules/platform';
 import { ApiClient, type ApiResult, type TestUser } from '../../server/src/testing/api-client';
+import { FakeGithubApi } from '../src/testing/fake-github-api';
 import { GitServer } from '../src/testing/git-server';
 import { TestChromium } from '../src/testing/test-chromium';
 
@@ -943,6 +944,136 @@ describe('코드 작업 (작업 공간)', () => {
     const failed = await taskIn(missing.id, 'failed');
     assert.match(String(resultOf(failed).error), /저장소를 받지 못했어요/);
     await roomsLeft();
+  });
+
+  // 4단계: 콘솔 › 코드(code-github)로 맡긴 일. 토큰으로 push하고 draft PR을 열고(가짜 GitHub API) 결재를 올린다.
+  // 주인이 승인하면 끝나고, "고쳐 달라"면 같은 브랜치에서 이어서 고쳐 같은 PR이 갱신된다
+  describe('code-github로 맡긴 일: PR과 결재', () => {
+    const TOKEN = 'github_pat_e2e_only_0123456789';
+    let github: FakeGithubApi;
+    let repo: Json;
+    let merger: Json;
+    const worker = () => api.service(OutboxWorker);
+
+    /** 코드 메뉴로 일을 맡기고 생긴 작업을 찾는다 (일꾼이 없어 직접 돌린다) */
+    async function ask(marks: string): Promise<string> {
+      const uniq = randomUUID().slice(0, 8);
+      ok(
+        await api.request('POST', `/api/p/code-github/repos/${repo.id}/tasks`, owner, {
+          requestId: randomUUID(),
+          instruction: `고쳐 주세요 ${uniq} ${marks}`,
+          paths: ['src'],
+          agentId: merger.id,
+        }),
+      );
+      const task = await until('작업이 생김', async () => {
+        await worker().tick();
+        const { tasks } = ok(await api.get('/api/tasks', owner)) as { tasks: Json[] };
+        return tasks.find((t) => String(t.title).includes(uniq)) ?? null;
+      });
+      return String(task.id);
+    }
+
+    /** 결재를 기다리는 작업의 결재 */
+    async function approvalOf(taskId: string): Promise<Json> {
+      return until('결재가 올라옴', async () => {
+        const { approvals } = ok(await api.get('/api/approvals', owner)) as { approvals: Json[] };
+        return approvals.find((a) => a.taskId === taskId && a.status === 'pending') ?? null;
+      });
+    }
+
+    before(async () => {
+      github = await FakeGithubApi.start(TOKEN);
+      const url = git.create('me/app', {
+        'src/a.ts': 'export const a = 1;\n',
+        'README.md': '# app\n',
+      });
+      ok(await api.request('POST', '/api/plugins/code-github/enable', owner));
+      ok(
+        await api.request('PUT', '/api/plugins/code-github/settings', owner, {
+          values: { token: TOKEN, apiUrl: github.url },
+        }),
+      );
+      repo = ok(
+        await api.request('POST', '/api/p/code-github/repos', owner, {
+          name: 'app',
+          url,
+          base: 'main',
+          setup: 'test -f README.md',
+          checks: ['test -f src/a.ts'],
+        }),
+      );
+      merger = await newAgent({
+        name: 'PR 담당',
+        scopes: ['read_public', 'code'],
+        approvalActions: ['code.pr.merge'],
+      });
+    });
+
+    after(() => github.close());
+
+    test('토큰으로 push하고 draft PR을 열어 결재를 올린다. 주인이 승인하면 작업이 끝난다', async () => {
+      const taskId = await ask('[fake:edit=src/a.ts]');
+      await taskIn(taskId, 'waiting');
+      const branch = `cairn/${taskId}`;
+      assert.deepEqual([...git.changed('me/app', branch)], ['src/a.ts']);
+      const pull = github.open.find((p) => p.head === branch);
+      assert.ok(pull, 'PR이 열림');
+      assert.deepEqual([pull.base, pull.draft], ['main', true]);
+      assert.ok(
+        github.calls.every((c) => c.authorization === `Bearer ${TOKEN}`),
+        'GitHub에는 패키지의 토큰으로',
+      );
+      const approval = await approvalOf(taskId);
+      assert.equal(approval.action, 'code.pr.merge');
+      assert.match(String(approval.note), /PR: https:\/\/github\.example\/me\/app\/pull\//);
+      assert.match(String(approval.note), /검사 1개 통과/);
+      const logs = slot.logs;
+      assert.equal(logs.includes(TOKEN), false, '토큰은 로그에 없다');
+      assert.equal(JSON.stringify(await getTask(taskId)).includes(TOKEN), false, '기록에도 없다');
+
+      ok(
+        await api.request('POST', `/api/approvals/${approval.id}/decide`, owner, {
+          version: approval.version,
+          decision: 'approve',
+        }),
+      );
+      await until('승인 뒤 끝남', async () => {
+        await worker().tick();
+        return (await getTask(taskId)).status === 'done' ? true : null;
+      });
+      const { pulls } = ok(await api.get('/api/p/code-github/pulls', owner)) as { pulls: Json[] };
+      assert.equal(pulls.find((p) => p.taskId === taskId)?.status, 'merged');
+      await roomsLeft();
+    });
+
+    test('"고쳐 달라"면 같은 브랜치에서 이어서 고치고, 같은 PR이 갱신되어 새 판으로 결재가 다시 올라온다', async () => {
+      const taskId = await ask('[fake:edit=src/a.ts]');
+      await taskIn(taskId, 'waiting');
+      const first = await approvalOf(taskId);
+      const branch = `cairn/${taskId}`;
+      ok(
+        await api.request('POST', `/api/approvals/${first.id}/decide`, owner, {
+          version: first.version,
+          decision: 'revise',
+          note: '테스트도 더해 주세요 [fake:edit=src/second.ts]',
+        }),
+      );
+      const second = await until('다시 고쳐 결재가 올라옴', async () => {
+        const next = await approvalOf(taskId);
+        return next.id === first.id ? null : next;
+      });
+      const versionOf = (a: Json) => Number((a.target as Json).version);
+      assert.equal(versionOf(second), versionOf(first) + 1, '판이 오른다');
+      assert.deepEqual([...git.changed('me/app', branch)].sort(), ['src/a.ts', 'src/second.ts']);
+      assert.equal(
+        github.open.filter((p) => p.head === branch).length,
+        1,
+        'PR은 하나 (본문만 고침)',
+      );
+      assert.ok(github.calls.some((c) => c.method === 'PATCH'));
+      await roomsLeft();
+    });
   });
 });
 

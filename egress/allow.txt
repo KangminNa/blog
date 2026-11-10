@@ -2,7 +2,7 @@
 # 한 줄에 호스트 하나. 앞에 점(.example.com)을 붙이면 하위 도메인 전부(자기 자신은 빼고). # 뒤는 주석.
 # 늘릴 때는 "칸이 왜 거기에 닿아야 하는지"를 주석으로 남긴다: 허용한 곳은 지시문에 속은 에이전트가 데이터를 보낼 수 있는 곳이기도 하다.
 
-# Git과 GitHub: clone · fetch · push(러너), PR(러너)
+# Git과 GitHub: clone · fetch · push(러너), PR(러너: api.github.com, code-github 패키지의 토큰으로)
 github.com
 api.github.com
 codeload.github.com

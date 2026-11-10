@@ -2,7 +2,9 @@
 export class CodeSpecProblem extends Error {}
 
 // 코드 작업 하나의 저장소 정보 (작업의 payload.code, docs/코드작업.md 5장):
-//   { repo: { url, base }, paths: [...], setup: "…" | null, checks: ["…"] }
+//   { repo: { id?, url, base }, paths: [...], setup: "…" | null, checks: ["…"] }
+// repo.id가 있으면 기능 패키지 code-github가 맡긴 일이다: 토큰을 받아 push하고 PR을 열고 결재를 올린다 (4단계).
+// 없으면 3단계처럼 브랜치까지만 (토큰 없는 시험용 저장소).
 // 4단계부터는 기능 패키지 code-github가 주인이 등록한 저장소로 만든다. 서버가 보낸 값이라도 경로 · 명령 · 주소로 쓰기 전에 모양을 본다.
 // paths는 저장소 안의 상대 경로 접두어다 (폴더 아래 전부, 또는 파일 하나). "."은 저장소 전체.
 // .github/workflows는 paths와 상관없이 늘 막는다: 브랜치에 push하면 그 워크플로가 저장소 비밀값과 함께 돌 수 있다.
@@ -25,6 +27,8 @@ export class CodeSpec {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: 제어 문자를 막는 것이 목적이다
   private static readonly CONTROL = /[\u0000-\u001f\u007f]/;
 
+  private static readonly UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
   private constructor(
     readonly taskId: string,
     /** 자격이 없는 주소 (토큰은 4단계에서 환경으로만 넘긴다) */
@@ -36,6 +40,8 @@ export class CodeSpec {
     readonly setup: string | null,
     /** AI가 끝난 뒤 돌리는 검사 명령들 (agent로). 실패해도 올리고 결과에 적는다 */
     readonly checks: readonly string[],
+    /** code-github가 등록한 저장소. 없으면 PR · 결재 없이 브랜치까지 */
+    readonly repoId: string | null = null,
   ) {}
 
   static from(taskId: string, raw: unknown): CodeSpec {
@@ -53,7 +59,15 @@ export class CodeSpec {
         CodeSpec.SETUP_MAX,
       ),
       CodeSpec.checksOf(code.checks ?? []),
+      CodeSpec.repoIdOf(repo.id),
     );
+  }
+
+  private static repoIdOf(raw: unknown): string | null {
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw !== 'string' || !CodeSpec.UUID.test(raw))
+      throw new CodeSpecProblem('저장소 id가 틀려요');
+    return raw;
   }
 
   /** 이 작업이 올리는 브랜치. 러너만 쓰고, 다시 하면 같은 이름에 덮어쓴다 */

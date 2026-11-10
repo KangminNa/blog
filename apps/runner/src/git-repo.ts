@@ -59,7 +59,8 @@ export class GitRepo {
   ) {}
 
   /**
-   * 기준 브랜치를 얕게 받는다. auth는 4단계의 저장소 토큰 (없으면 공개 저장소 · 시험용 서버).
+   * 브랜치를 얕게 받는다: 보통은 기준 브랜치, "고쳐 달라"로 다시 온 일이면 이미 올린 cairn/<작업>(from).
+   * auth는 저장소 토큰 (없으면 공개 저장소 · 시험용 서버).
    * 실패는 RepoUnreachable(돌려주고 기다림)이나 RepoRefused(실패로 끝냄)
    */
   static async clone(
@@ -68,6 +69,7 @@ export class GitRepo {
     home: string,
     auth: string | null,
     signal?: AbortSignal,
+    from: string = spec.base,
   ): Promise<GitRepo> {
     await GitRepo.git(
       [
@@ -77,7 +79,7 @@ export class GitRepo {
         '--single-branch',
         '--no-tags',
         '--branch',
-        spec.base,
+        from,
         '--',
         spec.repoUrl,
         dir,
