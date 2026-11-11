@@ -3,8 +3,8 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:f
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { AgentUser } from './agent-user';
-import type { CodeRoom } from './code-room';
 import type { SkillPackage } from './job';
+import type { SandboxRoom } from './sandbox-room';
 
 // 일 하나의 자리. 사용자의 연결(connector), MCP 서버, 설정, 스킬을 물려받지 않게 작업마다 새로 만들고 지운다.
 //   work/      AI CLI가 도는 빈 폴더
@@ -12,7 +12,8 @@ import type { SkillPackage } from './job';
 //   home/      빈 홈
 //   work/outputs/ AI가 사람에게 줄 파일을 두는 곳. 일이 잘 끝나면 러너가 결과물로 올린다 (OutputBatch)
 //   mcp.json   작업 토큰이 든 MCP 설정 (600). work 밖에 두어 AI가 파일로 읽지 못하게 한다. 연결 확인에는 없다
-// 코드 작업은 코드 러너 칸의 자리(CodeRoom) 안에 둔다: work는 저장소 사본(repo/), 홈은 그 자리의 home/, 설정은 ai/.
+// 코드 러너 칸의 일(코드 · 만들기)은 칸의 자리(SandboxRoom) 안에 둔다: work는 그 자리의 work/(코드 작업은 저장소 사본),
+// 홈은 home/, 설정은 ai/, 만들기 작업의 재료는 inputs/.
 // 러너(root)가 써 둔 뒤 agent에게 넘긴다 (handOver). 셸이 있으니 mcp.json의 작업 토큰은 AI가 읽을 수 있다: 그 에이전트의 것이다.
 export class JobWorkspace {
   private static readonly SKILL_NAME = /^[a-z0-9][a-z0-9-]*$/;
@@ -26,7 +27,7 @@ export class JobWorkspace {
     /** job.skill을 config/skills에 넣었는가 */
     readonly skillReady: boolean,
     /** 코드 러너 칸의 자리. 있으면 AI는 그 자리의 agent로 돈다 */
-    private readonly room: CodeRoom | null = null,
+    private readonly room: SandboxRoom | null = null,
   ) {}
 
   /**
@@ -38,7 +39,7 @@ export class JobWorkspace {
     settings: string | null,
     skill: string | null,
     skillsDir: string,
-    room: CodeRoom | null = null,
+    room: SandboxRoom | null = null,
     /** 서버가 실어 보낸 스킬. 있으면 디스크의 skills/ 대신 이것을 깐다 */
     skillPackage: SkillPackage | null = null,
   ): Promise<JobWorkspace> {
@@ -70,12 +71,17 @@ export class JobWorkspace {
   }
 
   get workDir(): string {
-    return this.room ? this.room.repoDir : join(this.root, 'work');
+    return this.room ? this.room.workDir : join(this.root, 'work');
   }
 
   /** AI가 결과물을 두는 폴더. 코드 러너 칸이면 저장소 밖의 자리 폴더 */
   get outputsDir(): string {
     return this.room ? this.room.outputsDir : join(this.root, 'work', 'outputs');
+  }
+
+  /** 만들기 작업의 재료 파일 폴더. 받은 재료가 없으면 null */
+  get inputsDir(): string | null {
+    return this.room && existsSync(this.room.inputsDir) ? this.room.inputsDir : null;
   }
 
   /** 결과물을 올리기 전에 옮겨 둘 러너만의 폴더. 코드 러너 칸이 아니면 null (제자리에서 읽는다) */
@@ -100,7 +106,7 @@ export class JobWorkspace {
     return join(this.root, 'mcp.json');
   }
 
-  /** 코드 러너 칸의 자리는 CodeRoom이 agent 프로세스를 끈 뒤 지운다 */
+  /** 코드 러너 칸의 자리는 SandboxRoom이 agent 프로세스를 끈 뒤 지운다 */
   async remove(): Promise<void> {
     if (this.room) return;
     await rm(this.root, { recursive: true, force: true });

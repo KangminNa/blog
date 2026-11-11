@@ -3,7 +3,6 @@ import type { AiProcess, ChildExit } from './ai-process';
 import { type AiStream, type AiTool, AiTools } from './ai-tool';
 import { Backoff, pause } from './backoff';
 import type { CairnServer } from './cairn-server';
-import type { CodeStage } from './code-stage';
 import type { Job } from './job';
 import { JobWorkspace } from './job-workspace';
 import { AccessDenied, ServerUnreachable, ToolRefused } from './mcp-client';
@@ -13,6 +12,7 @@ import { ProgressState, RunEvent, RunResult } from './progress';
 import { ProgressReporter } from './progress-reporter';
 import type { Redactor, RunLog } from './redactor';
 import type { RunnerConfig } from './runner-config';
+import type { SandboxStage } from './sandbox-stage';
 
 /** AI CLI를 실행조차 못 함. 일마다 똑같이 실패할 테니 러너를 멈춘다 */
 export class CliUnavailable extends Error {}
@@ -53,7 +53,8 @@ export class RunEnding {
 //   paused        → 끄고 돌려준다 (release_job). 에이전트가 다시 움직이면 다른 실행이 맡는다
 //   거절           → 끄고 끝. 임대를 잃었으니 이 일은 이제 이 러너의 것이 아니다
 // AI CLI가 스스로 끝나면 남은 기록을 먼저 보내고 답을 본 뒤 제출한다: 결재를 올리자마자 끝난 실행을 done으로 보내면 안 된다.
-// 코드 작업(stage)은 AI 앞(clone · setup)과 뒤(checks · push)가 더 있다. 그동안에도 같은 고리로 보고해 임대를 늘리고 취소를 듣는다.
+// 칸의 일(stage)은 AI 앞뒤가 더 있다: 코드 작업은 clone · setup과 checks · push, 만들기 작업은 재료 받기와 프로세스 끄기.
+// 그동안에도 같은 고리로 보고해 임대를 늘리고 취소를 듣는다.
 export class JobRun {
   private static readonly REPORT_MS = 3_000;
   private static readonly RETRY_FIRST_MS = 1_000;
@@ -65,6 +66,8 @@ export class JobRun {
 
   private readonly redactor: Redactor;
   private readonly reporter: ProgressReporter;
+  /** 이번 실행에서 올린 결과물 수 */
+  private sent = 0;
   /** 일의 도구 어댑터. 토큰이 없거나 모르는 도구면 null (perform이 시작 전에 끝낸다) */
   private readonly tool: AiTool | null;
 
@@ -76,8 +79,8 @@ export class JobRun {
     private readonly log: RunLog,
     redactor: Redactor,
     private readonly stop: AbortSignal,
-    /** 코드 작업의 앞뒤 (코드 러너 칸). 그 밖의 일은 null */
-    private readonly stage: CodeStage | null = null,
+    /** 코드 러너 칸에서 하는 일의 앞뒤 (코드 · 만들기). 그 밖의 일은 null */
+    private readonly stage: SandboxStage | null = null,
   ) {
     this.tool = login.token === null ? null : AiTools.for(job.tool, login.token, config);
     // 자격 안의 토큰까지 (Codex auth.json의 access · refresh) 로그와 기록에서 지운다
@@ -184,7 +187,8 @@ export class JobRun {
   }
 
   /**
-   * AI가 스스로 끝난 뒤. 코드 작업이 잘 끝났으면 검사 · 올리기까지 한 결과가 끝이다.
+   * AI가 스스로 끝난 뒤. 칸의 일이 잘 끝났으면 단계의 뒤(검사 · 올리기)까지 한 결과가 끝이다.
+   * 만들기 작업이 결과물을 하나도 올리지 못했으면 실패다.
    * 잘 끝났으면 결과물(outputs 폴더의 파일)을 올리고 제출한다: 제출하면 작업이 끝나 표를 받을 수 없다
    */
   private async afterExit(
@@ -206,7 +210,7 @@ export class JobRun {
       if (after || !finished.succeeded) return after ?? finished;
     }
     const shipped = await this.during((signal) => this.shipOutputs(workspace, signal));
-    const afterShip = (await this.flushForSubmit()) ?? shipped;
+    const afterShip = (await this.flushForSubmit()) ?? shipped ?? this.nothingMade();
     if (afterShip || stage === null || !stage.awaitsApproval) return afterShip ?? finished;
     // code-github: PR의 머지 결재를 결과물 뒤에 올린다 (결재 대기가 되면 임대가 끝나 결과물을 올릴 수 없다).
     // 올리면 작업은 결재 대기가 되고, 아래 보고에서 그것을 보고 제출하지 않고 끝낸다
@@ -253,7 +257,15 @@ export class JobRun {
       }
     }
     if (sent > 0) this.note(new RunEvent(RunEvent.WRITE, `결과물 ${sent}개를 올렸어요`, 0));
+    this.sent = sent;
     return null;
+  }
+
+  /** 파일을 만드는 일(만들기)이 결과물을 하나도 올리지 못했으면 실패. 그 밖에는 null */
+  private nothingMade(): RunEnding | null {
+    if (this.stage === null || !this.stage.needsOutputs || this.sent > 0) return null;
+    const error = '만든 파일이 없어요. outputs 폴더에 둔 파일만 결과물이 돼요';
+    return RunEnding.submit(error, RunResult.failed(error, this.redactor));
   }
 
   /**

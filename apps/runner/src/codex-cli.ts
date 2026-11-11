@@ -3,10 +3,10 @@ import { join } from 'node:path';
 import { AiProcess } from './ai-process';
 import type { AiStream, AiTool } from './ai-tool';
 import { BrowserMcp } from './browser-mcp';
-import type { CodeRoom } from './code-room';
 import { CodexStream } from './codex-stream';
 import type { Job } from './job';
 import { JobWorkspace } from './job-workspace';
+import type { SandboxRoom } from './sandbox-room';
 
 // Codex CLI를 부르는 법: 공식 `codex exec --json`을 ChatGPT 구독 로그인(auth.json)으로 그대로 띄운다.
 //
@@ -58,7 +58,7 @@ export class CodexCli implements AiTool {
 
   /** 이 일에 붙인 브라우저 (어댑터는 일마다 새로 만든다) */
   private browser: BrowserMcp | null = null;
-  /** 셸을 여는가: 코드 러너 칸의 자리에서 하는 코드 작업만 */
+  /** 셸을 여는가: 코드 러너 칸의 자리에서 하는 일(코드 · 만들기)만 */
   private shell = false;
 
   /**
@@ -70,7 +70,7 @@ export class CodexCli implements AiTool {
     browser: BrowserMcp | null = null,
     shell = false,
   ): string {
-    // 셸을 연 코드 작업: Codex의 sandbox는 끄고 칸이 벽이다 (Claude Code와 같은 조건. Docker 안에서 Codex sandbox가 도는지도 불확실).
+    // 셸을 연 칸의 일: Codex의 sandbox는 끄고 칸이 벽이다 (Claude Code와 같은 조건. Docker 안에서 Codex sandbox가 도는지도 불확실).
     // 셸 명령은 Codex가 받은 환경(프록시 · 칸의 홈)을 그대로 쓴다
     const sandbox = shell
       ? ['sandbox_mode = "danger-full-access"']
@@ -108,11 +108,11 @@ export class CodexCli implements AiTool {
     return `${lines.join('\n')}\n`;
   }
 
-  async open(job: Job, room: CodeRoom | null = null): Promise<JobWorkspace> {
+  async open(job: Job, room: SandboxRoom | null = null): Promise<JobWorkspace> {
     const workspace = await JobWorkspace.open(null, null, null, this.skillsDir, room);
     const mcp = job.runToken === null ? null : this.mcpUrl;
     this.browser = mcp === null ? null : BrowserMcp.for(job, this.browserUrl);
-    this.shell = job.isCode && room !== null && mcp !== null;
+    this.shell = job.sandboxed && room !== null && mcp !== null;
     await writeFile(
       join(workspace.configDir, 'config.toml'),
       CodexCli.configToml(mcp, this.browser, this.shell),

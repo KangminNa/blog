@@ -106,19 +106,27 @@ USER node
 CMD ["node", "src/main.js"]
 
 # 코드 러너 칸 (docs/코드작업.md): 운영 러너에 저장소 작업 도구(git, 네이티브 모듈을 빌드할 make · g++ · python3)를 더한다.
+# 만들기 작업(결과물 2차)의 도구도 여기에: LibreOffice(PPT · 문서를 PDF로, 미리 보기), poppler(PDF → PNG), ffmpeg(영상),
+# 한국어 글꼴(Noto CJK), 문서 · 도표 라이브러리(/opt/make, 버전은 apps/runner/make-tools.txt). 칸 안에서는 설치하지 않는다.
 # 칸에서는 AI가 셸을 쓰므로 AI · setup · checks는 다른 사용자 agent(1001)로 돈다: 러너의 메모리 · 환경 · 연결 값과 토큰을 읽지 못하게.
 # 사용자를 바꾸려면 러너가 root여야 한다. compose가 권한을 CHOWN · SETUID · SETGID · KILL만 남긴다 (DAC_OVERRIDE 없음).
 # CAIRN_SANDBOX=1은 이 이미지에만 있다. 러너는 이 값이 있을 때만 칸 번호(CAIRN_RUNNER_SLOT)를 받는다.
 # /work는 작업 자리 (compose가 칸마다 볼륨을 붙인다). /run/cairn-code는 연결 값 볼륨이 붙는 곳 (node 그룹만)
 FROM runner AS code-runner
 USER root
+COPY apps/runner/make-tools.txt /opt/make-tools.txt
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates make g++ python3 \
+ && apt-get install -y --no-install-recommends git ca-certificates make g++ python3 python3-venv \
+      ffmpeg poppler-utils fonts-noto-cjk \
+      libreoffice-impress libreoffice-writer libreoffice-calc \
  && rm -rf /var/lib/apt/lists/* \
+ && python3 -m venv /opt/make \
+ && /opt/make/bin/pip install --no-cache-dir -r /opt/make-tools.txt \
  && useradd --uid 1001 --user-group --no-create-home --shell /usr/sbin/nologin agent \
  && mkdir -p /run/cairn-code /work && chown node:node /run/cairn-code && chmod 750 /run/cairn-code
 ENV CAIRN_SANDBOX=1 \
-    CAIRN_AGENT_USER=1001:1001
+    CAIRN_AGENT_USER=1001:1001 \
+    PATH=/opt/make/bin:$PATH
 USER root
 CMD ["node", "src/main.js"]
 

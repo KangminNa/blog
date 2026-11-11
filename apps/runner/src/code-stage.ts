@@ -1,7 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import type { AgentUser, StepOutput } from './agent-user';
 import { CairnServer } from './cairn-server';
-import { CodeRoom } from './code-room';
 import { CodeSpec, CodeSpecProblem } from './code-spec';
 import { GitRepo, PatchRejected, type Replayed, RepoRefused, RepoUnreachable } from './git-repo';
 import { GitHubPulls, PullRefused } from './github-pulls';
@@ -11,6 +10,8 @@ import { McpClient, ServerUnreachable, ToolRefused } from './mcp-client';
 import { RunEvent, RunResult } from './progress';
 import type { Redactor, RunLog } from './redactor';
 import type { RunnerConfig } from './runner-config';
+import { SandboxRoom } from './sandbox-room';
+import type { SandboxStage } from './sandbox-stage';
 
 // 코드 작업의 앞뒤 (docs/코드작업.md 3단계). JobRun이 AI 앞뒤에서 부르고, 그동안에도 보고 고리를 돌려 임대를 늘리고 취소를 듣는다.
 //   앞: 저장소 정보 → 자리 → 깨끗한 clone(러너) → 사본을 agent에게 → setup(agent)
@@ -24,7 +25,7 @@ import type { RunnerConfig } from './runner-config';
 // 토큰은 러너의 메모리와 러너 git의 환경에만 있다 (AI는 다른 사용자라 읽지 못한다).
 // 러너는 AI의 자리에서 아무것도 실행하지 않는다. AI의 변경은 agent 권한으로 만든 patch라는 데이터 하나로만 받는다:
 // AI가 .git에 심은 훅 · 설정이 토큰을 가진 러너의 git에서 돌지 않게.
-export class CodeStage {
+export class CodeStage implements SandboxStage {
   private static readonly SETUP_MS = 15 * 60_000;
   private static readonly CHECK_MS = 10 * 60_000;
   private static readonly PATCH_MS = 2 * 60_000;
@@ -37,9 +38,11 @@ export class CodeStage {
   private static readonly SUMMARY_MAX = 4_000;
   static readonly MERGE_ACTION = 'code.pr.merge';
   static readonly PULL_TARGET = 'pull_request';
+  /** 바꾼 파일이 없어도 done이다 (결과물은 덤) */
+  readonly needsOutputs = false;
 
   private spec: CodeSpec | null = null;
-  private room: CodeRoom | null = null;
+  private room: SandboxRoom | null = null;
   private repo: GitRepo | null = null;
   /** 저장소에 닿지 못해 돌려줬는가 (러너가 쉬었다 다시 빌린다) */
   private unreached = false;
@@ -72,7 +75,7 @@ export class CodeStage {
   }
 
   /** AI CLI의 자리를 만들 곳 (prepare 뒤) */
-  get workspaceRoom(): CodeRoom | null {
+  get workspaceRoom(): SandboxRoom | null {
     return this.room;
   }
 
@@ -130,7 +133,7 @@ export class CodeStage {
       continued = got.pull !== null && got.pull.branch === spec.branch;
     }
     const auth = this.credential?.token ?? null;
-    const room = await CodeRoom.open(this.config.workDir, this.job.taskId, this.agent);
+    const room = await SandboxRoom.open(this.config.workDir, this.job.taskId, this.agent);
     this.room = room;
     note(new RunEvent(RunEvent.READ, `저장소를 받아요: ${spec.repoUrl} (${spec.base})`, 0));
     try {
@@ -170,7 +173,7 @@ export class CodeStage {
     if (spec.setup === null) return null;
     note(new RunEvent(RunEvent.READ, `setup: ${spec.setup}`, 0));
     const out = await this.agent.run(spec.setup, {
-      cwd: room.repoDir,
+      cwd: room.workDir,
       env: room.env(),
       timeoutMs: CodeStage.SETUP_MS,
       signal,
@@ -199,7 +202,7 @@ export class CodeStage {
     for (const command of spec.checks) {
       note(new RunEvent(RunEvent.READ, `검사: ${command}`, 0));
       const out = await this.agent.run(command, {
-        cwd: room.repoDir,
+        cwd: room.workDir,
         env: room.env(),
         timeoutMs: CodeStage.CHECK_MS,
         signal,
@@ -383,11 +386,11 @@ export class CodeStage {
 
   /** agent 권한으로 만든 patch. 실패면 그 이유 글 */
   private async patchOf(
-    room: CodeRoom,
+    room: SandboxRoom,
     base: string,
     signal: AbortSignal,
   ): Promise<Buffer | string> {
-    const options = { cwd: room.repoDir, env: room.env(), timeoutMs: CodeStage.PATCH_MS, signal };
+    const options = { cwd: room.workDir, env: room.env(), timeoutMs: CodeStage.PATCH_MS, signal };
     const added = await this.agent.exec('git', ['add', '-A'], options);
     if (!added.ok) return `바뀐 것을 모으지 못했어요 (git add ${added.how}): ${added.tail}`;
     const diff = await this.agent.exec(

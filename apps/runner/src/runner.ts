@@ -3,15 +3,17 @@ import { Backoff } from './backoff';
 import { BrowserMcp } from './browser-mcp';
 import { BrowserTabs } from './browser-tabs';
 import { CairnServer } from './cairn-server';
-import { CodeRoom } from './code-room';
 import { CodeStage } from './code-stage';
 import type { Job } from './job';
 import { CliUnavailable, JobRun } from './job-run';
+import { MakeStage } from './make-stage';
 import { AccessDenied, McpClient, ToolRefused } from './mcp-client';
 import { RunResult } from './progress';
 import { Redactor, RunLog } from './redactor';
 import { RunnerAbility } from './runner-ability';
 import type { RunnerConfig } from './runner-config';
+import { SandboxRoom } from './sandbox-room';
+import type { SandboxStage } from './sandbox-stage';
 import { SigninRun } from './signin-run';
 import { TabReader } from './tab-reader';
 
@@ -93,7 +95,7 @@ export class Runner {
     if (this.ability.sandbox && agent) {
       if (agent.isSelf)
         this.log.info('AI가 러너와 같은 사용자로 돌아요 (시험용). 칸에서는 쓰지 마세요');
-      const rooms = await CodeRoom.sweep(this.config.workDir, agent);
+      const rooms = await SandboxRoom.sweep(this.config.workDir, agent);
       if (rooms > 0) this.log.info(`지난번에 남은 작업 자리 ${rooms}개를 지웠어요`);
     }
     if (this.ability.tools.length === 0 && this.ability.signinTools.length === 0)
@@ -163,17 +165,19 @@ export class Runner {
       );
       return signin.perform();
     }
-    let stage: CodeStage | null = null;
-    if (job.isCode) {
-      // 코드 작업은 칸 안에서 셸과 함께 한다 (CodeStage). 칸이 아닌 러너는 서버가 주지 않지만 여기서도 막는다:
+    let stage: SandboxStage | null = null;
+    if (job.sandboxed) {
+      // 코드 · 만들기 작업은 칸 안에서 셸과 함께 한다 (CodeStage · MakeStage). 칸이 아닌 러너는 서버가 주지 않지만 여기서도 막는다:
       // AI를 띄우지 않고 실패로 끝낸다 (돌려주면 같은 러너가 곧바로 다시 빌려 끝없이 돈다)
       const agent = this.config.agentUser;
       if (!this.ability.sandbox || agent === null) {
-        const why = '코드 러너 칸이 아니라서 코드 작업을 하지 않아요';
+        const why = '코드 러너 칸이 아니라서 셸이 필요한 일을 하지 않아요';
         this.log.info(`${job.taskId}: ${why}`);
         return this.server.submit(job.taskId, RunResult.failed(why, this.redactor));
       }
-      stage = new CodeStage(job, this.config, agent, this.log, this.server);
+      stage = job.isMake
+        ? new MakeStage(job, this.config, agent, this.log, this.server)
+        : new CodeStage(job, this.config, agent, this.log, this.server);
     }
     if (job.isBrowse) {
       // 브라우저가 꺼졌거나 다시 뜨는 중이면 AI를 띄우지 않고 돌려준다 (실패로 끝내지 않는다)

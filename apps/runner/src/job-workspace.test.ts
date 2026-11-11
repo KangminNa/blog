@@ -13,10 +13,10 @@ import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { AgentUser } from './agent-user';
 import { ClaudeCli } from './claude-cli';
-import { CodeRoom } from './code-room';
 import { Job } from './job';
 import { JobWorkspace } from './job-workspace';
 import { Json } from './json';
+import { SandboxRoom } from './sandbox-room';
 
 let skillsDir: string;
 
@@ -262,7 +262,7 @@ describe('코드 러너 칸의 코드 작업', () => {
 
   test('칸의 자리 안에서 셸과 찾기를 묻지 않고 허락한다. 작업 폴더는 저장소 사본, 홈 · 임시는 그 자리', async () => {
     const base = mkdtempSync(join(tmpdir(), 'cairn-room-'));
-    const room = await CodeRoom.open(base, TASK, self);
+    const room = await SandboxRoom.open(base, TASK, self);
     mkdirSync(room.cleanDir);
     await room.handOver();
     const cli = new ClaudeCli('claude', 'oauth-token', 'http://cairn-server:4000/mcp', skillsDir);
@@ -271,7 +271,7 @@ describe('코드 러너 칸의 코드 작업', () => {
     const args = [...cli.args(workspace)];
     assert.equal(args[args.indexOf('--tools') + 1], 'Read,Write,Edit,Bash,Glob,Grep');
     for (const tool of ['Bash', 'Glob', 'Grep']) assert.ok(args.includes(tool), tool);
-    assert.equal(workspace.workDir, room.repoDir);
+    assert.equal(workspace.workDir, room.workDir);
     assert.equal(workspace.user, self);
     const env = cli.env(workspace, {
       PATH: '/bin',
@@ -283,7 +283,7 @@ describe('코드 러너 칸의 코드 작업', () => {
     assert.equal(env.HTTPS_PROXY, 'http://egress:3128', '바깥은 나가는 프록시로');
     assert.equal(env.CAIRN_RUNNER_TOKEN, undefined);
     await workspace.remove();
-    assert.ok(existsSync(workspace.mcpConfigPath), '칸의 자리는 CodeRoom이 지운다');
+    assert.ok(existsSync(workspace.mcpConfigPath), '칸의 자리는 SandboxRoom이 지운다');
     await room.close();
     rmSync(base, { recursive: true, force: true });
   });

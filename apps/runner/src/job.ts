@@ -160,6 +160,8 @@ export class Job {
   static readonly BROWSE = 'browse';
   /** 코드 작업: 코드 러너 칸에서 셸로 저장소를 고친다 (docs/코드작업.md) */
   static readonly CODE = 'code';
+  /** 만들기 작업: 코드 러너 칸에서 셸로 PPT · 문서 · 영상을 만든다 (결과물 2차) */
+  static readonly MAKE = 'make';
 
   constructor(
     readonly taskId: string,
@@ -191,6 +193,8 @@ export class Job {
     readonly brief: string | null = null,
     /** 서버가 실어 보낸 스킬 한 판. 옛 서버면 null (그때는 디스크의 skills/에서 이름으로 찾는다) */
     readonly skillPackage: SkillPackage | null = null,
+    /** 만들기 작업의 payload.make 그대로 (재료). 모양은 MakeMaterials가 본다 (그 밖의 일은 null) */
+    readonly makePayload: unknown = null,
   ) {}
 
   static from(raw: Json): Job {
@@ -226,10 +230,11 @@ export class Job {
       task.text('kind') === Job.CODE ? task.child('payload').field('code') : null,
       null,
       raw.field('skill_package') ? SkillPackage.from(raw.child('skill_package')) : null,
+      task.text('kind') === Job.MAKE ? (task.child('payload').field('make') ?? null) : null,
     );
   }
 
-  /** 지시에 단락 하나를 더한 같은 일 (코드 작업의 저장소 단락) */
+  /** 지시에 단락 하나를 더한 같은 일 (코드 작업의 저장소 단락, 만들기 작업의 재료 단락) */
   withBrief(brief: string): Job {
     return new Job(
       this.taskId,
@@ -252,6 +257,7 @@ export class Job {
       this.codePayload,
       brief,
       this.skillPackage,
+      this.makePayload,
     );
   }
 
@@ -270,9 +276,19 @@ export class Job {
     return this.kind === Job.BROWSE;
   }
 
-  /** 코드 러너 칸에서 하는 일 */
+  /** 저장소를 고치는 일 (코드 러너 칸) */
   get isCode(): boolean {
     return this.kind === Job.CODE;
+  }
+
+  /** 파일을 만드는 일 (코드 러너 칸) */
+  get isMake(): boolean {
+    return this.kind === Job.MAKE;
+  }
+
+  /** 셸이 있는 코드 러너 칸에서만 하는 일 (서버의 Task.SANDBOXED와 같다) */
+  get sandboxed(): boolean {
+    return this.isCode || this.isMake;
   }
 
   /**

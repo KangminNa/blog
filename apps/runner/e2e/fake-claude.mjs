@@ -10,6 +10,7 @@
 //   [fake:delegate]     지시문의 "내 팀"에게 하위 작업을 하나씩 맡기고 끝난다. 결과를 받아 깨어난 실행은 맡기지 않고 끝낸다
 //   [fake:stray]        허락하지 않은 MCP 서버가 붙은 것처럼 보인다
 //   [fake:edit=<경로>]  작업 폴더의 그 경로에 파일을 쓴다 (코드 작업. 여러 번 쓸 수 있다)
+//   [fake:make]         만들기 작업: "# 재료"의 파일 폴더와 위키(get_wiki)를 읽어 결과물 폴더에 발표.pptx를 둔다
 //   [fake:split=<경로>,<경로>…] 코드 작업의 팀장처럼: "내 팀"의 첫 팀원에게 경로마다 code 하위 작업을 맡기고 끝난다
 //                       (하위 작업은 그 경로 아래 x.ts를 고친다). 결과를 받아 깨어난 실행은 맡기지 않고 끝낸다
 // 연결 확인(MCP 설정 없음)은 ok라고 답한다. 토큰에 wrong이 들어 있으면 로그인 실패처럼 끝난다
@@ -337,6 +338,25 @@ if (has('outputs')) {
   writeFileSync(join(dir, '.secret'), '숨김 파일');
   mkdirSync(join(dir, 'nested'));
   writeFileSync(join(dir, 'nested', 'inner.txt'), '폴더 안');
+}
+
+// 만들기 작업: 지시문의 "# 재료"에 적힌 파일 폴더를 읽고 위키를 get_wiki로 읽어, 둘을 엮은 파일 하나를 결과물 폴더에 둔다
+if (has('make')) {
+  const outputs = /만들면 (\S+) 바로 아래에 둡니다/.exec(prompt)?.[1];
+  const inputs = /^파일 \((\S+)\):$/m.exec(prompt)?.[1] ?? null;
+  const wikis = [...prompt.matchAll(/^- wiki_id: ([0-9a-f-]+)$/gm)].map((m) => m[1]);
+  const read = inputs === null ? [] : readdirSync(inputs).sort();
+  const pages = [];
+  for (const id of wikis) pages.push((await callTool('get_wiki', { wiki_id: id })).body_md);
+  writeFileSync(
+    join(outputs, '발표.pptx'),
+    [
+      'PK',
+      `재료 파일: ${read.join(', ')}`,
+      ...read.map((f) => readFileSync(join(inputs, f)).toString('hex')),
+      ...pages,
+    ].join('\n'),
+  );
 }
 
 const text = '초안을 저장했어요';

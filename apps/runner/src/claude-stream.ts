@@ -52,7 +52,7 @@ export class ClaudeStream implements AiStream {
   constructor(
     /** 이 실행에서 허락한 MCP 서버. 그 밖의 서버가 보이면 격리가 깨진 것 */
     private readonly servers: readonly string[] = [ClaudeStream.SERVER],
-    /** 셸을 연 일인가 (코드 러너 칸의 코드 작업). 아니면 셸이 보일 때 격리가 깨진 것 */
+    /** 셸을 연 일인가 (코드 러너 칸의 코드 · 만들기 작업). 아니면 셸이 보일 때 격리가 깨진 것 */
     private readonly shellAllowed = false,
   ) {}
 

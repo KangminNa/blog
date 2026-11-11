@@ -884,7 +884,7 @@ describe('코드 작업 (작업 공간)', () => {
       /\/outputs$/,
       '결과물 폴더를 열어 준다',
     );
-    assert.match(String(seen.cwd), /\/repo$/, 'AI는 저장소 사본에서 돈다');
+    assert.match(String(seen.cwd), /\/work$/, 'AI는 저장소 사본에서 돈다');
     assert.match(String(seen.prompt), /# 고칠 수 있는 곳\n- src/);
     assert.match(String(seen.prompt), /cairn-code 스킬을 따릅니다/);
     const env = seen.env as Record<string, string>;
@@ -944,6 +944,70 @@ describe('코드 작업 (작업 공간)', () => {
     const failed = await taskIn(missing.id, 'failed');
     assert.match(String(resultOf(failed).error), /저장소를 받지 못했어요/);
     await roomsLeft();
+  });
+
+  // 결과물 2차: 만들기 작업도 같은 칸에서 셸과 함께 돈다. 재료 결과물은 러너가 표로 받아 inputs/에 두고,
+  // 재료 위키는 AI가 작업 토큰의 허락으로 get_wiki로 읽는다. 만든 파일이 없으면 실패다
+  describe('만들기 작업', () => {
+    let maker: Json;
+    const makeTask = (marks: string, materials: Json = {}) =>
+      newTask(maker, marks, { kind: 'make', materials });
+
+    before(async () => {
+      // 읽기 권한 없이 make만: 재료 위키는 작업 토큰의 허락으로만 읽는다
+      maker = await newAgent({ name: '만들기 담당', scopes: ['make'], approvalActions: [] });
+    });
+
+    test('재료 파일과 고른 위키로 만든 파일이 결과물로 올라오고, 결재 없이 끝난다', async () => {
+      const first = await taskIn((await makeTask('[fake:make]')).id, 'done');
+      const [material] = first.outputs as Json[];
+      assert.equal(material?.name, '발표.pptx');
+      const wiki = ok(
+        await api.request('POST', '/api/wikis', owner, {
+          requestId: randomUUID(),
+          title: `비공개 재료 ${randomUUID()}`,
+          bodyMd: '## 요약\n칸 안에서 읽는 비공개 위키',
+        }),
+        201,
+      );
+      const spy = new Spy();
+      const created = await makeTask(`[fake:make] ${spy.mark}`, {
+        outputIds: [material?.id],
+        wikiIds: [wiki.id],
+      });
+      const task = await taskIn(created.id, 'done');
+      const outputs = task.outputs as Json[];
+      assert.deepEqual(
+        outputs.map((o) => o.name),
+        ['발표.pptx'],
+      );
+      const res = await fetch(`${api.baseUrl}/api/outputs/${outputs[0]?.id}/file`, {
+        headers: { cookie: owner.header },
+      });
+      const made = await res.text();
+      assert.match(made, /재료 파일: 발표\.pptx/, '재료를 inputs/에서 읽었다');
+      assert.match(made, /칸 안에서 읽는 비공개 위키/, '고른 위키를 get_wiki로 읽었다');
+
+      const seen = await spy.seen();
+      const argv = seen.argv as string[];
+      assert.match(argv[argv.indexOf('--tools') + 1] ?? '', /Bash/, '만들기에도 셸을 연다');
+      assert.ok(
+        argv.some((a) => /\/inputs$/.test(a)),
+        '재료 폴더를 열어 준다',
+      );
+      const prompt = String(seen.prompt);
+      assert.match(prompt, /# 재료/);
+      assert.match(prompt, new RegExp(`- wiki_id: ${wiki.id}`));
+      const bodies = events(task).map((e) => String(e.body));
+      assert.ok(bodies.includes('재료 파일 1개를 받았어요'), bodies.join(' | '));
+      await roomsLeft();
+    });
+
+    test('만든 파일이 없으면 실패로 끝낸다', async () => {
+      const task = await taskIn((await makeTask('')).id, 'failed');
+      assert.match(String(resultOf(task).error), /만든 파일이 없어요/);
+      await roomsLeft();
+    });
   });
 
   // 4단계: 콘솔 › 코드(code-github)로 맡긴 일. 토큰으로 push하고 draft PR을 열고(가짜 GitHub API) 결재를 올린다.

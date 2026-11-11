@@ -123,6 +123,38 @@ export class CairnServer {
   }
 
   /**
+   * 만들기 작업의 재료 결과물 하나를 받을 표 (임대를 쥔 실행, 그 작업의 재료만). 휴지통에 갔으면 ToolRefused(not_found).
+   * 본문은 표의 주소에서 GET으로 받는다 (MCP의 JSON으로 받지 않는다)
+   */
+  async beginDownload(
+    taskId: string,
+    outputId: string,
+    stop?: AbortSignal,
+  ): Promise<{
+    path: string;
+    header: string;
+    token: string;
+    name: string;
+    size: number;
+    sha256: string;
+  }> {
+    const body = await this.mcp.call(
+      'begin_download',
+      { task_id: taskId, output_id: outputId },
+      0,
+      stop,
+    );
+    return {
+      path: body.text('download_path'),
+      header: body.text('header'),
+      token: body.text('token'),
+      name: body.text('name'),
+      size: body.number('size'),
+      sha256: body.text('sha256'),
+    };
+  }
+
+  /**
    * code-github: 빌린 code 작업의 저장소 토큰과, "고쳐 달라"로 다시 온 일이면 이미 연 PR (칸 러너만).
    * 패키지가 꺼져 있거나 토큰이 없으면 ToolRefused
    */

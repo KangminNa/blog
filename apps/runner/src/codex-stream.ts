@@ -4,7 +4,7 @@ import { type PlanWindow, RunEvent } from './progress';
 
 // codex exec --json의 줄을 실행 기록으로 바꾼다. 한 줄 = 사건 하나 (Codex 0.164.0으로 확인한 모양).
 //   item.started  mcp_tool_call     →  read · write. 허락하지 않은 서버면 격리가 깨진 것
-//                 command_execution →  셸은 꺼 두었으니 보이면 격리가 깨진 것. 코드 러너 칸의 코드 작업만 write
+//                 command_execution →  셸은 꺼 두었으니 보이면 격리가 깨진 것. 코드 러너 칸의 일(코드 · 만들기)만 write
 //   item.completed agent_message    →  마지막 답으로 기억한다
 //                  mcp_tool_call    →  실패했으면 error
 //                  file_change      →  write (작업 폴더 안)
@@ -50,7 +50,7 @@ export class CodexStream implements AiStream {
   constructor(
     /** 이 실행에서 허락한 MCP 서버. 그 밖의 서버의 도구를 부르면 격리가 깨진 것 */
     private readonly servers: readonly string[] = [CodexStream.SERVER],
-    /** 셸을 연 일인가 (코드 러너 칸의 코드 작업) */
+    /** 셸을 연 일인가 (코드 러너 칸의 코드 · 만들기 작업) */
     private readonly shellAllowed = false,
   ) {}
 

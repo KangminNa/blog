@@ -1,11 +1,11 @@
 import type { AiProcess } from './ai-process';
 import { ClaudeCli } from './claude-cli';
-import type { CodeRoom } from './code-room';
 import { CodexCli } from './codex-cli';
 import type { Job } from './job';
 import type { JobWorkspace } from './job-workspace';
 import type { PlanWindow, RunEvent } from './progress';
 import type { RunnerConfig } from './runner-config';
+import type { SandboxRoom } from './sandbox-room';
 
 /** AI CLI의 출력을 한 줄씩 실행 기록으로 바꾼다. 실행마다 새로 만든다 */
 export interface AiStream {
@@ -35,7 +35,7 @@ export interface AiTool {
   /** 실행 파일 (실행하지 못했을 때 알리려고) */
   readonly bin: string;
   /** 작업 자리를 만들고 이 도구의 설정을 쓴다. 코드 작업이면 코드 러너 칸의 자리 안에 */
-  open(job: Job, room?: CodeRoom | null): Promise<JobWorkspace>;
+  open(job: Job, room?: SandboxRoom | null): Promise<JobWorkspace>;
   start(job: Job, workspace: JobWorkspace, onLine: (line: string) => void): AiProcess;
   stream(): AiStream;
   /** 실행하는 동안 CLI가 갱신한 자격. 바뀌지 않았으면 null */

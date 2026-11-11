@@ -1,0 +1,7 @@
+# 코드 러너 칸의 만들기 도구 (결과물 2차). Dockerfile의 code-runner 단계가 /opt/make에 깐다.
+# 정확한 버전으로 고정한다. 바꾸면 skills/cairn-make의 처방과 함께 확인한다 (2026-11-11 PyPI에서 확인한 판)
+python-pptx==1.0.2
+python-docx==1.2.0
+openpyxl==3.1.5
+matplotlib==3.11.2
+pillow==13.0.0

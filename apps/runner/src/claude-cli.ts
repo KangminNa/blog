@@ -2,9 +2,9 @@ import { AiProcess } from './ai-process';
 import type { AiStream, AiTool } from './ai-tool';
 import { BrowserMcp } from './browser-mcp';
 import { ClaudeStream } from './claude-stream';
-import type { CodeRoom } from './code-room';
 import type { Job } from './job';
 import { JobWorkspace } from './job-workspace';
+import type { SandboxRoom } from './sandbox-room';
 
 // Claude Code를 부르는 법. Codex가 들어올 때 공통 모양을 뽑는다 (객체설계 13장: 추상화는 둘째 구현이 생길 때).
 //
@@ -12,7 +12,7 @@ import { JobWorkspace } from './job-workspace';
 // 브라우저 작업(browse)에서만 playwright를 더한다 (BrowserMcp: 서버 브라우저에 CDP로, 사이트의 허용 출처만).
 // --bare는 쓰지 않는다: CLAUDE_CODE_OAUTH_TOKEN을 읽지 않는다.
 // 권한: 셸을 주지 않는다. 내장 도구는 파일 도구만, 쓰기는 acceptEdits라 work 폴더 안에서만, MCP는 cairn만 묻지 않고 허락한다.
-// 예외: 코드 러너 칸의 코드 작업은 셸 · 찾기(Bash · Glob · Grep)를 묻지 않고 허락한다. 칸 안의 agent로 돌고 바깥은 허용 목록뿐이다.
+// 예외: 코드 러너 칸의 일(코드 · 만들기)은 셸 · 찾기(Bash · Glob · Grep)를 묻지 않고 허락한다. 칸 안의 agent로 돌고 바깥은 허용 목록뿐이다.
 // -p는 물을 사람이 없어서 그 밖의 것은 거절된다. 작업 폴더 밖 읽기도 그렇다: Claude가 허락을 묻고, 답할 사람이 없어 거절된다.
 // 그래도 주인의 홈은 settings.json의 deny로 막는다 (ClaudeCli.settings): 거절이 더 확실하고 권한 모드가 바뀌어도 남는다.
 // 주인의 컴퓨터나 서버의 러너 컨테이너에서 돌아가므로 AI가 지시문에 속아도 이 안에 머문다.
@@ -20,7 +20,7 @@ import { JobWorkspace } from './job-workspace';
 export class ClaudeCli implements AiTool {
   static readonly TOOL = 'claude';
   private static readonly FILE_TOOLS = ['Read', 'Write', 'Edit'];
-  /** 코드 러너 칸의 코드 작업에만 더한다: 셸과 찾기 */
+  /** 코드 러너 칸의 일(코드 · 만들기)에만 더한다: 셸과 찾기 */
   private static readonly CODE_TOOLS = ['Bash', 'Glob', 'Grep'];
   private static readonly SKILL_TOOL = 'Skill';
   /** 사용자 환경에서 넘기는 것. 나머지(기기 토큰 포함)는 AI CLI에게 가지 않는다 */
@@ -64,10 +64,10 @@ export class ClaudeCli implements AiTool {
   ) {}
 
   /** 작업 자리: work 밖의 mcp.json(작업 토큰), 설정 폴더의 권한 설정과 스킬 */
-  open(job: Job, room: CodeRoom | null = null): Promise<JobWorkspace> {
+  open(job: Job, room: SandboxRoom | null = null): Promise<JobWorkspace> {
     const { runToken } = job;
     this.browser = runToken === null ? null : BrowserMcp.for(job, this.browserUrl);
-    this.shell = job.isCode && room !== null && runToken !== null;
+    this.shell = job.sandboxed && room !== null && runToken !== null;
     return JobWorkspace.open(
       runToken === null ? null : ClaudeCli.mcpConfig(this.mcpUrl, runToken, this.browser),
       ClaudeCli.settings(process.env.HOME),
@@ -148,6 +148,7 @@ export class ClaudeCli implements AiTool {
       ...(this.shell ? ClaudeCli.CODE_TOOLS : []),
       // 코드 러너 칸의 결과물 폴더는 저장소(작업 폴더) 밖이라 따로 열어 준다. 값을 여럿 받는 옵션이라 다음 옵션 앞에 둔다
       ...(workspace.outputsStage === null ? [] : ['--add-dir', workspace.outputsDir]),
+      ...(workspace.inputsDir === null ? [] : ['--add-dir', workspace.inputsDir]),
       '--permission-mode',
       'acceptEdits',
     ];
