@@ -62,7 +62,7 @@ plugins/<이름>/
   server/operations.ts  Read · Command (plugin-api)
   server/views.ts       toJSON (콘솔 camelCase, MCP snake_case)
   server/tables.ts · schema.ts   pnpm db:rows가 만든다. 고치지 않는다
-  web/<화면>.tsx         콘솔 화면. props로 call(method, path, body) · notify(text)
+  web/<화면>.tsx         콘솔 화면. props로 call(method, path, body) · notify(text). call은 패키지 경로, '/api/'로 시작하면 코어의 읽기(GET)만
 ```
 
 - 표는 자기 스키마(`schema`)에만. 코어 표를 읽거나 쓰지 않고 외래키도 걸지 않는다 (`space_id`는 값으로). `Work`가 다른 스키마의 표를 막고, `pnpm check`가 `work.sql`의 스키마를 본다

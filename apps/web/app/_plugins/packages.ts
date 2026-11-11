@@ -28,9 +28,16 @@ export function packageOf(plugin: string): PackageEntry | null {
 }
 
 /** 패키지 화면이 쓰는 서버 호출: /api/p/<패키지>/<경로> */
+/** 패키지 화면이 코어를 읽을 때 쓰는 앞머리 (예: 코드 메뉴의 담당 고르기가 /api/agents를 읽는다) */
+const CORE = '/api/';
+
 export function callFor(plugin: string): PackageCall {
   return async (method, path, body) => {
-    const reply = await api<unknown>(method, `/api/p/${plugin}/${path.replace(/^\//, '')}`, body);
+    // '/api/'로 시작하면 코어의 읽기(GET)만: 주인 세션 그대로라 새 권한은 없고, 쓰기는 패키지 경로로만
+    const core = path.startsWith(CORE);
+    if (core && method !== 'GET') return { ok: false, message: '코어 경로는 읽기만 해요' };
+    const url = core ? path : `/api/p/${plugin}/${path.replace(/^\//, '')}`;
+    const reply = await api<unknown>(method, url, body);
     return reply.ok
       ? { ok: true, data: reply.data }
       : { ok: false, message: describe(reply.error) };
