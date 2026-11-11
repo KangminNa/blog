@@ -1,6 +1,16 @@
 import { BaseRequest, type RequestFields } from '../../platform';
 import { EditInput } from '../change/change.input';
-import { CategoryAssignOp, type ChangeOp, WikiCreateOp, WikiReviseOp } from '../change/change-op';
+import {
+  CategoryAssignOp,
+  type ChangeOp,
+  EdgeAddOp,
+  EdgeRemoveOp,
+  WikiCreateOp,
+  WikiRestoreOp,
+  WikiReviseOp,
+  WikiTrashOp,
+} from '../change/change-op';
+import { EdgeKind } from '../edge/edge';
 import { Wiki } from './wiki';
 import { WikiBody } from './wiki-body';
 
@@ -56,6 +66,48 @@ export class SaveWikiInput extends BaseRequest {
         );
       }
       return new EditInput(null, f.optionalText('message', MESSAGE_MAX) ?? '', ops);
+    });
+  }
+}
+
+/** POST /api/wikis/:id/trash { version }. 휴지통으로 간다. 판 · 선 · 세션의 대표는 남는다 */
+export class TrashWikiInput extends BaseRequest {
+  static from(id: string, raw: unknown): EditInput {
+    return BaseRequest.read(
+      { ...(raw as object), id },
+      (f) =>
+        new EditInput(null, '위키를 휴지통으로', [new WikiTrashOp(1, f.uuid('id'), f.version())]),
+    );
+  }
+}
+
+/** POST /api/wikis/:id/restore { version }. 휴지통에서 꺼낸다 */
+export class RestoreWikiInput extends BaseRequest {
+  static from(id: string, raw: unknown): EditInput {
+    return BaseRequest.read(
+      { ...(raw as object), id },
+      (f) =>
+        new EditInput(null, '위키 되살리기', [new WikiRestoreOp(1, f.uuid('id'), f.version())]),
+    );
+  }
+}
+
+/**
+ * POST /api/wikis/:id/replaces { oldId }: 이 wiki가 옛 wiki의 결론을 뒤집었다 (옛 wiki는 히스토리).
+ * DELETE /api/wikis/:id/replaces/:oldId: 대체 표시를 지운다
+ */
+export class ReplaceWikiInput extends BaseRequest {
+  static from(id: string, raw: unknown): EditInput {
+    return BaseRequest.read({ ...(raw as object), id }, (f) => {
+      const op = new EdgeAddOp(1, null, f.uuid('id'), f.uuid('oldId'), EdgeKind.REPLACES, true);
+      return new EditInput(null, '대체 표시', [op]);
+    });
+  }
+
+  static removing(id: string, oldId: string): EditInput {
+    return BaseRequest.read({ id, oldId }, (f) => {
+      const op = new EdgeRemoveOp(1, null, f.uuid('id'), f.uuid('oldId'), EdgeKind.REPLACES);
+      return new EditInput(null, '대체 표시 지움', [op]);
     });
   }
 }

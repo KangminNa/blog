@@ -1,4 +1,4 @@
-import type { WikiRevisionRow, WikiRow } from '../vault.tables';
+import type { NodeRow, WikiRevisionRow, WikiRow } from '../vault.tables';
 
 // wiki의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
 // 표의 칸 중 무엇을 내보내는지는 여기 한 곳에만 적는다. AI에게 주는 답은 snake_case다.
@@ -6,6 +6,9 @@ import type { WikiRevisionRow, WikiRow } from '../vault.tables';
 
 /** wiki 한 줄과 지금 판의 본문 (wiki_revisions의 body_md · sections) */
 export type WikiDetailRow = WikiRow & Pick<WikiRevisionRow, 'body_md' | 'sections'>;
+
+/** 휴지통의 wiki 한 줄: vault.nodes의 휴지통 표시와 함께 */
+export type TrashedWikiRow = WikiRow & Pick<NodeRow, 'deleted_at' | 'purge_after'>;
 
 /** 찾은 wiki 한 줄을 읽는 칸 */
 export interface WikiHitRow
@@ -64,6 +67,21 @@ export class WikiPageView {
 
   toJSON() {
     return { wikis: this.wikis.map((w) => w.toJSON()), next: this.next };
+  }
+}
+
+/** 휴지통의 wiki 목록 (주인). 지운 때가 늦은 순. 되살릴 때 version을 함께 보낸다 */
+export class WikiTrashView {
+  constructor(private readonly rows: readonly Readonly<TrashedWikiRow>[]) {}
+
+  toJSON() {
+    return {
+      wikis: this.rows.map((r) => ({
+        ...new WikiSummaryView(r).toJSON(),
+        deletedAt: r.deleted_at?.toISOString() ?? null,
+        purgeAfter: r.purge_after?.toISOString() ?? null,
+      })),
+    };
   }
 }
 

@@ -379,3 +379,85 @@ describe('찾기와 쪽 넘기기', () => {
     assert.notDeepEqual(first.body.wikis, second.body.wikis);
   });
 });
+
+describe('휴지통과 대체 (wiki 점수)', () => {
+  test('주인이 휴지통으로 보내면 목록 · 읽기에서 빠지고, 휴지통 목록에서 되살린다', async () => {
+    const wiki = await newWiki(`지울 위키 ${randomUUID().slice(0, 8)}`);
+    const trashed = ok(
+      await api.request('POST', `/api/wikis/${wiki.id}/trash`, owner, { version: wiki.version }),
+    );
+    assert.equal(trashed.version, Number(wiki.version) + 1);
+    assert.equal((await api.get(`/api/wikis/${wiki.id}`, owner)).status, 404);
+    const listed = ok(await api.get('/api/wikis', owner)) as { wikis: Json[] };
+    assert.equal(
+      listed.wikis.some((w) => w.id === wiki.id),
+      false,
+    );
+
+    const trash = ok(await api.get('/api/wikis/trash', owner)) as { wikis: Json[] };
+    const row = trash.wikis.find((w) => w.id === wiki.id);
+    assert.equal(row?.title, wiki.title);
+    assert.ok(Date.parse(String(row?.purgeAfter)) > Date.parse(String(row?.deletedAt)));
+
+    ok(
+      await api.request('POST', `/api/wikis/${wiki.id}/restore`, owner, { version: row?.version }),
+    );
+    assert.equal(ok(await api.get(`/api/wikis/${wiki.id}`, owner)).title, wiki.title);
+    const after = ok(await api.get('/api/wikis/trash', owner)) as { wikis: Json[] };
+    assert.equal(
+      after.wikis.some((w) => w.id === wiki.id),
+      false,
+    );
+  });
+
+  test('휴지통 · 되살리기 · 대체는 주인만: 방문자 · 기기 403, version이 어긋나면 409', async () => {
+    const wiki = await newWiki(`남길 위키 ${randomUUID().slice(0, 8)}`);
+    const other = await newWiki(`옛 위키 ${randomUUID().slice(0, 8)}`);
+    const calls: [string, string, Json][] = [
+      ['POST', `/api/wikis/${wiki.id}/trash`, { version: wiki.version }],
+      ['POST', `/api/wikis/${wiki.id}/restore`, { version: wiki.version }],
+      ['POST', `/api/wikis/${wiki.id}/replaces`, { oldId: other.id }],
+      ['DELETE', `/api/wikis/${wiki.id}/replaces/${other.id}`, {}],
+    ];
+    for (const [method, path, body] of calls)
+      assert.equal((await api.request(method, path, undefined, body)).status, 403, path);
+    assert.equal((await api.get('/api/wikis/trash')).status, 403);
+    const res = await fetch(`${api.baseUrl}/api/wikis/trash`, {
+      headers: { authorization: `Bearer ${allReader}` },
+    });
+    assert.equal(res.status, 403);
+    const stale = await api.request('POST', `/api/wikis/${wiki.id}/trash`, owner, {
+      version: Number(wiki.version) + 5,
+    });
+    assert.equal(stale.status, 409);
+  });
+
+  test('대체: 새 wiki가 옛 wiki를 대체하면 옛 wiki는 히스토리, 서로 대체 · 두 번 대체는 막는다', async () => {
+    const old = await newWiki(`옛 결론 ${randomUUID().slice(0, 8)}`);
+    const next = await newWiki(`새 결론 ${randomUUID().slice(0, 8)}`);
+    const third = await newWiki(`또 다른 결론 ${randomUUID().slice(0, 8)}`);
+    const set = ok(
+      await api.request('POST', `/api/wikis/${next.id}/replaces`, owner, { oldId: old.id }),
+      201,
+    );
+    assert.equal(set.status, 'done');
+
+    const back = await api.request('POST', `/api/wikis/${old.id}/replaces`, owner, {
+      oldId: next.id,
+    });
+    assert.equal(back.status, 422, back.text);
+    const twice = await api.request('POST', `/api/wikis/${third.id}/replaces`, owner, {
+      oldId: old.id,
+    });
+    assert.equal(twice.status, 409, twice.text);
+
+    const score = ok(await api.get(`/api/wiki-scores/${old.id}`, owner)) as { wiki: Json };
+    assert.equal(score.wiki.replacedBy, next.id);
+
+    ok(await api.request('DELETE', `/api/wikis/${next.id}/replaces/${old.id}`, owner));
+    const freed = ok(await api.get(`/api/wiki-scores/${old.id}`, owner)) as { wiki: Json };
+    assert.equal(freed.wiki.replacedBy, null);
+    const read = await tool(allReader, 'get_wiki', { wiki_id: old.id });
+    assert.equal(read.ok, true, '히스토리도 읽을 수 있다');
+  });
+});

@@ -66,6 +66,7 @@ const VISITOR_GET: Readonly<Record<string, number>> = {
   'GET /api/tasks/:id': 403,
   'GET /api/tidy/settings': 403,
   'GET /api/usage': 403,
+  'GET /api/wikis/trash': 403,
   'GET /api/wiki-scores': 403,
   'GET /api/wiki-scores/:id': 403,
 };

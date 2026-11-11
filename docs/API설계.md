@@ -57,7 +57,7 @@
 | 글 연결 | 글 만들기·저장에 `mainWikiId?`, `refWikiIds?`. 공개된 글의 연결은 주인만 바꾼다 | 6 |
 | 사진 | `POST /api/posts/:id/assets` (이미지 본문 그대로, 10MB 이하), `GET /api/files/:hash` (공개 글의 사진은 누구나, 나머지는 주인만) | 5 |
 | RSS | `/rss.xml` (공개 글 20개, 웹이 서버 API로 만든다) | 5 |
-| 지식 | `GET·POST /api/wikis`(`?q=&category=&cursor=`), `GET·PUT /api/wikis/:id`, `GET /api/wiki-scores`, `GET /api/wiki-scores/:id`(주인만), `GET·POST /api/categories`, `PATCH·DELETE /api/categories/:id`, `GET /api/graph`, `GET /api/graph/public` | 6 |
+| 지식 | `GET·POST /api/wikis`(`?q=&category=&cursor=`), `GET·PUT /api/wikis/:id`, `GET /api/wiki-scores`, `GET /api/wiki-scores/:id`(주인만), `POST /api/wikis/:id/trash`·`restore`, `GET /api/wikis/trash`, `POST /api/wikis/:id/replaces`, `DELETE /api/wikis/:id/replaces/:oldId`(주인만), `GET·POST /api/categories`, `PATCH·DELETE /api/categories/:id`, `GET /api/graph`, `GET /api/graph/public` | 6 |
 | 변경 묶음 | `GET /api/changes?status=waiting&cursor=`, `POST /api/changes/:id/ops/:seq/decide { version, decision: approve·decline }`, `POST /api/changes/:id/revert { version }` | 6 |
 | 백업 | `GET /api/archive.zip` (주인만, 보관 형식) | 6 |
 | 세션 정리 | `GET·PUT /api/tidy/settings { autoTidy, version }`, `POST /api/tidy/backlog` → `{ requested, remaining }` (주인만. 기본은 꺼짐. 대표 wiki가 없고 이번 판을 아직 요청하지 않은 세션을 오래된 순으로 20개씩 요청. 실패한 세션은 새 판이 생기면 다시 대상이 된다) | 6 |

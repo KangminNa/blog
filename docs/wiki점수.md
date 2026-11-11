@@ -5,7 +5,7 @@ wiki마다 "지금도 쓰이는가"를 점수로 매긴다. 점수는 읽는 순
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | 1 점수 | 식(`WikiScorePolicy`)과 계산 예 시험, 점수 API, 위키 메뉴의 점수순 | 끝 |
-| 2 휴지통과 대체 | wiki 휴지통 · 되살리기, 선 종류 `replaces`(대체), 화면 | 남음 |
+| 2 휴지통과 대체 | wiki 휴지통 · 되살리기, 선 종류 `replaces`(대체), 화면 | 끝 |
 | 3 지울 만한 wiki와 알림 | 하루 한 번 후보를 찾아 새 후보만 알림, 콘솔 머리줄의 알림 | 남음 |
 
 ## 1. 좋은 문서의 기준
@@ -132,4 +132,12 @@ $$
 | `vault/wiki-score/wiki-score.query.ts` | 휴지통에 없는 wiki, 세션 · 글의 쓰임, 선을 읽어 식에 넘기고 순위를 만든다 (주인만) |
 | `GET /api/wiki-scores` | 카테고리별 순위(미분류는 끝)와 히스토리 |
 | `GET /api/wiki-scores/:id` | wiki 하나의 점수와 어디서 얼마나 물려받았는지 |
-| 콘솔 위키 메뉴 | `?view=score` 점수순 목록, 위키 상세의 점수 칸 |
+| `POST /api/wikis/:id/trash` · `restore` `{ version }`, `GET /api/wikis/trash` | 휴지통 (변경 `wiki.trash` · `wiki.restore`, 사람만. 변경 묶음이라 되돌릴 수도 있다) |
+| `POST /api/wikis/:id/replaces { oldId }` · `DELETE …/replaces/:oldId` | 대체 표시와 해제 (`edge.add` · `edge.remove`, kind `replaces`) |
+| 콘솔 위키 메뉴 | `?view=score` 점수순 목록(히스토리는 끝에), `?view=trash` 휴지통, 위키 상세의 점수 · 대체 칸과 휴지통 단추 |
+
+## 10. 대체의 규칙
+
+- 선 종류 `replaces`(새 wiki → 옛 wiki). wiki끼리만 잇고, 옛 wiki 하나를 대체하는 wiki는 하나뿐이다(`edges_replaced_once`, 어기면 409). 둘이 서로 대체할 수 없다(422).
+- AI도 `submit_changes`의 `edge.add`로 낼 수 있지만 늘 승인함을 거친다 (`ReplacesRule`, 주인이 규칙 값을 바꿔도 검토보다 느슨해지지 않는다). 히스토리로 만드는 것은 사람이 정할 일이라서다.
+- 대체를 지우면(해제) 옛 wiki는 다시 순위에 들어온다. 선은 사람이 지운 선으로 남아 AI가 다시 만들지 못한다.

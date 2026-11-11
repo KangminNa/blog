@@ -7,6 +7,7 @@ import {
   PublicWikiPageView,
   PublicWikiSummaryView,
   ToolWikiView,
+  type TrashedWikiRow,
   type WikiDetailRow,
   WikiDetailView,
   WikiHitPageView,
@@ -14,6 +15,7 @@ import {
   WikiHitView,
   WikiPageView,
   WikiSummaryView,
+  WikiTrashView,
 } from './wiki.view';
 
 // wiki 읽기. 공개 범위는 SQL에서 먼저 거른 뒤 쪽을 나눈다: 볼 수 없는 wiki는 결과·조각·next 어디에도 영향을 주지 않고,
@@ -22,6 +24,8 @@ import {
 @Injectable()
 export class WikiQuery extends BaseQuery {
   private static readonly PAGE = 30;
+  /** 휴지통 목록에 보이는 수 */
+  private static readonly TRASH_LIMIT = 200;
   /** 찾은 결과의 본문 조각: 전체 길이, 그중 찾은 말 앞에 남길 길이 */
   private static readonly EXCERPT = 160;
   private static readonly EXCERPT_LEAD = 40;
@@ -48,6 +52,17 @@ export class WikiQuery extends BaseQuery {
           items.map((r) => new PublicWikiSummaryView(r)),
           next,
         );
+  }
+
+  /** 휴지통의 wiki (주인만). 지운 때가 늦은 순으로 TRASH_LIMIT개까지 */
+  async trash(actor: Actor): Promise<WikiTrashView> {
+    actor.assertOwner();
+    const rows = await this.sql<TrashedWikiRow[]>`
+      SELECT w.*, n.deleted_at, n.purge_after FROM vault.wikis w JOIN vault.nodes n ON n.id = w.node_id
+      WHERE ${this.inSpace(actor)} AND n.deleted_at IS NOT NULL
+      ORDER BY n.deleted_at DESC, w.node_id DESC
+      LIMIT ${WikiQuery.TRASH_LIMIT}`;
+    return new WikiTrashView(rows);
   }
 
   /** 볼 수 없는 wiki는 없는 wiki와 똑같이 NotFound. 주인에게는 모든 칸, 그 밖에는 공개 칸만 */

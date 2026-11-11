@@ -4,6 +4,9 @@ import type { EdgeNew, EdgeRow } from '../vault.tables';
 
 /** 연결 종류 하나 (vault.edge_kinds). 방향 없는 종류는 (작은 id, 큰 id)로 저장한다 */
 export class EdgeKind {
+  /** 새 wiki → 대체한 옛 wiki (wiki 점수: 옛 wiki는 히스토리). wiki끼리만 잇는다 */
+  static readonly REPLACES = 'replaces';
+
   constructor(
     readonly name: string,
     readonly directed: boolean,

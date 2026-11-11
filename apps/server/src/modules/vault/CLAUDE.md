@@ -11,7 +11,7 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
   `get_session`(`GetSessionTool`: 지금 판 하나). 두 읽기 도구는 `read_public`이나 `read_all` 중 하나로 열리고(`BaseTool.orScope`), 볼 수 없는 세션은 없는 세션과 똑같이 답한다.
   관리 화면 API `api/sessions`(목록·상세·지난 판, 비공개까지 볼 수 있는 요청자만)
 - `wiki/`: wiki(`Wiki` + 판 `WikiRevision`), 본문(`WikiBody`: md 원문과 `##` 제목 단위의 칸 `WikiSection`, 코드 블록 안의 `##`은 제목이 아니다).
-  `api/wikis`(목록 `?q=&category=&cursor=`, 하나, 만들기, 고치기), MCP `search_wikis` · `get_wiki`(`read_public`이나 `read_all`). 읽기는 방문자도 공개 wiki까지, 쓰기는 주인만
+  `api/wikis`(목록 `?q=&category=&cursor=`, 하나, 만들기, 고치기, 휴지통 `trash` · `restore` · 목록 `api/wikis/trash`, 대체 `replaces`), MCP `search_wikis` · `get_wiki`(`read_public`이나 `read_all`). 읽기는 방문자도 공개 wiki까지, 쓰기는 주인만
 - `wiki-score/`: wiki 점수(docs/wiki점수.md). 식(`WikiScorePolicy`: 입력 → 점수, DB 없음)과 읽기(`WikiScoreQuery`). `api/wiki-scores`(카테고리별 순위 · 히스토리), `api/wiki-scores/:id`. 주인만.
   점수는 표에 두지 않고 읽을 때 계산한다. 점수를 받는 것은 휴지통에 없는 wiki, 쓰임을 주는 것은 세션(대표 · 재료) · 글(대표 · 참고) · 더 새로운 wiki의 링크다
 - `category/`: 그래프 카테고리(`Category`). `api/categories`(목록은 누구나, 이름이 공개다. 쓰기는 주인만). wiki가 남으면 지우지 못한다(409)
@@ -44,7 +44,7 @@ change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings
 - 세션: nodes(세션) + sessions + session_revisions + attachments + edit_leases(세션)
 - 카테고리: nodes(카테고리) + categories
 - wiki: nodes(wiki) + wikis + wiki_revisions + wiki_aliases
-- 연결선: edges(`material`·`link`·`similar`)
+- 연결선: edges(`material`·`link`·`replaces`·`similar`)
 - 변경 묶음: change_sets + change_ops (+ 실제로 바뀐 행 changes). 승인함은 검토를 기다리는 change_ops
 - 검토 규칙: review_rules
 - 그래프 보기: graph_views + node_layout + graph_snapshots
@@ -90,6 +90,8 @@ platform
 - 사람이 지운 연결은 행을 남겨 AI가 다시 만들지 못하게 한다
 - 공개 여부는 Query의 SQL에서 거른 뒤에 개수·순위를 계산한다
 - wiki 점수는 주인만 본다 (비공개 쓰임이 섞인 값). 점수의 식을 바꾸면 docs/wiki점수.md의 계산 예와 `wiki-score.policy.test.ts`를 함께 고친다
+- wiki를 지우는 것은 사람뿐이다 (`wiki.trash` · `wiki.restore`는 `ChangeOps.FOR_AI`에 없다). 지워도 판 · 선 · 세션의 대표는 남아 되살리면 돌아온다
+- 대체(`replaces`)는 wiki끼리만, 옛 wiki 하나에 하나만, 서로 대체는 안 된다. AI의 대체는 `ReplacesRule`이 늘 검토로 보낸다
 - 그래프는 대표 하나 + 선: 대표는 열(`sessions.wiki_id`, `wikis.category_id`), 비어 있으면 도착 구역·미분류. 옮기기는 대표 값 하나만 바꾼다
 - 부모를 지워도 자식을 지우지 않는다 (`RESTRICT`·`SET NULL`). 세션은 사람이 직접 지울 때만 휴지통으로
 - AI가 쓴 wiki 본문·제목도 판이 되기 전에 `SensitivePolicy`로 지운다 (`ChangeService.submit`)

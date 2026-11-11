@@ -1,6 +1,6 @@
 import { RequestFields, RuleViolation } from '../../platform';
 import { Category } from '../category/category';
-import { Edge, type EdgeKind } from '../edge/edge';
+import { Edge, EdgeKind } from '../edge/edge';
 import { Session } from '../session/session';
 import type { CategoryRow, ChangeOpRow } from '../vault.tables';
 import { Wiki } from '../wiki/wiki';
@@ -21,7 +21,8 @@ export class TargetBoard {
   private readonly locked = new Map<string, number>();
   /** 이 묶음에서 만든 대상 (변경 번호 → 대상). `@번호`로 가리킨다 */
   private readonly made = new Map<number, ChangeTarget>();
-  private live: ReadonlySet<string> = new Set();
+  /** 살아 있는 점 id → 종류 */
+  private live: ReadonlyMap<string, string> = new Map();
 
   constructor(private readonly kinds: ReadonlyMap<string, EdgeKind>) {}
 
@@ -38,8 +39,8 @@ export class TargetBoard {
     if (target) this.locked.set(place, target.version);
   }
 
-  markLive(ids: ReadonlySet<string>): void {
-    this.live = ids;
+  markLive(nodes: ReadonlyMap<string, string>): void {
+    this.live = nodes;
   }
 
   at(place: string): ChangeTarget | null {
@@ -70,6 +71,13 @@ export class TargetBoard {
     if (!ChangeOp.isMade(ref)) return this.live.has(ref) ? ref : null;
     const made = this.made.get(Number(ref.slice(1)));
     return made && made.targetKind !== 'edge' ? made.id : null;
+  }
+
+  /** 선의 끝이 될 점의 종류 (session · wiki · category). 없거나 지웠으면 null */
+  nodeKind(ref: string): string | null {
+    if (!ChangeOp.isMade(ref)) return this.live.get(ref) ?? null;
+    const made = this.made.get(Number(ref.slice(1)));
+    return made && made.targetKind !== 'edge' ? made.targetKind : null;
   }
 }
 
@@ -235,6 +243,11 @@ export abstract class ChangeOp {
 
   /** 공개 여부를 정하려 하는가 */
   get asksPublish(): boolean {
+    return false;
+  }
+
+  /** wiki를 히스토리로 만드는가 (대체) */
+  get makesHistory(): boolean {
     return false;
   }
 
@@ -406,6 +419,62 @@ export class WikiReviseOp extends ChangeOp {
   }
 }
 
+/** wiki를 휴지통으로. 사람만 (관리 화면). 판 · 선 · 세션의 대표는 남아서 되살리면 돌아온다 */
+export class WikiTrashOp extends ChangeOp {
+  static readonly NAME = 'wiki.trash';
+  readonly name = WikiTrashOp.NAME;
+  readonly targetKind = 'wiki';
+
+  constructor(seq: number, targetId: string, baseVersion: number) {
+    super(seq, targetId, baseVersion);
+  }
+
+  override recordAs(): string {
+    return 'delete';
+  }
+
+  apply(work: ChangeWork): ChangeTarget {
+    const wiki = this.target as Wiki;
+    wiki.trash(work);
+    return wiki;
+  }
+
+  toPayload(): Record<string, unknown> {
+    return {};
+  }
+}
+
+/** 휴지통의 wiki를 되살린다. 사람만 (관리 화면) */
+export class WikiRestoreOp extends ChangeOp {
+  static readonly NAME = 'wiki.restore';
+  readonly name = WikiRestoreOp.NAME;
+  readonly targetKind = 'wiki';
+
+  constructor(seq: number, targetId: string, baseVersion: number) {
+    super(seq, targetId, baseVersion);
+  }
+
+  /** 휴지통에 있는 대상이 이 변경의 대상이다 */
+  protected override attach(board: TargetBoard, place: string | null): void {
+    super.attach(board, place);
+    this.missing = this.target === null;
+  }
+
+  override recordAs(): string {
+    return 'restore';
+  }
+
+  apply(work: ChangeWork): ChangeTarget {
+    const wiki = this.target as Wiki;
+    wiki.untrash(work);
+    return wiki;
+  }
+
+  toPayload(): Record<string, unknown> {
+    return {};
+  }
+}
+
 /** 세션의 대표 wiki를 정한다. null이면 도착 구역으로 */
 export class SessionAssignOp extends ChangeOp {
   static readonly NAME = 'session.assign';
@@ -497,9 +566,15 @@ abstract class EdgeOp extends ChangeOp {
     const kind = board.edgeKind(this.kind);
     const src = board.node(this.src);
     const dst = board.node(this.dst);
+    const fits = this.kind !== EdgeKind.REPLACES || this.betweenWikis(board);
     if (src && dst && kind) [this.src, this.dst] = kind.ends(src, dst);
     this.attach(board, src && dst ? this.placeOn(board) : null);
-    if (!src || !dst || !kind || !this.allowed(kind)) this.missing = true;
+    if (!src || !dst || !kind || !this.allowed(kind) || !fits) this.missing = true;
+  }
+
+  /** 대체는 wiki끼리만 잇는다 */
+  private betweenWikis(board: TargetBoard): boolean {
+    return board.nodeKind(this.src) === 'wiki' && board.nodeKind(this.dst) === 'wiki';
   }
 
   /** 이 종류의 선을 다룰 수 있는가 */
@@ -516,6 +591,8 @@ abstract class EdgeOp extends ChangeOp {
 export class EdgeAddOp extends EdgeOp {
   static readonly NAME = 'edge.add';
   readonly name = EdgeAddOp.NAME;
+  /** 대체의 반대 방향 선 (옛 wiki가 새 wiki를 대체했는지). 둘이 서로 대체할 수 없다 */
+  private reverse: ChangeTarget | null = null;
 
   constructor(
     seq: number,
@@ -537,6 +614,21 @@ export class EdgeAddOp extends EdgeOp {
     return this.byHuman || kind.aiCreatable;
   }
 
+  override get makesHistory(): boolean {
+    return this.kind === EdgeKind.REPLACES;
+  }
+
+  /** 대체면 반대 방향의 대체 선도 잠근다 */
+  override places(board: TargetBoard): readonly string[] {
+    return [...super.places(board), ...(this.reversePlace() ? [String(this.reversePlace())] : [])];
+  }
+
+  override bind(board: TargetBoard): void {
+    super.bind(board);
+    const place = this.reversePlace();
+    this.reverse = place ? board.at(place) : null;
+  }
+
   override adds(target: ChangeTarget | null): boolean {
     return !(target instanceof Edge && target.humanDeleted);
   }
@@ -546,12 +638,20 @@ export class EdgeAddOp extends EdgeOp {
   }
 
   apply(work: ChangeWork): ChangeTarget {
+    if (this.reverse && !this.reverse.gone)
+      throw new RuleViolation('두 위키가 서로 대체할 수 없어요');
     const edge = this.target as Edge | null;
     if (edge) {
       edge.revive(work);
       return edge;
     }
     return Edge.open(work, this.src, this.dst, this.kind);
+  }
+
+  private reversePlace(): string | null {
+    if (this.kind !== EdgeKind.REPLACES || ChangeOp.isMade(this.src) || ChangeOp.isMade(this.dst))
+      return null;
+    return TargetBoard.place('edge', `${this.dst}:${this.src}:${this.kind}`);
   }
 }
 
@@ -832,7 +932,7 @@ export class SettledOp extends ChangeOp {
 /** 변경을 모양에서 조립하는 곳: AI의 입력과, 기다리는 변경을 저장소에서 되살릴 때 같은 길을 쓴다 */
 // biome-ignore lint/complexity/noStaticOnlyClass: 변경 종류 목록 한 곳. 입력과 Repository가 함께 쓴다
 export class ChangeOps {
-  /** AI가 낼 수 있는 변경. category.update · category.delete · revert는 사람의 일이라 없다 */
+  /** AI가 낼 수 있는 변경. category.update · category.delete · wiki.trash · wiki.restore · revert는 사람의 일이라 없다 */
   static readonly FOR_AI: readonly string[] = [
     WikiCreateOp.NAME,
     WikiReviseOp.NAME,

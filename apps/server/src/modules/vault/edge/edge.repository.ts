@@ -1,10 +1,11 @@
-import { TableRepository } from '../../platform';
+import { Conflict, Database, TableRepository } from '../../platform';
 import { edgeKinds, edges, nodes } from '../vault.schema';
 import type { EdgeRow } from '../vault.tables';
 import { Edge, EdgeKind } from './edge';
 
 // vault.edges ↔ Edge. 지운 선도 행으로 남는다. 불러오기·잠그기·저장은 기반이 하고, 여기에는 선을 찾는 SQL만 있다.
 export class EdgeRepository extends TableRepository<EdgeRow, Edge> {
+  private static readonly REPLACED_ONCE = 'edges_replaced_once';
   protected readonly table = edges;
   protected readonly noun = '연결선';
 
@@ -18,15 +19,26 @@ export class EdgeRepository extends TableRepository<EdgeRow, Edge> {
     return new Map(rows.map((r) => [r.name, new EdgeKind(r.name, r.directed, r.ai_creatable)]));
   }
 
-  /** 이 공간에 살아 있는 점들 */
-  async liveNodes(spaceId: string, ids: readonly string[]): Promise<Set<string>> {
-    if (ids.length === 0) return new Set();
+  /** 이 공간에 살아 있는 점들과 그 종류 (id → session · wiki · category) */
+  async liveNodes(spaceId: string, ids: readonly string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
     const rows = await this.rows(
       nodes,
       { id: ids, space_id: spaceId, deleted_at: null },
-      { columns: ['id'] },
+      { columns: ['id', 'kind'] },
     );
-    return new Set(rows.map((r) => r.id));
+    return new Map(rows.map((r) => [r.id, r.kind]));
+  }
+
+  /** 저장한다. 옛 wiki 하나를 대체하는 wiki는 하나뿐이다 (edges_replaced_once) */
+  override async save(edge: Edge): Promise<void> {
+    try {
+      await super.save(edge);
+    } catch (error) {
+      if (Database.isUniqueViolation(error, EdgeRepository.REPLACED_ONCE))
+        throw new Conflict('이미 다른 위키가 대체한 위키예요');
+      throw error;
+    }
   }
 
   /**

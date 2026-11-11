@@ -141,11 +141,11 @@ export class WikiScoreQuery extends BaseQuery {
       WHERE p.space_id = ${space} AND p.main_wiki_id IS NOT NULL`;
   }
 
-  /** wiki 사이의 근거: 지우지 않은 링크 */
+  /** wiki 사이의 근거: 지우지 않은 링크와 대체 */
   private cites(space: string) {
     return this.rows(
       edges,
-      { space_id: space, deleted_at: null, kind: [WikiScorePolicy.LINK] },
+      { space_id: space, deleted_at: null, kind: [WikiScorePolicy.LINK, WikiScorePolicy.REPLACES] },
       { columns: ['src', 'dst', 'kind', 'created_at'] },
     );
   }

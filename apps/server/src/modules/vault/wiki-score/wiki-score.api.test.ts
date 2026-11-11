@@ -237,6 +237,28 @@ describe('wiki 점수', () => {
     near(itemOf(await board(), w.id)?.total, 0.5, '90일');
   });
 
+  test('대체한 wiki는 옛 wiki를 전부 물려받고, 옛 wiki는 히스토리로 순위에서 빠진다', async () => {
+    const old = await newWiki();
+    const next = await newWiki();
+    ok(await api.request('POST', `/api/wikis/${next.id}/replaces`, owner, { oldId: old.id }), 201);
+    const scores = await board();
+    const ranked = scores.groups.flatMap((g) => g.wikis as Item[]);
+    assert.equal(
+      ranked.some((w) => w.id === old.id),
+      false,
+    );
+    const history = scores.history.find((w) => w.id === old.id);
+    assert.equal(history?.replacedBy, next.id);
+    near(history?.accumulated, 2, '만든 날 + 대체된 날');
+    const item = itemOf(scores, next.id);
+    near(item?.inherited, 1, '옛 wiki의 쌓인 점수 2 - 내가 준 1');
+    near(item?.total, 2, 'S');
+    const detail = ok(await api.get(`/api/wiki-scores/${next.id}`, owner)) as {
+      bases: { wikiId: string; ratio: number }[];
+    };
+    assert.equal(detail.bases.find((b) => b.wikiId === old.id)?.ratio, 1);
+  });
+
   test('휴지통의 wiki는 점수를 받지 않고 쓰임도 주지 않는다', async () => {
     const old = await newWiki();
     const gone = await newWiki();

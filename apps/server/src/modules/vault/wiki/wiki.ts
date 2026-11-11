@@ -118,6 +118,22 @@ export class Wiki extends GraphNode<LoadedWiki, NewNode<WikiNew>> {
     this.touch(work.now);
   }
 
+  /** 휴지통으로 (사람만). 판 · 선 · 세션의 대표는 남아서 되살리면 돌아온다 */
+  trash(work: ChangeWork): void {
+    if (!work.human) throw new RuleViolation('위키는 사람만 지워요');
+    if (this.gone) return;
+    this.moveToTrash(work.now);
+    this.touch(work.now);
+  }
+
+  /** 휴지통에서 꺼낸다 (사람만) */
+  untrash(work: ChangeWork): void {
+    if (!work.human) throw new RuleViolation('위키는 사람만 되살려요');
+    if (!this.gone) return;
+    this.takeOutOfTrash();
+    this.touch(work.now);
+  }
+
   /** 대표 카테고리를 옮긴다. null이면 미분류 */
   moveTo(categoryId: string | null, work: ChangeWork): void {
     if (categoryId === this.row.category_id) return;

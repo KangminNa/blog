@@ -17,7 +17,12 @@ const OP_LABELS: Record<string, string> = {
   'category.create': '카테고리 만들기',
   'category.assign': '카테고리 정하기',
 };
-const EDGE_LABELS: Record<string, string> = { material: '재료', link: '링크', similar: '비슷함' };
+const EDGE_LABELS: Record<string, string> = {
+  material: '재료',
+  link: '링크',
+  similar: '비슷함',
+  replaces: '대체',
+};
 /** 변경의 내용 중 다른 점을 가리키는 칸: 화면 이름 */
 const REFS: readonly (readonly [string, string])[] = [
   ['wiki_id', '위키'],

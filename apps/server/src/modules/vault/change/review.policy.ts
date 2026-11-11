@@ -172,6 +172,18 @@ export class PublishRule extends ReviewRule {
   }
 }
 
+/** wiki를 히스토리로 만드는 대체는 늘 사람이 본다 (wiki 점수: 대체한 wiki가 점수를 전부 물려받는다) */
+export class ReplacesRule extends ReviewRule {
+  readonly key = 'replaces';
+  readonly fallback = Verdict.REVIEW;
+  readonly reason = '위키를 히스토리로 만드는 변경이에요';
+  protected override readonly floor = Verdict.REVIEW;
+
+  applies(op: ChangeOp): boolean {
+    return op.makesHistory;
+  }
+}
+
 /** 대상이나 가리킨 점이 없다. 규칙 값으로 바꿀 수 없다 */
 export class MissingTargetRule extends ReviewRule {
   readonly key = 'missing';
@@ -197,6 +209,7 @@ export class ReviewPolicy {
     new StaleRule(),
     new LargeSetRule(),
     new PublishRule(),
+    new ReplacesRule(),
     new MissingTargetRule(),
   ];
 

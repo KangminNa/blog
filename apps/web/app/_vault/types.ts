@@ -11,6 +11,7 @@ import type {
 import type {
   WikiDetailView,
   WikiPageView,
+  WikiTrashView,
 } from '../../../server/src/modules/vault/wiki/wiki.view';
 import type {
   WikiScoreBoardView,
@@ -25,6 +26,8 @@ export type GraphNode = Graph['nodes'][number];
 export type WikiPage = ReturnType<WikiPageView['toJSON']>;
 export type WikiSummary = WikiPage['wikis'][number];
 export type WikiDetail = ReturnType<WikiDetailView['toJSON']>;
+export type WikiTrash = ReturnType<WikiTrashView['toJSON']>;
+export type TrashedWiki = WikiTrash['wikis'][number];
 export type WikiScoreBoard = ReturnType<WikiScoreBoardView['toJSON']>;
 export type WikiScoreItem = WikiScoreBoard['history'][number];
 export type WikiScoreDetail = ReturnType<WikiScoreDetailView['toJSON']>;

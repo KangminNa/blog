@@ -3,6 +3,7 @@
 import '../../_blog/blog.css';
 import '../../_vault/vault.css';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { type FormEvent, useMemo, useRef, useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
 import { renderMarkdown } from '../../_lib/markdown';
@@ -11,11 +12,13 @@ import { readPages } from '../../_task/live';
 import { useGraph } from '../../_vault/live';
 import type {
   CategoryList,
+  TrashedWiki,
   WikiDetail,
   WikiPage,
   WikiScoreBoard,
   WikiScoreDetail,
   WikiScoreItem,
+  WikiTrash,
 } from '../../_vault/types';
 import { useNotify } from '../AdminShell';
 
@@ -23,10 +26,12 @@ const WIKI_TOPICS = ['vault.wiki.saved', 'vault.change.*', 'vault.category.chang
 /** 점수는 세션 · 글의 쓰임으로도 바뀐다 */
 const SCORE_TOPICS = [...WIKI_TOPICS, 'vault.session.*', 'blog.post.*'];
 const SCORE_VIEW = 'score';
-/** 목록 보기: 최근(기본) · 점수순 */
+const TRASH_VIEW = 'trash';
+/** 목록 보기: 최근(기본) · 점수순 · 휴지통 */
 const VIEWS: readonly (readonly [string | null, string])[] = [
   [null, '최근'],
   [SCORE_VIEW, '점수순'],
+  [TRASH_VIEW, '휴지통'],
 ];
 /** 물려받는 비율 β의 뜻 */
 const RATIO_LABELS: Record<number, string> = { 1: '대체', 0.5: '근거', 0: '히스토리' };
@@ -52,9 +57,9 @@ function mergePages(before: WikiPage, more: WikiPage): WikiPage {
   return { ...more, wikis: [...before.wikis, ...more.wikis] };
 }
 
-// 위키: 왼쪽 목록(최근 · 점수순)과 찾기 + 오른쪽 읽기·고치기. 좁은 화면에서는 고르기 전에 목록, 고른 뒤에 내용만 보인다.
+// 위키: 왼쪽 목록(최근 · 점수순 · 휴지통)과 찾기 + 오른쪽 읽기·고치기. 좁은 화면에서는 고르기 전에 목록, 고른 뒤에 내용만 보인다.
 export function WikiPanel({ openId, view }: { openId: string | null; view: string | null }) {
-  const listView = view === SCORE_VIEW ? SCORE_VIEW : null;
+  const listView = view === SCORE_VIEW || view === TRASH_VIEW ? view : null;
   const [typed, setTyped] = useState('');
   const [query, setQuery] = useState('');
   const pages = useRef(1);
@@ -95,6 +100,8 @@ export function WikiPanel({ openId, view }: { openId: string | null; view: strin
         </nav>
         {listView === SCORE_VIEW ? (
           <ScoreList openId={openId} />
+        ) : listView === TRASH_VIEW ? (
+          <TrashList />
         ) : (
           <>
             <form className="wiki-search" onSubmit={search}>
@@ -161,7 +168,13 @@ export function WikiPanel({ openId, view }: { openId: string | null; view: strin
           </Link>
         )}
         {openId ? (
-          <WikiView key={openId} id={openId} categories={categories.data} nameOf={nameOf} />
+          <WikiView
+            key={openId}
+            id={openId}
+            categories={categories.data}
+            nameOf={nameOf}
+            back={hrefOf(listView, null)}
+          />
         ) : (
           <p className="rows-empty">위키를 골라 주세요</p>
         )}
@@ -170,16 +183,21 @@ export function WikiPanel({ openId, view }: { openId: string | null; view: strin
   );
 }
 
-/** 위키 하나: 읽기와 출처 세션. 고치기를 누르면 전체 본문을 고친다 */
+/** 위키 하나: 읽기와 출처 세션, 점수와 대체. 고치기를 누르면 전체 본문을 고친다 */
 function WikiView({
   id,
   categories,
   nameOf,
+  back,
 }: {
   id: string;
   categories: CategoryList | null;
   nameOf: (id: string | null) => string;
+  /** 휴지통으로 보낸 뒤 돌아갈 목록 */
+  back: string;
 }) {
+  const notify = useNotify();
+  const router = useRouter();
   const wiki = useLiveValue(
     `wiki:${id}`,
     () => api<WikiDetail>('GET', `/api/wikis/${id}`),
@@ -207,6 +225,14 @@ function WikiView({
       <p className="label-mono">불러오는 중…</p>
     );
 
+  async function trash(version: number) {
+    if (!window.confirm('휴지통으로 보낼까요? 휴지통에서 되살릴 수 있어요')) return;
+    const reply = await api('POST', `/api/wikis/${id}/trash`, { version });
+    if (!reply.ok) return notify(describe(reply.error));
+    notify('휴지통으로 보냈어요');
+    router.push(back);
+  }
+
   if (editing)
     return (
       <WikiEdit
@@ -229,9 +255,14 @@ function WikiView({
           </span>
           <h2>{w.title}</h2>
         </div>
-        <button type="button" className="ghost" onClick={() => setEditing(true)}>
-          고치기
-        </button>
+        <div className="row">
+          <button type="button" className="ghost" onClick={() => setEditing(true)}>
+            고치기
+          </button>
+          <button type="button" className="ghost" onClick={() => trash(w.version)}>
+            휴지통으로
+          </button>
+        </div>
       </div>
       {w.bodyMd ? (
         <div
@@ -252,6 +283,7 @@ function WikiView({
         <dd className="mono">{w.slug}</dd>
       </dl>
       <ScoreBox id={id} />
+      <ReplaceBox id={id} />
       <div>
         <div className="kind">출처 세션</div>
         {sources.length === 0 ? (
@@ -295,6 +327,16 @@ function ScoreList({ openId }: { openId: string | null }) {
           </ul>
         </section>
       ))}
+      {board.data.history.length > 0 && (
+        <section className="stack" aria-label="히스토리">
+          <div className="kind">히스토리 (대체된 위키, 순위 밖)</div>
+          <ul className="list">
+            {board.data.history.map((w) => (
+              <ScoreRow key={w.id} wiki={w} openId={openId} />
+            ))}
+          </ul>
+        </section>
+      )}
     </>
   );
 }
@@ -314,8 +356,9 @@ function ScoreRow({ wiki, openId }: { wiki: WikiScoreItem; openId: string | null
             {day(wiki.lastUsedAt)}
           </small>
         </div>
+        {/* 히스토리는 순위 밖이라 100점 환산 값을 보이지 않는다 */}
         <span className="pill" title={`최종 점수 ${fixed(wiki.total)}`}>
-          {wiki.score}
+          {wiki.replacedBy ? '히스토리' : wiki.score}
         </span>
       </Link>
     </li>
@@ -357,6 +400,133 @@ function ScoreBox({ id }: { id: string }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** 휴지통: 지운 때가 늦은 순. 되살리면 판 · 연결 · 세션의 대표가 그대로 돌아온다 */
+function TrashList() {
+  const notify = useNotify();
+  const trash = useLiveValue(
+    'wiki-trash',
+    () => api<WikiTrash>('GET', '/api/wikis/trash'),
+    WIKI_TOPICS,
+  );
+
+  async function restore(wiki: TrashedWiki) {
+    const reply = await api('POST', `/api/wikis/${wiki.id}/restore`, { version: wiki.version });
+    if (!reply.ok) return notify(describe(reply.error));
+    notify(`${wiki.title} 되살림`);
+    await trash.reload();
+  }
+
+  if (trash.error) return <p className="error">{trash.error}</p>;
+  if (trash.data === null) return <p className="label-mono">불러오는 중…</p>;
+  if (trash.data.wikis.length === 0) return <p className="rows-empty">휴지통 비어 있음</p>;
+  return (
+    <>
+      <p className="note">되살리면 판 · 연결 · 세션의 대표가 그대로 돌아와요</p>
+      <ul className="list" aria-label="휴지통">
+        {trash.data.wikis.map((w) => (
+          <li key={w.id} className="item">
+            <div className="item-main">
+              <b>{w.title}</b>
+              <small>지운 때 {w.deletedAt ? when(w.deletedAt) : '-'}</small>
+            </div>
+            <button type="button" className="ghost" onClick={() => restore(w)}>
+              되살리기
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+/** 대체: 이 위키가 결론을 뒤집은 옛 위키(옛 위키는 히스토리), 이 위키를 대체한 위키 */
+function ReplaceBox({ id }: { id: string }) {
+  const notify = useNotify();
+  const score = useLiveValue(
+    `wiki-score:${id}`,
+    () => api<WikiScoreDetail>('GET', `/api/wiki-scores/${id}`),
+    SCORE_TOPICS,
+  );
+  const board = useLiveValue(
+    'wiki-scores',
+    () => api<WikiScoreBoard>('GET', '/api/wiki-scores'),
+    SCORE_TOPICS,
+  );
+  const [oldId, setOldId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const s = score.data;
+  if (!s) return null;
+  const all = [
+    ...(board.data?.groups ?? []).flatMap((g) => g.wikis),
+    ...(board.data?.history ?? []),
+  ];
+  const titleOf = (wikiId: string) => all.find((w) => w.id === wikiId)?.title ?? '위키';
+  const replaced = s.bases.filter((b) => b.ratio === 1);
+  const candidates = (board.data?.groups ?? [])
+    .flatMap((g) => g.wikis)
+    .filter((w) => w.id !== id && !replaced.some((r) => r.wikiId === w.id));
+
+  async function replace(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    const reply = await api('POST', `/api/wikis/${id}/replaces`, { oldId });
+    setBusy(false);
+    if (!reply.ok) return notify(describe(reply.error));
+    setOldId('');
+    notify('대체로 표시했어요');
+    await Promise.all([score.reload(), board.reload()]);
+  }
+
+  async function release(old: string) {
+    const reply = await api('DELETE', `/api/wikis/${id}/replaces/${old}`);
+    if (!reply.ok) return notify(describe(reply.error));
+    notify('대체 표시를 지웠어요');
+    await Promise.all([score.reload(), board.reload()]);
+  }
+
+  return (
+    <div className="stack">
+      <div className="kind">대체</div>
+      {s.wiki.replacedBy && (
+        <p className="note">
+          히스토리라 근거로 쓰지 않아요. 대체한 위키:{' '}
+          <Link href={hrefOf(null, s.wiki.replacedBy)}>{titleOf(s.wiki.replacedBy)}</Link>
+        </p>
+      )}
+      {replaced.map((r) => (
+        <div key={r.wikiId} className="row">
+          <Link href={hrefOf(null, r.wikiId)}>{r.title}</Link>
+          <span className="note">대체함</span>
+          <button type="button" className="ghost" onClick={() => release(r.wikiId)}>
+            대체 해제
+          </button>
+        </div>
+      ))}
+      <form className="row" onSubmit={replace} aria-label="대체로 표시">
+        <label className="sr" htmlFor={`replace-${id}`}>
+          결론을 뒤집은 옛 위키
+        </label>
+        <select
+          id={`replace-${id}`}
+          className="input"
+          value={oldId}
+          onChange={(e) => setOldId(e.target.value)}
+        >
+          <option value="">결론을 뒤집은 옛 위키</option>
+          {candidates.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.title}
+            </option>
+          ))}
+        </select>
+        <button type="submit" className="ghost" disabled={busy || !oldId}>
+          대체로 표시
+        </button>
+      </form>
     </div>
   );
 }

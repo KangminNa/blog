@@ -30,6 +30,7 @@ description: Cairn의 세션 하나를 읽고 wiki로 정리한다. 러너가 ti
    - 대표 wiki는 하나다. 세션을 가장 잘 담는 wiki를 고른다.
    - 다른 wiki에도 재료가 되면 `edge.add`의 `material`로 잇는다.
    - 내용이 서로 이어지는 wiki는 `link`로 잇는다.
+   - 세션이 옛 wiki의 결론을 **뒤집었으면** 새 결론을 담은 wiki에서 옛 wiki로 `replaces`를 낸다. 옛 wiki는 히스토리가 되어 근거로 쓰지 않게 된다. 늘 사람이 검토하니 확실할 때만 낸다. 옛 wiki를 고쳐 쓰지 않는다.
    - 카테고리가 맞는 것이 분명할 때만 `category.assign`을 넣는다. 사람이 검토한다.
 4. **내기.** 아래 모양으로 `submit_changes`를 **한 번** 부른다.
 5. **답하기.** 변경마다 `status`를 보고, 만든 것·고친 것·검토로 간 것을 세 줄 안으로 답한다. `review`나 `reject`가 있어도 다시 내지 않는다.
@@ -59,7 +60,7 @@ description: Cairn의 세션 하나를 읽고 wiki로 정리한다. 러너가 ti
 | `wiki.create` | 없음 | 없음 | `{ title, body_md }` |
 | `wiki.revise` | wiki id | `get_wiki`의 `version` | `{ body_md, title? }`. 본문 **전체**를 보낸다 |
 | `session.assign` | 세션 id | 작업 대상의 판 | `{ wiki_id }` |
-| `edge.add` | 없음 | 없음 | `{ src, dst, kind }`. kind는 `material`(세션 → wiki), `link`(wiki ↔ wiki) |
+| `edge.add` | 없음 | 없음 | `{ src, dst, kind }`. kind는 `material`(세션 → wiki), `link`(wiki ↔ wiki), `replaces`(새 wiki → 뒤집힌 옛 wiki, 늘 검토) |
 | `category.assign` | wiki id | `get_wiki`의 `version` | `{ category_id }` |
 
 `src`, `dst`, `wiki_id`에도 `@번호`를 쓸 수 있다.

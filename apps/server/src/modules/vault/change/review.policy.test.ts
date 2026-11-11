@@ -33,6 +33,7 @@ const KINDS = new Map([
   ['link', new EdgeKind('link', false, true)],
   ['material', new EdgeKind('material', true, true)],
   ['locked', new EdgeKind('locked', true, false)],
+  ['replaces', new EdgeKind('replaces', true, true)],
 ]);
 const defaults = new ReviewRules(new Map(), new Map(), 1);
 
@@ -40,7 +41,12 @@ const defaults = new ReviewRules(new Map(), new Map(), 1);
 function board(...targets: readonly (readonly [string, ChangeTarget])[]): TargetBoard {
   const on = new TargetBoard(KINDS);
   for (const [place, target] of targets) on.put(place, target);
-  on.markLive(new Set([NODE_A, NODE_B]));
+  on.markLive(
+    new Map([
+      [NODE_A, 'wiki'],
+      [NODE_B, 'wiki'],
+    ]),
+  );
   return on;
 }
 
@@ -232,6 +238,38 @@ describe('연결', () => {
     assert.equal(judge(noKind, board()).action, Verdict.REJECT);
     const locked = new EdgeAddOp(1, null, NODE_A, NODE_B, 'locked', false);
     assert.equal(judge(locked, board()).action, Verdict.REJECT);
+  });
+});
+
+describe('대체 (wiki 점수)', () => {
+  test('AI가 대체를 내면 늘 검토: 옛 wiki가 히스토리가 된다', () => {
+    const op = new EdgeAddOp(1, null, NODE_B, NODE_A, 'replaces', false);
+    const verdict = judge(op, board());
+    assert.deepEqual([verdict.action, verdict.rule], [Verdict.REVIEW, 'replaces']);
+    assert.deepEqual(op.places(board()), [
+      TargetBoard.place('edge', `${NODE_B}:${NODE_A}:replaces`),
+      TargetBoard.place('edge', `${NODE_A}:${NODE_B}:replaces`),
+    ]);
+  });
+
+  test('wiki가 아닌 점과는 대체로 잇지 못한다', () => {
+    const op = new EdgeAddOp(1, null, NODE_A, SESSION_ID, 'replaces', false);
+    const on = board();
+    on.markLive(
+      new Map([
+        [NODE_A, 'wiki'],
+        [SESSION_ID, 'session'],
+      ]),
+    );
+    const verdict = judge(op, on);
+    assert.deepEqual([verdict.action, verdict.rule], [Verdict.REJECT, 'missing']);
+  });
+
+  test('반대 방향 대체가 있으면 적용하지 못한다 (둘이 서로 대체할 수 없다)', () => {
+    const reverse = Edge.open(human, NODE_A, NODE_B, 'replaces');
+    const op = new EdgeAddOp(1, null, NODE_B, NODE_A, 'replaces', true);
+    op.bind(board([TargetBoard.place('edge', `${NODE_A}:${NODE_B}:replaces`), reverse]));
+    assert.throws(() => op.apply(human), /서로 대체할 수 없어요/);
   });
 });
 
