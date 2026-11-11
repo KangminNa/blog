@@ -32,10 +32,27 @@ export class ChangeSignal {
 export class Outbox {
   static readonly CHANNEL = 'cairn_outbox';
 
+  /**
+   * 이벤트를 남기는 같은 트랜잭션에서 함께 할 일 (이름 → 할 일). 같은 이름을 다시 등록하면 바꾼다.
+   * platform의 알림(notice/)이 쓴다: 모듈이 정한 이벤트에서 알림을 만든다. base는 누가 듣는지 모른다
+   */
+  private static readonly listeners = new Map<
+    string,
+    (tx: Sql, events: readonly DomainEvent[]) => Promise<void>
+  >();
+
+  static listen(
+    name: string,
+    listener: (tx: Sql, events: readonly DomainEvent[]) => Promise<void>,
+  ): void {
+    Outbox.listeners.set(name, listener);
+  }
+
   constructor(private readonly tx: Sql) {}
 
   async publish(events: readonly DomainEvent[]): Promise<void> {
     if (events.length === 0) return;
+    for (const listener of Outbox.listeners.values()) await listener(this.tx, events);
     const rows = events.map((e) => ({
       space_id: e.spaceId,
       topic: e.name,

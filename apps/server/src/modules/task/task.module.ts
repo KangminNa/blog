@@ -46,6 +46,7 @@ import {
   SubmitResultTool,
 } from './task/task.tool';
 import { TaskRequestedHandler } from './task/task-requested.handler';
+import { TaskNotices } from './task-notices';
 import { TaskTools } from './task-tools';
 import { UsageController } from './usage/usage.api';
 import { UsageQuery } from './usage/usage.query';
@@ -54,6 +55,7 @@ import { UsageQuery } from './usage/usage.query';
 // 결재 뒤 실행은 대상을 가진 모듈이 이벤트로 한다. task.approval.granted를 받는 모듈이 expect도 적는다 (지금은 blog).
 @Module({
   providers: [
+    TaskNotices,
     AgentQuery,
     AgentService,
     TaskQuery,

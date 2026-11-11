@@ -28,6 +28,7 @@ import { TidyService } from './tidy/tidy.service';
 import { TidyRequestHandler } from './tidy/tidy-request.handler';
 import { ArchiveController } from './vault-archive.api';
 import { VaultArchiveQuery } from './vault-archive.query';
+import { VaultNotices } from './vault-notices';
 import { VaultTools } from './vault-tools';
 import { WikiController } from './wiki/wiki.api';
 import { WikiQuery } from './wiki/wiki.query';
@@ -41,6 +42,7 @@ import { WikiStaleJob } from './wiki-score/wiki-stale.job';
 // 그래프 보기, 글 자리 사본, 보관 형식 내보내기, wiki 점수.
 @Module({
   providers: [
+    VaultNotices,
     SessionService,
     SessionQuery,
     SaveSessionTool,

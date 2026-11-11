@@ -61,6 +61,8 @@ export { Cookies } from './http/cookies';
 export { CurrentActor } from './http/current-actor';
 export { HttpSetup } from './http/http-setup';
 export type { HttpRequest, HttpResponse, HttpUpload } from './http/http-types';
+export { NoticeCatalog } from './notice/notice-catalog';
+export { NoticeKind } from './notice/notice-kind';
 export { type NoticeNew, Notices } from './notice/notices';
 export { PlatformModule } from './platform.module';
 export { BasePlugin } from './plugin/base-plugin';

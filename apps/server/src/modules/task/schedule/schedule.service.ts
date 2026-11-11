@@ -3,6 +3,8 @@ import {
   type Actor,
   EntityService,
   Idempotency,
+  NoticeKind,
+  Notices,
   type Sql,
   type VersionInput,
 } from '../../platform';
@@ -11,6 +13,7 @@ import { AgentRepository } from '../agent/agent.repository';
 import { GoalRepository } from '../goal/goal.repository';
 import type { Task } from '../task/task';
 import { TaskRepository } from '../task/task.repository';
+import { TaskNotices } from '../task-notices';
 import type { ScheduleRow } from '../task.tables';
 import { Schedule } from './schedule';
 import type { CreateScheduleInput, UpdateScheduleInput } from './schedule.input';
@@ -121,12 +124,29 @@ export class ScheduleService extends EntityService<Schedule> {
         }
         const allowed = schedule.claimRun(now);
         await schedules.save(schedule);
-        if (!allowed) continue;
+        if (!allowed) {
+          await new Notices(tx).post(ScheduleService.skippedNotice(schedule));
+          continue;
+        }
         if (await tasks.insertOnce(schedule.wake(slot, await this.goalOf(tx, schedule), now)))
           made += 1;
       }
       return made;
     });
+  }
+
+  /** 하루 한도로 건너뛴 기록 (기록만). 스케줄마다 한 줄이라 읽기 전까지 쌓이지 않는다 */
+  private static skippedNotice(schedule: Schedule) {
+    return {
+      space_id: schedule.spaceId,
+      kind: TaskNotices.SCHEDULE_SKIPPED,
+      severity: NoticeKind.LOG,
+      title: `${schedule.title}: 오늘 한도(${schedule.dailyMax}번)에 닿아 건너뛰었어요`,
+      body: null,
+      link: '/admin/schedules',
+      group_key: `schedule-skipped:${schedule.id}`,
+      data: { scheduleId: schedule.id },
+    };
   }
 
   /** 담당 에이전트와 목표가 이 공간에 있는가. 목표는 진행 중이어야 한다 */

@@ -5,12 +5,17 @@ import { ArchiveQuery } from './archive/archive.query';
 import { ArchiveRestoreService } from './archive/archive-restore.service';
 import { BlobStore } from './base/blob-store';
 import { Database } from './base/database';
+import { Outbox } from './base/outbox';
 import { SecretBox } from './base/secret-box';
 import { SecretRotation } from './base/secret-rotation';
 import { SensitivePolicy } from './base/sensitive-policy';
 import { HealthController } from './health/health.api';
 import { HealthQuery } from './health/health.query';
 import { DomainErrorFilter } from './http/domain-error.filter';
+import { NoticeCatalog } from './notice/notice-catalog';
+import { NoticeSettingsController } from './notice/notice-settings.api';
+import { NoticeSettingsQuery } from './notice/notice-settings.query';
+import { NoticeSettingsService } from './notice/notice-settings.service';
 import { NotificationController } from './notice/notification.api';
 import { NotificationQuery } from './notice/notification.query';
 import { NotificationService } from './notice/notification.service';
@@ -39,6 +44,9 @@ import { OutboxWorker } from './worker/outbox-worker';
     HealthQuery,
     NotificationQuery,
     NotificationService,
+    NoticeCatalog,
+    NoticeSettingsQuery,
+    NoticeSettingsService,
     PluginQuery,
     PluginService,
     { provide: SecretBox, useFactory: () => SecretBox.fromEnv(process.env) },
@@ -72,6 +80,7 @@ import { OutboxWorker } from './worker/outbox-worker';
   controllers: [
     HealthController,
     NotificationController,
+    NoticeSettingsController,
     PluginController,
     PackageController,
     StreamController,
@@ -91,6 +100,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     ChangeStream,
     CoreWorkers,
     OutboxWorker,
+    NoticeCatalog,
   ],
 })
 export class PlatformModule implements OnModuleInit {
@@ -99,9 +109,12 @@ export class PlatformModule implements OnModuleInit {
     private readonly plugins: PluginService,
     private readonly workers: CoreWorkers,
     private readonly sweep: BlobSweepJob,
+    private readonly notices: NoticeCatalog,
   ) {}
 
   onModuleInit(): void {
+    // 모듈이 등록한 알림 종류로, 이벤트를 남기는 같은 트랜잭션에서 알림도 남긴다
+    Outbox.listen('notices', (tx, events) => this.notices.onEvents(tx, events));
     this.rotation.register('플러그인 설정', (actor) => this.plugins.resealSecrets(actor));
     this.workers.every(this.sweep, BlobSweepJob.EVERY_MS);
   }

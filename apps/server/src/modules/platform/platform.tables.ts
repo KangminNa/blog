@@ -36,6 +36,20 @@ export interface IdempotencyRow {
 }
 export type IdempotencyNew = Partial<IdempotencyRow> & Pick<IdempotencyRow, 'device_id' | 'request_id' | 'tool' | 'response'>;
 
+/** platform.notice_settings */
+export interface NoticeSettingRow {
+  space_id: string;
+  digest: string;
+  digest_minute: number;
+  quiet_start: number | null;
+  quiet_end: number | null;
+  time_zone: string;
+  routes: unknown;
+  version: number;
+  updated_at: Date;
+}
+export type NoticeSettingNew = Partial<NoticeSettingRow> & Pick<NoticeSettingRow, 'space_id'>;
+
 /** platform.notifications */
 export interface NotificationRow {
   id: string;

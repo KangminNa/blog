@@ -78,6 +78,10 @@ export class Schedule extends TableEntity<ScheduleRow, ScheduleNew> {
     return this.row.title;
   }
 
+  get dailyMax(): number {
+    return this.row.daily_max;
+  }
+
   /**
    * 설정을 한 번에 바꾼다. 매일이면 at_minute와 요일, N시간마다면 every_hours만 쓴다.
    * 켜면 지금 뒤의 첫 시각을 다음 시각으로 정하고, 끄면 지운다. 오늘 센 수(day_runs)는 그대로 둔다

@@ -13,7 +13,7 @@ const when = (iso: string) =>
   new Date(iso).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
 
 // 콘솔 머리줄의 알림: 안 읽은 수와 최근 알림. 누르면 그 주소로 가고 읽음이 된다.
-// 무엇을 알리는지는 알리는 쪽(예: 지울 만한 위키)이 정한다. 푸시 · 이메일은 7단계.
+// 무엇을 알리는지는 알리는 쪽(결재 요청, 작업 실패, 지울 만한 위키 등)이 정한다. 경로 · 조용한 시간은 자동화 › 알림.
 export function NotificationBell() {
   const router = useRouter();
   const list = useLiveValue(

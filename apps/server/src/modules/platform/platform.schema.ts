@@ -37,6 +37,19 @@ export const idempotency = platformSchema.table('idempotency', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
 });
 
+/** platform.notice_settings */
+export const noticeSettings = platformSchema.table('notice_settings', {
+  space_id: uuid('space_id').notNull(),
+  digest: text('digest').notNull(),
+  digest_minute: integer('digest_minute').notNull(),
+  quiet_start: integer('quiet_start'),
+  quiet_end: integer('quiet_end'),
+  time_zone: text('time_zone').notNull(),
+  routes: jsonb('routes').notNull(),
+  version: integer('version').notNull(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
+});
+
 /** platform.notifications */
 export const notifications = platformSchema.table('notifications', {
   id: uuid('id').notNull(),

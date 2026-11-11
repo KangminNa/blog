@@ -109,6 +109,8 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   /** 연결 확인은 쌓인 일보다 먼저 돈다 */
   private static readonly AI_TEST_PRIORITY = 1000;
   private static readonly AI_TEST_PROMPT = 'ok라고만 답하세요.';
+  /** 실패 이벤트에 싣는 이유의 길이 (알림 본문) */
+  private static readonly EVENT_ERROR_MAX = 300;
   /** 깨어난 위 작업에게 보내는 하위 작업 결과의 길이 */
   private static readonly SUMMARY_MAX = 2000;
   private static readonly SKILLS: Readonly<Record<string, string>> = {
@@ -603,7 +605,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
 
   /** 실패로 끝낸다: running → failed */
   fail(error: string, now: Date): void {
-    this.move([Task.RUNNING], Task.FAILED);
+    this.move([Task.RUNNING], Task.FAILED, null, { error: error.slice(0, Task.EVENT_ERROR_MAX) });
     this.close({ error }, now);
     this.log(Task.LOG_ERROR, error, 0, now);
   }
@@ -787,20 +789,28 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
    * 메서드마다 어느 상태에서 올 수 있는지 적는다. 상태 쌍만 보면 lease()가 결재 대기를 가로챌 수 있다.
    * waiting으로 갈 때만 무엇을 기다리는지 적고, 나머지 상태로 가면 지운다 (DB의 CHECK와 같다)
    */
-  private move(from: readonly string[], to: string, waitReason: string | null = null): void {
+  private move(
+    from: readonly string[],
+    to: string,
+    waitReason: string | null = null,
+    more: Readonly<Record<string, unknown>> = {},
+  ): void {
     if (!from.includes(this.row.status))
       throw new RuleViolation(`${this.row.status} 상태의 작업은 ${to}(으)로 바꿀 수 없어요`);
     this.put('status', to);
     const reason = to === Task.WAITING ? waitReason : null;
     if (reason !== this.row.wait_reason) this.put('wait_reason', reason);
-    this.announce();
+    this.announce(more);
   }
 
-  private announce(): void {
+  /** 상태가 바뀌었다. 제목은 알림이 쓴다 (실패면 이유의 앞부분도) */
+  private announce(more: Readonly<Record<string, unknown>> = {}): void {
     this.record(
       new DomainEvent(Task.CHANGED, 1, this.row.space_id, {
         taskId: this.id,
         status: this.row.status,
+        title: this.row.title,
+        ...more,
       }),
     );
   }
