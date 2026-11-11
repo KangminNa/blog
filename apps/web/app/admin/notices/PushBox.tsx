@@ -82,8 +82,12 @@ export function PushBox() {
       if (permission !== 'granted') return setState('denied');
       const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
       await navigator.serviceWorker.ready;
+      // 서버 키가 바뀐 옛 구독은 브라우저와 서버 양쪽에서 지운다 (남겨 두면 실패를 다섯 번 쌓아야 지워진다)
       const old = await registration.pushManager.getSubscription();
-      if (old) await old.unsubscribe();
+      if (old) {
+        await old.unsubscribe();
+        await api('POST', '/api/push/subscriptions/delete', { endpoint: old.endpoint });
+      }
       const made = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: bytesOf(key),
