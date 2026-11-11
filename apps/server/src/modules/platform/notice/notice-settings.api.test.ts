@@ -202,9 +202,7 @@ describe('모듈이 등록한 알림', () => {
     assert.equal(asked?.title, '결재를 기다려요');
     assert.equal(asked?.read, false);
 
-    const detail = ok(
-      await api.get(`/api/approvals/${approval.approval_id}`, owner),
-    );
+    const detail = ok(await api.get(`/api/approvals/${approval.approval_id}`, owner));
     ok(
       await api.request('POST', `/api/approvals/${detail.id}/decide`, owner, {
         version: detail.version,
