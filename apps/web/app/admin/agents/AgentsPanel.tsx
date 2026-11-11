@@ -1,27 +1,17 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
 import { SCOPE_LABELS } from '../../_lib/types';
-import {
-  actionLabel,
-  flatTree,
-  heartbeatLabel,
-  holdLabel,
-  TOOL_LABELS,
-  taskStatusLabel,
-  when,
-} from '../../_task/labels';
+import { actionLabel, flatTree, holdLabel, TOOL_LABELS, taskStatusLabel } from '../../_task/labels';
 import { useAgents, useTasksIn, useUsage } from '../../_task/live';
 import { AgentUsage } from '../../_task/parts';
 import type { Agent } from '../../_task/types';
 import { useNotify } from '../AdminShell';
 import { AgentForm } from './AgentForm';
-import { HeartbeatForm } from './HeartbeatForm';
 
 const NEW = 'new';
-/** 하트비트 입력 칸을 연 에이전트: open에 이 앞부분 + id */
-const HEARTBEAT = 'heartbeat:';
 
 // 에이전트: 조직도, 사용량과 한도, 추가, 편집, 중지, 재개.
 export function AgentsPanel({ adding }: { adding: boolean }) {
@@ -105,15 +95,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
       ) : (
         <div className="agents">
           {list.map((a) =>
-            open === `${HEARTBEAT}${a.id}` ? (
-              <HeartbeatForm
-                key={a.id}
-                agent={a}
-                onSaved={saved}
-                onClose={() => setOpen(null)}
-                reload={agents.reload}
-              />
-            ) : open === a.id ? (
+            open === a.id ? (
               <AgentForm
                 key={a.id}
                 agent={a}
@@ -132,7 +114,6 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
                 busy={busy === a.id}
                 onFlip={() => flip(a)}
                 onEdit={() => setOpen(a.id)}
-                onHeartbeat={() => setOpen(`${HEARTBEAT}${a.id}`)}
               />
             ),
           )}
@@ -172,7 +153,6 @@ function AgentCard({
   busy,
   onFlip,
   onEdit,
-  onHeartbeat,
 }: {
   agent: Agent;
   work: string | null;
@@ -182,7 +162,6 @@ function AgentCard({
   busy: boolean;
   onFlip: () => void;
   onEdit: () => void;
-  onHeartbeat: () => void;
 }) {
   const paused = agent.status === 'paused';
   return (
@@ -215,8 +194,9 @@ function AgentCard({
       </ul>
       <AgentUsage agent={agent} />
       <p className="note">
-        하트비트: {heartbeatLabel(agent.heartbeat)}
-        {agent.heartbeat?.nextRunAt ? ` · 다음 ${when(agent.heartbeat.nextRunAt)}` : ''}
+        <Link href={`/admin/schedules?agent=${agent.id}`}>
+          {agent.schedules > 0 ? `스케줄 ${agent.schedules}개` : '스케줄 없음'}
+        </Link>
       </p>
       <div className="row">
         <button type="button" className="ghost" disabled={busy} onClick={onFlip}>
@@ -224,9 +204,6 @@ function AgentCard({
         </button>
         <button type="button" className="ghost" onClick={onEdit}>
           편집
-        </button>
-        <button type="button" className="ghost" onClick={onHeartbeat}>
-          하트비트
         </button>
       </div>
     </article>

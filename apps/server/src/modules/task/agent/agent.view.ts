@@ -1,38 +1,7 @@
-import type { AgentRevisionRow, AgentRow, HeartbeatRow } from '../task.tables';
+import type { AgentRevisionRow, AgentRow } from '../task.tables';
 
 // 에이전트의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
 // 표의 칸 중 무엇을 내보내는지는 여기 한 곳에만 적는다.
-
-/** 시각을 ISO 문자열로. 에이전트 목록은 하트비트를 to_jsonb로 읽어 시각이 글자로 온다 */
-function iso(at: Date | string | null): string | null {
-  return at === null ? null : new Date(at).toISOString();
-}
-
-/** 에이전트의 하트비트 (정해진 시각에 깨우기). 정한 적이 없으면 에이전트의 heartbeat가 null */
-export class AgentHeartbeatView {
-  constructor(private readonly row: Readonly<HeartbeatRow>) {}
-
-  toJSON() {
-    const r = this.row;
-    const at = r.at_minute;
-    return {
-      enabled: r.enabled,
-      mode: r.mode,
-      atTime:
-        at === null
-          ? null
-          : `${String(Math.floor(at / 60)).padStart(2, '0')}:${String(at % 60).padStart(2, '0')}`,
-      weekdays: r.weekdays,
-      everyHours: r.every_hours,
-      timeZone: r.time_zone,
-      instruction: r.instruction,
-      goalId: r.goal_id,
-      nextRunAt: iso(r.next_run_at),
-      lastRunAt: iso(r.last_run_at),
-      version: r.version,
-    };
-  }
-}
 
 /** 바꾼 에이전트 하나. 화면은 이 version으로 다음 변경을 보낸다 */
 export class AgentSavedView {
@@ -76,13 +45,14 @@ export class AgentRevisionListView {
   }
 }
 
-/** 목록의 에이전트 하나: 이번 달에 쓴 토큰과 하트비트까지 */
+/** 목록의 에이전트 하나: 이번 달에 쓴 토큰과 맡은 스케줄 수까지 */
 export class AgentView extends AgentSavedView {
   constructor(
     row: Readonly<AgentRow>,
     /** 이번 달에 쓴 토큰 */
     private readonly usedThisMonth: number,
-    private readonly heartbeat: Readonly<HeartbeatRow> | null,
+    /** 이 에이전트가 담당인 스케줄 수 (스케줄 메뉴에서 정한다) */
+    private readonly schedules: number,
   ) {
     super(row);
   }
@@ -91,7 +61,7 @@ export class AgentView extends AgentSavedView {
     return {
       ...super.toJSON(),
       usedThisMonth: this.usedThisMonth,
-      heartbeat: this.heartbeat === null ? null : new AgentHeartbeatView(this.heartbeat).toJSON(),
+      schedules: this.schedules,
     };
   }
 }

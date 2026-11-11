@@ -15,9 +15,6 @@ import { ApprovalResultHandler } from './approval/approval-result.handler';
 import { GoalController } from './goal/goal.api';
 import { GoalQuery } from './goal/goal.query';
 import { GoalService } from './goal/goal.service';
-import { HeartbeatController } from './heartbeat/heartbeat.api';
-import { HeartbeatJob } from './heartbeat/heartbeat.job';
-import { HeartbeatService } from './heartbeat/heartbeat.service';
 import { OutputController } from './output/output.api';
 import { OutputPolicy } from './output/output.policy';
 import { OutputQuery } from './output/output.query';
@@ -27,6 +24,10 @@ import { OutputPurgeJob } from './output/output-purge.job';
 import { RunnerController } from './runner/runner.api';
 import { RunnerQuery } from './runner/runner.query';
 import { RunnerService } from './runner/runner.service';
+import { ScheduleController } from './schedule/schedule.api';
+import { ScheduleJob } from './schedule/schedule.job';
+import { ScheduleQuery } from './schedule/schedule.query';
+import { ScheduleService } from './schedule/schedule.service';
 import { RepoSkillGateway } from './skill/repo-skill.gateway';
 import { SkillController } from './skill/skill.api';
 import { SkillQuery } from './skill/skill.query';
@@ -62,8 +63,9 @@ import { UsageQuery } from './usage/usage.query';
     UsageQuery,
     GoalQuery,
     GoalService,
-    HeartbeatService,
-    HeartbeatJob,
+    ScheduleQuery,
+    ScheduleService,
+    ScheduleJob,
     RunnerQuery,
     RunnerService,
     AiLoginQuery,
@@ -101,7 +103,7 @@ import { UsageQuery } from './usage/usage.query';
     UsageController,
     AiLoginController,
     GoalController,
-    HeartbeatController,
+    ScheduleController,
     RunnerController,
     SkillController,
     OutputController,
@@ -110,8 +112,8 @@ import { UsageQuery } from './usage/usage.query';
 })
 export class TaskModule implements OnModuleInit {
   private static readonly LEASE_CHECK_MS = 30_000;
-  /** 하트비트의 가장 작은 단위가 분이라 1분마다 본다 */
-  private static readonly HEARTBEAT_CHECK_MS = 60_000;
+  /** 스케줄의 가장 작은 단위가 분이라 1분마다 본다 */
+  private static readonly SCHEDULE_CHECK_MS = 60_000;
 
   constructor(
     private readonly workers: CoreWorkers,
@@ -119,7 +121,7 @@ export class TaskModule implements OnModuleInit {
     private readonly settled: SubtaskSettledHandler,
     private readonly results: ApprovalResultHandler,
     private readonly leases: LeaseJob,
-    private readonly heartbeats: HeartbeatJob,
+    private readonly schedules: ScheduleJob,
     private readonly rotation: SecretRotation,
     private readonly logins: AiLoginService,
     private readonly outputPurge: OutputPurgeJob,
@@ -134,7 +136,7 @@ export class TaskModule implements OnModuleInit {
     this.workers.on(Task.CHANGED, this.settled);
     this.workers.on('*', this.results);
     this.workers.every(this.leases, TaskModule.LEASE_CHECK_MS);
-    this.workers.every(this.heartbeats, TaskModule.HEARTBEAT_CHECK_MS);
+    this.workers.every(this.schedules, TaskModule.SCHEDULE_CHECK_MS);
     this.rotation.register('task.ai_logins', (actor) => this.logins.resealSecrets(actor));
     this.workers.every(this.outputPurge, OutputPurgeJob.EVERY_MS);
     // 기능 패키지의 도구(code-github의 code_credential 등)가 묻는 임대 확인

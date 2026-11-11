@@ -1661,6 +1661,15 @@ a.chip {
   gap: 8px;
 }
 
+/* 스케줄 한 줄: 이름 · 주기 · 단추 (좁으면 단추가 아래 줄로) */
+.list > .schedule-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
 /* 결과물 한 줄: 작은 그림(또는 확장자) · 이름 · 단추 */
 .list > .output-row {
   display: flex;

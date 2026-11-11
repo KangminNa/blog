@@ -80,26 +80,6 @@ export interface GoalRow {
 }
 export type GoalNew = Partial<GoalRow> & Pick<GoalRow, 'id' | 'space_id' | 'title'>;
 
-/** task.heartbeats */
-export interface HeartbeatRow {
-  id: string;
-  space_id: string;
-  agent_id: string;
-  mode: string;
-  at_minute: number | null;
-  weekdays: readonly number[];
-  every_hours: number | null;
-  time_zone: string;
-  instruction: string;
-  goal_id: string | null;
-  enabled: boolean;
-  next_run_at: Date | null;
-  last_run_at: Date | null;
-  version: number;
-  created_at: Date;
-}
-export type HeartbeatNew = Partial<HeartbeatRow> & Pick<HeartbeatRow, 'id' | 'space_id' | 'agent_id' | 'mode' | 'time_zone'>;
-
 /** task.outputs */
 export interface OutputRow {
   id: string;
@@ -142,6 +122,30 @@ export interface RunnerRow {
   created_at: Date;
 }
 export type RunnerNew = Partial<RunnerRow> & Pick<RunnerRow, 'id' | 'space_id' | 'device_id'>;
+
+/** task.schedules */
+export interface ScheduleRow {
+  id: string;
+  space_id: string;
+  title: string;
+  agent_id: string | null;
+  mode: string;
+  at_minute: number | null;
+  weekdays: readonly number[];
+  every_hours: number | null;
+  time_zone: string;
+  instruction: string;
+  goal_id: string | null;
+  daily_max: number;
+  run_day: string | null;
+  day_runs: number;
+  enabled: boolean;
+  next_run_at: Date | null;
+  last_run_at: Date | null;
+  version: number;
+  created_at: Date;
+}
+export type ScheduleNew = Partial<ScheduleRow> & Pick<ScheduleRow, 'id' | 'space_id' | 'title' | 'mode' | 'time_zone'>;
 
 /** task.skill_revisions */
 export interface SkillRevisionRow {

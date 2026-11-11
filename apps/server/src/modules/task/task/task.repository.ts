@@ -117,10 +117,10 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
     return this.find({ space_id: spaceId, request_id: requestIds });
   }
 
-  /** 이 에이전트에게 request_id가 prefix로 시작하는 끝나지 않은 작업이 있는가 (앞 하트비트 작업) */
-  async hasOpenRequest(agentId: string, prefix: string): Promise<boolean> {
+  /** 공간에 request_id가 prefix로 시작하는 끝나지 않은 작업이 있는가 (스케줄의 앞 작업) */
+  async hasOpenRequest(spaceId: string, prefix: string): Promise<boolean> {
     return this.exists(tasks, {
-      agent_id: agentId,
+      space_id: spaceId,
       request_id: Rule.like(`${prefix}%`),
       status: [Task.QUEUED, Task.RUNNING, Task.WAITING],
     });

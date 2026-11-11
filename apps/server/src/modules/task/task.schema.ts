@@ -79,25 +79,6 @@ export const goals = taskSchema.table('goals', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
 });
 
-/** task.heartbeats */
-export const heartbeats = taskSchema.table('heartbeats', {
-  id: uuid('id').notNull(),
-  space_id: uuid('space_id').notNull(),
-  agent_id: uuid('agent_id').notNull(),
-  mode: text('mode').notNull(),
-  at_minute: integer('at_minute'),
-  weekdays: integer('weekdays').array().notNull(),
-  every_hours: integer('every_hours'),
-  time_zone: text('time_zone').notNull(),
-  instruction: text('instruction').notNull(),
-  goal_id: uuid('goal_id'),
-  enabled: boolean('enabled').notNull(),
-  next_run_at: timestamp('next_run_at', { withTimezone: true }),
-  last_run_at: timestamp('last_run_at', { withTimezone: true }),
-  version: integer('version').notNull(),
-  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
-});
-
 /** task.outputs */
 export const outputs = taskSchema.table('outputs', {
   id: uuid('id').notNull(),
@@ -134,6 +115,29 @@ export const runners = taskSchema.table('runners', {
   device_id: uuid('device_id').notNull(),
   accepting: boolean('accepting').notNull(),
   last_seen_at: timestamp('last_seen_at', { withTimezone: true }).notNull(),
+  version: integer('version').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
+/** task.schedules */
+export const schedules = taskSchema.table('schedules', {
+  id: uuid('id').notNull(),
+  space_id: uuid('space_id').notNull(),
+  title: text('title').notNull(),
+  agent_id: uuid('agent_id'),
+  mode: text('mode').notNull(),
+  at_minute: integer('at_minute'),
+  weekdays: integer('weekdays').array().notNull(),
+  every_hours: integer('every_hours'),
+  time_zone: text('time_zone').notNull(),
+  instruction: text('instruction').notNull(),
+  goal_id: uuid('goal_id'),
+  daily_max: integer('daily_max').notNull(),
+  run_day: text('run_day'),
+  day_runs: integer('day_runs').notNull(),
+  enabled: boolean('enabled').notNull(),
+  next_run_at: timestamp('next_run_at', { withTimezone: true }),
+  last_run_at: timestamp('last_run_at', { withTimezone: true }),
   version: integer('version').notNull(),
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
 });

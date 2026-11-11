@@ -86,26 +86,24 @@ export const WEEKDAY_LABELS: Record<number, string> = {
   7: '일',
 };
 
-/** 하트비트 주기를 한 줄로: "매일 09:30 · 평일", "6시간마다" */
-export function heartbeatLabel(
-  heartbeat: {
-    enabled: boolean;
-    mode: string;
-    atTime: string | null;
-    weekdays: readonly number[];
-    everyHours: number | null;
-  } | null,
-): string {
-  if (!heartbeat?.enabled) return '꺼짐';
-  if (heartbeat.mode === 'hourly') return `${heartbeat.everyHours}시간마다`;
-  const days = heartbeat.weekdays.join(',');
+/** 스케줄 주기를 한 줄로: "매일 09:30 · 평일", "6시간마다", 꺼져 있으면 "꺼짐" */
+export function scheduleLabel(schedule: {
+  enabled: boolean;
+  mode: string;
+  atTime: string | null;
+  weekdays: readonly number[];
+  everyHours: number | null;
+}): string {
+  if (!schedule.enabled) return '꺼짐';
+  if (schedule.mode === 'hourly') return `${schedule.everyHours}시간마다`;
+  const days = schedule.weekdays.join(',');
   const which =
     days === '1,2,3,4,5,6,7'
       ? ''
       : days === '1,2,3,4,5'
         ? ' · 평일'
-        : ` · ${heartbeat.weekdays.map((d) => WEEKDAY_LABELS[d]).join('')}`;
-  return `매일 ${heartbeat.atTime}${which}`;
+        : ` · ${schedule.weekdays.map((d) => WEEKDAY_LABELS[d]).join('')}`;
+  return `매일 ${schedule.atTime}${which}`;
 }
 
 /** 목표 상태 (서버의 Goal.STATUSES와 맞춘다) */

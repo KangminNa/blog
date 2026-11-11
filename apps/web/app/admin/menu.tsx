@@ -70,6 +70,12 @@ const ICONS: Record<string, ReactNode> = {
   book: (
     <path d="M8 4.2C6.6 3 4.6 2.6 2.5 2.8v9.6c2.1-.2 4.1.2 5.5 1.4 1.4-1.2 3.4-1.6 5.5-1.4V2.8C11.4 2.6 9.4 3 8 4.2zM8 4.2v9.6" />
   ),
+  clock: (
+    <>
+      <circle cx="8" cy="8" r="5.8" />
+      <path d="M8 4.6V8l2.4 1.6" />
+    </>
+  ),
   office: (
     <>
       <path d="M2 13.5h12M3.5 13.5V5L8 2.5 12.5 5v8.5" />
@@ -95,6 +101,10 @@ export const MENU = [
       { href: '/admin/skills', name: '스킬', icon: 'scroll' },
       { href: '/admin/office', name: '오피스', icon: 'office' },
     ],
+  },
+  {
+    label: '자동화',
+    items: [{ href: '/admin/schedules', name: '스케줄', icon: 'clock' }],
   },
   {
     label: '지식',

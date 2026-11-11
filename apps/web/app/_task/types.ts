@@ -14,6 +14,10 @@ import type {
   RunnerView,
 } from '../../../server/src/modules/task/runner/runner.view';
 import type {
+  ScheduleListView,
+  ScheduleView,
+} from '../../../server/src/modules/task/schedule/schedule.view';
+import type {
   SkillDetailView,
   SkillListView,
   SkillRevisionView,
@@ -53,7 +57,8 @@ export type Approval = ReturnType<ApprovalView['toJSON']>;
 export type ApprovalPage = ReturnType<ApprovalPageView['toJSON']>;
 export type Agent = ReturnType<AgentView['toJSON']>;
 export type AgentList = ReturnType<AgentListView['toJSON']>;
-export type AgentHeartbeat = NonNullable<Agent['heartbeat']>;
+export type Schedule = ReturnType<ScheduleView['toJSON']>;
+export type ScheduleList = ReturnType<ScheduleListView['toJSON']>;
 export type Usage = ReturnType<UsageView['toJSON']>;
 export type UsageAgent = Usage['agents'][number];
 export type UsageWindow = Usage['plan'][number];

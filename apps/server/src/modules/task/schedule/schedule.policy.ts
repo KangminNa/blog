@@ -1,11 +1,11 @@
 import { RuleViolation } from '../../platform';
 
-// 하트비트의 다음 시각. 크론 라이브러리 없이 두 가지 주기만 계산한다 (2026-11-06 결정).
+// 스케줄의 다음 시각과 하루. 크론 라이브러리 없이 두 가지 주기만 계산한다 (2026-11-06 하트비트 결정, 7단계에 스케줄로).
 //   매일: 시간대 기준 정한 시각(분), 고른 요일에만
 //   N시간마다: 시간대 기준 정각 중 시가 N으로 나누어떨어질 때 (4시간마다 → 0·4·8·12·16·20시)
 // 시간대는 IANA 이름이고, 오프셋은 JavaScript에 들어 있는 Intl로 그때그때 구한다 (서머타임 포함).
 // biome-ignore lint/complexity/noStaticOnlyClass: 상태 없는 시각 규칙 한 곳. 설정 저장과 일꾼의 깨우기가 함께 쓴다
-export class HeartbeatPolicy {
+export class SchedulePolicy {
   private static readonly MINUTE_MS = 60_000;
   private static readonly HOUR_MS = 3_600_000;
   /** 요일을 몇 개 골랐든 다음 시각은 8일 안에 있다 */
@@ -38,17 +38,17 @@ export class HeartbeatPolicy {
     timeZone: string,
     after: Date,
   ): Date {
-    const today = HeartbeatPolicy.local(after, timeZone);
-    for (let day = 0; day <= HeartbeatPolicy.DAYS_AHEAD; day++) {
+    const today = SchedulePolicy.local(after, timeZone);
+    for (let day = 0; day <= SchedulePolicy.DAYS_AHEAD; day++) {
       const date = new Date(Date.UTC(today.year, today.month - 1, today.day + day));
-      const at = HeartbeatPolicy.instant(
+      const at = SchedulePolicy.instant(
         date.getUTCFullYear(),
         date.getUTCMonth() + 1,
         date.getUTCDate(),
         atMinute,
         timeZone,
       );
-      const weekday = HeartbeatPolicy.local(at, timeZone).weekday;
+      const weekday = SchedulePolicy.local(at, timeZone).weekday;
       if (at.getTime() > after.getTime() && weekdays.includes(weekday)) return at;
     }
     throw new RuleViolation('다음 시각을 찾지 못했어요');
@@ -56,15 +56,21 @@ export class HeartbeatPolicy {
 
   /** after보다 뒤의 첫 정각 중 시간대 기준 시가 everyHours로 나누어떨어지는 때 */
   static nextHourly(everyHours: number, timeZone: string, after: Date): Date {
-    const start = Math.floor(after.getTime() / HeartbeatPolicy.HOUR_MS) * HeartbeatPolicy.HOUR_MS;
-    for (let step = 0; step <= HeartbeatPolicy.HOURS_AHEAD; step++) {
+    const start = Math.floor(after.getTime() / SchedulePolicy.HOUR_MS) * SchedulePolicy.HOUR_MS;
+    for (let step = 0; step <= SchedulePolicy.HOURS_AHEAD; step++) {
       // 시간대 오프셋이 30·45분인 곳도 있어 정각은 그 시간대의 정각으로 맞춘다
-      const guess = new Date(start + step * HeartbeatPolicy.HOUR_MS);
-      const local = HeartbeatPolicy.local(guess, timeZone);
-      const at = new Date(guess.getTime() - local.minute * HeartbeatPolicy.MINUTE_MS);
+      const guess = new Date(start + step * SchedulePolicy.HOUR_MS);
+      const local = SchedulePolicy.local(guess, timeZone);
+      const at = new Date(guess.getTime() - local.minute * SchedulePolicy.MINUTE_MS);
       if (at.getTime() > after.getTime() && local.hour % everyHours === 0) return at;
     }
     throw new RuleViolation('다음 시각을 찾지 못했어요');
+  }
+
+  /** 그 순간이 시간대에서 어느 날인가 ("2026-11-06"). 하루 한도를 세는 날 */
+  static dayOf(at: Date, timeZone: string): string {
+    const l = SchedulePolicy.local(at, timeZone);
+    return `${l.year}-${String(l.month).padStart(2, '0')}-${String(l.day).padStart(2, '0')}`;
   }
 
   /** 그 시간대에서 하루 중 분(atMinute)이 되는 순간. 서머타임으로 없는 시각이면 앞으로 민다 */
@@ -76,16 +82,16 @@ export class HeartbeatPolicy {
     timeZone: string,
   ): Date {
     const wall = Date.UTC(year, month - 1, day, Math.floor(atMinute / 60), atMinute % 60);
-    let guess = wall - HeartbeatPolicy.offset(new Date(wall), timeZone);
-    guess = wall - HeartbeatPolicy.offset(new Date(guess), timeZone);
+    let guess = wall - SchedulePolicy.offset(new Date(wall), timeZone);
+    guess = wall - SchedulePolicy.offset(new Date(guess), timeZone);
     return new Date(guess);
   }
 
   /** 그 순간의 시간대 오프셋 (밀리초, UTC보다 빠르면 양수) */
   private static offset(at: Date, timeZone: string): number {
-    const l = HeartbeatPolicy.local(at, timeZone);
+    const l = SchedulePolicy.local(at, timeZone);
     const wall = Date.UTC(l.year, l.month - 1, l.day, l.hour, l.minute);
-    return wall - Math.floor(at.getTime() / HeartbeatPolicy.MINUTE_MS) * HeartbeatPolicy.MINUTE_MS;
+    return wall - Math.floor(at.getTime() / SchedulePolicy.MINUTE_MS) * SchedulePolicy.MINUTE_MS;
   }
 
   /** 그 순간을 시간대의 벽시계로 읽는다 */
@@ -107,7 +113,7 @@ export class HeartbeatPolicy {
       day: Number(part('day')),
       hour: Number(part('hour')),
       minute: Number(part('minute')),
-      weekday: HeartbeatPolicy.WEEKDAYS[part('weekday')] ?? 0,
+      weekday: SchedulePolicy.WEEKDAYS[part('weekday')] ?? 0,
     };
   }
 }
