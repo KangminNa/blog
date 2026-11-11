@@ -55,7 +55,7 @@ export class WikiScoreQuery extends BaseQuery {
     );
   }
 
-  /** 지울 만한 wiki (하루 한 번 알리는 일꾼이 읽는다). 주인이나 서버 자신만 */
+  /** 지울 만한 wiki (알리는 일꾼이 6시간마다 읽는다). 주인이나 서버 자신만 */
   async staleIn(actor: Actor, space: string): Promise<StaleCandidateRow[]> {
     actor.assertOwnerOrSystem();
     const wikis = await this.wikis(space);

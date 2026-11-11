@@ -10,7 +10,7 @@ export interface LoadedStaleWikis {
   wiki_ids: readonly string[];
 }
 
-// 공간 하나의 지울 만한 wiki 알림 기록 (docs/wiki점수.md 7장). 하루 한 번 지금 후보와 맞춘다:
+// 공간 하나의 지울 만한 wiki 알림 기록 (docs/wiki점수.md 7장). 6시간마다 지금 후보와 맞춘다:
 // 새로 후보가 된 wiki만 알리고(wiki마다 한 번), 후보에서 빠진 wiki는 기록을 지워 다시 내려가면 또 알린다.
 // 알리기만 하고 지우지 않는다: 지우는 것은 주인이다 (원칙 2 · 7).
 export class StaleWikis extends BaseEntity {

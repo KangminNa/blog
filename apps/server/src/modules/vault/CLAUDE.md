@@ -14,7 +14,7 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
   `api/wikis`(목록 `?q=&category=&cursor=`, 하나, 만들기, 고치기, 휴지통 `trash` · `restore` · 목록 `api/wikis/trash`, 대체 `replaces`), MCP `search_wikis` · `get_wiki`(`read_public`이나 `read_all`). 읽기는 방문자도 공개 wiki까지, 쓰기는 주인만
 - `wiki-score/`: wiki 점수(docs/wiki점수.md). 식(`WikiScorePolicy`: 입력 → 점수, DB 없음)과 읽기(`WikiScoreQuery`). `api/wiki-scores`(카테고리별 순위 · 히스토리), `api/wiki-scores/:id`. 주인만.
   점수는 표에 두지 않고 읽을 때 계산한다. 점수를 받는 것은 휴지통에 없는 wiki, 쓰임을 주는 것은 세션(대표 · 재료) · 글(대표 · 참고) · 더 새로운 wiki의 링크다.
-  지울 만한 wiki 알림: `WikiStaleJob`(하루 한 번) → `WikiScoreService.notice` → `StaleWikis`(공간 하나의 알린 기록, `StaleWikiRepository`가 advisory 잠금)가 새 후보만 platform `Notices`로 알린다. 지우지 않는다
+  지울 만한 wiki 알림: `WikiStaleJob`(6시간마다) → `WikiScoreService.notice` → `StaleWikis`(공간 하나의 알린 기록, `StaleWikiRepository`가 advisory 잠금)가 새 후보만 platform `Notices`로 알린다. 지우지 않는다
 - `category/`: 그래프 카테고리(`Category`). `api/categories`(목록은 누구나, 이름이 공개다. 쓰기는 주인만). wiki가 남으면 지우지 못한다(409)
 - `edge/`: 연결선(`Edge`, 종류 `EdgeKind`). REST가 아직 없고 변경 묶음으로만 바뀐다 (그래프 단계에서 경로를 더한다)
 - `change/`: 변경 묶음(`ChangeSet`), 변경(`ChangeOp` 하위 클래스 하나 = 변경 종류 하나), 대상(`ChangeTarget`: 네 엔티티의 부모, `snapshot`·`rollBack`),
