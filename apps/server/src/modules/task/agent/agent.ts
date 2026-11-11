@@ -31,11 +31,15 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     Actor.WRITE,
     Actor.BROWSE,
     Actor.CODE,
+    Actor.MAKE,
   ];
   /** browse와 함께 줄 수 없는 권한: 비공개(세션 · wiki)와 임시 글 · 소재를 여는 것. DB CHECK agents_browse_not_private와 같다 */
   private static readonly NOT_WITH_BROWSE: readonly string[] = [Actor.READ_ALL, Actor.WRITE];
-  /** code와 함께 줄 수 없는 권한: 비공개 지식과 코드 작업을 섞지 않는다. DB CHECK agents_code_not_private와 같다 */
-  private static readonly NOT_WITH_CODE: readonly string[] = [Actor.READ_ALL, Actor.WRITE];
+  /**
+   * 셸이 있는 칸에서 도는 일(code · make)과 함께 줄 수 없는 권한: 비공개 지식과 셸을 한 에이전트에 모으지 않는다.
+   * DB CHECK agents_code_not_private · agents_make_not_private와 같다
+   */
+  private static readonly NOT_WITH_SHELL: readonly string[] = [Actor.READ_ALL, Actor.WRITE];
   /** 설정 판에 남기는 칸: 주인이 정하는 것 전부 (상태 · 사용량은 빼고) */
   private static readonly SETTINGS: readonly (keyof AgentRow)[] = [
     'name',
@@ -86,9 +90,14 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
           '브라우저 사용은 전체 읽기 · 초안 작성과 함께 줄 수 없어요 (browse · read_all · write)',
         );
       // 셸이 있는 칸 + 비공개가 한 에이전트에 모이지 않게: 저장소 파일에 심은 지시문에 속아도 비공개를 내보내지 못한다
-      if (value.includes(Actor.CODE) && Agent.NOT_WITH_CODE.some((s) => value.includes(s)))
+      if (value.includes(Actor.CODE) && Agent.NOT_WITH_SHELL.some((s) => value.includes(s)))
         throw new RuleViolation(
           '코드 작업은 전체 읽기 · 초안 작성과 함께 줄 수 없어요 (code · read_all · write)',
+        );
+      // 만들기도 칸의 셸로 한다. 비공개는 주인이 작업마다 고른 재료만 읽는다 (MakeMaterials)
+      if (value.includes(Actor.MAKE) && Agent.NOT_WITH_SHELL.some((s) => value.includes(s)))
+        throw new RuleViolation(
+          '파일 만들기는 전체 읽기 · 초안 작성과 함께 줄 수 없어요 (make · read_all · write)',
         );
       return Agent.SCOPES.filter((s) => value.includes(s));
     },

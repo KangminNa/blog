@@ -95,9 +95,12 @@ export class WikiQuery extends BaseQuery {
     );
   }
 
-  /** 하나 읽기 (AI 도구의 get_wiki) */
+  /**
+   * 하나 읽기 (AI 도구의 get_wiki). 이 작업에만 읽기를 허락받은 wiki(만들기 작업의 재료, Actor.mayRead)는
+   * 비공개여도 읽는다. 허락은 id로 읽을 때만이라 찾기 · 그래프에는 나오지 않는다
+   */
   async note(actor: Actor, req: WikiIdInput): Promise<ToolWikiView> {
-    WikiQuery.assertCanRead(actor);
+    if (!actor.mayRead(req.id)) WikiQuery.assertCanRead(actor);
     return new ToolWikiView(await this.find(actor, req.id));
   }
 
@@ -109,7 +112,7 @@ export class WikiQuery extends BaseQuery {
       JOIN vault.nodes n ON n.id = w.node_id
       JOIN vault.wiki_revisions r ON r.id = w.head_revision_id
       WHERE w.node_id = ${id} AND ${this.inSpace(actor)} AND n.deleted_at IS NULL
-        ${this.visibleTo(actor, 'w.visibility')}`;
+        ${actor.mayRead(id) ? this.sql`` : this.visibleTo(actor, 'w.visibility')}`;
     if (!row) throw new NotFound('wiki를 찾을 수 없어요');
     return row;
   }

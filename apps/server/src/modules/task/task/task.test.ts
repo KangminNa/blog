@@ -468,3 +468,49 @@ describe('코드 일 나눠 맡기기 (코드 작업 5단계)', () => {
     assert.equal(reviewing.holdsCode, true);
   });
 });
+
+describe('만들기 작업 (결과물 2차)', () => {
+  const OUT = '00000000-0000-7000-8000-0000000000b1';
+  const WIKI = '00000000-0000-7000-8000-0000000000c1';
+  const make = (payload: unknown, kind = 'make') =>
+    Task.open('space', randomUUID(), { agent_id: AGENT, kind, title: '발표 자료', payload }, NOW);
+
+  test('칸에서만 돌고 make 권한과 cairn-make 스킬', () => {
+    assert.ok(Task.SANDBOXED.includes(Task.MAKE));
+    assert.deepEqual(Task.SCOPES.make, ['make']);
+    assert.equal(job(make({})).skill, 'cairn-make');
+    assert.ok(!Task.DELEGABLE.includes(Task.MAKE), '주인만 맡긴다');
+  });
+
+  test('재료는 만들기 일에만, 모양이 틀리면 만들지 않는다', () => {
+    assert.deepEqual(make({ make: { outputs: [OUT], wikis: [WIKI] } }).makeMaterials?.wikis, [
+      WIKI,
+    ]);
+    assert.deepEqual(make({}).makeMaterials?.outputs, []);
+    assert.throws(() => make({ make: { outputs: ['x'] } }), RuleViolation);
+    assert.throws(() => make({ make: { outputs: [OUT] } }, 'general'), /만들기 일에만/);
+    assert.equal(make({}, 'general').makeMaterials, null);
+  });
+
+  test('작업 토큰에 재료 위키의 읽기 허락이 봉인된다 (다른 일에는 없다)', () => {
+    const box = SecretBox.fromEnv({ CAIRN_SECRET_KEY: SecretBox.newKey() });
+    const task = make({ make: { outputs: [OUT], wikis: [WIKI] } });
+    task.lease(RUNNER, AGENT, NOW);
+    const opened = AgentActor.open(box, task.actorFor(AGENT, ['make']).seal(box, 60));
+    assert.equal(opened?.mayRead(WIKI), true);
+    assert.equal(opened?.mayRead(OUT), false, '결과물은 러너가 받는다');
+    assert.equal(opened?.hasReadGrants(), true);
+    assert.equal(opened?.canSeePrivate(), false);
+    const plain = AgentActor.open(box, running().actorFor(AGENT, ['write']).seal(box, 60));
+    assert.equal(plain?.hasReadGrants(), false);
+    assert.equal(plain?.mayRead(WIKI), false);
+  });
+
+  test('make는 read_all · write와 함께 줄 수 없다', () => {
+    const agent = (scopes: string[]) =>
+      Agent.open('space', { name: 'm', tool: 'claude', scopes }, NOW);
+    assert.deepEqual(agent(['make', 'read_public']).scopes, ['read_public', 'make']);
+    assert.throws(() => agent(['make', 'read_all']), /파일 만들기는 전체 읽기/);
+    assert.throws(() => agent(['make', 'write']), /파일 만들기는 전체 읽기/);
+  });
+});

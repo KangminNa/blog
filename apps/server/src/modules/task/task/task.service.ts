@@ -19,6 +19,7 @@ import { AiLoginRepository } from '../ai/ai-login.repository';
 import { Approval } from '../approval/approval';
 import { ApprovalRepository } from '../approval/approval.repository';
 import { GoalRepository } from '../goal/goal.repository';
+import { OutputQuery } from '../output/output.query';
 import { RunnerRepository } from '../runner/runner.repository';
 import { RepoSkillGateway } from '../skill/repo-skill.gateway';
 import { SkillRepository } from '../skill/skill.repository';
@@ -59,6 +60,7 @@ export class TaskService extends BaseService {
     private readonly box: SecretBox,
     private readonly changes: ChangeStream,
     private readonly repoSkills: RepoSkillGateway,
+    private readonly outputs: OutputQuery,
   ) {
     super(db);
   }
@@ -66,13 +68,13 @@ export class TaskService extends BaseService {
   /** 콘솔에서 시키는 일. 같은 requestId가 다시 오면 처음 만든 작업을 돌려준다 */
   async create(actor: Actor, req: CreateTaskInput): Promise<Task> {
     actor.assertOwner();
-    return this.open(TaskService.spaceOf(actor), req);
+    return this.open(actor, TaskService.spaceOf(actor), req);
   }
 
   /** 다른 모듈이 이벤트로 요청한 일 (일꾼이 부른다). 같은 이벤트가 두 번 와도 작업은 하나 */
   async request(actor: Actor, spaceId: string, req: CreateTaskInput): Promise<Task> {
     actor.assertCan(Actor.RUN);
-    return this.open(spaceId, req);
+    return this.open(actor, spaceId, req);
   }
 
   /**
@@ -262,14 +264,18 @@ export class TaskService extends BaseService {
     return this.transaction((tx) => this.expire(tx, new Date()));
   }
 
-  private open(spaceId: string, req: CreateTaskInput): Promise<Task> {
+  private async open(actor: Actor, spaceId: string, req: CreateTaskInput): Promise<Task> {
+    const task = Task.open(spaceId, req.requestId, req.fields, new Date());
+    // 만들기의 재료 결과물은 트랜잭션 밖에서 미리 본다. 그사이 휴지통에 가면 러너가 받을 때 빼고 기록한다
+    const materials = task.makeMaterials;
+    if (materials !== null && materials.outputs.length > 0)
+      materials.assertLive(await this.outputs.liveIds(actor, spaceId, materials.outputs));
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
       const { agent_id: agentId = null, goal_id: goalId = null } = req.fields;
       if (agentId !== null) await new AgentRepository(tx).load(spaceId, agentId);
       // 목표는 진행 중이어야 한다. 잠그지 않는다: 그사이 끝나도 이어진 작업은 그대로 가는 것과 같다
       if (goalId !== null) (await new GoalRepository(tx).load(spaceId, goalId)).assertActive();
-      const task = Task.open(spaceId, req.requestId, req.fields, new Date());
       return (await tasks.insertOnce(task)) ? task : tasks.findByRequest(spaceId, req.requestId);
     });
   }

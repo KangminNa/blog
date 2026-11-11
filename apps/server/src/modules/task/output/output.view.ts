@@ -92,3 +92,27 @@ export class UploadTicketView {
     };
   }
 }
+
+/** begin_download의 답: 재료 결과물을 받을 표와 파일의 이름 · 형식 · 크기 · sha256 (러너가 받은 뒤 맞춰 본다) */
+export class DownloadTicketView {
+  constructor(
+    private readonly path: string,
+    private readonly header: string,
+    private readonly token: string,
+    private readonly expiresAt: Date,
+    private readonly row: OutputRow,
+  ) {}
+
+  toJSON() {
+    return {
+      download_path: this.path,
+      header: this.header,
+      token: this.token,
+      expires_at: this.expiresAt.toISOString(),
+      name: this.row.name,
+      mime: this.row.mime,
+      size: this.row.size_bytes,
+      sha256: this.row.blob_hash,
+    };
+  }
+}

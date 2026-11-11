@@ -1,6 +1,7 @@
 import { BaseRequest, type RequestFields } from '../../platform';
 import type { PlanUsageRow, TaskNew } from '../task.tables';
 import { PlanUsage } from '../usage/plan-usage';
+import { MakeMaterials } from './make-materials';
 
 // 작업 입력의 모양. REST(콘솔)는 camelCase, MCP(러너)는 다른 도구처럼 snake_case로 받는다.
 
@@ -8,7 +9,8 @@ const VERSION_MAX = 2_147_483_647;
 const PRIORITY_MAX = 1000;
 
 /**
- * 작업 하나를 만드는 입력. 콘솔(POST /api/tasks)은 requestId · instruction · agentId? · goalId?만 보내고,
+ * 작업 하나를 만드는 입력. 콘솔(POST /api/tasks)은 requestId · instruction · agentId? · goalId?를 보내고,
+ * 만들기(kind: make)는 재료 materials { outputIds, wikiIds }를 더한다 (payload.make가 된다).
  * 일 요청 이벤트(task.task.requested)는 종류, 제목, 대상까지 적는다.
  * 만들 때만 받는 칸이라 하나씩 읽는다 (제목은 지시에서 정하고, 빠지면 기본값이 들어간다).
  */
@@ -32,7 +34,7 @@ export class CreateTaskInput extends BaseRequest {
         kind: f.optionalText('kind', 100) ?? CreateTaskInput.GENERAL,
         title: CreateTaskInput.titleOf(f, instruction),
         instruction,
-        payload: f.optionalRecord('payload'),
+        payload: CreateTaskInput.payloadOf(f, raw),
         target_kind: f.optionalText('targetKind', 40),
         target_id: CreateTaskInput.optionalUuid(f, raw, 'targetId'),
         base_version: f.optionalInteger('baseVersion', 0, VERSION_MAX),
@@ -53,6 +55,17 @@ export class CreateTaskInput extends BaseRequest {
       firstLine?.slice(0, CreateTaskInput.TITLE_MAX) ??
       f.text('title', CreateTaskInput.TITLE_MAX)
     );
+  }
+
+  /** payload에 재료(materials)를 make로 더한다. 재료를 적지 않았으면 payload 그대로 */
+  private static payloadOf(f: RequestFields, raw: unknown): Record<string, unknown> {
+    const payload = f.optionalRecord('payload');
+    const given = (raw as Record<string, unknown> | null | undefined)?.materials;
+    if (given === undefined || given === null) return { ...payload };
+    const m = f.nested('materials');
+    const outputs = m.optionalTextList('outputIds', MakeMaterials.MAX, 36) ?? [];
+    const wikis = m.optionalTextList('wikiIds', MakeMaterials.MAX, 36) ?? [];
+    return { ...payload, make: { outputs, wikis } };
   }
 
   private static optionalUuid(f: RequestFields, raw: unknown, name: string): string | null {

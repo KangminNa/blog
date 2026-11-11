@@ -450,6 +450,7 @@ describe('러너 추가', () => {
       'ai_login_refresh',
       'ai_signin',
       'begin_upload',
+      'begin_download',
     ]);
 
     const again = await add(owner, { requestId, name: '맥 러너' });

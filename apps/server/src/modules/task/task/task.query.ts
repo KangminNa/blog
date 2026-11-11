@@ -83,18 +83,19 @@ export class TaskQuery extends BaseQuery {
    * 표는 허락일 뿐이고, 그사이 취소돼도 받은 파일이 취소된 작업의 결과물로 남을 뿐이다
    */
   async heldRun(actor: Actor, taskId: string): Promise<TaskRunRow> {
-    actor.assertCan(Actor.RUN);
-    if (!actor.id || !actor.spaceId) throw new Forbidden(Actor.RUN);
-    const row = await this.row(tasks, { space_id: actor.spaceId, id: taskId });
-    if (!row) throw new NotFound('작업을 찾을 수 없어요');
-    Task.restore(row).assertHeldBy(actor.id, new Date());
-    const run = await this.row(
-      taskRuns,
-      { task_id: taskId, runner_id: actor.id },
-      { order: ['seq desc'], limit: 1 },
-    );
-    if (!run) throw new RuleViolation('이 러너의 실행 기록이 없는 작업이에요');
-    return run;
+    await this.heldTask(actor, taskId);
+    return this.runOf(actor, taskId);
+  }
+
+  /**
+   * 재료 결과물을 받을 실행 (begin_download): 임대를 쥔 이번 실행이고, 그 결과물이 이 만들기 작업의 재료여야 한다.
+   * 재료가 아니면 Forbidden. heldRun처럼 잠그지 않고 읽는다
+   */
+  async heldMaterial(actor: Actor, taskId: string, outputId: string): Promise<TaskRunRow> {
+    const materials = (await this.heldTask(actor, taskId)).makeMaterials;
+    if (materials === null) throw new RuleViolation('만들기 작업이 아니에요');
+    materials.assertOutput(outputId);
+    return this.runOf(actor, taskId);
   }
 
   /**
@@ -108,6 +109,28 @@ export class TaskQuery extends BaseQuery {
     if (!row) throw new NotFound('작업을 찾을 수 없어요');
     Task.restore(row).assertHeldBy(actor.id, new Date());
     return new LeasedWork(row.id, row.kind, Task.shownPayload(row.kind, row.payload));
+  }
+
+  /** 이 러너가 임대를 쥔 작업. 진행 중이 아니거나 · 다른 러너의 것이거나 · 임대가 끝났으면 RuleViolation */
+  private async heldTask(actor: Actor, taskId: string): Promise<Task> {
+    actor.assertCan(Actor.RUN);
+    if (!actor.id || !actor.spaceId) throw new Forbidden(Actor.RUN);
+    const row = await this.row(tasks, { space_id: actor.spaceId, id: taskId });
+    if (!row) throw new NotFound('작업을 찾을 수 없어요');
+    const task = Task.restore(row);
+    task.assertHeldBy(actor.id, new Date());
+    return task;
+  }
+
+  /** 이 러너의 마지막 실행 (heldTask 뒤에 부른다) */
+  private async runOf(actor: Actor, taskId: string): Promise<TaskRunRow> {
+    const run = await this.row(
+      taskRuns,
+      { task_id: taskId, runner_id: actor.id ?? '' },
+      { order: ['seq desc'], limit: 1 },
+    );
+    if (!run) throw new RuleViolation('이 러너의 실행 기록이 없는 작업이에요');
+    return run;
   }
 
   /** 회사 목표부터 이 목표까지. 목표의 부모는 바뀌지 않는다 */

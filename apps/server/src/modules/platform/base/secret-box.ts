@@ -95,6 +95,8 @@ export class SecretBox {
   private openPacked(token: string | null, now: Date): string | null {
     if (!token) return null;
     const raw = Buffer.from(token, 'base64url');
+    // Buffer는 base64의 틀린 글자 · 남는 끝 글자를 조용히 버린다: 고친 토큰이 같은 바이트로 풀리지 않게 그대로 다시 맞춰 본다
+    if (raw.toString('base64url') !== token) return null;
     if (raw.length < 12 + 16 + 2) return null;
     let plain: string;
     try {

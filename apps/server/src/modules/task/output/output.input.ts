@@ -28,6 +28,23 @@ export class BeginUploadInput extends BaseRequest {
   }
 }
 
+/** MCP begin_download: 러너가 받을 재료 결과물 하나 (만들기 작업의 재료여야 한다) */
+export class BeginDownloadInput extends BaseRequest {
+  private constructor(
+    readonly taskId: string,
+    readonly outputId: string,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): BeginDownloadInput {
+    return BaseRequest.read(
+      raw,
+      (f) => new BeginDownloadInput(f.uuid('task_id'), f.uuid('output_id')),
+    );
+  }
+}
+
 /** GET api/outputs: 종류 · 작업으로 거르기, 휴지통 보기, 앞 응답의 next */
 export class ListOutputsInput extends BaseRequest {
   private constructor(

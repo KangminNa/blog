@@ -58,7 +58,7 @@ export class GetWikiTool extends BaseTool {
     'wiki 하나의 지금 판을 읽는다. 제목, 카테고리, version, 판 번호, 칸(## 제목 단위), 본문 md를 준다.',
     'version은 고칠 때 submit_changes의 base_version으로 쓴다.',
     'pinned_sections는 사람이 고친 칸이다. 이 칸을 바꾸면 바로 합쳐지지 않고 검토로 간다.',
-    'wiki_id는 search_wikis의 결과에서 얻는다. 없거나 이 연결이 볼 수 없는 wiki면 not_found가 온다.',
+    'wiki_id는 search_wikis의 결과나 지시문의 재료에서 얻는다. 없거나 이 연결이 볼 수 없는 wiki면 not_found가 온다.',
   ].join(' ');
   readonly inputSchema = {
     properties: {
@@ -69,6 +69,11 @@ export class GetWikiTool extends BaseTool {
 
   constructor(private readonly wikis: WikiQuery) {
     super();
+  }
+
+  /** 읽기 권한이 없어도 이 작업에 읽기를 허락받은 wiki가 있으면 연다 (만들기 작업의 재료). 그 wiki만 읽힌다 */
+  override allows(actor: Actor): boolean {
+    return super.allows(actor) || actor.hasReadGrants();
   }
 
   handle(actor: Actor, raw: unknown): Promise<ToolWikiView> {

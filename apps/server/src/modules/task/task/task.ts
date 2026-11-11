@@ -15,6 +15,7 @@ import type { Goal } from '../goal/goal';
 import type { SkillPackage } from '../skill/skill-package';
 import type { TaskEventRow, TaskNew, TaskRow, TaskRunNew } from '../task.tables';
 import { CodeScope } from './code-scope';
+import { MakeMaterials } from './make-materials';
 import {
   DelegatedView,
   type JobSkillView,
@@ -64,11 +65,13 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   static readonly BROWSE = 'browse';
   /** 코드 작업: 코드 러너 칸에서 셸로 저장소를 고친다 (docs/코드작업.md) */
   static readonly CODE = 'code';
+  /** 만들기 작업: 코드 러너 칸에서 셸로 PPT · 문서 · 영상을 만들어 결과물로 남긴다 (결과물 2차) */
+  static readonly MAKE = 'make';
   /**
    * 셸이 있는 칸(sandbox 기기)에서만 도는 일. 칸은 이 일만 받고, 다른 러너는 이 일을 받지 않는다 (lockNext).
    * 칸 수가 곧 이 일의 병렬 수라서 칸에 다른 일을 넣지 않는다
    */
-  static readonly SANDBOXED: readonly string[] = [Task.CODE];
+  static readonly SANDBOXED: readonly string[] = [Task.CODE, Task.MAKE];
   /** 웹 로그인의 단계 (payload.step) */
   static readonly SIGNIN_STARTING = 'starting';
   static readonly SIGNIN_OPEN_URL = 'open_url';
@@ -113,6 +116,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     tidy_session: 'cairn-tidy',
     browse: 'cairn-browse',
     code: 'cairn-code',
+    make: 'cairn-make',
   };
   /** 이 종류의 일을 맡으려면 에이전트에게 있어야 하는 권한. 없는 종류는 누구나 맡는다 */
   static readonly SCOPES: Readonly<Record<string, readonly string[]>> = {
@@ -120,19 +124,26 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     tidy_session: [Actor.TIDY, Actor.READ_ALL],
     browse: [Actor.BROWSE],
     code: [Actor.CODE],
+    make: [Actor.MAKE],
   };
 
   private readonly logged: Omit<TaskEventRow, 'id'>[] = [];
   /** 이번 임대의 실행 기록 */
   private run: TaskRunNew | null = null;
 
-  /** 새 작업. 담당·입력·시도·임대·위임 칸은 표에 기본값이 있어도 규칙이 저장 전에 읽어서 적어 둔다 */
+  /**
+   * 새 작업. 담당·입력·시도·임대·위임 칸은 표에 기본값이 있어도 규칙이 저장 전에 읽어서 적어 둔다.
+   * 재료(payload.make)는 만들기 일에만 적고, 모양이 틀리면 RuleViolation
+   */
   static open(
     spaceId: string,
     requestId: string,
     fields: Omit<TaskNew, 'id' | 'space_id'>,
     now: Date,
   ): Task {
+    if (fields.kind === Task.MAKE) MakeMaterials.of(fields.payload);
+    else if (MakeMaterials.given(fields.payload))
+      throw new RuleViolation('재료(make)는 만들기 일에만 적어요');
     const task = new Task(
       {
         agent_id: null,
@@ -259,6 +270,11 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   /** 코드 작업이 고치는 자리 (저장소 + 경로). code 작업이 아니거나 저장소 정보가 없으면 null */
   get codeScope(): CodeScope | null {
     return this.row.kind === Task.CODE ? CodeScope.of(this.row.payload) : null;
+  }
+
+  /** 만들기 작업의 재료 (주인이 고른 결과물 · 위키). 만들기 작업이 아니면 null */
+  get makeMaterials(): MakeMaterials | null {
+    return this.row.kind === Task.MAKE ? MakeMaterials.of(this.row.payload) : null;
   }
 
   /** 아직 끝나지 않았는가 (대기 · 실행 · 기다림) */
@@ -629,9 +645,13 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     this.logged.push({ task_id: this.id, at: now, kind, body, tokens });
   }
 
-  /** 이 작업을 하는 에이전트의 요청자. 그 에이전트의 권한만 담아 작업 토큰이 된다 */
+  /**
+   * 이 작업을 하는 에이전트의 요청자. 그 에이전트의 권한만 담아 작업 토큰이 된다.
+   * 만들기 작업이면 주인이 고른 재료 위키에 읽기 허락을 더한다 (get_wiki만 본다)
+   */
   actorFor(agentId: string, scopes: readonly string[]): AgentActor {
-    return new AgentActor(this.row.space_id, agentId, this.id, new Set(scopes));
+    const reads = this.makeMaterials?.wikis ?? [];
+    return new AgentActor(this.row.space_id, agentId, this.id, new Set(scopes), new Set(reads));
   }
 
   /** 바꾼 작업 하나. 목록의 한 줄과 같은 모양이고, 화면은 이 version으로 다음 변경을 보낸다 */

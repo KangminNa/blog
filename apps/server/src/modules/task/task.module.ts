@@ -22,7 +22,7 @@ import { OutputController } from './output/output.api';
 import { OutputPolicy } from './output/output.policy';
 import { OutputQuery } from './output/output.query';
 import { OutputService } from './output/output.service';
-import { BeginUploadTool } from './output/output.tool';
+import { BeginDownloadTool, BeginUploadTool } from './output/output.tool';
 import { OutputPurgeJob } from './output/output-purge.job';
 import { RunnerController } from './runner/runner.api';
 import { RunnerQuery } from './runner/runner.query';
@@ -91,6 +91,7 @@ import { UsageQuery } from './usage/usage.query';
     OutputQuery,
     OutputService,
     BeginUploadTool,
+    BeginDownloadTool,
     OutputPurgeJob,
   ],
   controllers: [

@@ -15,6 +15,8 @@ export abstract class Actor {
   static readonly BROWSE = 'browse';
   /** 에이전트: 코드 작업(code)을 맡는다. read_all · write와 함께 줄 수 없다 (docs/코드작업.md) */
   static readonly CODE = 'code';
+  /** 에이전트: 만들기 작업(make)을 맡는다. 칸 안에서 셸로 파일을 만든다. read_all · write와 함께 줄 수 없다 */
+  static readonly MAKE = 'make';
   /**
    * 기기: 코드 러너 칸. 셸이 있는 일(Task.SANDBOXED)을 빌린다. 칸으로 연결할 때만 생기고 주인이 줄 수 없다.
    * 러너가 알리는 값이 아니라 이 권한으로 판단한다: 내 컴퓨터 러너가 칸이라고 말해도 셸 있는 일을 받지 못하게
@@ -76,6 +78,19 @@ export abstract class Actor {
     return this.can(Actor.READ_ALL);
   }
 
+  /**
+   * 이 요청자에게만 따로 읽기를 허락한 id인가 (작업 토큰에 봉인한 허락). 권한(read_all)과 다르다:
+   * 찾기 · 목록 · 그래프에는 나오지 않고, id로 하나를 읽을 때만 본다
+   */
+  mayRead(_id: string): boolean {
+    return false;
+  }
+
+  /** 따로 읽기를 허락받은 것이 하나라도 있는가 (id로 읽는 도구를 열지 정할 때) */
+  hasReadGrants(): boolean {
+    return false;
+  }
+
   toJSON(): object {
     return { kind: this.kind, spaceId: this.spaceId, id: this.id };
   }
@@ -130,6 +145,8 @@ export class AgentActor extends Actor {
     agentId: string,
     readonly taskId: string,
     private readonly scopes: ReadonlySet<string>,
+    /** 이 작업에만 따로 읽기를 허락한 id (주인이 고른 재료). 권한과 함께 토큰에 봉인한다 */
+    private readonly reads: ReadonlySet<string> = new Set(),
   ) {
     super(spaceId, agentId);
   }
@@ -148,8 +165,9 @@ export class AgentActor extends Actor {
       agentId: string;
       taskId: string;
       scopes: string[];
+      reads?: string[];
     };
-    return new AgentActor(v.spaceId, v.agentId, v.taskId, new Set(v.scopes));
+    return new AgentActor(v.spaceId, v.agentId, v.taskId, new Set(v.scopes), new Set(v.reads));
   }
 
   get agentId(): string {
@@ -163,6 +181,7 @@ export class AgentActor extends Actor {
       agentId: this.id,
       taskId: this.taskId,
       scopes: [...this.scopes],
+      reads: [...this.reads],
     });
     return `${AgentActor.PREFIX}${box.pack(AgentActor.PURPOSE, value, seconds)}`;
   }
@@ -171,8 +190,21 @@ export class AgentActor extends Actor {
     return scope === Actor.AGENT || this.scopes.has(scope);
   }
 
+  override mayRead(id: string): boolean {
+    return this.reads.has(id);
+  }
+
+  override hasReadGrants(): boolean {
+    return this.reads.size > 0;
+  }
+
   override toJSON(): object {
-    return { ...super.toJSON(), taskId: this.taskId, scopes: [...this.scopes] };
+    return {
+      ...super.toJSON(),
+      taskId: this.taskId,
+      scopes: [...this.scopes],
+      reads: [...this.reads],
+    };
   }
 }
 

@@ -623,6 +623,10 @@ describe('SecretBox: 값 만들기와 짧은 값 싸기 (M1)', () => {
     assert.equal(other.unpack('install', token, now), null, '다른 키');
     assert.equal(box.unpack('install', null, now), null);
     assert.equal(box.unpack('install', 'not-a-token', now), null);
+    // 끝에 글자를 붙이거나 base64가 아닌 글자를 끼워도 같은 바이트로 풀리지 않는다
+    for (const tail of ['x', 'xx', 'xxx', '=', '.'])
+      assert.equal(box.unpack('install', `${token}${tail}`, now), null, `끝에 ${tail}`);
+    assert.equal(box.unpack('install', `${token.slice(0, 8)}!${token.slice(8)}`, now), null);
   });
 
   test('다른 용도로 싼 값은 풀리지 않는다 (용도 이름이 값의 앞부분과 겹쳐도)', () => {
