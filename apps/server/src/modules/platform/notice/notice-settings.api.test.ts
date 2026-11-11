@@ -10,6 +10,7 @@ type Json = Record<string, unknown>;
 type Notice = {
   id: string;
   kind: string;
+  severity: string;
   title: string;
   body: string | null;
   read: boolean;
@@ -136,17 +137,21 @@ describe('알림 설정 (/api/notice-settings)', () => {
 
 describe('모듈이 등록한 알림', () => {
   test('새 기기를 연결하면 즉시 알림. 그 종류를 끄면 남지 않는다', async () => {
-    const before = (await notices('account.device.connected')).length;
-    await newDevice('알림 기기 1');
-    const [made] = await notices('account.device.connected');
-    assert.equal((await notices('account.device.connected')).length, before + 1);
+    // 목록은 최근 30개라 개수로 세지 않는다 (앞 시험이 쌓은 알림이 밀려난다). 이번 기기 이름으로 찾는다
+    const named = async (name: string) =>
+      (await notices('account.device.connected')).filter((n) => String(n.body).includes(name));
+    const first = `알림 기기 ${randomUUID().slice(0, 8)}`;
+    await newDevice(first);
+    const [made, ...more] = await named(first);
+    assert.equal(more.length, 0);
     assert.equal(made?.title, '새 기기를 연결했어요');
-    assert.match(String(made?.body), /알림 기기 1/);
+    assert.equal(made?.severity, 'immediate');
 
     const now = await settings();
     ok(await put({ ...BASE, routes: { 'account.device.connected': 'off' }, version: now.version }));
-    await newDevice('알림 기기 2');
-    assert.equal((await notices('account.device.connected')).length, before + 1, '끈 종류');
+    const second = `알림 기기 ${randomUUID().slice(0, 8)}`;
+    await newDevice(second);
+    assert.deepEqual(await named(second), [], '끈 종류');
     const after = await settings();
     ok(await put({ ...BASE, version: after.version }));
   });
