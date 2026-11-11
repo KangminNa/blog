@@ -32,9 +32,11 @@ import { VaultTools } from './vault-tools';
 import { WikiController } from './wiki/wiki.api';
 import { WikiQuery } from './wiki/wiki.query';
 import { GetWikiTool, SearchWikisTool } from './wiki/wiki.tool';
+import { WikiScoreController } from './wiki-score/wiki-score.api';
+import { WikiScoreQuery } from './wiki-score/wiki-score.query';
 
 // AI 작업 세션과 그래프: 세션 저장·찾기·읽기, wiki · 카테고리, 변경 묶음(검토·되돌리기), 세션 정리 요청,
-// 그래프 보기, 글 자리 사본, 보관 형식 내보내기.
+// 그래프 보기, 글 자리 사본, 보관 형식 내보내기, wiki 점수.
 @Module({
   providers: [
     SessionService,
@@ -50,6 +52,7 @@ import { GetWikiTool, SearchWikisTool } from './wiki/wiki.tool';
     WikiQuery,
     SearchWikisTool,
     GetWikiTool,
+    WikiScoreQuery,
     CategoryQuery,
     TidyQuery,
     TidyService,
@@ -65,6 +68,7 @@ import { GetWikiTool, SearchWikisTool } from './wiki/wiki.tool';
   controllers: [
     SessionController,
     WikiController,
+    WikiScoreController,
     CategoryController,
     ChangeController,
     TidyController,

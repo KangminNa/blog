@@ -12,6 +12,10 @@ import type {
   WikiDetailView,
   WikiPageView,
 } from '../../../server/src/modules/vault/wiki/wiki.view';
+import type {
+  WikiScoreBoardView,
+  WikiScoreDetailView,
+} from '../../../server/src/modules/vault/wiki-score/wiki-score.view';
 
 // 서버가 돌려주는 모양. import 없는 view 파일의 toJSON()이 원본이다 (API설계 2장).
 // 서버 코드가 웹 번들에 들어가지 않게 반드시 import type으로만 가져온다.
@@ -21,6 +25,9 @@ export type GraphNode = Graph['nodes'][number];
 export type WikiPage = ReturnType<WikiPageView['toJSON']>;
 export type WikiSummary = WikiPage['wikis'][number];
 export type WikiDetail = ReturnType<WikiDetailView['toJSON']>;
+export type WikiScoreBoard = ReturnType<WikiScoreBoardView['toJSON']>;
+export type WikiScoreItem = WikiScoreBoard['history'][number];
+export type WikiScoreDetail = ReturnType<WikiScoreDetailView['toJSON']>;
 export type CategoryList = ReturnType<CategoryListView['toJSON']>;
 export type WaitingChangePage = ReturnType<WaitingChangePageView['toJSON']>;
 export type WaitingChange = WaitingChangePage['changes'][number];

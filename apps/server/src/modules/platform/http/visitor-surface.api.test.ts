@@ -66,6 +66,8 @@ const VISITOR_GET: Readonly<Record<string, number>> = {
   'GET /api/tasks/:id': 403,
   'GET /api/tidy/settings': 403,
   'GET /api/usage': 403,
+  'GET /api/wiki-scores': 403,
+  'GET /api/wiki-scores/:id': 403,
 };
 
 /** 경로의 :자리를 채울 값. 모두 없는 것이다 (skill 파일만 실제 이름: 있어도 방문자에게는 닫혀 있어야 한다) */

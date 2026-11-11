@@ -9,23 +9,52 @@ import { renderMarkdown } from '../../_lib/markdown';
 import { useLiveValue } from '../../_lib/use-live';
 import { readPages } from '../../_task/live';
 import { useGraph } from '../../_vault/live';
-import type { CategoryList, WikiDetail, WikiPage } from '../../_vault/types';
+import type {
+  CategoryList,
+  WikiDetail,
+  WikiPage,
+  WikiScoreBoard,
+  WikiScoreDetail,
+  WikiScoreItem,
+} from '../../_vault/types';
 import { useNotify } from '../AdminShell';
 
 const WIKI_TOPICS = ['vault.wiki.saved', 'vault.change.*', 'vault.category.changed'];
+/** 점수는 세션 · 글의 쓰임으로도 바뀐다 */
+const SCORE_TOPICS = [...WIKI_TOPICS, 'vault.session.*', 'blog.post.*'];
+const SCORE_VIEW = 'score';
+/** 목록 보기: 최근(기본) · 점수순 */
+const VIEWS: readonly (readonly [string | null, string])[] = [
+  [null, '최근'],
+  [SCORE_VIEW, '점수순'],
+];
+/** 물려받는 비율 β의 뜻 */
+const RATIO_LABELS: Record<number, string> = { 1: '대체', 0.5: '근거', 0: '히스토리' };
 const NO_CATEGORY = '';
 const VISIBILITY_LABELS: Record<string, string> = { private: '비공개', public: '공개' };
 const ORIGIN_LABELS: Record<string, string> = { ai: 'AI', human: '사람' };
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+const day = (iso: string) => new Date(iso).toLocaleDateString('ko-KR', { dateStyle: 'short' });
+const fixed = (n: number) => n.toFixed(2);
+
+/** 목록 보기를 지키는 위키 주소 */
+function hrefOf(view: string | null, wiki: string | null): string {
+  const params = new URLSearchParams();
+  if (view) params.set('view', view);
+  if (wiki) params.set('wiki', wiki);
+  const query = params.toString();
+  return query ? `/admin/wiki?${query}` : '/admin/wiki';
+}
 
 function mergePages(before: WikiPage, more: WikiPage): WikiPage {
   return { ...more, wikis: [...before.wikis, ...more.wikis] };
 }
 
-// 위키: 왼쪽 목록과 찾기 + 오른쪽 읽기·고치기. 좁은 화면에서는 고르기 전에 목록, 고른 뒤에 내용만 보인다.
-export function WikiPanel({ openId }: { openId: string | null }) {
+// 위키: 왼쪽 목록(최근 · 점수순)과 찾기 + 오른쪽 읽기·고치기. 좁은 화면에서는 고르기 전에 목록, 고른 뒤에 내용만 보인다.
+export function WikiPanel({ openId, view }: { openId: string | null; view: string | null }) {
+  const listView = view === SCORE_VIEW ? SCORE_VIEW : null;
   const [typed, setTyped] = useState('');
   const [query, setQuery] = useState('');
   const pages = useRef(1);
@@ -52,64 +81,82 @@ export function WikiPanel({ openId }: { openId: string | null }) {
   return (
     <div className={openId ? 'split picked' : 'split'}>
       <div className="split-list">
-        <form className="wiki-search" onSubmit={search}>
-          <label className="sr" htmlFor="wiki-find">
-            위키 찾기
-          </label>
-          <input
-            id="wiki-find"
-            className="input"
-            type="search"
-            placeholder="찾기"
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-          />
-          <button type="submit" className="ghost">
-            찾기
-          </button>
-        </form>
-        {list.error && <p className="error">{list.error}</p>}
-        {list.data === null ? (
-          !list.error && <p className="label-mono">불러오는 중…</p>
-        ) : list.data.wikis.length === 0 ? (
-          <p className="rows-empty">{query ? '찾은 위키 없음' : '위키 없음'}</p>
+        <nav className="chips" aria-label="위키 목록 보기">
+          {VIEWS.map(([key, label]) => (
+            <Link
+              key={label}
+              className="chip"
+              href={hrefOf(key, null)}
+              aria-current={listView === key ? 'true' : undefined}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
+        {listView === SCORE_VIEW ? (
+          <ScoreList openId={openId} />
         ) : (
-          <ul className="list">
-            {list.data.wikis.map((w) => (
-              <li key={w.id}>
-                <Link
-                  className="item"
-                  href={`/admin/wiki?wiki=${w.id}`}
-                  aria-current={w.id === openId ? 'true' : undefined}
-                >
-                  <div className="item-main">
-                    <b>{w.title}</b>
-                    <small>
-                      {nameOf(w.categoryId)} · {ORIGIN_LABELS[w.origin] ?? w.origin}
-                    </small>
-                  </div>
-                  {w.visibility === 'public' && <span className="pill">공개</span>}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-        {list.data?.next && (
-          <button
-            type="button"
-            className="ghost wide"
-            onClick={() => {
-              pages.current += 1;
-              void list.reload();
-            }}
-          >
-            더 보기
-          </button>
+          <>
+            <form className="wiki-search" onSubmit={search}>
+              <label className="sr" htmlFor="wiki-find">
+                위키 찾기
+              </label>
+              <input
+                id="wiki-find"
+                className="input"
+                type="search"
+                placeholder="찾기"
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+              />
+              <button type="submit" className="ghost">
+                찾기
+              </button>
+            </form>
+            {list.error && <p className="error">{list.error}</p>}
+            {list.data === null ? (
+              !list.error && <p className="label-mono">불러오는 중…</p>
+            ) : list.data.wikis.length === 0 ? (
+              <p className="rows-empty">{query ? '찾은 위키 없음' : '위키 없음'}</p>
+            ) : (
+              <ul className="list">
+                {list.data.wikis.map((w) => (
+                  <li key={w.id}>
+                    <Link
+                      className="item"
+                      href={hrefOf(null, w.id)}
+                      aria-current={w.id === openId ? 'true' : undefined}
+                    >
+                      <div className="item-main">
+                        <b>{w.title}</b>
+                        <small>
+                          {nameOf(w.categoryId)} · {ORIGIN_LABELS[w.origin] ?? w.origin}
+                        </small>
+                      </div>
+                      {w.visibility === 'public' && <span className="pill">공개</span>}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {list.data?.next && (
+              <button
+                type="button"
+                className="ghost wide"
+                onClick={() => {
+                  pages.current += 1;
+                  void list.reload();
+                }}
+              >
+                더 보기
+              </button>
+            )}
+          </>
         )}
       </div>
       <div className="split-detail">
         {openId && (
-          <Link className="ghost split-back" href="/admin/wiki">
+          <Link className="ghost split-back" href={hrefOf(listView, null)}>
             위키 목록
           </Link>
         )}
@@ -204,6 +251,7 @@ function WikiView({
         <dt>주소</dt>
         <dd className="mono">{w.slug}</dd>
       </dl>
+      <ScoreBox id={id} />
       <div>
         <div className="kind">출처 세션</div>
         {sources.length === 0 ? (
@@ -219,6 +267,97 @@ function WikiView({
         )}
       </div>
     </article>
+  );
+}
+
+/** 점수순 목록: 카테고리별 순위, 미분류는 끝. 가장 높은 위키가 100 */
+function ScoreList({ openId }: { openId: string | null }) {
+  const board = useLiveValue(
+    'wiki-scores',
+    () => api<WikiScoreBoard>('GET', '/api/wiki-scores'),
+    SCORE_TOPICS,
+  );
+  if (board.error) return <p className="error">{board.error}</p>;
+  if (board.data === null) return <p className="label-mono">불러오는 중…</p>;
+  if (board.data.groups.length === 0) return <p className="rows-empty">위키 없음</p>;
+  return (
+    <>
+      <p className="note">
+        쓰일수록 오르고, 쓰이지 않으면 {board.data.halfLifeDays}일마다 반으로 줄어요
+      </p>
+      {board.data.groups.map((g) => (
+        <section key={g.categoryId ?? 'none'} className="stack" aria-label={g.name ?? '미분류'}>
+          <div className="kind">{g.name ?? '미분류'}</div>
+          <ul className="list">
+            {g.wikis.map((w) => (
+              <ScoreRow key={w.id} wiki={w} openId={openId} />
+            ))}
+          </ul>
+        </section>
+      ))}
+    </>
+  );
+}
+
+function ScoreRow({ wiki, openId }: { wiki: WikiScoreItem; openId: string | null }) {
+  return (
+    <li>
+      <Link
+        className="item"
+        href={hrefOf(SCORE_VIEW, wiki.id)}
+        aria-current={wiki.id === openId ? 'true' : undefined}
+      >
+        <div className="item-main">
+          <b>{wiki.title}</b>
+          <small>
+            쌓인 {fixed(wiki.accumulated)} · 물려받은 {fixed(wiki.inherited)} · 마지막 쓰임{' '}
+            {day(wiki.lastUsedAt)}
+          </small>
+        </div>
+        <span className="pill" title={`최종 점수 ${fixed(wiki.total)}`}>
+          {wiki.score}
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+/** 위키 하나의 점수: 최종 = 쌓인 + 물려받은, 물려받은 곳 */
+function ScoreBox({ id }: { id: string }) {
+  const score = useLiveValue(
+    `wiki-score:${id}`,
+    () => api<WikiScoreDetail>('GET', `/api/wiki-scores/${id}`),
+    SCORE_TOPICS,
+  );
+  const s = score.data;
+  if (!s) return null;
+  return (
+    <div>
+      <div className="kind">점수</div>
+      <dl className="kv">
+        <dt>환산</dt>
+        <dd>{s.wiki.score} / 100</dd>
+        <dt>최종</dt>
+        <dd className="mono">
+          {fixed(s.wiki.total)} = 쌓인 {fixed(s.wiki.accumulated)} + 물려받은{' '}
+          {fixed(s.wiki.inherited)}
+        </dd>
+        <dt>쓰임</dt>
+        <dd>
+          {s.wiki.uses}번 · 마지막 {day(s.wiki.lastUsedAt)}
+        </dd>
+      </dl>
+      {s.bases.length > 0 && <div className="kind">근거로 삼은 위키</div>}
+      {s.bases.length > 0 && (
+        <div className="linked">
+          {s.bases.map((b) => (
+            <Link key={b.wikiId} href={hrefOf(null, b.wikiId)}>
+              {b.title} · {RATIO_LABELS[b.ratio] ?? `β ${b.ratio}`} +{fixed(b.amount)}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

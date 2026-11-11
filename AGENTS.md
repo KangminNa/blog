@@ -23,7 +23,7 @@ scripts/       모듈 경계 검사, 구조 검사, 묶음 생성기(templates/)
 skills/        AI 도구와 러너의 스킬 (cairn-save · cairn-recall, 러너 전용 cairn-write · cairn-tidy · cairn-browse · cairn-code). 도구 입력 모양을 바꾸면 스킬도 함께 고친다
                러너 스킬은 저장소 판이고, 콘솔(스킬 메뉴)에서 그 위에 판을 쌓으면 서버가 일과 함께 그 판을 보낸다
                앱(ChatGPT·Claude)용 zip은 서버가 여기서 만든다(api/skills). 스크립트 테스트는 packages/cli
-docs/          기획 문서 (기획서 · 테이블 설계 · 객체 설계 · API 설계 · 보관 형식 · 브라우저 · 코드 작업)
+docs/          기획 문서 (기획서 · 테이블 설계 · 객체 설계 · API 설계 · 보관 형식 · 브라우저 · 코드 작업 · wiki 점수)
 ```
 
 ## 명령어
