@@ -194,6 +194,7 @@ function Facts({ task }: { task: TaskDetail }) {
           </dd>
         </>
       )}
+      <Materials payload={task.payload} />
       <dt>시도</dt>
       <dd>{task.attempts}회</dd>
       {task.finishedAt && (
@@ -217,6 +218,34 @@ function Result({ result }: { result: unknown }) {
       {typeof error === 'string' && <p className="error">{error}</p>}
       {Object.keys(rest).length > 0 && <pre className="raw">{JSON.stringify(rest, null, 2)}</pre>}
     </section>
+  );
+}
+
+/** 만들기 작업의 재료 (payload.make): 주인이 고른 결과물 파일과 위키. 이름은 각 메뉴에서 */
+function Materials({ payload }: { payload: unknown }) {
+  const make = (payload as { make?: { outputs?: unknown; wikis?: unknown } } | null)?.make;
+  if (!make) return null;
+  const ids = (raw: unknown) =>
+    Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : [];
+  const outputs = ids(make.outputs);
+  const wikis = ids(make.wikis);
+  return (
+    <>
+      <dt>재료</dt>
+      <dd>
+        {outputs.length === 0 && wikis.length === 0 ? '없음' : null}
+        {outputs.map((id, i) => (
+          <span key={id}>
+            <a href={`/api/outputs/${id}/file`}>결과물 {i + 1}</a>{' '}
+          </span>
+        ))}
+        {wikis.map((id, i) => (
+          <span key={id}>
+            <Link href={`/admin/wiki?wiki=${id}`}>위키 {i + 1}</Link>{' '}
+          </span>
+        ))}
+      </dd>
+    </>
   );
 }
 

@@ -72,7 +72,7 @@ describe('콘솔 판', () => {
   test('목록은 저장소의 러너 스킬뿐이다 (사람의 AI 도구용 스킬은 없다)', async () => {
     const { skills } = ok(await api.get('/api/runner-skills', owner)) as { skills: Json[] };
     const names = skills.map((s) => s.name);
-    for (const name of ['cairn-write', 'cairn-tidy', 'cairn-browse', 'cairn-code'])
+    for (const name of ['cairn-write', 'cairn-tidy', 'cairn-browse', 'cairn-code', 'cairn-make'])
       assert.ok(names.includes(name), name);
     assert.equal(names.includes('cairn-save'), false);
     const write = skills.find((s) => s.name === 'cairn-write') as Json;

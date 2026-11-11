@@ -998,6 +998,7 @@ describe('코드 작업 (작업 공간)', () => {
       const prompt = String(seen.prompt);
       assert.match(prompt, /# 재료/);
       assert.match(prompt, new RegExp(`- wiki_id: ${wiki.id}`));
+      assert.match(prompt, /cairn-make 스킬을 따릅니다/);
       const bodies = events(task).map((e) => String(e.body));
       assert.ok(bodies.includes('재료 파일 1개를 받았어요'), bodies.join(' | '));
       await roomsLeft();

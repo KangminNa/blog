@@ -13,7 +13,7 @@ import {
 import type { Agent } from '../../_task/types';
 
 /** 에이전트에게 줄 수 있는 권한. run은 러너의 것이라 없다 (서버의 Agent.SCOPES와 맞춘다) */
-const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write', 'browse', 'code'];
+const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write', 'browse', 'code', 'make'];
 /** 고를 수 있는 결재 동작: 승인 뒤 실행하는 모듈이 있는 것만. 없으면 작업이 끝나지 않는다. 한도 변경은 서버만 올린다 */
 const ACTIONS = [PUBLISH_POST, PUBLISH_SITE, MERGE_PULL];
 
@@ -199,8 +199,8 @@ export function AgentForm({
       <fieldset className="checks">
         <legend>권한</legend>
         <small>
-          세션 정리는 정리와 전체 읽기 권한이 함께 필요. 브라우저 사용은 전체 읽기 · 초안 작성과
-          함께 줄 수 없음
+          세션 정리는 정리와 전체 읽기 권한이 함께 필요. 브라우저 사용 · 코드 작업 · 파일 만들기는
+          전체 읽기 · 초안 작성과 함께 줄 수 없음
         </small>
         {SCOPES.map((s) => (
           <label key={s} className="check">

@@ -11,7 +11,7 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
   `get_session`(`GetSessionTool`: 지금 판 하나). 두 읽기 도구는 `read_public`이나 `read_all` 중 하나로 열리고(`BaseTool.orScope`), 볼 수 없는 세션은 없는 세션과 똑같이 답한다.
   관리 화면 API `api/sessions`(목록·상세·지난 판, 비공개까지 볼 수 있는 요청자만)
 - `wiki/`: wiki(`Wiki` + 판 `WikiRevision`), 본문(`WikiBody`: md 원문과 `##` 제목 단위의 칸 `WikiSection`, 코드 블록 안의 `##`은 제목이 아니다).
-  `api/wikis`(목록 `?q=&category=&cursor=`, 하나, 만들기, 고치기, 휴지통 `trash` · `restore` · 목록 `api/wikis/trash`, 대체 `replaces`), MCP `search_wikis` · `get_wiki`(`read_public`이나 `read_all`). 읽기는 방문자도 공개 wiki까지, 쓰기는 주인만
+  `api/wikis`(목록 `?q=&category=&cursor=`, 하나, 만들기, 고치기, 휴지통 `trash` · `restore` · 목록 `api/wikis/trash`, 대체 `replaces`), MCP `search_wikis` · `get_wiki`(`read_public`이나 `read_all`. `get_wiki`는 작업 토큰에 봉인된 읽기 허락(`Actor.mayRead`, 만들기 작업의 재료)이 있으면 그 wiki만 읽기 권한 없이도 연다). 읽기는 방문자도 공개 wiki까지, 쓰기는 주인만
 - `wiki-score/`: wiki 점수(docs/wiki점수.md). 식(`WikiScorePolicy`: 입력 → 점수, DB 없음)과 읽기(`WikiScoreQuery`). `api/wiki-scores`(카테고리별 순위 · 히스토리), `api/wiki-scores/:id`. 주인만.
   점수는 표에 두지 않고 읽을 때 계산한다. 점수를 받는 것은 휴지통에 없는 wiki, 쓰임을 주는 것은 세션(대표 · 재료) · 글(대표 · 참고) · 더 새로운 wiki의 링크다.
   지울 만한 wiki 알림: `WikiStaleJob`(6시간마다) → `WikiScoreService.notice` → `StaleWikis`(공간 하나의 알린 기록, `StaleWikiRepository`가 advisory 잠금)가 새 후보만 platform `Notices`로 알린다. 지우지 않는다

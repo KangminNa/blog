@@ -15,7 +15,7 @@
 - `ai/`: AI 도구의 로그인 (`AiLogin`, 도구는 claude · codex). 콘솔에 넣거나 웹 로그인으로 받은 자격을 서버 키로 잠가 두고 서버 러너에게 건넨다.
   `api/ai`, MCP `ai_login` · `ai_login_refresh`(CLI가 갱신한 자격 되돌려 쓰기) · `ai_signin`(러너가 로그인 명령을 대신 돌린다), 받는 값의 모양은 `AiSigninPolicy`
 - `runner/`: 러너의 상태 (`Runner`). 마지막으로 닿은 때, 일 받기 켜기·끄기. `api/runners`. 기기 이름·종류는 account의 것이라 화면이 합친다
-- `output/`: 결과물 (`Output`, 이름 · 종류 · 형식 · 한도 `OutputPolicy`, 올리기 표 `UploadTicket`). 러너가 MCP `begin_upload`로 표를 받아 `PUT api/outputs/upload`(머리글 `x-cairn-upload`)로 파일을 흘려 보낸다. `api/outputs`(주인만: 목록 · 내려받기 · 휴지통), 일꾼 `OutputPurgeJob`
+- `output/`: 결과물 (`Output`, 이름 · 종류 · 형식 · 한도 `OutputPolicy`, 올리기 표 `UploadTicket`, 재료 내려받기 표 `DownloadTicket`). 러너가 MCP `begin_upload`로 표를 받아 `PUT api/outputs/upload`(머리글 `x-cairn-upload`)로 파일을 흘려 보낸다. 만들기 작업의 재료는 거꾸로 `begin_download` → `GET api/outputs/download`(머리글 `x-cairn-download`). `api/outputs`(주인만: 목록 · 내려받기 · 휴지통), 일꾼 `OutputPurgeJob`
 - `skill/`: 러너 스킬의 콘솔 판 (`Skill`, 파일 규칙과 해시 `SkillFiles`, 쓸 판 고르기 `SkillPackage`, 저장소 판 읽기 `RepoSkillGateway`). `api/runner-skills`. `next_jobs`의 `skill_package`로 러너에게 간다
 
 파일 구조 (객체설계 6장): `<이름>.ts` · `.view.ts` · `.input.ts` · `.service.ts` · `.query.ts` · `.api.ts` · `.tool.ts` · `.repository.ts`.
@@ -76,6 +76,9 @@ platform
 - 쉬기(`Agent.holds`)는 저장하지 않고 그때마다 계산한다. 5시간 토큰이나 구독 사용률에 닿으면 새 일만 안 빌려주고, 달리는 작업은 끝까지 간다. 결재도 `paused`도 없다: `report_progress`가 `paused: true`를 돌려주면 러너가 작업을 돌려주므로 쉬기에는 쓰지 않는다
 - 일의 종류마다 필요한 권한은 `Task.SCOPES`에 적는다 (`tidy_session` → `tidy`, `browse` → `browse`, 스킬은 `Task.SKILLS`: `browse` → `cairn-browse`). `browse`는 `read_all` · `write`와 한 에이전트에 함께 두지 않는다 (`Agent` 규칙 + DB CHECK. `write`도 임시 글 · 소재를 연다). `lockNext`가 SQL에서 거르므로 빌렸다가 돌려주지 않고, 맡을 에이전트가 없는 일은 대기열에 남아 뒤의 일을 막지 않는다
 - 코드 작업(`code` → 권한 `code`, docs/코드작업.md)은 셸이 있는 코드 러너 칸에서만 돈다 (`Task.SANDBOXED`). 칸인지는 러너가 알리는 값이 아니라 기기의 권한 `sandbox`로 정한다 (`Actor.inSandbox`: 내 컴퓨터 러너가 칸이라고 말해도 받지 못하게). 칸은 `SANDBOXED`만, 다른 러너는 `SANDBOXED`가 아닌 일만 받는다 (`lockNext`). `code`는 `read_all` · `write`와 한 에이전트에 함께 두지 않는다 (`Agent` 규칙 + DB CHECK `agents_code_not_private`). 스킬은 `cairn-code`. 위임(`DELEGABLE`에 `code`)은 code 작업에서만: 하위 작업은 위 작업의 저장소 · 명령을 물려받고 `paths`만 위 작업의 경로 안으로 좁힌다. 형제(아직 안 끝난 것 포함)끼리 경로가 겹치면 거절 (`CodeScope`)
+- 만들기 작업(`make` → 권한 `make`, 결과물 2차)도 칸에서만 돈다 (`SANDBOXED`). `make`도 `read_all` · `write`와 함께 두지 않는다 (규칙 + DB CHECK `agents_make_not_private`). 스킬은 `cairn-make`, 위임 목록에는 없다 (주인만 맡긴다).
+  재료는 주인이 맡길 때 고른 것뿐이다 (`MakeMaterials`, `payload.make`의 결과물 · 위키 id 각각 10개): 결과물은 맡길 때 살아 있는지 보고(`OutputQuery.liveIds`), 러너는 그 작업의 재료만 `begin_download`로 받는다(`TaskQuery.heldMaterial`).
+  위키는 작업 토큰에 읽기 허락으로 봉인한다 (`Task.actorFor`가 `AgentActor`의 `reads`에): vault의 `get_wiki`만 그 허락을 본다. 재료 글을 payload에 복사하지 않는다 (비공개 사본이 vault 밖에 남는다). 결재 없이 결과물로 끝난다
 - 코드 작업의 겹침(`CodeScope.overlaps`: 같은 저장소, 경로 접두어): 칸이 일을 빌릴 때 공간을 advisory 잠금(`lockCodeLeasing`)하고, 저장소를 쥔 code 작업(도는 중 · PR 결재를 기다림, `Task.holdsCode`. 하위 작업을 기다리는 위 작업은 아님)과 겹치는 일은 건너뛴다. 건너뛸 수 있어 후보를 넉넉히 잠근다 (`CODE_LOOKAHEAD`)
 - 쉬는지는 작업을 잠그기 전에 따지고 `lockNext`에서 건너뛴다. 빌렸다가 돌려주지 않는다. 일을 빌릴 때와 `UsageQuery`는 같은 `AgentRepository.usage`를 읽는다
 - 초기화 시각이 지난 `plan_usage`는 없는 것과 같다 (`PlanUsage.validAt`). 쉬는 데 쓰지 않고 화면에는 확인 전으로 보인다

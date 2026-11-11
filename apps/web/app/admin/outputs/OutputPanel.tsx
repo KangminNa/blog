@@ -6,6 +6,7 @@ import { api, describe } from '../../_lib/client-api';
 import { bytes, INLINE_MIMES, OUTPUT_KINDS, TEXT_MIMES, when } from '../../_task/labels';
 import type { Output, OutputPage, OutputSaved, OutputUsage } from '../../_task/types';
 import { useNotify } from '../AdminShell';
+import { MakeForm } from './MakeForm';
 
 type Tab = 'all' | 'trash' | keyof typeof OUTPUT_KINDS;
 
@@ -14,6 +15,8 @@ const TABS: readonly [Tab, string][] = [
   ...Object.entries(OUTPUT_KINDS).map(([kind, label]) => [kind, label] as [Tab, string]),
   ['trash', '휴지통'],
 ];
+/** 만들기 작업의 재료 결과물 한도 (서버의 MakeMaterials.MAX) */
+const MATERIALS_MAX = 10;
 /** 글자로 미리 볼 수 있는 크기 */
 const TEXT_PREVIEW_MAX = 1024 * 1024;
 
@@ -24,6 +27,7 @@ const previewable = (o: Output) =>
 
 // 결과물: AI가 작업에서 만든 파일 (러너가 일이 끝난 뒤 올린다). 내려받기 · 미리 보기 · 휴지통.
 // 파일은 늘 내려받기로 주고, 미리 보기는 서버가 앞부분으로 확인한 그림 · PDF · 영상과 글자 파일만 연다.
+// 만들기: 고른 결과물 · 위키를 재료로 칸의 AI에게 PPT · 문서 · 영상을 맡긴다. 고쳐 달라는 그 결과물을 재료로 한 새 작업이다.
 export function OutputPanel({ taskId }: { taskId: string | null }) {
   const notify = useNotify();
   const [tab, setTab] = useState<Tab>('all');
@@ -31,6 +35,10 @@ export function OutputPanel({ taskId }: { taskId: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<Output | null>(null);
   const [busy, setBusy] = useState(false);
+  /** 만들기 폼이 열렸는가, 재료로 고른 결과물, 고쳐 달라로 열렸으면 그 결과물 */
+  const [making, setMaking] = useState(false);
+  const [materials, setMaterials] = useState<readonly Output[]>([]);
+  const [revising, setRevising] = useState<Output | null>(null);
 
   const load = useCallback(
     async (cursor: string | null = null) => {
@@ -72,10 +80,26 @@ export function OutputPanel({ taskId }: { taskId: string | null }) {
     await load();
   }
 
+  function startMaking(from: Output | null) {
+    setMaking(true);
+    setRevising(from);
+    setMaterials(from ? [from] : []);
+  }
+
+  const addMaterial = (o: Output) =>
+    setMaterials((before) =>
+      before.some((m) => m.id === o.id) || before.length >= MATERIALS_MAX ? before : [...before, o],
+    );
+
   return (
     <>
       <header className="page-head">
         <h1>결과물</h1>
+        {!making && (
+          <button type="button" className="cta small" onClick={() => startMaking(null)}>
+            만들기
+          </button>
+        )}
       </header>
       <p className="note">
         AI가 작업에서 만든 파일. 러너가 일이 끝난 뒤 올려요. 지우면 휴지통에 30일 있다가 사라져요.
@@ -104,6 +128,18 @@ export function OutputPanel({ taskId }: { taskId: string | null }) {
           </button>
         ))}
       </div>
+      {making && (
+        <MakeForm
+          materials={materials}
+          onRemove={(o) => setMaterials((before) => before.filter((m) => m.id !== o.id))}
+          revising={revising}
+          onClose={() => {
+            setMaking(false);
+            setRevising(null);
+            setMaterials([]);
+          }}
+        />
+      )}
       {error && <p className="error">{error}</p>}
       {open && <Preview output={open} onClose={() => setOpen(null)} />}
       {page === null ? (
@@ -159,14 +195,32 @@ export function OutputPanel({ taskId }: { taskId: string | null }) {
                     </button>
                   </>
                 ) : (
-                  <button
-                    type="button"
-                    className="ghost"
-                    disabled={busy}
-                    onClick={() => act(o, 'delete', '휴지통으로')}
-                  >
-                    지우기
-                  </button>
+                  <>
+                    {making ? (
+                      <button
+                        type="button"
+                        className="ghost"
+                        disabled={
+                          materials.some((m) => m.id === o.id) || materials.length >= MATERIALS_MAX
+                        }
+                        onClick={() => addMaterial(o)}
+                      >
+                        {materials.some((m) => m.id === o.id) ? '재료' : '재료로'}
+                      </button>
+                    ) : (
+                      <button type="button" className="ghost" onClick={() => startMaking(o)}>
+                        고쳐 달라
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={busy}
+                      onClick={() => act(o, 'delete', '휴지통으로')}
+                    >
+                      지우기
+                    </button>
+                  </>
                 )}
               </div>
             </li>
