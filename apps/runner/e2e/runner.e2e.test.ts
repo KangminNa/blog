@@ -1074,6 +1074,108 @@ describe('코드 작업 (작업 공간)', () => {
       assert.ok(github.calls.some((c) => c.method === 'PATCH'));
       await roomsLeft();
     });
+
+    // 코드 작업 5단계의 끝났다는 기준: 팀장 하나가 셋으로 나누고, 칸 둘이 함께 돌아, PR 셋이 부딪치지 않고 머지된다
+    test('팀장이 경로로 셋으로 나누면 칸 둘이 함께 맡아 PR 셋이 부딪치지 않고, 모두 머지하면 팀장도 끝난다', async () => {
+      const url = git.create('me/split', {
+        'src/a.ts': 'export const a = 1;\n',
+        'README.md': '# split\n',
+        'docs/index.md': '# docs\n',
+      });
+      const splitRepo = ok(
+        await api.request('POST', '/api/p/code-github/repos', owner, {
+          name: 'split',
+          url,
+          base: 'main',
+          setup: 'test -f README.md',
+          checks: ['test -f src/a.ts'],
+        }),
+      );
+      const lead = await newAgent({
+        name: '코드 팀장',
+        scopes: ['read_public', 'code'],
+        approvalActions: ['code.pr.merge'],
+      });
+      await newAgent({
+        name: '코드 팀원',
+        scopes: ['read_public', 'code'],
+        approvalActions: ['code.pr.merge'],
+        reportsTo: lead.id,
+      });
+      const work2 = mkdtempSync(join(tmpdir(), 'cairn-work-'));
+      const pairing = join(spyDir, 'code-pairing-4');
+      writeFileSync(pairing, api.service(ServerRunnerPolicy).codeSecret());
+      const slot2 = RunnerProcess.start(api.baseUrl, {
+        CAIRN_RUNNER_TOKEN: '',
+        CAIRN_RUNNER_PAIRING_FILE: pairing,
+        CAIRN_RUNNER_SLOT: '4',
+        CAIRN_SANDBOX: '1',
+        CAIRN_AGENT_USER: 'self',
+        CAIRN_WORK_DIR: work2,
+      });
+      try {
+        await slot2.logged('코드 러너 칸 4로 연결했어요');
+        const uniq = randomUUID().slice(0, 8);
+        ok(
+          await api.request('POST', `/api/p/code-github/repos/${splitRepo.id}/tasks`, owner, {
+            requestId: randomUUID(),
+            instruction: `나눠서 고쳐 주세요 ${uniq} [fake:split=src/one,src/two,docs]`,
+            paths: ['.'],
+            agentId: lead.id,
+          }),
+        );
+        const leadTask = await until('팀장 작업이 생김', async () => {
+          await worker().tick();
+          const { tasks } = ok(await api.get('/api/tasks', owner)) as { tasks: Json[] };
+          return tasks.find((t) => String(t.title).includes(uniq)) ?? null;
+        });
+        const parent = await until('하위 작업 셋', async () => {
+          const task = await getTask(leadTask.id);
+          return (task.children as Json[]).length === 3 ? task : null;
+        });
+        assert.equal(parent.status, 'waiting');
+        const children = parent.children as Json[];
+        for (const child of children) await taskIn(child.id, 'waiting');
+
+        const branches = children.map((c) => `cairn/${c.id}`);
+        const changed = branches.map((b) => [...git.changed('me/split', b)]);
+        for (const files of changed) assert.equal(files.length, 1, '하위 작업마다 제 경로만');
+        assert.deepEqual(changed.flat().sort(), ['docs/x.ts', 'src/one/x.ts', 'src/two/x.ts']);
+        assert.equal(github.open.filter((p) => branches.includes(p.head)).length, 3, 'PR 셋');
+        const takers = [slot, slot2].filter((s) =>
+          children.some((c) => s.logs.includes(`${c.id}: 일을 맡았어요`)),
+        );
+        assert.equal(takers.length, 2, '칸 둘이 함께 맡는다');
+
+        for (const child of children) {
+          const approval = await approvalOf(String(child.id));
+          ok(
+            await api.request('POST', `/api/approvals/${approval.id}/decide`, owner, {
+              version: approval.version,
+              decision: 'approve',
+            }),
+          );
+        }
+        const done = await until('모두 머지한 뒤 팀장이 끝남', async () => {
+          await worker().tick();
+          const task = await getTask(leadTask.id);
+          return task.status === 'done' ? task : null;
+        });
+        assert.match(String((done.result as Json).text), /바꾼 파일이 없어/);
+        const { pulls } = ok(await api.get('/api/p/code-github/pulls', owner)) as {
+          pulls: Json[];
+        };
+        const mine = pulls.filter((p) => children.some((c) => c.id === p.taskId));
+        assert.deepEqual(
+          mine.map((p) => p.status),
+          ['merged', 'merged', 'merged'],
+        );
+        await roomsLeft();
+      } finally {
+        assert.equal(await slot2.stop('SIGTERM'), 0);
+        rmSync(work2, { recursive: true, force: true });
+      }
+    });
   });
 });
 

@@ -10,6 +10,8 @@
 //   [fake:delegate]     지시문의 "내 팀"에게 하위 작업을 하나씩 맡기고 끝난다. 결과를 받아 깨어난 실행은 맡기지 않고 끝낸다
 //   [fake:stray]        허락하지 않은 MCP 서버가 붙은 것처럼 보인다
 //   [fake:edit=<경로>]  작업 폴더의 그 경로에 파일을 쓴다 (코드 작업. 여러 번 쓸 수 있다)
+//   [fake:split=<경로>,<경로>…] 코드 작업의 팀장처럼: "내 팀"의 첫 팀원에게 경로마다 code 하위 작업을 맡기고 끝난다
+//                       (하위 작업은 그 경로 아래 x.ts를 고친다). 결과를 받아 깨어난 실행은 맡기지 않고 끝낸다
 // 연결 확인(MCP 설정 없음)은 ok라고 답한다. 토큰에 wrong이 들어 있으면 로그인 실패처럼 끝난다
 // setup-token은 웹 로그인이다: 터미널이어야 뜨고, 주소를 보이고, 붙여 넣은 코드로 토큰을 그린다.
 //   코드에 wrong이 있으면 실패. 코드와 Enter가 한 덩어리로 오면 Ink처럼 붙여 넣기로 보고 제출하지 않는다
@@ -253,6 +255,21 @@ if (has('delegate') && !prompt.includes('# 맡긴 하위 작업의 결과')) {
       to_agent_id: id,
       title: `${name}에게 맡긴 조사`,
       instruction: '자료를 모아 주세요',
+    })),
+  });
+}
+
+const split = /\[fake:split=([^\]]+)\]/.exec(prompt)?.[1];
+if (split && !prompt.includes('# 맡긴 하위 작업의 결과')) {
+  const [, , memberId] = /^- (.+?) \(agent_id: ([0-9a-f-]+)\)/m.exec(prompt) ?? [];
+  await callTool('delegate_task', {
+    subtasks: split.split(',').map((path) => ({
+      request_id: randomUUID(),
+      to_agent_id: memberId,
+      kind: 'code',
+      title: `나눠 고치기 ${path}`,
+      instruction: `${path} 아래를 고쳐 주세요 [fake:edit=${path}/x.ts]`,
+      paths: [path],
     })),
   });
 }

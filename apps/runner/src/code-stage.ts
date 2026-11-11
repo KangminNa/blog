@@ -3,7 +3,7 @@ import type { AgentUser, StepOutput } from './agent-user';
 import { CairnServer } from './cairn-server';
 import { CodeRoom } from './code-room';
 import { CodeSpec, CodeSpecProblem } from './code-spec';
-import { GitRepo, PatchRejected, RepoRefused, RepoUnreachable } from './git-repo';
+import { GitRepo, PatchRejected, type Replayed, RepoRefused, RepoUnreachable } from './git-repo';
 import { GitHubPulls, PullRefused } from './github-pulls';
 import type { Job } from './job';
 import { RunEnding } from './job-run';
@@ -16,8 +16,10 @@ import type { RunnerConfig } from './runner-config';
 //   앞: 저장소 정보 → 자리 → 깨끗한 clone(러너) → 사본을 agent에게 → setup(agent)
 //   뒤: checks(agent) → 바뀐 것을 patch로(agent) → agent 프로세스 모두 끄기 → 깨끗한 clone에 옮기기(러너)
 //       → 맡긴 경로 밖이면 실패 → 커밋 하나 → cairn/<작업>에 push(러너)
-// 4단계 (code-github가 맡긴 일, repo.id가 있음): 앞에서 code_credential로 토큰을 받고("고쳐 달라"로 다시 온 일이면
-// 이미 올린 브랜치에서 이어서), 뒤에서 push → draft PR(러너가 GitHub에) → code_pull_opened → 결과물 → 결재(code.pr.merge).
+// 4단계 (code-github가 맡긴 일, repo.id가 있음): 앞에서 code_credential로 토큰을 받고, 뒤에서 push → draft PR(러너가 GitHub에)
+// → code_pull_opened → 결과물 → 결재(code.pr.merge).
+// 5단계 ("고쳐 달라"로 다시 온 일): 늘 최신 기준 브랜치를 받아 앞 PR의 변경을 3-way로 다시 얹는다. 충돌은 표시로 남겨 AI가 풀고,
+// 브랜치는 늘 base 위의 커밋 하나라 같은 브랜치에 덮어쓴다 (그사이 브랜치가 바뀌었으면 덮지 않는다: force-with-lease).
 // 결재는 JobRun이 결과물을 올린 뒤 requestApproval로 올린다: 결재 대기가 되면 임대가 끝나 올릴 수 없다.
 // 토큰은 러너의 메모리와 러너 git의 환경에만 있다 (AI는 다른 사용자라 읽지 못한다).
 // 러너는 AI의 자리에서 아무것도 실행하지 않는다. AI의 변경은 agent 권한으로 만든 patch라는 데이터 하나로만 받는다:
@@ -47,6 +49,8 @@ export class CodeStage {
   private approval: { pullId: string; version: number; note: string } | null = null;
   /** 토큰까지 지우는 Redactor (결과 · 기록에 토큰이 남지 않게) */
   private redactor: Redactor | null = null;
+  /** "고쳐 달라"로 다시 온 일: 다시 얹은 앞 PR의 끝과 충돌한 파일 */
+  private previous: Replayed | null = null;
 
   constructor(
     private readonly job: Job,
@@ -72,9 +76,30 @@ export class CodeStage {
     return this.room;
   }
 
-  /** AI에게 줄 일: 저장소 · 고칠 곳 · 검사 단락을 더한다 */
+  /** AI에게 줄 일: 저장소 · 고칠 곳 · 검사 단락을 더한다 (이어서 고치는 일이면 다시 얹은 것과 충돌한 파일도) */
   aiJob(): Job {
-    return this.spec ? this.job.withBrief(this.spec.brief) : this.job;
+    if (!this.spec) return this.job;
+    return this.job.withBrief(
+      this.previous === null ? this.spec.brief : `${this.spec.brief}\n\n${this.replayBrief()}`,
+    );
+  }
+
+  /** 다시 얹은 앞 PR을 AI에게 알리는 단락 */
+  private replayBrief(): string {
+    const { previous, spec, repo } = this;
+    if (previous === null || spec === null || repo === null) return '';
+    const head = [
+      '# 이어서 고치기',
+      `앞서 올린 PR(${spec.branch})의 변경을 최신 ${spec.base}(${repo.baseSha.slice(0, 7)}) 위에 다시 얹어 두었어요.`,
+    ];
+    if (previous.conflicts.length === 0)
+      return [...head, '충돌은 없어요. 받은 말대로 이어서 고쳐 주세요.'].join('\n');
+    return [
+      ...head,
+      '아래 파일에 충돌 표시(<<<<<<< · ======= · >>>>>>>)가 남아 있어요. 기준의 바뀐 내용과 앞 변경을 모두 살려 먼저 풀어 주세요.',
+      '충돌 표시가 하나라도 남으면 올리지 않아요.',
+      ...CodeStage.list(previous.conflicts).map((f) => `- ${f}`),
+    ].join('\n');
   }
 
   /** AI 전에. 끝낼 이유가 생기면 그 끝, 아니면 null */
@@ -107,10 +132,11 @@ export class CodeStage {
     const auth = this.credential?.token ?? null;
     const room = await CodeRoom.open(this.config.workDir, this.job.taskId, this.agent);
     this.room = room;
-    const from = continued ? spec.branch : spec.base;
-    note(new RunEvent(RunEvent.READ, `저장소를 받아요: ${spec.repoUrl} (${from})`, 0));
+    note(new RunEvent(RunEvent.READ, `저장소를 받아요: ${spec.repoUrl} (${spec.base})`, 0));
     try {
-      this.repo = await this.cloneFrom(spec, room, auth, from, signal);
+      this.repo = await GitRepo.clone(spec, room.cleanDir, room.gitHome, auth, signal);
+      if (continued)
+        this.previous = await this.repo.replay(spec.branch, room.patchFile, auth, signal);
     } catch (error) {
       if (signal.aborted) return null;
       if (error instanceof RepoUnreachable) {
@@ -119,16 +145,28 @@ export class CodeStage {
       }
       if (error instanceof RepoRefused)
         return failed(`저장소를 받지 못했어요: ${this.clean(error.message)}`);
+      if (error instanceof PatchRejected) return failed(error.message);
       throw error;
     }
+    const repo = this.repo;
     note(
       new RunEvent(
         RunEvent.RESULT,
-        `저장소를 받았어요 (${from} ${this.repo.baseSha.slice(0, 7)})`,
+        `저장소를 받았어요 (${spec.base} ${repo.baseSha.slice(0, 7)})`,
         0,
       ),
     );
+    if (this.previous !== null)
+      note(
+        new RunEvent(
+          RunEvent.READ,
+          `앞 PR의 변경을 다시 얹었어요 (충돌 ${this.previous.conflicts.length}개)`,
+          0,
+        ),
+      );
     await room.handOver();
+    // 다시 얹은 작업 트리는 AI의 사본으로 넘어갔다. 깨끗한 clone은 base로 되돌려 patch를 견줄 자리로 둔다
+    if (this.previous !== null) await repo.restore();
     if (spec.setup === null) return null;
     note(new RunEvent(RunEvent.READ, `setup: ${spec.setup}`, 0));
     const out = await this.agent.run(spec.setup, {
@@ -197,6 +235,9 @@ export class CodeStage {
     const outside = spec.outside(files);
     if (outside.length > 0)
       return failed(`맡긴 경로 밖을 고쳐서 올리지 않았어요: ${CodeStage.list(outside).join(', ')}`);
+    const marked = await repo.conflictMarkers();
+    if (marked.length > 0)
+      return failed(`충돌 표시가 남아 올리지 않았어요: ${CodeStage.list(marked).join(', ')}`);
 
     const head = await repo.commit(
       [`cairn: ${this.job.title}`.slice(0, 72), '', brief || '(요약 없음)'].join('\n'),
@@ -270,23 +311,6 @@ export class CodeStage {
       if (error instanceof ServerUnreachable)
         return RunEnding.release(`저장소 토큰을 받지 못해 돌려줘요: ${error.message}`);
       throw error;
-    }
-  }
-
-  /** 이어서 할 브랜치가 지워졌으면(주인이 PR 브랜치를 지움) 기준 브랜치에서 새로 받는다 */
-  private async cloneFrom(
-    spec: CodeSpec,
-    room: CodeRoom,
-    auth: string | null,
-    from: string,
-    signal: AbortSignal,
-  ): Promise<GitRepo> {
-    try {
-      return await GitRepo.clone(spec, room.cleanDir, room.gitHome, auth, signal, from);
-    } catch (error) {
-      if (from === spec.base || !(error instanceof RepoRefused) || signal.aborted) throw error;
-      this.log.info(`${this.job.taskId}: ${from}가 없어 ${spec.base}에서 새로 받아요`);
-      return GitRepo.clone(spec, room.cleanDir, room.gitHome, auth, signal, spec.base);
     }
   }
 
@@ -392,7 +416,12 @@ export class CodeStage {
   private async push(repo: GitRepo, branch: string, signal: AbortSignal): Promise<string | null> {
     for (let attempt = 1; ; attempt++) {
       try {
-        await repo.push(branch, this.credential?.token ?? null, signal);
+        await repo.push(
+          branch,
+          this.credential?.token ?? null,
+          signal,
+          this.previous?.head ?? null,
+        );
         return null;
       } catch (error) {
         const retry =

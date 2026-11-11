@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
@@ -109,3 +109,115 @@ describe('러너의 깨끗한 clone', () => {
     );
   });
 });
+
+describe('이어서 고치기: 최신 기준 위에 앞 PR을 다시 얹기 (코드 작업 5단계)', () => {
+  const BRANCH = `cairn/${TASK}`;
+  let n = 0;
+
+  /** 저장소 하나를 만들고 첫 실행처럼 src/a.ts를 바꿔 브랜치에 올린다 */
+  async function firstRun(): Promise<{ name: string; url: string; head: string }> {
+    const name = `replay-${++n}`;
+    const repoUrl = server.create(name, { 'src/a.ts': 'a1\n', 'src/b.ts': 'b1\n' });
+    const repo = await GitRepo.clone(specFor(repoUrl), join(dir, `${name}-first`), dir, null);
+    const work = await mkdtemp(join(dir, 'ai-'));
+    await git('git', ['clone', '-q', repoUrl, work]);
+    await writeFile(join(work, 'src/a.ts'), 'a-pr\n');
+    await git('git', ['-C', work, 'add', '-A']);
+    const { stdout } = await git('git', ['-C', work, 'diff', '--cached', '--binary', 'HEAD'], {
+      encoding: 'buffer',
+    });
+    const patch = join(dir, `${name}.patch`);
+    await writeFile(patch, stdout);
+    await repo.apply(patch, false);
+    const head = await repo.commit('cairn: 처음', '에이전트');
+    await repo.push(BRANCH, null);
+    return { name, url: repoUrl, head };
+  }
+
+  const read = (repo: GitRepo, path: string) => readFile(join(repo.dir, path), 'utf8');
+
+  test('충돌이 없으면 앞 변경이 최신 기준의 작업 트리에 얹히고, restore로 기준에 돌아간다', async () => {
+    const first = await firstRun();
+    server.commit(first.name, 'main', { 'src/b.ts': 'b-main\n' });
+    const repo = await GitRepo.clone(specFor(first.url), join(dir, `${first.name}-2`), dir, null);
+    assert.equal(repo.baseSha, server.head(first.name, 'main'));
+    const replayed = await repo.replay(BRANCH, join(dir, `${first.name}-r.patch`), null);
+    assert.equal(replayed?.head, first.head);
+    assert.deepEqual(replayed?.conflicts, []);
+    assert.equal(await read(repo, 'src/a.ts'), 'a-pr\n');
+    assert.equal(await read(repo, 'src/b.ts'), 'b-main\n');
+    await repo.restore();
+    assert.equal(await read(repo, 'src/a.ts'), 'a1\n');
+    const { stdout } = await git('git', ['-C', repo.dir, 'status', '--porcelain']);
+    assert.equal(stdout, '');
+  });
+
+  test('기준이 같은 줄을 바꿨으면 충돌 표시를 남기고 그 파일을 알려 준다. 표시가 남은 변경은 찾아낸다', async () => {
+    const first = await firstRun();
+    server.commit(first.name, 'main', { 'src/a.ts': 'a-main\n' });
+    const repo = await GitRepo.clone(specFor(first.url), join(dir, `${first.name}-2`), dir, null);
+    const replayed = await repo.replay(BRANCH, join(dir, `${first.name}-r.patch`), null);
+    assert.deepEqual(replayed?.conflicts, ['src/a.ts']);
+    assert.match(await read(repo, 'src/a.ts'), /^<<<<<<< [\s\S]*a-main[\s\S]*a-pr[\s\S]*>>>>>>> /);
+    await repo.restore();
+
+    const left = await patchOfFrom(first.url, async (work) => {
+      await writeFile(
+        join(work, 'src/a.ts'),
+        '<<<<<<< ours\na-main\n=======\na-pr\n>>>>>>> theirs\n',
+      );
+    });
+    await repo.apply(left, false);
+    assert.deepEqual(await repo.conflictMarkers(), ['src/a.ts']);
+  });
+
+  test('푼 변경에는 충돌 표시가 없다', async () => {
+    const first = await firstRun();
+    server.commit(first.name, 'main', { 'src/a.ts': 'a-main\n' });
+    const repo = await GitRepo.clone(specFor(first.url), join(dir, `${first.name}-2`), dir, null);
+    const solved = await patchOfFrom(first.url, async (work) => {
+      await writeFile(join(work, 'src/a.ts'), 'a-main\na-pr\n');
+    });
+    await repo.apply(solved, false);
+    assert.deepEqual(await repo.conflictMarkers(), []);
+  });
+
+  test('브랜치가 없으면(주인이 지움) null', async () => {
+    const first = await firstRun();
+    const repo = await GitRepo.clone(specFor(first.url), join(dir, `${first.name}-2`), dir, null);
+    const other = `cairn/${TASK.replace('a1', 'b2')}`;
+    assert.equal(await repo.replay(other, join(dir, `${first.name}-r.patch`), null), null);
+  });
+
+  test('그사이 브랜치가 바뀌었으면 덮지 않는다 (force-with-lease), 앞 끝 그대로면 덮는다', async () => {
+    const first = await firstRun();
+    const repo = await GitRepo.clone(specFor(first.url), join(dir, `${first.name}-2`), dir, null);
+    const replayed = await repo.replay(BRANCH, join(dir, `${first.name}-r.patch`), null);
+    await repo.restore();
+    const change = await patchOfFrom(first.url, async (work) => {
+      await writeFile(join(work, 'src/a.ts'), 'a-pr\na-more\n');
+    });
+    await repo.apply(change, false);
+    await repo.commit('cairn: 다시', '에이전트');
+    server.commit(first.name, BRANCH, { 'src/c.ts': '누가 올림\n' });
+    await assert.rejects(repo.push(BRANCH, null, undefined, replayed?.head ?? null), RepoRefused);
+    assert.notEqual(server.show(first.name, BRANCH, 'src/c.ts'), null, '남이 올린 것은 그대로');
+  });
+});
+
+/** 저장소의 main에서 agent처럼 고친 patch (url을 정해서) */
+async function patchOfFrom(
+  repoUrl: string,
+  change: (work: string) => Promise<void>,
+): Promise<string> {
+  const work = await mkdtemp(join(dir, 'ai-'));
+  await git('git', ['clone', '-q', repoUrl, work]);
+  await change(work);
+  await git('git', ['-C', work, 'add', '-A']);
+  const { stdout } = await git('git', ['-C', work, 'diff', '--cached', '--binary', 'HEAD'], {
+    encoding: 'buffer',
+  });
+  const file = join(dir, `${Math.random()}.patch`);
+  await writeFile(file, stdout);
+  return file;
+}

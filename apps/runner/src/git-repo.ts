@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { writeFile } from 'node:fs/promises';
 import type { CodeSpec } from './code-spec';
 
 /** 저장소에 닿지 못함 (네트워크 · 서버 오류 · 시간 초과). 일을 돌려주고 기다린다 */
@@ -9,6 +10,14 @@ export class RepoRefused extends Error {}
 
 /** AI가 만든 patch를 깨끗한 clone에 옮기지 못함 (저장소 밖 경로, 링크 너머, .git 등) */
 export class PatchRejected extends Error {}
+
+/** 앞 PR의 변경을 다시 얹은 결과: 그때 브랜치의 끝(push할 때 그사이 바뀌었는지 견준다)과 충돌한 파일들 */
+export class Replayed {
+  constructor(
+    readonly head: string,
+    readonly conflicts: readonly string[],
+  ) {}
+}
 
 // 러너(믿는 쪽)의 git (docs/코드작업.md 3단계). 러너가 만든 깨끗한 clone에서만 돌고, AI의 자리에서는 돌지 않는다:
 // AI가 심어 둔 .git/hooks · core.fsmonitor 같은 것이 root로, 토큰이 있는 환경에서 돌지 않게.
@@ -22,6 +31,10 @@ export class GitRepo {
   private static readonly OUTPUT_MAX = 64 * 1024 * 1024;
   /** 러너가 올리는 브랜치는 이 아래만. 다른 브랜치는 덮어쓰지 않는다 */
   private static readonly OWN_BRANCH = /^cairn\/[0-9a-f-]{36}$/;
+  /** 앞 PR의 끝을 받아 두는 ref (러너의 clone 안에서만) */
+  private static readonly PREVIOUS = 'refs/cairn/previous';
+  /** 충돌 표시가 남은 줄 (=======은 글에 흔해서 보지 않는다) */
+  private static readonly MARKERS = '^(<<<<<<<|>>>>>>>)( |$)';
   /** 다시 해도 같은 실패 (영어로 받는다: LANG=C) */
   private static readonly REFUSED =
     /Repository not found|not found|Authentication failed|could not read Username|returned error: (401|403|404)|from proxy after CONNECT|couldn't find remote ref|Remote branch .* not found|not allowed/i;
@@ -94,6 +107,82 @@ export class GitRepo {
   }
 
   /**
+   * "고쳐 달라"로 다시 온 일: 앞 PR의 변경(브랜치의 마지막 커밋 = base 위의 커밋 하나)을 이 clone(최신 base)의 작업 트리에
+   * 3-way로 다시 얹는다. 충돌은 표시로 남긴다 (AI가 푼다). 브랜치가 없으면(주인이 지움) null.
+   * 얹은 작업 트리는 AI의 사본으로 넘긴 뒤 restore로 base에 되돌린다: 깨끗한 clone은 늘 base 그대로여야 patch를 견줄 수 있다
+   */
+  async replay(
+    branch: string,
+    patchFile: string,
+    auth: string | null,
+    signal?: AbortSignal,
+  ): Promise<Replayed | null> {
+    try {
+      await GitRepo.git(
+        [
+          '-C',
+          this.dir,
+          'fetch',
+          '--no-tags',
+          '--depth',
+          '2',
+          'origin',
+          `+refs/heads/${branch}:${GitRepo.PREVIOUS}`,
+        ],
+        { home: this.home, auth, timeoutMs: GitRepo.CLONE_MS, signal, remote: true },
+      );
+    } catch (error) {
+      if (error instanceof RepoRefused && /couldn't find remote ref/i.test(error.message))
+        return null;
+      throw error;
+    }
+    const head = (await this.run(['rev-parse', GitRepo.PREVIOUS])).trim();
+    const diff = await this.run([
+      'diff',
+      '--binary',
+      '--no-color',
+      '--no-ext-diff',
+      '--no-renames',
+      `${GitRepo.PREVIOUS}~1`,
+      GitRepo.PREVIOUS,
+    ]);
+    if (diff.length === 0) return new Replayed(head, []);
+    await writeFile(patchFile, diff, { mode: 0o600 });
+    try {
+      await this.run(['apply', '--3way', '--whitespace=nowarn', '--', patchFile]);
+    } catch {
+      // 충돌이 있으면 git apply는 실패로 끝나지만 표시를 남긴 채 얹는다. 충돌 없이 실패했으면 얹지 못한 것이다
+    }
+    const conflicts = (await this.run(['diff', '--name-only', '--diff-filter=U', '-z']))
+      .split('\0')
+      .filter(Boolean);
+    const touched = (await this.run(['status', '--porcelain', '-z'])).length > 0;
+    if (!touched) throw new PatchRejected('앞 PR의 변경을 최신 기준에 다시 얹지 못했어요');
+    return new Replayed(head, conflicts);
+  }
+
+  /** 다시 얹은 작업 트리를 base로 되돌린다 (AI의 사본으로 넘긴 뒤) */
+  async restore(): Promise<void> {
+    await this.run(['reset', '-q', '--hard', this.baseSha]);
+    await this.run(['clean', '-fdxq']);
+  }
+
+  /** 옮긴 변경 중 충돌 표시를 더한 파일 (apply 뒤). 남아 있으면 올리지 않는다 */
+  async conflictMarkers(): Promise<readonly string[]> {
+    const names = await this.run([
+      'diff',
+      '--cached',
+      '--name-only',
+      '--no-renames',
+      '-z',
+      '-G',
+      GitRepo.MARKERS,
+      'HEAD',
+    ]);
+    return names.split('\0').filter(Boolean);
+  }
+
+  /**
    * AI의 자리에서 agent 권한으로 만든 patch를 깨끗한 clone에 옮기고 바뀐 파일들을 준다.
    * git apply가 저장소 밖 · .git 안 · 링크 너머로 가는 경로를 거절한다. 빈 patch면 빈 목록
    */
@@ -117,12 +206,22 @@ export class GitRepo {
     return (await this.run(['rev-parse', 'HEAD'])).trim();
   }
 
-  /** 러너의 브랜치(cairn/<작업>)에만 올린다. 다시 한 작업은 같은 브랜치에 덮어쓴다 */
-  async push(branch: string, auth: string | null, signal?: AbortSignal): Promise<void> {
+  /**
+   * 러너의 브랜치(cairn/<작업>)에만 올린다. 브랜치는 늘 base 위의 커밋 하나라 덮어쓴다.
+   * expected가 있으면(앞 PR의 끝) 그사이 브랜치가 바뀌었을 때 덮지 않는다 (force-with-lease)
+   */
+  async push(
+    branch: string,
+    auth: string | null,
+    signal?: AbortSignal,
+    expected: string | null = null,
+  ): Promise<void> {
     if (!GitRepo.OWN_BRANCH.test(branch))
       throw new RepoRefused(`러너는 cairn/ 아래 브랜치에만 올려요: ${branch}`);
+    const force =
+      expected === null ? '--force' : `--force-with-lease=refs/heads/${branch}:${expected}`;
     await GitRepo.git(
-      ['-C', this.dir, 'push', '--force', '--no-verify', 'origin', `HEAD:refs/heads/${branch}`],
+      ['-C', this.dir, 'push', force, '--no-verify', 'origin', `HEAD:refs/heads/${branch}`],
       { home: this.home, auth, timeoutMs: GitRepo.PUSH_MS, signal, remote: true },
     );
   }

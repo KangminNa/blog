@@ -107,6 +107,32 @@ export class GitServer {
     return `${this.baseUrl}/${name}.git`;
   }
 
+  /** 브랜치에 커밋 하나를 더한다 (기준이 움직였거나 다른 쪽이 브랜치에 올린 것처럼). 새 커밋을 준다 */
+  commit(name: string, branch: string, files: Readonly<Record<string, string>>): string {
+    const bare = join(this.root, `${name}.git`);
+    const work = mkdtempSync(join(this.root, 'commit-'));
+    const git = (...args: string[]) =>
+      execFileSync('git', args, {
+        cwd: work,
+        env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+        .toString()
+        .trim();
+    git('clone', '-q', '--branch', branch, bare, '.');
+    for (const [path, content] of Object.entries(files)) {
+      const file = join(work, path);
+      execFileSync('mkdir', ['-p', join(file, '..')]);
+      writeFileSync(file, content);
+    }
+    git('add', '-A');
+    git('-c', 'user.name=other', '-c', 'user.email=other@localhost', 'commit', '-q', '-m', '더함');
+    git('push', '-q', 'origin', `HEAD:refs/heads/${branch}`);
+    const sha = git('rev-parse', 'HEAD');
+    rmSync(work, { recursive: true, force: true });
+    return sha;
+  }
+
   /** 브랜치의 커밋. 없으면 null */
   head(name: string, branch: string): string | null {
     try {
