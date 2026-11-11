@@ -13,7 +13,8 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
 - `wiki/`: wiki(`Wiki` + 판 `WikiRevision`), 본문(`WikiBody`: md 원문과 `##` 제목 단위의 칸 `WikiSection`, 코드 블록 안의 `##`은 제목이 아니다).
   `api/wikis`(목록 `?q=&category=&cursor=`, 하나, 만들기, 고치기, 휴지통 `trash` · `restore` · 목록 `api/wikis/trash`, 대체 `replaces`), MCP `search_wikis` · `get_wiki`(`read_public`이나 `read_all`). 읽기는 방문자도 공개 wiki까지, 쓰기는 주인만
 - `wiki-score/`: wiki 점수(docs/wiki점수.md). 식(`WikiScorePolicy`: 입력 → 점수, DB 없음)과 읽기(`WikiScoreQuery`). `api/wiki-scores`(카테고리별 순위 · 히스토리), `api/wiki-scores/:id`. 주인만.
-  점수는 표에 두지 않고 읽을 때 계산한다. 점수를 받는 것은 휴지통에 없는 wiki, 쓰임을 주는 것은 세션(대표 · 재료) · 글(대표 · 참고) · 더 새로운 wiki의 링크다
+  점수는 표에 두지 않고 읽을 때 계산한다. 점수를 받는 것은 휴지통에 없는 wiki, 쓰임을 주는 것은 세션(대표 · 재료) · 글(대표 · 참고) · 더 새로운 wiki의 링크다.
+  지울 만한 wiki 알림: `WikiStaleJob`(하루 한 번) → `WikiScoreService.notice` → `StaleWikis`(공간 하나의 알린 기록, `StaleWikiRepository`가 advisory 잠금)가 새 후보만 platform `Notices`로 알린다. 지우지 않는다
 - `category/`: 그래프 카테고리(`Category`). `api/categories`(목록은 누구나, 이름이 공개다. 쓰기는 주인만). wiki가 남으면 지우지 못한다(409)
 - `edge/`: 연결선(`Edge`, 종류 `EdgeKind`). REST가 아직 없고 변경 묶음으로만 바뀐다 (그래프 단계에서 경로를 더한다)
 - `change/`: 변경 묶음(`ChangeSet`), 변경(`ChangeOp` 하위 클래스 하나 = 변경 종류 하나), 대상(`ChangeTarget`: 네 엔티티의 부모, `snapshot`·`rollBack`),
@@ -38,7 +39,7 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
 ## 소유 데이터
 스키마 `vault`: node_kinds, edge_kinds, nodes, sessions, session_revisions, attachments, categories, wikis, wiki_revisions, wiki_aliases,
 edges, project_rules, graph_views, node_layout, graph_snapshots, post_marks, chunks, chunk_embeddings,
-change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings
+change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings, stale_wikis
 
 ## 데이터 묶음
 - 세션: nodes(세션) + sessions + session_revisions + attachments + edit_leases(세션)
@@ -50,6 +51,7 @@ change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings
 - 그래프 보기: graph_views + node_layout + graph_snapshots
 - 글 자리 사본: post_marks (blog 이벤트를 받는 Handler와 복원만 쓴다)
 - 정리 설정: tidy_settings
+- 지울 만한 wiki 알림 기록: stale_wikis (wiki 점수)
 
 ## 공개 API (`index.ts`)
 `VaultModule`, `VaultTools`(세션·wiki·그래프·변경 묶음 도구 목록, mcp 모듈이 모아서 연다), `SessionQuery`·`GetSessionInput`(blog의 소재가 세션을 확인할 때 읽음), `PostWikiQuery`(blog가 글에 이을 wiki를 확인할 때 읽음)

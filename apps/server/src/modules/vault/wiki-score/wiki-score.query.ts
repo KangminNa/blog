@@ -3,6 +3,7 @@ import { type Actor, BaseQuery, NotFound } from '../../platform';
 import { edges } from '../vault.schema';
 import type { CategoryRow, WikiRow } from '../vault.tables';
 import type { WikiIdInput } from '../wiki/wiki.input';
+import type { StaleCandidateRow } from './stale-wikis';
 import {
   type ScoredWikiRow,
   WikiScore,
@@ -32,7 +33,7 @@ export class WikiScoreQuery extends BaseQuery {
     const space = actor.requireSpace();
     const [wikis, categories] = await Promise.all([this.wikis(space), this.categories(space)]);
     const scores = await this.scoresOf(space, wikis);
-    const rows = this.rowsOf(wikis, scores);
+    const rows = this.rowsOf(wikis, scores, await this.staleIds(space, scores));
     const ranked = rows.filter((r) => r.replaced_by === null);
     const live = new Set(categories.map((c) => c.node_id));
     const groups = [
@@ -48,9 +49,32 @@ export class WikiScoreQuery extends BaseQuery {
     return new WikiScoreBoardView(
       WikiScorePolicy.HALF_LIFE_DAYS,
       WikiScorePolicy.CITED,
+      WikiScorePolicy.STALE_BELOW,
       groups,
       history,
     );
+  }
+
+  /** 지울 만한 wiki (하루 한 번 알리는 일꾼이 읽는다). 주인이나 서버 자신만 */
+  async staleIn(actor: Actor, space: string): Promise<StaleCandidateRow[]> {
+    actor.assertOwnerOrSystem();
+    const wikis = await this.wikis(space);
+    const scores = await this.scoresOf(space, wikis);
+    const stale = await this.staleIds(space, scores);
+    const titles = new Map(wikis.map((w) => [w.node_id, w.title]));
+    return scores
+      .filter((s) => stale.has(s.wikiId))
+      .sort(WikiScore.byTotal)
+      .reverse()
+      .map((s) => ({ wiki_id: s.wikiId, score: s.total, title: titles.get(s.wikiId) ?? '' }));
+  }
+
+  /** wiki가 있는 공간들 (일꾼이 공간마다 돈다) */
+  async spaces(actor: Actor): Promise<string[]> {
+    actor.assertOwnerOrSystem();
+    const rows = await this.sql<Pick<WikiRow, 'space_id'>[]>`
+      SELECT DISTINCT space_id FROM vault.wikis ORDER BY space_id`;
+    return rows.map((r) => r.space_id);
   }
 
   /** wiki 하나의 점수와 물려받은 곳. 휴지통의 wiki는 없는 wiki와 같다 */
@@ -59,7 +83,9 @@ export class WikiScoreQuery extends BaseQuery {
     const space = actor.requireSpace();
     const wikis = await this.wikis(space);
     const scores = await this.scoresOf(space, wikis);
-    const row = this.rowsOf(wikis, scores).find((r) => r.node_id === req.id);
+    const row = this.rowsOf(wikis, scores, await this.staleIds(space, scores)).find(
+      (r) => r.node_id === req.id,
+    );
     const score = scores.find((s) => s.wikiId === req.id);
     if (!row || !score) throw new NotFound('wiki를 찾을 수 없어요');
     const titles = new Map(wikis.map((w) => [w.node_id, w.title]));
@@ -77,8 +103,30 @@ export class WikiScoreQuery extends BaseQuery {
     return new WikiScorePolicy(new Date()).score(wikis, uses, cites);
   }
 
+  /** 지울 만한 wiki의 id. 공개 wiki와 글이 가리키는 wiki는 지킨다 */
+  private async staleIds(space: string, scores: readonly WikiScore[]): Promise<Set<string>> {
+    const policy = new WikiScorePolicy(new Date());
+    const below = policy.stale(scores, new Set());
+    if (below.length === 0) return new Set();
+    return new Set(policy.stale(below, await this.kept(space)).map((s) => s.wikiId));
+  }
+
+  /** 점수와 상관없이 지울 후보로 올리지 않는 wiki: 공개 wiki(바깥에 주소가 나가 있을 수 있다)와 글이 가리키는 wiki */
+  private async kept(space: string): Promise<Set<string>> {
+    const rows = await this.sql<Pick<WikiRow, 'node_id'>[]>`
+      SELECT node_id FROM vault.wikis WHERE space_id = ${space} AND visibility = 'public'
+      UNION
+      SELECT unnest(array_remove(p.main_wiki_id || p.ref_wiki_ids, NULL))
+      FROM vault.post_marks p WHERE p.space_id = ${space}`;
+    return new Set(rows.map((r) => r.node_id));
+  }
+
   /** 점수를 화면 값으로: 히스토리가 아닌 wiki 중 가장 높은 점수를 100으로, 순위는 점수가 높은 순 */
-  private rowsOf(wikis: readonly BoardWikiRow[], scores: readonly WikiScore[]): WikiScoreRow[] {
+  private rowsOf(
+    wikis: readonly BoardWikiRow[],
+    scores: readonly WikiScore[],
+    stale: ReadonlySet<string>,
+  ): WikiScoreRow[] {
     const byId = new Map(wikis.map((w) => [w.node_id, w]));
     const max = Math.max(0, ...scores.filter((s) => !s.history).map((s) => s.total));
     return [...scores].sort(WikiScore.byTotal).flatMap((s) => {
@@ -97,6 +145,7 @@ export class WikiScoreQuery extends BaseQuery {
           uses: s.uses,
           last_used_at: s.lastUsedAt,
           replaced_by: s.replacedBy,
+          stale: stale.has(s.wikiId),
         },
       ];
     });

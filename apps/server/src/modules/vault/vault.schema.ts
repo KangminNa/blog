@@ -269,6 +269,14 @@ export const sessions = vaultSchema.table('sessions', {
   tidy_requested_seq: integer('tidy_requested_seq').notNull(),
 });
 
+/** vault.stale_wikis */
+export const staleWikis = vaultSchema.table('stale_wikis', {
+  wiki_id: uuid('wiki_id').notNull(),
+  space_id: uuid('space_id').notNull(),
+  score: real('score').notNull(),
+  noticed_at: timestamp('noticed_at', { withTimezone: true }).notNull(),
+});
+
 /** vault.tidy_settings */
 export const tidySettings = vaultSchema.table('tidy_settings', {
   space_id: uuid('space_id').notNull(),

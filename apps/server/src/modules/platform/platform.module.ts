@@ -11,6 +11,9 @@ import { SensitivePolicy } from './base/sensitive-policy';
 import { HealthController } from './health/health.api';
 import { HealthQuery } from './health/health.query';
 import { DomainErrorFilter } from './http/domain-error.filter';
+import { NotificationController } from './notice/notification.api';
+import { NotificationQuery } from './notice/notification.query';
+import { NotificationService } from './notice/notification.service';
 import { Leases } from './plugin/leases';
 import { PackageController } from './plugin/package.api';
 import { PackageService } from './plugin/package.service';
@@ -34,6 +37,8 @@ import { OutboxWorker } from './worker/outbox-worker';
     BlobStore,
     BlobSweepJob,
     HealthQuery,
+    NotificationQuery,
+    NotificationService,
     PluginQuery,
     PluginService,
     { provide: SecretBox, useFactory: () => SecretBox.fromEnv(process.env) },
@@ -64,7 +69,13 @@ import { OutboxWorker } from './worker/outbox-worker';
     },
     { provide: APP_FILTER, useClass: DomainErrorFilter },
   ],
-  controllers: [HealthController, PluginController, PackageController, StreamController],
+  controllers: [
+    HealthController,
+    NotificationController,
+    PluginController,
+    PackageController,
+    StreamController,
+  ],
   exports: [
     Database,
     BlobStore,

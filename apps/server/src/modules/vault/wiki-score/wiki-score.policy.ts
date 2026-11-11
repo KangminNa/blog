@@ -146,6 +146,16 @@ export class WikiScorePolicy {
     });
   }
 
+  /**
+   * 지울 만한 wiki: 히스토리가 아니고, 최종 점수가 기준 아래이고, 지키는 wiki가 아닌 것.
+   * 지키는 wiki(공개 · 글이 가리키는 wiki)는 점수와 상관없이 후보로 올리지 않는다. 알리기만 하고 지우지 않는다
+   */
+  stale(scores: readonly WikiScore[], kept: ReadonlySet<string>): WikiScore[] {
+    return scores.filter(
+      (s) => !s.history && s.total < WikiScorePolicy.STALE_BELOW && !kept.has(s.wikiId),
+    );
+  }
+
   /** 1점이 지금 남은 값 2^-((t - at) / H) */
   private left(at: Date): number {
     const days = (this.now.getTime() - at.getTime()) / WikiScorePolicy.DAY_MS;

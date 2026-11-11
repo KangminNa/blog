@@ -26,11 +26,13 @@ const WIKI_TOPICS = ['vault.wiki.saved', 'vault.change.*', 'vault.category.chang
 /** 점수는 세션 · 글의 쓰임으로도 바뀐다 */
 const SCORE_TOPICS = [...WIKI_TOPICS, 'vault.session.*', 'blog.post.*'];
 const SCORE_VIEW = 'score';
+const STALE_VIEW = 'stale';
 const TRASH_VIEW = 'trash';
-/** 목록 보기: 최근(기본) · 점수순 · 휴지통 */
+/** 목록 보기: 최근(기본) · 점수순 · 지울 만한(알림이 여는 곳) · 휴지통 */
 const VIEWS: readonly (readonly [string | null, string])[] = [
   [null, '최근'],
   [SCORE_VIEW, '점수순'],
+  [STALE_VIEW, '지울 만한'],
   [TRASH_VIEW, '휴지통'],
 ];
 /** 물려받는 비율 β의 뜻 */
@@ -59,7 +61,7 @@ function mergePages(before: WikiPage, more: WikiPage): WikiPage {
 
 // 위키: 왼쪽 목록(최근 · 점수순 · 휴지통)과 찾기 + 오른쪽 읽기·고치기. 좁은 화면에서는 고르기 전에 목록, 고른 뒤에 내용만 보인다.
 export function WikiPanel({ openId, view }: { openId: string | null; view: string | null }) {
-  const listView = view === SCORE_VIEW || view === TRASH_VIEW ? view : null;
+  const listView = VIEWS.some(([key]) => key !== null && key === view) ? view : null;
   const [typed, setTyped] = useState('');
   const [query, setQuery] = useState('');
   const pages = useRef(1);
@@ -100,6 +102,8 @@ export function WikiPanel({ openId, view }: { openId: string | null; view: strin
         </nav>
         {listView === SCORE_VIEW ? (
           <ScoreList openId={openId} />
+        ) : listView === STALE_VIEW ? (
+          <StaleList openId={openId} />
         ) : listView === TRASH_VIEW ? (
           <TrashList />
         ) : (
@@ -341,12 +345,21 @@ function ScoreList({ openId }: { openId: string | null }) {
   );
 }
 
-function ScoreRow({ wiki, openId }: { wiki: WikiScoreItem; openId: string | null }) {
+function ScoreRow({
+  wiki,
+  openId,
+  view = SCORE_VIEW,
+}: {
+  wiki: WikiScoreItem;
+  openId: string | null;
+  /** 누르면 이 목록 보기를 지킨 채 연다 */
+  view?: string;
+}) {
   return (
     <li>
       <Link
         className="item"
-        href={hrefOf(SCORE_VIEW, wiki.id)}
+        href={hrefOf(view, wiki.id)}
         aria-current={wiki.id === openId ? 'true' : undefined}
       >
         <div className="item-main">
@@ -354,6 +367,7 @@ function ScoreRow({ wiki, openId }: { wiki: WikiScoreItem; openId: string | null
           <small>
             쌓인 {fixed(wiki.accumulated)} · 물려받은 {fixed(wiki.inherited)} · 마지막 쓰임{' '}
             {day(wiki.lastUsedAt)}
+            {wiki.stale ? ' · 지울 만한' : ''}
           </small>
         </div>
         {/* 히스토리는 순위 밖이라 100점 환산 값을 보이지 않는다 */}
@@ -401,6 +415,39 @@ function ScoreBox({ id }: { id: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** 지울 만한 위키: 점수가 기준 아래이고 공개 · 글이 가리키는 위키 · 히스토리가 아닌 것. 지우는 것은 주인이다 */
+function StaleList({ openId }: { openId: string | null }) {
+  const board = useLiveValue(
+    'wiki-scores',
+    () => api<WikiScoreBoard>('GET', '/api/wiki-scores'),
+    SCORE_TOPICS,
+  );
+  if (board.error) return <p className="error">{board.error}</p>;
+  if (board.data === null) return <p className="label-mono">불러오는 중…</p>;
+  const stale = board.data.groups
+    .flatMap((g) => g.wikis)
+    .filter((w) => w.stale)
+    .sort((a, b) => a.total - b.total);
+  return (
+    <>
+      <p className="note">
+        오래 쓰이지 않은 위키예요 (최종 점수 {board.data.staleBelow} 아래). 공개 위키 · 글이
+        가리키는 위키 · 히스토리는 빼요. 저절로 지우지 않아요: 열어서 휴지통으로 보내면 되살릴 수
+        있어요
+      </p>
+      {stale.length === 0 ? (
+        <p className="rows-empty">지울 만한 위키 없음</p>
+      ) : (
+        <ul className="list" aria-label="지울 만한 위키">
+          {stale.map((w) => (
+            <ScoreRow key={w.id} wiki={w} openId={openId} view={STALE_VIEW} />
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
 

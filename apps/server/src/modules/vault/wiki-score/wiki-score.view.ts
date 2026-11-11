@@ -17,6 +17,8 @@ export interface WikiScoreRow
   last_used_at: Date;
   /** 이 wiki를 대체한 wiki (있으면 히스토리) */
   replaced_by: string | null;
+  /** 지울 만한 wiki (점수가 기준 아래, 공개 · 글이 가리키는 wiki · 히스토리가 아님) */
+  stale: boolean;
 }
 
 /** 물려받은 몫 하나: 근거로 삼은 옛 wiki와 비율 β, 물려받은 값 */
@@ -47,6 +49,7 @@ export class WikiScoreItemView {
       uses: r.uses,
       lastUsedAt: r.last_used_at.toISOString(),
       replacedBy: r.replaced_by,
+      stale: r.stale,
     };
   }
 }
@@ -76,6 +79,7 @@ export class WikiScoreBoardView {
   constructor(
     private readonly halfLifeDays: number,
     private readonly cited: number,
+    private readonly staleBelow: number,
     private readonly groups: readonly WikiScoreGroupView[],
     private readonly history: readonly WikiScoreRow[],
   ) {}
@@ -84,6 +88,7 @@ export class WikiScoreBoardView {
     return {
       halfLifeDays: this.halfLifeDays,
       cited: this.cited,
+      staleBelow: this.staleBelow,
       groups: this.groups.map((g) => g.toJSON()),
       history: this.history.map((r) => new WikiScoreItemView(r).toJSON()),
     };

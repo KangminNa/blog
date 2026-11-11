@@ -11,6 +11,7 @@ import { ThemeToggle } from '../_ui/ThemeToggle';
 import { useToast } from '../_ui/useToast';
 import { useWaitingChanges } from '../_vault/live';
 import { APPROVALS_HREF, HOME_HREF, MENU, MenuIcon } from './menu';
+import { NotificationBell } from './NotificationBell';
 
 /** 지금 메뉴인가. 홈(/admin)은 모든 메뉴의 앞부분이라 정확히 같을 때만 */
 function isCurrent(pathname: string, href: string): boolean {
@@ -144,6 +145,7 @@ export function AdminShell({
               </svg>
             </button>
             <span className="console-path">{pathname}</span>
+            <NotificationBell />
             <ThemeToggle />
           </header>
           <div className="console-page">{children}</div>

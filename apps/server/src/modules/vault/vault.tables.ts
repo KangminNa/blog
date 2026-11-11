@@ -285,6 +285,15 @@ export interface SessionRow {
 }
 export type SessionNew = Partial<SessionRow> & Pick<SessionRow, 'node_id' | 'space_id' | 'device_id' | 'tool' | 'source_session_id'>;
 
+/** vault.stale_wikis */
+export interface StaleWikiRow {
+  wiki_id: string;
+  space_id: string;
+  score: number;
+  noticed_at: Date;
+}
+export type StaleWikiNew = Partial<StaleWikiRow> & Pick<StaleWikiRow, 'wiki_id' | 'space_id' | 'score'>;
+
 /** vault.tidy_settings */
 export interface TidySettingRow {
   space_id: string;

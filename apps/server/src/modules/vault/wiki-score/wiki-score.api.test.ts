@@ -3,9 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { ApiClient, type ApiResult, TestUser } from '../../../testing/api-client';
 import { Database, DomainEvent, Outbox, OutboxWorker } from '../../platform';
+import { WikiStaleJob } from './wiki-stale.job';
 
 // wiki 점수 (docs/wiki점수.md). 주인만 본다: 비공개 세션 · wiki의 쓰임이 섞인 값이다.
 // 문서의 A · B · C 예를 실제 DB의 날짜로 다시 만들어 같은 숫자가 나오는지 본다.
+// 지울 만한 wiki 알림은 platform의 알림(api/notifications)까지 한 흐름으로 본다.
 
 type Json = Record<string, unknown>;
 type Item = {
@@ -18,8 +20,25 @@ type Item = {
   uses: number;
   lastUsedAt: string;
   replacedBy: string | null;
+  stale: boolean;
 };
-type Board = { halfLifeDays: number; cited: number; groups: Json[]; history: Item[] };
+type Board = {
+  halfLifeDays: number;
+  cited: number;
+  staleBelow: number;
+  groups: Json[];
+  history: Item[];
+};
+type Notice = {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  link: string;
+  read: boolean;
+  createdAt: string;
+};
+type Notices = { unread: number; notifications: Notice[] };
 
 let api: ApiClient;
 let owner: TestUser;
@@ -269,5 +288,87 @@ describe('wiki 점수', () => {
     near(itemOf(scores, old.id)?.total, 1, '휴지통의 링크는 세지 않음');
     assert.equal((await api.get(`/api/wiki-scores/${gone.id}`, owner)).status, 404);
     assert.equal((await api.get(`/api/wiki-scores/${randomUUID()}`, owner)).status, 404);
+  });
+});
+
+describe('지울 만한 wiki 알림', () => {
+  const notices = async (): Promise<Notices> =>
+    ok(await api.get('/api/notifications', owner)) as unknown as Notices;
+  const staleNotices = async (): Promise<Notice[]> =>
+    (await notices()).notifications.filter((n) => n.kind === 'vault.wiki.stale');
+
+  test('알림은 주인만: 방문자 · 기기 403', async () => {
+    assert.equal((await api.get('/api/notifications')).status, 403);
+    assert.equal((await api.request('POST', '/api/notifications/read', undefined, {})).status, 403);
+    const res = await fetch(`${api.baseUrl}/api/notifications`, {
+      headers: { authorization: `Bearer ${tidier}` },
+    });
+    assert.equal(res.status, 403);
+    const bad = await api.request('POST', '/api/notifications/read', owner, { ids: ['nope'] });
+    assert.equal(bad.status, 400);
+  });
+
+  test('오래 쓰이지 않은 비공개 wiki만 알리고, 같은 wiki는 다시 알리지 않으며, 지우지 않는다', async () => {
+    const old = await newWiki();
+    const open = await newWiki();
+    ok(
+      await api.request('PUT', `/api/wikis/${open.id}`, owner, {
+        version: open.version,
+        title: open.title,
+        bodyMd: open.bodyMd,
+        visibility: 'public',
+      }),
+    );
+    const cited = await newWiki();
+    await publishPost(cited.id, []);
+    await db.sql`
+      UPDATE vault.post_marks SET updated_at = now() - make_interval(days => 400)
+      WHERE main_wiki_id = ${String(cited.id)}`;
+    const fresh = await newWiki();
+    for (const w of [old, open]) await wikiBornDaysAgo(w.id, 300);
+    await wikiBornDaysAgo(cited.id, 400);
+
+    const job = api.service(WikiStaleJob);
+    await job.run();
+    const scores = await board();
+    assert.equal(scores.staleBelow, 0.125);
+    assert.equal(itemOf(scores, old.id)?.stale, true);
+    assert.equal(itemOf(scores, open.id)?.stale, false, '공개 wiki는 지킨다');
+    assert.equal(itemOf(scores, cited.id)?.stale, false, '글이 가리키는 wiki는 지킨다');
+    assert.equal(itemOf(scores, fresh.id)?.stale, false);
+    assert.ok((itemOf(scores, cited.id)?.total ?? 1) < 0.125, '점수는 낮아도');
+
+    const [notice, ...others] = await staleNotices();
+    assert.equal(others.filter((n) => !n.read).length, 0, '안 읽은 알림은 하나로 묶인다');
+    assert.equal(notice?.read, false);
+    assert.equal(notice?.link, '/admin/wiki?view=stale');
+    assert.match(String(notice?.title), /^지울 만한 위키 \d+개$/);
+    assert.match(String(notice?.body), new RegExp(String(old.title)));
+    assert.ok((await notices()).unread >= 1);
+
+    await job.run();
+    const again = await staleNotices();
+    assert.equal(again.length, 1 + others.length, '같은 wiki는 다시 알리지 않는다');
+    assert.equal(again[0]?.createdAt, notice?.createdAt);
+    assert.equal((await api.get(`/api/wikis/${old.id}`, owner)).status, 200, '지우지 않는다');
+
+    const [noted] =
+      await db.sql`SELECT count(*)::int AS n FROM vault.stale_wikis WHERE wiki_id = ${String(old.id)}`;
+    assert.equal(noted?.n, 1);
+    const reader = await newWiki();
+    await addEdge(reader.id, old.id, 'link');
+    await job.run();
+    assert.equal(itemOf(await board(), old.id)?.stale, false, '다시 쓰이면 후보에서 빠진다');
+    const [cleared] =
+      await db.sql`SELECT count(*)::int AS n FROM vault.stale_wikis WHERE wiki_id = ${String(old.id)}`;
+    assert.equal(cleared?.n, 0);
+
+    const read = ok(
+      await api.request('POST', '/api/notifications/read', owner, { ids: [notice?.id] }),
+    );
+    assert.equal(read.read, 1);
+    assert.equal((await staleNotices()).find((n) => n.id === notice?.id)?.read, true);
+    ok(await api.request('POST', '/api/notifications/read', owner, {}));
+    assert.equal((await notices()).unread, 0);
   });
 });

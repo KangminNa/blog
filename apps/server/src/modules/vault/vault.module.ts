@@ -34,6 +34,8 @@ import { WikiQuery } from './wiki/wiki.query';
 import { GetWikiTool, SearchWikisTool } from './wiki/wiki.tool';
 import { WikiScoreController } from './wiki-score/wiki-score.api';
 import { WikiScoreQuery } from './wiki-score/wiki-score.query';
+import { WikiScoreService } from './wiki-score/wiki-score.service';
+import { WikiStaleJob } from './wiki-score/wiki-stale.job';
 
 // AI 작업 세션과 그래프: 세션 저장·찾기·읽기, wiki · 카테고리, 변경 묶음(검토·되돌리기), 세션 정리 요청,
 // 그래프 보기, 글 자리 사본, 보관 형식 내보내기, wiki 점수.
@@ -53,6 +55,8 @@ import { WikiScoreQuery } from './wiki-score/wiki-score.query';
     SearchWikisTool,
     GetWikiTool,
     WikiScoreQuery,
+    WikiScoreService,
+    WikiStaleJob,
     CategoryQuery,
     TidyQuery,
     TidyService,
@@ -85,11 +89,13 @@ export class VaultModule implements OnModuleInit {
     private readonly blobs: BlobStore,
     private readonly sessions: SessionQuery,
     private readonly graph: GraphQuery,
+    private readonly stale: WikiStaleJob,
   ) {}
 
   onModuleInit(): void {
     this.workers.on('vault.session.saved', this.tidy);
     this.workers.on('blog.post.*', this.postMarks);
+    this.workers.every(this.stale, WikiStaleJob.EVERY_MS);
     // 파일을 가리키는 칸: 쓰는 동안 platform이 파일을 지우지 않게
     this.blobs.registerUse(['vault.attachments.blob_hash'], (actor, hashes) =>
       this.sessions.usedBlobs(actor, hashes),

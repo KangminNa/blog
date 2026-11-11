@@ -173,6 +173,17 @@ describe('wiki 점수: Cairn에서', () => {
     assert.equal(s.get(A)?.shown(0), 0);
   });
 
+  test('지울 만한 wiki: 기준 아래이고 히스토리 · 지키는 wiki가 아닌 것', () => {
+    const policy = new WikiScorePolicy(day(400));
+    const all = policy.score(
+      [wiki(A, 0), wiki(B, 0), wiki(C, 0), wiki(D, 390)],
+      [],
+      [replaces(D, C, 390)],
+    );
+    const stale = policy.stale(all, new Set([B])).map((s) => s.wikiId);
+    assert.deepEqual(stale, [A], 'B는 지키는 wiki, C는 히스토리, D는 아직 높다');
+  });
+
   test('아무도 쓰지 않은 wiki는 270일이 지나야 지울 만한 기준(0.125)에 닿는다', () => {
     near(scores(270, [wiki(A, 0)], []).get(A)?.total, WikiScorePolicy.STALE_BELOW, '270일');
     assert.ok((scores(269, [wiki(A, 0)], []).get(A)?.total ?? 0) > WikiScorePolicy.STALE_BELOW);
