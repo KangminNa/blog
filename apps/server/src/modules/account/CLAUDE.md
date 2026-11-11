@@ -37,6 +37,8 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
 ## 내보내는 이벤트 / 받는 이벤트
 `account.owner.claimed`(주인이 정해짐), `account.device.connected`, `account.device.revoked` / 없음
 
+알리는 것 (`AccountNotices`, 7단계. platform `NoticeCatalog`에 등록): `account.device.connected` 새 기기 연결 (즉시, 기기마다 묶음 키)
+
 ## 써도 되는 모듈
 platform
 

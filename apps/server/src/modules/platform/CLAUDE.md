@@ -2,17 +2,22 @@
 
 ## 하는 일
 모든 모듈이 쓰는 공통 기반. DB 연결, 기반 클래스, 오류, 요청자(Actor), 이벤트와 outbox, 변경 신호(`/api/stream`), 서버 상태 확인.
-파일 저장(blobs), 보관 형식(archive), 플러그인, 알림(콘솔 머리줄). 나중에: 알림 푸시 · 이메일, 임베딩 모델 목록. AI 일거리는 task 모듈이 맡는다.
+파일 저장(blobs), 보관 형식(archive), 플러그인, 알림(콘솔 머리줄 · 알림 설정 · 브라우저 푸시). 나중에: 알림 이메일, 임베딩 모델 목록. AI 일거리는 task 모듈이 맡는다.
 **비즈니스 규칙을 두지 않는다.** 세션·글 같은 단어가 여기 코드에 나오면 잘못 들어온 것이다.
 
 ## 소유 데이터
-스키마 `platform`: blobs, idempotency, notifications, push_subscriptions, embedding_models, outbox, plugins, plugin_settings
+스키마 `platform`: blobs, idempotency, notifications, notice_settings, push_subscriptions, embedding_models, outbox, plugins, plugin_settings
 DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모듈의 테이블이 씀)
 
 ## 데이터 묶음
 - 플러그인(plugins + plugin_settings, `plugin/`): `PluginState`는 열쇠가 이름이고 version 칸이 없어 `BaseEntity`로 두 표의 행(`platform.tables.ts`)을 들고, `PluginRepository`가 늘 덮어쓴다 (ON CONFLICT). 비밀값은 암호화된 칸으로만 들고 View에는 채워졌는지(`isSet`)만 나간다. 목록은 Query가 보는 사람에 맞는 View를 고른다 (주인과 서버 자신 `PluginListView`, 그 밖 `PluginSummaryListView`)
 - 서버 상태(`health/`): 표가 아니라 DB 카탈로그를 읽는다. 누구에게나 DB를 읽어 본 뒤 답하고, 방문자는 status만(`HealthView`), 주인과 서버 자신은 확장 · 마이그레이션 · 표 수까지(`HealthDetailView`)
-- 알림(notifications, `notice/`): 쓰기는 알리는 모듈이 자기 트랜잭션에서 `Notices.post`(같은 `group_key`의 안 읽은 알림은 새로 쌓지 않고 바꿈), 읽기 `api/notifications`(최근 30개 · 안 읽은 수), 읽음 `api/notifications/read`. 주인만. 무엇을 알리는지 모른다 (제목 · 본문 · 주소는 알리는 쪽). push_subscriptions는 7단계
+- 알림(notifications, `notice/`): 무엇을 알리는지 모른다 (종류 · 이름 · 등급 · 제목 · 본문 · 주소는 알리는 쪽). 모듈은 `onModuleInit`에서 `NoticeCatalog.define(new NoticeKind(…).from(이벤트들, 만들기).settledOn(이벤트들, 묶음 키))`로 등록하고,
+  `Outbox.listen`이 이벤트를 쓰는 같은 트랜잭션에서 `NoticeCatalog.onEvents` → `Notices.post`(경로가 off면 안 남김, 같은 `group_key`의 안 읽은 알림은 바꾸고 `push_sent_at`을 비움) · `Notices.settle`(끝난 일의 알림 읽음).
+  이벤트 없이 남기는 알림도 종류는 등록한다 (설정 화면에 보이게). 읽기 `api/notifications`(최근 30개 · 안 읽은 수), 읽음 `api/notifications/read`. 주인만
+- 알림 설정(notice_settings, `NoticeSettings`): 공간마다 한 줄, 없으면 기본값. 묶음 간격 · 조용한 시간 · 시간대 · 종류별 경로(push · center · off). `api/notice-settings`(주인만, 종류 목록은 `NoticeCatalog`에서)
+- 브라우저 푸시(push_subscriptions, `PushSubscription`): 구독은 알려진 푸시 서비스의 https 주소만 (`CAIRN_PUSH_EXTRA_ORIGINS`는 시험 · 직접 운영하는 서비스). `api/push`(키 · 구독 · 끄기 · 보내 보기, 주인만).
+  보내기는 `NoticePushJob`(1분): 짧은 트랜잭션에서 공간의 안 다룬 알림을 `SKIP LOCKED`로 잠그고 `NoticePolicy`가 정한 뒤 `push_sent_at`을 적고, 트랜잭션 밖에서 `PushGateway`가 보낸다 → 결과를 적는다(404 · 410이나 다섯 번 실패면 구독을 지움). 암호화 · VAPID는 `base/web-push.ts`(`WebPush`), 키는 서버 키에서 (`derive('web-push-vapid')`)
 
 ## 공개 API (`index.ts`)
 - 기반 클래스: `BaseService` · `EntityService` · `BaseQuery` · `BaseRepository` · `TableRepository` · `BaseEntity` · `TableEntity` · `BaseRequest`(+`RequestFields` · `VersionInput`) · `BaseGateway` · `BaseTool`
@@ -21,10 +26,11 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 - `Database`, `Sql`·`Row`(라이브러리 타입 별칭), `Actor`와 `OwnerActor`·`DeviceActor`·`AgentActor`·`ApprovedActor`·`SystemActor`·`VisitorActor`.
   권한은 `assertCan(권한)`(기기·에이전트가 받은 권한), 관리 일은 종류로 묻는다: `assertOwner()`(주인만), `assertOwnerOrSystem()`(주인과 명령줄·일꾼: 플러그인, 서버 키 교체, 복원).
   `mayRead(id)` · `hasReadGrants()`: 작업 토큰에 함께 봉인한 id 하나씩의 읽기 허락 (`AgentActor`의 `reads`). 권한이 아니라 id로 하나를 읽을 때만 본다 (무엇의 id인지는 모른다)
-- 같은 트랜잭션에 들어가는 것: `Outbox`(이벤트, 변경 신호, 일꾼 깨우기), `ChangeSignal`(내용 없는 신호), `Idempotency`(같은 request_id는 한 번만), `Notices`(콘솔 알림, 변경 신호 `platform.notification`)
+- 같은 트랜잭션에 들어가는 것: `Outbox`(이벤트, 변경 신호, 일꾼 깨우기. `Outbox.listen`: 이벤트를 쓰기 전에 같은 트랜잭션에서 부르는 듣는 쪽, 지금은 알림 하나), `ChangeSignal`(내용 없는 신호), `Idempotency`(같은 request_id는 한 번만), `Notices`(콘솔 알림, 변경 신호 `platform.notification`)
 - `ChangeStream`: Postgres LISTEN 연결 하나로 변경 신호를 나눠 준다. SSE와 긴 폴링이 쓴다. 신호는 깨우기용이고 내용은 늘 테이블에 있다
 - `SecretRotation`: 서버 키 교체. 비밀값을 가진 모듈이 `register`로 다시 잠그는 방법을 등록
 - `SensitivePolicy` · `Redaction`: AI가 보낸 글이 판이 되기 전에 비밀값(토큰 · 키 · 비밀번호 값)을 `[지움: 종류]`로 바꾼다. 모양만 보고, 어느 칸을 지울지는 쓰는 모듈이 정한다 (vault 세션 · wiki, blog 초안)
+- `NoticeCatalog` · `NoticeKind`: 알림 종류 등록 (7단계). 등급은 `NoticeKind.IMMEDIATE` · `DIGEST` · `LOG`
 - `CoreWorkers`: 코어 모듈의 이벤트 받기·반복 작업 등록 (`on`, `every`, `expect`)
 - `ArchiveQuery`: 보관 형식 파일 묶음. 내용을 가진 모듈이 `onModuleInit`에서 `register`로 자기 파일을, `registerRestore`로 복원을 등록한다
 - `ArchiveRestoreService`: 빈 Cairn에 복원 (`preview` · `apply`). GitHub와 zip이 같은 길이다. 주인과 `SystemActor`만 부른다. `steadyRead`: 복원과 겹치지 않게 읽기
@@ -44,7 +50,7 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 - 일 빌리기는 `SKIP LOCKED`, 잠그는 순서는 모듈 규칙대로 (task: 작업 → 결재 → 에이전트), 줄이 없을 수도 있는 자리는 advisory 잠금(`pg_advisory_xact_lock`, 트랜잭션이 끝나면 풀림)
 
 ## 내보내는 이벤트 / 받는 이벤트
-없음 / 없음 (나중에 알림이 각 모듈의 이벤트를 받는다)
+없음 / 없음. 대신 `Outbox.listen`으로 모든 이벤트를 쓰는 트랜잭션 안에서 보고, 모듈이 등록한 종류의 알림을 남긴다 (`NoticeCatalog.onEvents`)
 
 ## 써도 되는 모듈
 없음. platform은 다른 모듈을 모른다.
@@ -56,6 +62,8 @@ DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모�
 - 같은 트랜잭션에 들어가야 하는 기능(outbox 등)은 호출한 쪽의 `Sql`(트랜잭션)을 받는 클래스로 만든다
 - 복원은 모듈을 한 트랜잭션에 묶는 유일한 곳이다: 실패하면 Cairn이 비어 있는 채로 남아야 해서다. `ArchiveRestoreService`가 트랜잭션을 열고 모듈은 자기 스키마에만 쓴다. 이벤트는 남기지 않는다
 - 복원의 잠금은 두 가지다: 복원끼리와 `steadyRead`는 advisory 잠금, 빈 곳 확인은 모듈이 표를 잠근다 (`ArchivePart.existing`)
+- 푸시는 트랜잭션 밖에서 보낸다. 보내기 전에 다룬 것으로 적는다 (많아야 한 번: 두 번 울리는 것보다 빠지는 것이 낫고, 알림 센터에는 남는다)
+- 푸시 주소는 알려진 서비스만 받는다: 아무 주소나 받으면 서버가 주인 대신 내부망에 요청하는 길이 된다
 
 ## 하지 말 것
 - 다른 모듈 import

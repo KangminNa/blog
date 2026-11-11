@@ -69,6 +69,9 @@ change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings, stal
 | `vault.change.reverted` | changeSetId, revertId |
 | `task.task.requested` | requestId(`tidy:<세션>:<판>`), kind(`tidy_session`), title, targetKind, targetId, baseVersion. task 모듈이 받는 일 요청 |
 
+알리는 것 (`VaultNotices`, 7단계. platform `NoticeCatalog`에 등록, 이벤트와 같은 트랜잭션에서 생긴다):
+`vault.change.review` 검토할 제안 (묶음, `vault.change.submitted`의 status가 review일 때, 묶음 키 하나), `vault.session.saved` 세션 들어옴 (묶음, 새 세션만), `vault.wiki.stale` 지울 만한 위키 (묶음, 이벤트 없이 `WikiScoreService.notice`가 남긴다)
+
 받는 이벤트: `vault.session.saved` (자동 정리. 꺼져 있으면 아무 일 없이 처리됨), `blog.post.*` (글 자리 사본. `postVersion`이 없는 이벤트는 건너뛴다. 글 이벤트에는 `mainWikiId`, `refWikiIds`가 실려 온다)
 
 ## 써도 되는 모듈
