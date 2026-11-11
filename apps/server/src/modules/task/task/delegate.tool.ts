@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseTool } from '../../platform';
+import { CodeScope } from './code-scope';
 import { Task } from './task';
 import { DelegateTaskInput } from './task.input';
 import { TaskService } from './task.service';
@@ -19,6 +20,8 @@ export class DelegateTaskTool extends BaseTool {
     `한 번에 ${Task.DELEGATE_AT_ONCE}개, 작업 하나에 ${Task.SUBTASKS_MAX}개, 위임 깊이 ${Task.DEPTH_MAX}, 라운드 ${Task.ROUNDS_MAX}까지.`,
     '맡긴 뒤 이 작업은 하위 작업을 기다리고, 이 실행은 여기서 끝낸다.',
     '하위 작업이 모두 끝나면 결과와 함께 이 일이 다시 온다. 결재는 누가 올리든 주인이 한다.',
+    'code 일은 code 작업에서만 맡긴다: 하위 작업은 이 작업의 저장소를 물려받고, paths(이 작업의 고칠 수 있는 곳 안)만 정한다.',
+    '하위 작업끼리 paths가 겹치면 거절된다 (겹치면 PR이 부딪친다).',
   ].join(' ');
   readonly inputSchema = {
     properties: {
@@ -49,6 +52,14 @@ export class DelegateTaskTool extends BaseTool {
             target_kind: { type: 'string', maxLength: 40, description: '대상의 종류 (예: post)' },
             target_id: { type: 'string', format: 'uuid', description: '대상 id' },
             target_version: { type: 'integer', minimum: 0, description: '대상의 판 번호' },
+            paths: {
+              type: 'array',
+              minItems: 1,
+              maxItems: CodeScope.PATHS_MAX,
+              items: { type: 'string', maxLength: CodeScope.PATH_MAX },
+              description:
+                'kind가 code일 때만, 필수. 저장소 안의 상대 경로 접두어 (예: src/billing). 이 작업의 고칠 수 있는 곳 안에서, 다른 하위 작업과 겹치지 않게',
+            },
           },
           required: ['request_id', 'to_agent_id', 'title', 'instruction'],
         },

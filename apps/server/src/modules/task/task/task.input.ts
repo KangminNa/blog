@@ -278,26 +278,37 @@ export class ReleaseJobInput extends BaseRequest {
 
 /** delegate_task의 하위 작업 하나. 받는 에이전트와 일의 뜻(종류, 권한)은 Task.subtask가 검사한다 */
 export class SubtaskOrder extends BaseRequest {
+  /** 모양만 넉넉히 막는다. 개수 · 길이 · 위 작업 안인지는 도메인(CodeScope)이 본다 */
+  private static readonly PATHS_SHAPE = 40;
+  private static readonly PATH_SHAPE = 1_000;
+
   private constructor(
     readonly requestId: string,
     readonly toAgentId: string,
     /** MCP 입력은 칸 이름 그대로다. 대상의 판(base_version)만 target_version으로 받는다 */
     readonly fields: Omit<TaskNew, 'id' | 'space_id'>,
+    /** code 일의 고칠 수 있는 곳 (위 code 작업의 경로 안). 다른 일에는 없다 */
+    readonly paths: readonly string[] | null,
   ) {
     super();
   }
 
   static from(f: RequestFields): SubtaskOrder {
     const targetKind = f.optionalText('target_kind', 40);
-    return new SubtaskOrder(f.text('request_id', 200), f.uuid('to_agent_id'), {
-      kind: f.optionalText('kind', 100) ?? 'general',
-      title: f.text('title', 200),
-      instruction: f.text('instruction', 20_000),
-      target_kind: targetKind,
-      target_id: targetKind === null ? null : f.uuid('target_id'),
-      base_version:
-        targetKind === null ? null : f.optionalInteger('target_version', 0, VERSION_MAX),
-    });
+    return new SubtaskOrder(
+      f.text('request_id', 200),
+      f.uuid('to_agent_id'),
+      {
+        kind: f.optionalText('kind', 100) ?? 'general',
+        title: f.text('title', 200),
+        instruction: f.text('instruction', 20_000),
+        target_kind: targetKind,
+        target_id: targetKind === null ? null : f.uuid('target_id'),
+        base_version:
+          targetKind === null ? null : f.optionalInteger('target_version', 0, VERSION_MAX),
+      },
+      f.optionalTextList('paths', SubtaskOrder.PATHS_SHAPE, SubtaskOrder.PATH_SHAPE),
+    );
   }
 }
 

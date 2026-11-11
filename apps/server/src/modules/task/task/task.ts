@@ -14,6 +14,7 @@ import { AiSigninRelayView, AiTestView } from '../ai/ai-login.view';
 import type { Goal } from '../goal/goal';
 import type { SkillPackage } from '../skill/skill-package';
 import type { TaskEventRow, TaskNew, TaskRow, TaskRunNew } from '../task.tables';
+import { CodeScope } from './code-scope';
 import {
   DelegatedView,
   type JobSkillView,
@@ -76,8 +77,16 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   static readonly GENERAL = 'general';
   static readonly WAIT_APPROVAL = 'approval';
   static readonly WAIT_SUBTASKS = 'subtasks';
-  /** 위임할 수 있는 일의 종류. 받는 에이전트의 권한으로 할 수 있어야 한다 (SCOPES) */
-  static readonly DELEGABLE: readonly string[] = [Task.GENERAL, 'draft_post', 'tidy_session'];
+  /**
+   * 위임할 수 있는 일의 종류. 받는 에이전트의 권한으로 할 수 있어야 한다 (SCOPES).
+   * code는 code 작업에서만: 하위 작업은 위 작업의 저장소를 물려받고 경로만 좁힌다 (CodeScope)
+   */
+  static readonly DELEGABLE: readonly string[] = [
+    Task.GENERAL,
+    'draft_post',
+    'tidy_session',
+    Task.CODE,
+  ];
   /** 위임 한도: 깊이(주인이 맡긴 작업이 0), 작업 하나가 위임하는 횟수, 한 번에, 작업 하나에 */
   static readonly DEPTH_MAX = 3;
   static readonly ROUNDS_MAX = 3;
@@ -245,6 +254,29 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   get signinCode(): string | null {
     const code = this.payload.code;
     return typeof code === 'string' ? code : null;
+  }
+
+  /** 코드 작업이 고치는 자리 (저장소 + 경로). code 작업이 아니거나 저장소 정보가 없으면 null */
+  get codeScope(): CodeScope | null {
+    return this.row.kind === Task.CODE ? CodeScope.of(this.row.payload) : null;
+  }
+
+  /** 아직 끝나지 않았는가 (대기 · 실행 · 기다림) */
+  get open(): boolean {
+    return [Task.QUEUED, Task.RUNNING, Task.WAITING].includes(this.row.status);
+  }
+
+  /**
+   * 같은 저장소의 겹치는 일을 막고 있는가 (빌리기): 칸에서 도는 중이거나 PR의 결재를 기다리는 code 작업.
+   * 하위 작업을 기다리는 위 작업은 저장소를 쥐고 있지 않다. PR이 열린 동안 막는 것은 먼저 연 PR이 머지되면 뒤 PR이 부딪쳐서다
+   */
+  get holdsCode(): boolean {
+    const r = this.row;
+    return (
+      r.kind === Task.CODE &&
+      (r.status === Task.RUNNING ||
+        (r.status === Task.WAITING && r.wait_reason === Task.WAIT_APPROVAL))
+    );
   }
 
   /** 결과를 내고 끝났는가. 취소는 결과가 없어서 뺀다 */
@@ -432,12 +464,14 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   /**
    * 하위 작업 하나를 만든다. 받는 쪽은 manager의 바로 아래 팀원이어야 하고, 그 에이전트의 권한으로 할 수 있는 종류여야 한다.
    * 하위 작업은 이 작업의 목표와 우선순위를 물려받고, 담당은 worker로 정해진다.
+   * code는 code 작업에서만 맡긴다: 이 작업의 저장소 · 명령을 물려받고 경로(paths)는 이 작업의 경로 안으로 좁힌다
    */
   subtask(
     manager: Agent,
     worker: Agent | null,
     requestId: string,
     fields: Omit<TaskNew, 'id' | 'space_id'>,
+    paths: readonly string[] | null,
     now: Date,
   ): Task {
     const { kind } = fields;
@@ -454,7 +488,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
       {
         ...fields,
         agent_id: worker.id,
-        payload: { delegatedBy: this.id },
+        payload: { delegatedBy: this.id, ...this.codeFor(kind, paths) },
         priority: r.priority,
         goal_id: r.goal_id,
         parent_id: this.id,
@@ -462,6 +496,17 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
       },
       now,
     );
+  }
+
+  /** 하위 작업의 payload.code. code가 아닌 일에는 paths를 적지 않는다 */
+  private codeFor(kind: string, paths: readonly string[] | null): Record<string, unknown> {
+    if (kind !== Task.CODE) {
+      if (paths !== null) throw new RuleViolation('paths는 code 일에만 적어요');
+      return {};
+    }
+    const mine = this.codeScope;
+    if (mine === null) throw new RuleViolation('코드 일은 코드 작업에서만 나눠 맡겨요');
+    return { code: mine.narrowTo(paths).toPayload() };
   }
 
   /**

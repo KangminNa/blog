@@ -25,6 +25,7 @@ import { SkillRepository } from '../skill/skill.repository';
 import { SkillPackage } from '../skill/skill-package';
 import { PlanUsage } from '../usage/plan-usage';
 import { PlanUsageRepository } from '../usage/plan-usage.repository';
+import { CodeScope } from './code-scope';
 import { LeasePolicy } from './lease.policy';
 import { Task } from './task';
 import type {
@@ -44,6 +45,9 @@ import type { JobView, ProgressView } from './task.view';
 // 잠그는 순서는 어디서나 작업 → 결재 → 에이전트.
 @Injectable()
 export class TaskService extends BaseService {
+  /** 칸이 일을 빌릴 때 겹쳐서 건너뛸 수 있는 만큼 더 보는 후보 수 */
+  private static readonly CODE_LOOKAHEAD = 20;
+
   private static readonly REPORT = 'report_progress';
   private static readonly SUBMIT = 'submit_result';
   /** 신호를 놓쳤거나 임대가 끝났을 때를 위해 이 간격으로도 다시 찾는다 */
@@ -206,12 +210,8 @@ export class TaskService extends BaseService {
           return keys.map((k) => before.find((t) => t.requestId === k) as Task);
         throw new Conflict('이미 쓴 request_id예요. 새 하위 작업에는 새 request_id를 써 주세요');
       }
-      parent.assertCanDelegate(
-        agentId,
-        req.subtasks.length,
-        (await tasks.children(parent.id)).length,
-        now,
-      );
+      const siblings = await tasks.children(parent.id);
+      parent.assertCanDelegate(agentId, req.subtasks.length, siblings.length, now);
       const org = await new AgentRepository(tx).all(spaceId);
       const manager = org.find((a) => a.id === agentId);
       if (!manager) throw new Forbidden(Actor.AGENT);
@@ -221,8 +221,13 @@ export class TaskService extends BaseService {
           org.find((a) => a.id === s.toAgentId) ?? null,
           s.requestId,
           s.fields,
+          s.paths,
           now,
         ),
+      );
+      // 코드 하위 작업끼리(아직 안 끝난 형제 포함) 고칠 곳이 겹치면 PR이 부딪친다
+      CodeScope.assertApart(
+        [...siblings.filter((t) => t.open), ...made].flatMap((t) => t.codeScope ?? []),
       );
       for (const child of made)
         if (!(await tasks.insertOnce(child)))
@@ -296,7 +301,14 @@ export class TaskService extends BaseService {
         .filter((u) => u.ready && (workTools === null || workTools.includes(u.agent.tool)))
         .map((u) => u.agent);
       const jobs: JobView[] = [];
-      const picked = await tasks.lockNext(spaceId, ready, req.limit, {
+      // 칸: 공간을 잠그고(두 칸이 동시에 겹치는 일을 받지 않게) 저장소를 쥔 code 작업과 겹치는 일은 건너뛴다.
+      // 건너뛸 수 있으니 후보를 넉넉히 잠근다
+      if (sandbox) await tasks.lockCodeLeasing(spaceId);
+      const held = sandbox
+        ? (await tasks.holdingCode(spaceId)).flatMap((t) => t.codeScope ?? [])
+        : [];
+      const look = sandbox ? req.limit + TaskService.CODE_LOOKAHEAD : req.limit;
+      const picked = await tasks.lockNext(spaceId, ready, look, {
         testTools: LeasePolicy.testTools(req.tools, usable),
         signinTools: req.signinTools,
         browser: req.browser,
@@ -304,6 +316,9 @@ export class TaskService extends BaseService {
       });
       const busy = [...running];
       for (const task of picked) {
+        if (jobs.length >= req.limit) break;
+        const scope = task.codeScope;
+        if (scope && held.some((h) => h.overlaps(scope))) continue;
         // 담당을 정하지 않은 일은 그 일의 권한이 있는 에이전트 중 가장 먼저 만든, 일을 받을 수 있는 에이전트가 맡는다
         const worker = task.agentId
           ? ready.find((a) => a.id === task.agentId)
@@ -313,6 +328,7 @@ export class TaskService extends BaseService {
         if (agent && !LeasePolicy.canStart(agent.tool, req.ownLogins, AiLogin.ROTATING, busy))
           continue;
         if (agent) busy.push(agent.tool);
+        if (scope) held.push(scope);
         task.lease(runnerId, agent?.id ?? null, now);
         const skill = await this.skillOf(tx, task);
         const tool = agent?.tool ?? task.payloadTool;

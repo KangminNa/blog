@@ -59,13 +59,13 @@ async function newRepo(name = `app-${randomUUID().slice(0, 8)}`): Promise<Json> 
 }
 
 /** 저장소에 일을 맡기고 칸 러너가 빌린다. 같은 DB의 다른 시험이 남긴 일이 먼저 올 수 있어 이 일이 올 때까지 */
-async function leasedJob(repo: Json, paths = ['src']): Promise<Json> {
+async function leasedJob(repo: Json, paths = ['src'], agent = agentId): Promise<Json> {
   const asked = ok(
     await api.request('POST', `${BASE}/repos/${repo.id}/tasks`, owner, {
       requestId: randomUUID(),
       instruction: `버그를 고쳐 주세요 ${randomUUID()}`,
       paths,
-      agentId,
+      agentId: agent,
     }),
   );
   await drain();
@@ -299,5 +299,161 @@ describe('code-github: 칸 러너의 토큰과 PR, 결재', () => {
       assert.equal(pull.status, stale ? 'open' : 'merged');
       if (stale) assert.match(String((task.result as Json).error), /PR이 바뀌었어요/);
     }
+  });
+});
+
+describe('코드 작업 5단계: 나눠 맡기기와 겹침', () => {
+  let lead: string;
+  let coder: string;
+  /** 두 번째 칸 */
+  let slot2: string;
+
+  const newAgent = async (name: string, more: Json = {}) =>
+    String(
+      ok(
+        await api.request('POST', '/api/agents', owner, {
+          requestId: randomUUID(),
+          name: `${name} ${randomUUID().slice(0, 6)}`,
+          tool: 'claude',
+          scopes: ['code'],
+          approvalActions: ['code.pr.merge'],
+          ...more,
+        }),
+        201,
+      ).id,
+    );
+
+  const sub = (paths: string[] | undefined, title = `고치기 ${paths?.join(',')}`) => ({
+    request_id: randomUUID(),
+    to_agent_id: coder,
+    kind: 'code',
+    title,
+    instruction: '맡은 곳을 고쳐 주세요',
+    ...(paths ? { paths } : {}),
+  });
+
+  /** 칸이 빌린 일 중 이 저장소들의 일 (같은 DB의 다른 시험이 남긴 일은 빼고 본다) */
+  async function leaseFrom(token: string, ...repos: Json[]): Promise<Json[]> {
+    const next = await tool(token, 'next_jobs', { wait_seconds: 0, limit: 10, tools: ['claude'] });
+    assert.equal(next.ok, true, JSON.stringify(next.body));
+    const urls = repos.map((r) => r.url);
+    return (next.body.jobs as Json[]).filter((j) => urls.includes(codeOf(j).repo.url));
+  }
+
+  async function ask(repo: Json, paths: string[], agent: string): Promise<void> {
+    ok(
+      await api.request('POST', `${BASE}/repos/${repo.id}/tasks`, owner, {
+        requestId: randomUUID(),
+        instruction: `${paths.join(',')} 고치기`,
+        paths,
+        agentId: agent,
+      }),
+    );
+    await drain();
+  }
+
+  const codeOf = (job: Json) =>
+    ((job.task as Json).payload as { code: { paths: string[]; repo: { url: string } } }).code;
+  const pathsOf = (job: Json) => codeOf(job).paths;
+
+  before(async () => {
+    lead = await newAgent('팀장');
+    coder = await newAgent('코더', { reportsTo: lead });
+    const secret = api.service(ServerRunnerPolicy).codeSecret();
+    slot2 = String(
+      ok(await api.request('POST', '/api/devices/code-runner', owner, { secret, slot: '8' })).token,
+    );
+  });
+
+  test('팀장은 code 일을 경로로 나눠 맡긴다: 하위 작업은 저장소를 물려받고, 겹치거나 밖이거나 경로가 없으면 거절', async () => {
+    const repo = await newRepo();
+    const job = await leasedJob(repo, ['src', 'docs'], lead);
+    const run = String(job.run_token);
+    for (const [subtasks, problem] of [
+      [[sub(['src']), sub(['src/a'])], /겹쳐요/],
+      [[sub(['test'])], /고칠 수 있는 곳 밖/],
+      [[sub(undefined)], /paths/],
+    ] as const) {
+      const refused = await tool(run, 'delegate_task', { subtasks });
+      assert.equal(refused.ok, false, JSON.stringify(refused.body));
+      assert.match(JSON.stringify(refused.body), problem);
+    }
+
+    const done = await tool(run, 'delegate_task', {
+      subtasks: [sub(['src/a']), sub(['src/b']), sub(['docs'])],
+    });
+    assert.equal(done.ok, true, JSON.stringify(done.body));
+    assert.equal(done.body.waiting, 'subtasks');
+    const made = done.body.subtasks as Json[];
+    assert.equal(made.length, 3);
+    const child = ok(await api.get(`/api/tasks/${made[0]?.task_id}`, owner));
+    const code = (child.payload as Json).code as Json;
+    assert.equal(child.kind, 'code');
+    assert.deepEqual(code.paths, ['src/a']);
+    assert.deepEqual(code.repo, { id: repo.id, url: repo.url, base: 'main' });
+    assert.deepEqual(code.checks, ['pnpm check', 'pnpm test']);
+    const parent = ok(await api.get(`/api/tasks/${(job.task as Json).id}`, owner));
+    assert.equal(parent.status, 'waiting');
+
+    // 하위 작업을 기다리는 팀장은 저장소를 쥐지 않는다: 칸 둘이 하위 작업을 동시에 빌린다
+    const first = await leaseFrom(slot, repo);
+    const second = await leaseFrom(slot2, repo);
+    const leased = [...first, ...second].map(pathsOf).sort();
+    assert.deepEqual(leased, [['docs'], ['src/a'], ['src/b']]);
+  });
+
+  test('칸은 같은 저장소에서 겹치는 일을 동시에 빌리지 않는다: 도는 동안 · PR 결재를 기다리는 동안', async () => {
+    const repo = await newRepo();
+    await ask(repo, ['src'], coder);
+    await ask(repo, ['src/x'], coder);
+    await ask(repo, ['docs'], coder);
+    const first = await leaseFrom(slot, repo);
+    assert.deepEqual(first.map(pathsOf).sort(), [['docs'], ['src']], '겹치는 src/x는 남는다');
+    assert.deepEqual(await leaseFrom(slot2, repo), []);
+
+    const holder = first.find((j) => pathsOf(j)[0] === 'src') as Json;
+    const taskId = String((holder.task as Json).id);
+    const opened = await tool(slot, 'code_pull_opened', {
+      task_id: taskId,
+      number: 9,
+      url: `https://github.com/me/${repo.name}/pull/9`,
+      branch: `cairn/${taskId}`,
+      head_sha: SHA(9),
+      checks: [],
+    });
+    const approval = await tool(String(holder.run_token), 'request_approval', {
+      request_id: `merge-${taskId}`,
+      action: 'code.pr.merge',
+      target_kind: 'pull_request',
+      target_id: opened.body.pull_id,
+      target_version: opened.body.version,
+      note: 'draft PR',
+    });
+    assert.equal(approval.ok, true, JSON.stringify(approval.body));
+    assert.deepEqual(await leaseFrom(slot2, repo), [], 'PR이 열린 동안에도 기다린다');
+
+    const pending = ok(await api.get(`/api/approvals/${approval.body.approval_id}`, owner));
+    ok(
+      await api.request('POST', `/api/approvals/${pending.id}/decide`, owner, {
+        version: pending.version,
+        decision: 'approve',
+      }),
+    );
+    await drain();
+    assert.equal(ok(await api.get(`/api/tasks/${taskId}`, owner)).status, 'done');
+    assert.deepEqual(
+      (await leaseFrom(slot2, repo)).map(pathsOf),
+      [['src/x']],
+      '머지한 뒤에 빌린다',
+    );
+  });
+
+  test('다른 저장소는 경로가 같아도 막지 않는다', async () => {
+    const a = await newRepo();
+    const b = await newRepo();
+    await ask(a, ['.'], coder);
+    await ask(b, ['.'], coder);
+    const leased = await leaseFrom(slot, a, b);
+    assert.deepEqual(leased.map((j) => codeOf(j).repo.url).sort(), [a.url, b.url].sort());
   });
 });

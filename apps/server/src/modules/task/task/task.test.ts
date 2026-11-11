@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import { AgentActor, Conflict, Forbidden, RuleViolation, SecretBox } from '../../platform';
 import { Agent } from '../agent/agent';
 import type { TaskRow } from '../task.tables';
+import { CodeScope } from './code-scope';
 import { Task } from './task';
 
 // 작업의 상태 기계: 허용된 변경만 메서드로 받고, 나머지는 RuleViolation. DB 없이 돈다.
@@ -269,6 +270,7 @@ describe('위임', () => {
         target_id: null,
         base_version: null,
       },
+      null,
       NOW,
     );
 
@@ -371,5 +373,98 @@ describe('위임', () => {
     task.cancel(NOW);
     assert.equal(task.unsaved.wait_reason, null);
     assert.equal(task.unsaved.status, Task.CANCELLED);
+  });
+});
+
+describe('코드 일 나눠 맡기기 (코드 작업 5단계)', () => {
+  const CODE = {
+    repo: { id: 'repo-1', url: 'https://github.com/me/app', base: 'main' },
+    paths: ['src'],
+    setup: 'pnpm install',
+    checks: ['pnpm test'],
+  };
+
+  function team() {
+    const make = (name: string) =>
+      Agent.open('space', { name, tool: 'claude', scopes: ['code'] }, NOW);
+    const lead = make('팀장');
+    const coder = make('코더');
+    coder.reportTo(lead.id, [lead, coder]);
+    return { lead, coder };
+  }
+
+  function leadTask(lead: Agent, kind = 'code', payload: unknown = { code: CODE }): Task {
+    const task = Task.open(
+      'space',
+      randomUUID(),
+      { agent_id: lead.id, kind, title: '나눠서 고치기', payload },
+      NOW,
+    );
+    task.lease(RUNNER, lead.id, NOW);
+    return task;
+  }
+
+  const order = (parent: Task, lead: Agent, coder: Agent, paths: string[] | null, kind = 'code') =>
+    parent.subtask(
+      lead,
+      coder,
+      randomUUID(),
+      {
+        kind,
+        title: '고치기',
+        instruction: '고쳐 주세요',
+        target_kind: null,
+        target_id: null,
+        base_version: null,
+      },
+      paths,
+      NOW,
+    );
+
+  test('하위 작업은 위 작업의 저장소 · 명령을 물려받고 경로만 좁힌다', () => {
+    const { lead, coder } = team();
+    const parent = leadTask(lead);
+    const child = order(parent, lead, coder, ['src/billing/', './src/tax']);
+    assert.deepEqual(child.unsaved.payload, {
+      delegatedBy: parent.id,
+      code: { ...CODE, paths: ['src/billing', 'src/tax'] },
+    });
+    assert.deepEqual(child.codeScope?.paths, ['src/billing', 'src/tax']);
+  });
+
+  test('경로가 없거나 위 작업 밖 · 저장소 밖이면, 또는 code가 아닌 작업에서 맡기면 막는다', () => {
+    const { lead, coder } = team();
+    const parent = leadTask(lead);
+    assert.throws(() => order(parent, lead, coder, null), /paths/);
+    assert.throws(() => order(parent, lead, coder, ['docs']), /고칠 수 있는 곳 밖/);
+    assert.throws(() => order(parent, lead, coder, ['src/../etc']), /상대 경로/);
+    assert.throws(() => order(parent, lead, coder, ['/src']), /상대 경로/);
+    assert.throws(() => order(parent, lead, coder, ['src'], 'general'), /code 일에만/);
+    const general = leadTask(lead, 'general', {});
+    assert.throws(() => order(general, lead, coder, ['src']), /코드 작업에서만/);
+  });
+
+  test('형제끼리 고칠 곳이 겹치면 막는다: 접두어 폴더는 겹치고 이름만 비슷한 폴더는 아니다', () => {
+    const { lead, coder } = team();
+    const parent = leadTask(lead);
+    const a = order(parent, lead, coder, ['src/a']);
+    const ab = order(parent, lead, coder, ['src/ab']);
+    const inner = order(parent, lead, coder, ['src/a/deep']);
+    CodeScope.assertApart([a, ab].flatMap((t) => t.codeScope ?? []));
+    assert.throws(
+      () => CodeScope.assertApart([a, ab, inner].flatMap((t) => t.codeScope ?? [])),
+      /겹쳐요/,
+    );
+  });
+
+  test('저장소를 쥔 code 작업: 도는 중 · PR 결재를 기다림. 하위 작업을 기다리는 위 작업은 아니다', () => {
+    const { lead } = team();
+    const running = leadTask(lead);
+    assert.equal(running.holdsCode, true);
+    running.waitForSubtasks(1, NOW);
+    assert.equal(running.holdsCode, false);
+    const reviewing = leadTask(lead);
+    reviewing.waitFor(NOW);
+    assert.equal(reviewing.holdsCode, true);
   });
 });

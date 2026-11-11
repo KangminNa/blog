@@ -70,6 +70,22 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
     return rows.map((r) => this.toEntity(r));
   }
 
+  /** 칸이 일을 빌리는 동안 공간을 잠근다: 두 칸이 동시에 겹치는 code 작업을 가져가지 않게 (트랜잭션이 끝나면 풀림) */
+  async lockCodeLeasing(spaceId: string): Promise<void> {
+    await this
+      .sql`SELECT pg_advisory_xact_lock(hashtextextended(${`task.code-lease:${spaceId}`}, 0))`;
+  }
+
+  /** 저장소를 쥐고 있는 code 작업: 칸에서 도는 중이거나 PR의 결재를 기다리는 것 (Task.holdsCode) */
+  async holdingCode(spaceId: string): Promise<readonly Task[]> {
+    const rows = await this.find({
+      space_id: spaceId,
+      kind: Task.CODE,
+      status: [Task.RUNNING, Task.WAITING],
+    });
+    return rows.filter((t) => t.holdsCode);
+  }
+
   /** 에이전트 없는 일의 종류 하나를 payload의 도구로 거른다 */
   private byTool(kind: string, tools: readonly string[] | null) {
     return tools === null
