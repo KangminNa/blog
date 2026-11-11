@@ -31,7 +31,7 @@ description: 코드 러너 칸에서 PPT · 문서 · 표 · 도표 · 영상 �
 | PDF로 · 미리 보기 | `soffice --headless --convert-to pdf` · `pdftoppm -png` | [references/slides.md](references/slides.md) |
 
 한글 글꼴은 **Noto Sans CJK KR**(본문) · **Noto Serif CJK KR**(제목에 쓸 수 있음)이다. 글꼴을 정하지 않으면 한글이 □로 깨질 수 있다.
-음성(내레이션)과 그림 생성 AI는 아직 없다. 영상은 글자 · 그림 · 도표에 자막과 시간을 넣어 만든다.
+음성(내레이션)과 그림 생성 AI는 없다. 영상은 글자 · 그림 · 도표에 자막과 시간을 넣어 만든다.
 
 ## 순서
 
