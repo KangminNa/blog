@@ -115,4 +115,5 @@ export const pushSubscriptions = platformSchema.table('push_subscriptions', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
   last_success_at: timestamp('last_success_at', { withTimezone: true }),
   fail_count: integer('fail_count').notNull(),
+  space_id: uuid('space_id').notNull(),
 });

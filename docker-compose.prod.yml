@@ -101,6 +101,7 @@ services:
     environment:
       <<: *secret-keys
       DATABASE_URL: *db-url
+      CAIRN_WEB_URL: ${CAIRN_WEB_URL:-http://localhost:${WEB_PORT:-3000}}   # 브라우저 푸시의 연락처 (https일 때)
     depends_on:
       migrate:
         condition: service_completed_successfully

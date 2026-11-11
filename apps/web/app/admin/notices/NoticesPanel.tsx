@@ -4,6 +4,7 @@ import { type FormEvent, useCallback, useEffect, useId, useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
 import type { NoticeKindSetting, NoticeSettings } from '../../_platform/types';
 import { useNotify } from '../AdminShell';
+import { PushBox } from './PushBox';
 
 const SEVERITY_LABELS: Record<string, string> = {
   immediate: '즉시',
@@ -95,6 +96,7 @@ export function NoticesPanel() {
         결재 요청 · 작업 실패 같은 일을 알려요. 즉시 알림은 바로, 묶음은 모아서 보내고, 기록만은
         알림 센터(머리줄의 알림)에만 남아요
       </p>
+      <PushBox />
       {problem && <p className="error">{problem}</p>}
       {settings === null ? (
         !problem && <p className="label-mono">불러오는 중…</p>

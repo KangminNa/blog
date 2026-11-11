@@ -76,6 +76,29 @@ export class NoticeSettings extends TableEntity<
     this.put('updated_at', now);
   }
 
+  get timeZone(): string {
+    return this.row.time_zone;
+  }
+
+  /** 묶음을 하루 한 번 보내는가 (아니면 한 시간마다) */
+  get daily(): boolean {
+    return this.row.digest === NoticeSettings.DAILY;
+  }
+
+  /** 하루 한 번이면 보낼 시각 (하루 중 분) */
+  get digestMinute(): number {
+    return this.row.digest_minute;
+  }
+
+  /** 조용한 시간의 시작 · 끝 (하루 중 분). 없으면 null */
+  get quietStart(): number | null {
+    return this.row.quiet_start;
+  }
+
+  get quietEnd(): number | null {
+    return this.row.quiet_end;
+  }
+
   /** 이 종류를 어디로 보내는가. 정하지 않았으면 등급의 기본 */
   routeOf(kind: NoticeKind): NoticeRoute {
     const routes = (this.row.routes ?? {}) as Record<string, NoticeRoute>;

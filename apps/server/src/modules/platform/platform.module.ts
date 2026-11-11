@@ -13,12 +13,18 @@ import { HealthController } from './health/health.api';
 import { HealthQuery } from './health/health.query';
 import { DomainErrorFilter } from './http/domain-error.filter';
 import { NoticeCatalog } from './notice/notice-catalog';
+import { NoticePushJob } from './notice/notice-push.job';
+import { NoticePushService } from './notice/notice-push.service';
 import { NoticeSettingsController } from './notice/notice-settings.api';
 import { NoticeSettingsQuery } from './notice/notice-settings.query';
 import { NoticeSettingsService } from './notice/notice-settings.service';
 import { NotificationController } from './notice/notification.api';
 import { NotificationQuery } from './notice/notification.query';
 import { NotificationService } from './notice/notification.service';
+import { PushController } from './notice/push.api';
+import { PushGateway } from './notice/push.gateway';
+import { PushQuery } from './notice/push.query';
+import { PushService } from './notice/push.service';
 import { Leases } from './plugin/leases';
 import { PackageController } from './plugin/package.api';
 import { PackageService } from './plugin/package.service';
@@ -47,6 +53,11 @@ import { OutboxWorker } from './worker/outbox-worker';
     NoticeCatalog,
     NoticeSettingsQuery,
     NoticeSettingsService,
+    PushGateway,
+    PushQuery,
+    PushService,
+    NoticePushService,
+    NoticePushJob,
     PluginQuery,
     PluginService,
     { provide: SecretBox, useFactory: () => SecretBox.fromEnv(process.env) },
@@ -81,6 +92,7 @@ import { OutboxWorker } from './worker/outbox-worker';
     HealthController,
     NotificationController,
     NoticeSettingsController,
+    PushController,
     PluginController,
     PackageController,
     StreamController,
@@ -110,6 +122,7 @@ export class PlatformModule implements OnModuleInit {
     private readonly workers: CoreWorkers,
     private readonly sweep: BlobSweepJob,
     private readonly notices: NoticeCatalog,
+    private readonly push: NoticePushJob,
   ) {}
 
   onModuleInit(): void {
@@ -117,5 +130,6 @@ export class PlatformModule implements OnModuleInit {
     Outbox.listen('notices', (tx, events) => this.notices.onEvents(tx, events));
     this.rotation.register('플러그인 설정', (actor) => this.plugins.resealSecrets(actor));
     this.workers.every(this.sweep, BlobSweepJob.EVERY_MS);
+    this.workers.every(this.push, NoticePushJob.EVERY_MS);
   }
 }

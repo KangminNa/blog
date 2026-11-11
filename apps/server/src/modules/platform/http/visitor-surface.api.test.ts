@@ -56,6 +56,7 @@ const VISITOR_GET: Readonly<Record<string, number>> = {
   'GET /api/outputs/download': 403,
   'GET /api/outputs/:id/file': 403,
   'GET /api/posts/:id': 403,
+  'GET /api/push/key': 403,
   'GET /api/runner-skills': 403,
   'GET /api/runner-skills/:name': 403,
   'GET /api/runner-skills/:name/revisions/:revision': 403,

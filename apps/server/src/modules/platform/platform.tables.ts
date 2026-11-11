@@ -119,5 +119,6 @@ export interface PushSubscriptionRow {
   created_at: Date;
   last_success_at: Date | null;
   fail_count: number;
+  space_id: string;
 }
-export type PushSubscriptionNew = Partial<PushSubscriptionRow> & Pick<PushSubscriptionRow, 'id' | 'user_id' | 'endpoint' | 'p256dh' | 'auth'>;
+export type PushSubscriptionNew = Partial<PushSubscriptionRow> & Pick<PushSubscriptionRow, 'id' | 'user_id' | 'endpoint' | 'p256dh' | 'auth' | 'space_id'>;

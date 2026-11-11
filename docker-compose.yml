@@ -96,6 +96,7 @@ services:
     environment:
       DATABASE_URL: *db-url
       CAIRN_SECRET_KEY: ${CAIRN_SECRET_KEY:-}
+      CAIRN_WEB_URL: ${CAIRN_WEB_URL:-http://localhost:${WEB_PORT:-3000}}   # 브라우저 푸시의 연락처 (https일 때)
     volumes:
       - ./apps/server/src:/repo/apps/server/src
       - ./plugins:/repo/plugins
