@@ -29,6 +29,8 @@ const TESTED_ELSEWHERE = {
   'task/task/task.api.ts': 'task/task.api.test.ts',
   // 알림은 알리는 모듈의 흐름에서 (platform은 무엇을 알리는지 모른다): 지울 만한 wiki 알림
   'platform/notice/notification.api.ts': 'vault/wiki-score/wiki-score.api.test.ts',
+  // 페이지는 만들기 작업(task) → 이벤트 → blog를 잇는 흐름이라 모듈을 가로지르는 시험 폴더에서
+  'blog/page/page.api.ts': '../testing/page.api.test.ts',
 };
 
 /** app/_lib/types.ts에 손으로 적어도 되는 타입: 오류 모양(DomainError.toJSON)은 view가 아니라 모든 실패 응답의 모양이다 */

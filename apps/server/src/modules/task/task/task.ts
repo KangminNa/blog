@@ -12,10 +12,11 @@ import {
 import type { Agent } from '../agent/agent';
 import { AiSigninRelayView, AiTestView } from '../ai/ai-login.view';
 import type { Goal } from '../goal/goal';
-import type { SkillPackage } from '../skill/skill-package';
-import type { TaskEventRow, TaskNew, TaskRow, TaskRunNew } from '../task.tables';
+import type { OutputRow, TaskEventRow, TaskNew, TaskRow, TaskRunNew } from '../task.tables';
 import { CodeScope } from './code-scope';
 import { MakeMaterials } from './make-materials';
+import { PageOrder } from './page-order';
+import type { RunRecord } from './run-record';
 import {
   DelegatedView,
   type JobSkillView,
@@ -146,6 +147,8 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     if (fields.kind === Task.MAKE) MakeMaterials.of(fields.payload);
     else if (MakeMaterials.given(fields.payload))
       throw new RuleViolation('재료(make)는 만들기 일에만 적어요');
+    if (PageOrder.of(fields.payload) !== null && fields.kind !== Task.MAKE)
+      throw new RuleViolation('페이지(page)는 만들기 일에만 적어요');
     const task = new Task(
       {
         agent_id: null,
@@ -370,30 +373,8 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
    * 이번 실행의 규칙 판을 남긴다 (임대할 때): 에이전트 설정 판, 스킬 판, 러너 빌드, CLI 버전.
    * 몇 번째 실행인지는 Repository가 매긴다 (attempts는 고쳐 달라 · 깨우기에서 0으로 돌아간다)
    */
-  recordRun(
-    runnerId: string,
-    agent: Agent | null,
-    skill: SkillPackage | null,
-    runnerBuild: string | null,
-    cliVersion: string | null,
-    now: Date,
-  ): void {
-    this.run = {
-      id: BaseEntity.newId(),
-      space_id: this.row.space_id,
-      task_id: this.id,
-      seq: 0,
-      runner_id: runnerId,
-      agent_id: agent?.id ?? null,
-      agent_revision: agent?.settingsRevision ?? null,
-      skill: skill?.name ?? null,
-      skill_source: skill?.source ?? null,
-      skill_revision: skill?.revision ?? null,
-      skill_hash: skill?.hash ?? null,
-      runner_build: runnerBuild,
-      cli_version: cliVersion,
-      started_at: now,
-    };
+  recordRun(runnerId: string, record: RunRecord, now: Date): void {
+    this.run = record.row(BaseEntity.newId(), this.row.space_id, this.id, runnerId, now);
   }
 
   /** 남길 실행 기록 (Repository가 seq를 매겨 넣는다) */
@@ -576,14 +557,23 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     result: Readonly<Record<string, unknown>>,
     error: string | null,
     now: Date,
+    /** 결과를 페이지로 내보내는 일이면 이번 실행의 결과물 (PageOrder) */
+    made: readonly OutputRow[] | null = null,
   ): void {
     this.assertHeldBy(runnerId, now);
+    const page = status === Task.DONE && made !== null ? PageOrder.of(this.row.payload) : null;
+    const refusal = page === null || made === null ? null : PageOrder.refusal(made);
+    if (refusal !== null) {
+      this.fail(refusal, now);
+      return;
+    }
     // 웹 로그인은 자격(ai_signin credential)이 와야 끝난다. 러너가 실패만 알린다
     if (this.isAiSignin && status === Task.DONE)
       throw new RuleViolation('웹 로그인은 ai_signin으로 자격을 보내야 끝나요');
     if (status === Task.DONE) this.finish(result, now);
     else if (status === Task.FAILED) this.fail(error ?? '러너가 실패로 끝냈어요', now);
     else throw new RuleViolation(`결과는 ${Task.DONE} · ${Task.FAILED} 중 하나예요`);
+    if (page && made) this.record(page.built(this.row, made));
   }
 
   /**

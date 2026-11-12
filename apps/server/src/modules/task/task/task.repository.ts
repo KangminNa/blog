@@ -1,7 +1,7 @@
 import { ChangeSignal, Rule, TableRepository } from '../../platform';
 import type { Agent } from '../agent/agent';
 import { taskEvents, taskRuns, tasks } from '../task.schema';
-import type { TaskRow } from '../task.tables';
+import type { OutputRow, TaskRow } from '../task.tables';
 import { Task } from './task';
 
 // task.tasks + task_events ↔ Task. 불러오기·잠그기·저장(바뀐 칸만)은 기반이 하고, 여기에는 대기열 SQL과 실행 기록이 있다.
@@ -251,5 +251,19 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
     await ChangeSignal.send(this.sql, [
       new ChangeSignal(task.spaceId, TaskRepository.LOGGED, task.id),
     ]);
+  }
+
+  /**
+   * 만들기 작업의 마지막 실행이 올린 결과물 (휴지통 제외, 이름 순). 만들기가 아니면 null.
+   * 끝난 작업을 페이지로 알릴 때 읽는다 (PageOrder)
+   */
+  async madeBy(task: Task): Promise<readonly OutputRow[] | null> {
+    if (task.makeMaterials === null) return null;
+    return this.sql<OutputRow[]>`
+      SELECT o.* FROM task.outputs o
+      WHERE o.task_id = ${task.id} AND o.deleted_at IS NULL
+        AND o.run_id = (
+          SELECT id FROM task.task_runs WHERE task_id = ${task.id} ORDER BY seq DESC LIMIT 1)
+      ORDER BY o.name`;
   }
 }

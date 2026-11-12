@@ -17,6 +17,8 @@ const VISITOR_GET: Readonly<Record<string, number>> = {
   'GET /api/install': 200,
   // 기능 패키지의 입구: 없는 패키지 · 경로는 404, 동작마다 권한은 패키지의 allow (package.api.test.ts)
   'GET /api/p/:plugin/*rest': 404,
+  'GET /api/pages': 200,
+  'GET /api/pages/site/*path': 404,
   'GET /api/plugins': 200,
   'GET /api/posts': 200,
   'GET /api/space': 200,
@@ -61,6 +63,7 @@ const VISITOR_GET: Readonly<Record<string, number>> = {
   'GET /api/runner-skills/:name': 403,
   'GET /api/runner-skills/:name/revisions/:revision': 403,
   'GET /api/runners': 403,
+  'GET /api/pages/:id': 403,
   'GET /api/schedules': 403,
   'GET /api/sessions': 403,
   'GET /api/sessions/:id': 403,

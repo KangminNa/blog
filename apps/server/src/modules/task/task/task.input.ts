@@ -61,11 +61,22 @@ export class CreateTaskInput extends BaseRequest {
   private static payloadOf(f: RequestFields, raw: unknown): Record<string, unknown> {
     const payload = f.optionalRecord('payload');
     const given = (raw as Record<string, unknown> | null | undefined)?.materials;
-    if (given === undefined || given === null) return { ...payload };
+    const page = CreateTaskInput.pageOf(f, raw);
+    if (given === undefined || given === null) return { ...payload, ...page };
     const m = f.nested('materials');
     const outputs = m.optionalTextList('outputIds', MakeMaterials.MAX, 36) ?? [];
     const wikis = m.optionalTextList('wikiIds', MakeMaterials.MAX, 36) ?? [];
-    return { ...payload, make: { outputs, wikis } };
+    return { ...payload, ...page, make: { outputs, wikis } };
+  }
+
+  /** 결과를 페이지로 내보내라는 주문(page: { title?, pageId? })을 payload.page로. 적지 않았으면 빈 객체 */
+  private static pageOf(f: RequestFields, raw: unknown): Record<string, unknown> {
+    const given = (raw as Record<string, unknown> | null | undefined)?.page;
+    if (given === undefined || given === null) return {};
+    const p = f.nested('page');
+    return {
+      page: { title: p.optionalText('title', 120), pageId: p.optionalText('pageId', 36) },
+    };
   }
 
   private static optionalUuid(f: RequestFields, raw: unknown, name: string): string | null {

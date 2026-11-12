@@ -9,6 +9,10 @@ import { BasketQuery } from './basket/basket.query';
 import { BasketService } from './basket/basket.service';
 import { BasketGetTool } from './basket/basket.tool';
 import { BlogTools } from './blog-tools';
+import { PageController } from './page/page.api';
+import { PageQuery } from './page/page.query';
+import { PageService } from './page/page.service';
+import { PageBuiltHandler } from './page/page-built.handler';
 import { PostController } from './post/post.api';
 import { PostQuery } from './post/post.query';
 import { PostService } from './post/post.service';
@@ -33,8 +37,11 @@ import { PublishApprovedHandler } from './post/publish-approved.handler';
     BasketGetTool,
     BlogTools,
     PublishApprovedHandler,
+    PageService,
+    PageQuery,
+    PageBuiltHandler,
   ],
-  controllers: [PostController, AssetController, FileController, BasketController],
+  controllers: [PostController, AssetController, FileController, BasketController, PageController],
   exports: [BlogTools],
 })
 export class BlogModule implements OnModuleInit {
@@ -44,11 +51,15 @@ export class BlogModule implements OnModuleInit {
     private readonly blobs: BlobStore,
     private readonly assets: AssetQuery,
     private readonly basket: BasketQuery,
+    private readonly built: PageBuiltHandler,
+    private readonly pages: PageQuery,
   ) {}
 
   onModuleInit(): void {
     this.workers.on(PublishApprovedHandler.TOPIC, this.approved);
     this.workers.expect(PublishApprovedHandler.TOPIC);
+    // 만들기 작업이 끝나며 알린 페이지 (task가 보낸다)
+    this.workers.on(PageBuiltHandler.TOPIC, this.built);
     // 파일을 가리키는 칸: 쓰는 동안 platform이 파일을 지우지 않게
     this.blobs.registerUse(
       ['blog.assets.blob_hash', 'blog.posts.cover_blob_hash'],
@@ -56,6 +67,10 @@ export class BlogModule implements OnModuleInit {
     );
     this.blobs.registerUse(['work.basket_items.blob_hash'], (actor, hashes) =>
       this.basket.usedBlobs(actor, hashes),
+    );
+    // 페이지 판의 파일은 files(jsonb) 안에 있다
+    this.blobs.registerUse(['blog.page_revisions.files'], (actor, hashes) =>
+      this.pages.usedBlobs(actor, hashes),
     );
   }
 }

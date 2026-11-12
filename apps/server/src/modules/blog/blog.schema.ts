@@ -56,6 +56,32 @@ export const editLeases = blogSchema.table('edit_leases', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
 });
 
+/** blog.page_revisions */
+export const pageRevisions = blogSchema.table('page_revisions', {
+  id: uuid('id').notNull(),
+  page_id: uuid('page_id').notNull(),
+  seq: integer('seq').notNull(),
+  files: jsonb('files').notNull(),
+  task_id: uuid('task_id').notNull(),
+  run_id: uuid('run_id').notNull(),
+  note: text('note').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
+/** blog.pages */
+export const pages = blogSchema.table('pages', {
+  id: uuid('id').notNull(),
+  space_id: uuid('space_id').notNull(),
+  name: text('name').notNull(),
+  title: text('title').notNull(),
+  visibility: text('visibility').notNull(),
+  current_seq: integer('current_seq').notNull(),
+  revisions: integer('revisions').notNull(),
+  version: integer('version').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
+});
+
 /** blog.post_revisions */
 export const postRevisions = blogSchema.table('post_revisions', {
   id: uuid('id').notNull(),

@@ -56,6 +56,34 @@ export interface EditLeasRow {
 }
 export type EditLeasNew = Partial<EditLeasRow> & Pick<EditLeasRow, 'target_kind' | 'target_id' | 'space_id' | 'holder' | 'expires_at'>;
 
+/** blog.page_revisions */
+export interface PageRevisionRow {
+  id: string;
+  page_id: string;
+  seq: number;
+  files: unknown;
+  task_id: string;
+  run_id: string;
+  note: string;
+  created_at: Date;
+}
+export type PageRevisionNew = Partial<PageRevisionRow> & Pick<PageRevisionRow, 'id' | 'page_id' | 'seq' | 'files' | 'task_id' | 'run_id'>;
+
+/** blog.pages */
+export interface PageRow {
+  id: string;
+  space_id: string;
+  name: string;
+  title: string;
+  visibility: string;
+  current_seq: number;
+  revisions: number;
+  version: number;
+  created_at: Date;
+  updated_at: Date;
+}
+export type PageNew = Partial<PageRow> & Pick<PageRow, 'id' | 'space_id' | 'name' | 'title' | 'current_seq' | 'revisions'>;
+
 /** blog.post_revisions */
 export interface PostRevisionRow {
   id: string;

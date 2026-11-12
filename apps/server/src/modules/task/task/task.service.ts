@@ -28,6 +28,7 @@ import { PlanUsage } from '../usage/plan-usage';
 import { PlanUsageRepository } from '../usage/plan-usage.repository';
 import { CodeScope } from './code-scope';
 import { LeasePolicy } from './lease.policy';
+import { RunRecord } from './run-record';
 import { Task } from './task';
 import type {
   CreateTaskInput,
@@ -144,7 +145,7 @@ export class TaskService extends BaseService {
       const before = await once.previous();
       if (before) return tasks.load(spaceId, String(before.taskId));
       const task = await tasks.lock(spaceId, req.taskId);
-      task.submit(runnerId, req.status, req.result, req.error, now);
+      task.submit(runnerId, req.status, req.result, req.error, now, await tasks.madeBy(task));
       await tasks.save(task);
       await this.noteAiTest(tx, task, now);
       await once.remember({ taskId: task.id });
@@ -338,14 +339,8 @@ export class TaskService extends BaseService {
         task.lease(runnerId, agent?.id ?? null, now);
         const skill = await this.skillOf(tx, task);
         const tool = agent?.tool ?? task.payloadTool;
-        task.recordRun(
-          runnerId,
-          agent ?? null,
-          skill,
-          req.runnerBuild,
-          tool === null ? null : (req.cliVersions.get(tool) ?? null),
-          now,
-        );
+        const cli = tool === null ? null : (req.cliVersions.get(tool) ?? null);
+        task.recordRun(runnerId, new RunRecord(agent ?? null, skill, req.runnerBuild, cli), now);
         await tasks.save(task);
         jobs.push(
           await this.jobOf(
