@@ -2,7 +2,11 @@ import type { PageRevisionRow, PageRow } from '../blog.tables';
 
 /** 페이지 하나 (콘솔의 페이지 메뉴, 주인) */
 export class PageView {
-  constructor(private readonly row: PageRow) {}
+  constructor(
+    private readonly row: PageRow,
+    /** 마지막 판을 만든 작업. 목록에서만 채운다 (화면이 방금 맡긴 작업의 페이지를 찾는다) */
+    private readonly lastTaskId: string | null = null,
+  ) {}
 
   toJSON() {
     const r = this.row;
@@ -16,6 +20,7 @@ export class PageView {
       version: r.version,
       createdAt: r.created_at.toISOString(),
       updatedAt: r.updated_at.toISOString(),
+      lastTaskId: this.lastTaskId,
     };
   }
 }

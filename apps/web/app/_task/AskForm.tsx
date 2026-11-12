@@ -24,6 +24,7 @@ export function AskForm({
   const box = useRef<HTMLTextAreaElement>(null);
   const [instruction, setInstruction] = useState('');
   const [agentId, setAgentId] = useState('');
+  const [asPage, setAsPage] = useState(false);
   const [goalId, setGoalId] = useState('');
   const goals = useGoals();
   // 진행 중인 목표에만 작업을 더할 수 있다. 나무 순서대로, 깊이만큼 들여 쓴다
@@ -49,6 +50,8 @@ export function AskForm({
         instruction: instruction.trim(),
         ...(agentId ? { agentId } : {}),
         ...(goalId ? { goalId } : {}),
+        // 페이지로 받기: 만들기 일로 맡기고, 끝나면 결과물 묶음이 곧바로 페이지가 된다
+        ...(asPage ? { kind: 'make', page: {} } : {}),
       });
     });
     if (!reply?.ok) return;
@@ -56,6 +59,7 @@ export function AskForm({
     setInstruction('');
     setAgentId('');
     setGoalId('');
+    setAsPage(false);
     onCreated(reply.data);
   }
 
@@ -109,6 +113,14 @@ export function AskForm({
             </select>
           </>
         )}
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={asPage}
+            onChange={(e) => edit(() => setAsPage(e.target.checked))}
+          />
+          페이지로 받기
+        </label>
         <span className="note">발행·전송·삭제는 결재 후 실행</span>
         <span className="spacer" />
         <button

@@ -56,7 +56,8 @@ export function HomePanel() {
         agents={agentList ?? null}
         onCreated={(task) => {
           notify('작업 등록됨');
-          router.push(`/admin/tasks/${task.id}`);
+          // 페이지로 받는 일은 페이지 메뉴에서 기다린다: 끝나면 그 페이지가 열린다
+          router.push(task.page ? `/admin/pages?task=${task.id}` : `/admin/tasks/${task.id}`);
         }}
       />
       {error && <p className="error">{error}</p>}

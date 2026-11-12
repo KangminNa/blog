@@ -22,3 +22,8 @@ export function slugFrom(raw: string): string {
 export function postPath(slug: string): string {
   return `/posts/${encodeURIComponent(slug)}`;
 }
+
+/** 페이지의 바깥 주소. 서버가 문(index.html)으로 보낸다 */
+export function pagePath(name: string): string {
+  return `/pages/${encodeURIComponent(name)}`;
+}

@@ -1,6 +1,6 @@
 import type { NextConfig } from 'next';
 
-// 외부 주소는 하나: /api · /mcp · /oauth · /.well-known 은 서버로, 나머지는 웹.
+// 외부 주소는 하나: /api · /mcp · /oauth · /.well-known · /pages 는 서버로, 나머지는 웹.
 // 운영에서는 리버스 프록시가 나누고, 웹 하나만 열어 둔 개발 환경에서는 여기서 서버로 넘긴다.
 const server = process.env.API_URL ?? 'http://localhost:4000';
 
@@ -48,6 +48,15 @@ const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
 ];
 
+// 페이지(/pages/…)는 서버가 격리 머리글(sandbox · frame-ancestors 'self')을 붙여 보낸다.
+// 화면의 frame-ancestors 'none' · X-Frame-Options를 함께 붙이면 콘솔의 미리 보기(틀)도 막히므로 그 둘만 뺀다.
+const PAGE_FRAME_HEADERS = new Set([
+  'Content-Security-Policy',
+  'X-Frame-Options',
+  'Referrer-Policy',
+]);
+const pageHeaders = securityHeaders.filter((h) => !PAGE_FRAME_HEADERS.has(h.key));
+
 const config: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
@@ -57,7 +66,10 @@ const config: NextConfig = {
     return localHostRedirect();
   },
   async headers() {
-    return [{ source: '/:path*', headers: securityHeaders }];
+    return [
+      { source: '/((?!pages/).*)', headers: securityHeaders },
+      { source: '/pages/:path*', headers: pageHeaders },
+    ];
   },
   async rewrites() {
     return [
@@ -65,6 +77,8 @@ const config: NextConfig = {
       { source: '/mcp', destination: `${server}/mcp` },
       { source: '/oauth/:path*', destination: `${server}/oauth/:path*` },
       { source: '/.well-known/:path*', destination: `${server}/.well-known/:path*` },
+      // AI가 만든 페이지의 바깥 주소 (기획서 12장 2026-11-12). 파일은 서버가 내보낸다
+      { source: '/pages/:path+', destination: `${server}/api/pages/site/:path+` },
     ];
   },
 };

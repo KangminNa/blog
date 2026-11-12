@@ -17,9 +17,12 @@ import { PageTicket } from './page-ticket';
 
 /** 바깥 주소의 답: 보낼 파일이거나, 다른 주소로 보내기 */
 export class PageSiteAnswer {
-  /** 페이지 안의 스크립트가 우리 로그인에 닿지 못하게 격리해서 연다 (같은 주소지만 다른 출처로 취급된다) */
+  /**
+   * 페이지 안의 스크립트가 우리 로그인에 닿지 못하게 격리해서 연다 (같은 주소지만 다른 출처로 취급된다).
+   * 틀 안에 넣는 것은 이 사이트(콘솔의 미리 보기)만
+   */
   static readonly CSP =
-    'sandbox allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads';
+    "sandbox allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads; frame-ancestors 'self'";
 
   private constructor(
     readonly redirect: string | null,
@@ -63,12 +66,14 @@ export class PageQuery extends BaseQuery {
 
   async list(actor: Actor): Promise<PageListView | PublicPageListView> {
     const all = actor.kind === 'owner';
-    const rows = await this.sql<PageRow[]>`
-      SELECT p.* FROM blog.pages p
+    const rows = await this.sql<(PageRow & { last_task_id: string | null })[]>`
+      SELECT p.*, (SELECT r.task_id FROM blog.page_revisions r
+                   WHERE r.page_id = p.id AND r.seq = p.revisions) AS last_task_id
+      FROM blog.pages p
       WHERE ${this.inSpace(actor)} ${all ? this.sql`` : this.sql`AND p.visibility = ${Page.PUBLIC}`}
       ORDER BY p.updated_at DESC, p.id DESC`;
     return all
-      ? new PageListView(rows.map((r) => new PageView(r)))
+      ? new PageListView(rows.map((r) => new PageView(r, r.last_task_id)))
       : new PublicPageListView(rows.map((r) => new PublicPageView(r)));
   }
 

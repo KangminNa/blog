@@ -17,6 +17,12 @@ function targetOf(r: Readonly<TaskRow>) {
     : { kind: r.target_kind, id: r.target_id, version: r.base_version };
 }
 
+/** 결과를 페이지로 내보내는 일(payload.page)이면 고칠 페이지. 새 페이지를 만드는 일은 pageId가 null */
+function pageOf(r: Readonly<TaskRow>) {
+  const page = (r.payload as { page?: { pageId?: string | null } } | null)?.page;
+  return page ? { pageId: page.pageId ?? null } : null;
+}
+
 /** 작업 목록의 한 줄 */
 export class TaskView {
   constructor(
@@ -47,6 +53,8 @@ export class TaskView {
       parentId: r.parent_id,
       /** waiting이면 무엇을 기다리는지: approval · subtasks */
       waitReason: r.wait_reason,
+      /** 결과를 페이지로 내보내는 일이면 고칠 페이지 (새 페이지면 pageId가 null). 아니면 null */
+      page: pageOf(r),
     };
   }
 }

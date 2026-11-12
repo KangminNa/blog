@@ -182,8 +182,12 @@ describe('페이지 (/api/pages)', () => {
     );
     assert.match(page.name, /^서울-데이트-코스-/);
     const detail = ok(await api.get(`/api/pages/${page.id}`, owner));
-    const [revision] = detail.revisionList as { note: string; files: Json[] }[];
+    const [revision] = detail.revisionList as { note: string; taskId: string; files: Json[] }[];
     assert.equal(revision?.note, '이번 주 서울 데이트 코스 짜 줘');
+    // 화면이 방금 맡긴 작업의 페이지를 찾는 길: 목록의 lastTaskId와 작업의 page
+    assert.equal((page as Page & { lastTaskId: string }).lastTaskId, revision?.taskId);
+    const task = ok(await api.get(`/api/tasks/${revision?.taskId}`, owner));
+    assert.deepEqual(task.page, { pageId: null });
     assert.deepEqual(
       (revision?.files ?? []).map((f) => f.name),
       ['index.html', 'style.css'],
@@ -241,7 +245,10 @@ describe('페이지 (/api/pages)', () => {
     assert.equal(html.status, 200);
     assert.equal(await html.text(), '<p>나만</p>');
     assert.match(String(html.headers.get('content-type')), /^text\/html; charset=utf-8/);
-    assert.match(String(html.headers.get('content-security-policy')), /^sandbox allow-scripts/);
+    assert.match(
+      String(html.headers.get('content-security-policy')),
+      /^sandbox allow-scripts.*; frame-ancestors 'self'$/,
+    );
     assert.doesNotMatch(String(html.headers.get('content-security-policy')), /allow-same-origin/);
     assert.equal(html.headers.get('cache-control'), 'private, no-store');
     assert.equal(html.headers.get('referrer-policy'), 'no-referrer');

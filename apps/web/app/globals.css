@@ -1661,6 +1661,39 @@ a.chip {
   gap: 8px;
 }
 
+/* 페이지 상세: 왼쪽에 보이는 판, 오른쪽에 고치기 · 공개 · 판 (좁으면 아래로) */
+.page-work {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+}
+
+.page-frame {
+  width: 100%;
+  height: min(78vh, 920px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+@media (max-width: 1040px) {
+  .page-work {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .page-frame {
+    height: 70vh;
+  }
+}
+
+/* 긴 요청은 두 줄까지만 */
+.item-main small.clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
 /* 스케줄 한 줄: 이름 · 주기 · 단추 (좁으면 단추가 아래 줄로) */
 .list > .schedule-row {
   display: flex;

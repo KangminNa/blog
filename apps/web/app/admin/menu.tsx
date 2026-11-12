@@ -33,6 +33,12 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M4.8 6.2 7 8l-2.2 1.8M8.6 10h2.8" />
     </>
   ),
+  window: (
+    <>
+      <rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.5" />
+      <path d="M1.8 5.8h12.4M4 4.3h.1M6 4.3h.1" />
+    </>
+  ),
   post: (
     <>
       <path d="M4 1.8h5.5L12.5 5v9.2H4z" />
@@ -127,6 +133,7 @@ export const MENU = [
     label: '블로그',
     items: [
       { href: '/admin/posts', name: '글', icon: 'post' },
+      { href: '/admin/pages', name: '페이지', icon: 'window' },
       { href: '/admin/basket', name: '소재', icon: 'basket' },
     ],
   },
