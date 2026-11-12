@@ -1,6 +1,6 @@
 'use client';
 
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 import { AccountForm } from './AccountForm';
 import { LinkedLogins } from './LinkedLogins';
 

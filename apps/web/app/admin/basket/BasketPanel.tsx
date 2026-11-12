@@ -6,7 +6,7 @@ import type {
   BasketView,
 } from '../../../../server/src/modules/blog/basket/basket.view';
 import { api, describe } from '../../_lib/client-api';
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 
 type Item = ReturnType<BasketItemView['toJSON']>;
 type Basket = ReturnType<BasketView['toJSON']>;

@@ -9,6 +9,7 @@ import { api, describe } from '../../_lib/client-api';
 import { renderMarkdown } from '../../_lib/markdown';
 import { useLiveValue } from '../../_lib/use-live';
 import { readPages } from '../../_task/live';
+import { useNotify } from '../../_ui/notify';
 import { useGraph } from '../../_vault/live';
 import type {
   CategoryList,
@@ -20,7 +21,6 @@ import type {
   WikiScoreItem,
   WikiTrash,
 } from '../../_vault/types';
-import { useNotify } from '../AdminShell';
 
 const WIKI_TOPICS = ['vault.wiki.saved', 'vault.change.*', 'vault.category.changed'];
 /** 점수는 세션 · 글의 쓰임으로도 바뀐다 */

@@ -1,7 +1,7 @@
 'use client';
 
 import type { SpaceInfo } from '../../_account/types';
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 import { BlogForm } from './BlogForm';
 
 // 사이트 정보(이름·소개·주소)와 백업 받기. 틀(제목)은 page.tsx에 있다.

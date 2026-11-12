@@ -1,15 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
-import { api, describe } from '../../_lib/client-api';
+import { useState } from 'react';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
 import { scheduleLabel, when } from '../../_task/labels';
-import { useAgents } from '../../_task/live';
-import type { Schedule, ScheduleList, Task } from '../../_task/types';
-import { useNotify } from '../AdminShell';
-import { ScheduleForm } from './ScheduleForm';
+import { useAgents, useSchedules } from '../../_task/live';
+import type { Schedule, Task } from '../../_task/types';
+import { type ScheduleBody, ScheduleForm } from './ScheduleForm';
 
 const NEW = 'new';
+const CONFLICT = '이미 바뀐 스케줄이에요. 최신 내용을 다시 읽었어요';
 
 /** 오늘(스케줄의 시간대 기준) 만든 작업 수 */
 function todayRuns(s: Schedule): number {
@@ -24,60 +25,50 @@ function todayRuns(s: Schedule): number {
 // 스케줄: 정한 시각에 지시대로 작업을 만든다 (하트비트를 넓힌 것). 만들기 · 고치기 · 지금 한 번 · 지우기.
 // 에이전트 화면에서 오면 그 에이전트가 담당인 것만 (주소의 agent).
 export function SchedulesPanel({ agentId }: { agentId: string | null }) {
-  const notify = useNotify();
   const agents = useAgents();
-  const [list, setList] = useState<readonly Schedule[] | null>(null);
+  const schedules = useSchedules(agentId);
+  const action = useAction();
+  const save = useAction();
   const [open, setOpen] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const list = schedules.data?.schedules ?? null;
+  const problem = action.problem ?? schedules.error;
   const agentList = agents.data?.agents ?? [];
   const filtered = agentList.find((a) => a.id === agentId) ?? null;
+  const reload = () => Promise.all([schedules.reload(), agents.reload()]);
 
-  const load = useCallback(async () => {
-    const query = agentId ? `?agentId=${agentId}` : '';
-    const reply = await api<ScheduleList>('GET', `/api/schedules${query}`);
-    if (!reply.ok) return setProblem(describe(reply.error));
-    setList(reply.data.schedules);
-  }, [agentId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function saved(message: string) {
+  function close() {
     setOpen(null);
-    notify(message);
-    await Promise.all([load(), agents.reload()]);
+    save.clear();
   }
 
-  async function runNow(s: Schedule) {
-    setBusy(s.id);
-    setProblem(null);
-    const reply = await api<Task>('POST', `/api/schedules/${s.id}/run`, { version: s.version });
-    setBusy(null);
-    if (!reply.ok) {
-      await load();
-      return setProblem(
-        reply.status === 409 ? '이미 바뀐 스케줄이에요. 다시 읽었어요' : describe(reply.error),
-      );
-    }
-    notify(`${s.title} 작업을 만들었어요`);
-    await load();
+  // 저장은 패널이 돌린다 (폼은 칸만). 고치기는 본 version, 만들기는 폼이 쥔 requestId를 붙인다
+  async function submit(target: Schedule | null, body: ScheduleBody, requestId: string) {
+    const reply = await save.run(
+      'save',
+      () =>
+        target
+          ? api('PATCH', `/api/schedules/${target.id}`, { ...body, version: target.version })
+          : api('POST', '/api/schedules', { ...body, requestId }),
+      { done: `${body.title} ${body.enabled ? '켜짐' : '꺼짐'}`, reload, conflict: CONFLICT },
+    );
+    if (reply?.ok) setOpen(null);
+    return reply?.ok === true;
   }
 
-  async function remove(s: Schedule) {
+  const runNow = (s: Schedule) =>
+    action.run(
+      s.id,
+      () => api<Task>('POST', `/api/schedules/${s.id}/run`, { version: s.version }),
+      { done: `${s.title} 작업을 만들었어요`, reload: schedules.reload, conflict: CONFLICT },
+    );
+
+  function remove(s: Schedule) {
     if (!window.confirm(`${s.title} 스케줄을 지울까요? 이미 만든 작업은 남아요`)) return;
-    setBusy(s.id);
-    const reply = await api('POST', `/api/schedules/${s.id}/delete`, { version: s.version });
-    setBusy(null);
-    if (!reply.ok) {
-      await load();
-      return setProblem(
-        reply.status === 409 ? '이미 바뀐 스케줄이에요. 다시 읽었어요' : describe(reply.error),
-      );
-    }
-    notify(`${s.title} 지움`);
-    await Promise.all([load(), agents.reload()]);
+    void action.run(
+      s.id,
+      () => api('POST', `/api/schedules/${s.id}/delete`, { version: s.version }),
+      { done: `${s.title} 지움`, reload, conflict: CONFLICT },
+    );
   }
 
   return (
@@ -106,9 +97,11 @@ export function SchedulesPanel({ agentId }: { agentId: string | null }) {
           schedule={null}
           agents={agentList}
           agentId={agentId}
-          onSaved={saved}
-          onClose={() => setOpen(null)}
-          reload={load}
+          busy={save.busy !== null}
+          problem={save.problem}
+          onSubmit={(body, requestId) => submit(null, body, requestId)}
+          onEdit={save.clear}
+          onClose={close}
         />
       )}
       {list === null ? (
@@ -124,9 +117,11 @@ export function SchedulesPanel({ agentId }: { agentId: string | null }) {
                   schedule={s}
                   agents={agentList}
                   agentId={null}
-                  onSaved={saved}
-                  onClose={() => setOpen(null)}
-                  reload={load}
+                  busy={save.busy !== null}
+                  problem={save.problem}
+                  onSubmit={(body, requestId) => submit(s, body, requestId)}
+                  onEdit={save.clear}
+                  onClose={close}
                 />
               </li>
             ) : (
@@ -144,7 +139,7 @@ export function SchedulesPanel({ agentId }: { agentId: string | null }) {
                   <button
                     type="button"
                     className="ghost"
-                    disabled={busy === s.id}
+                    disabled={action.busy === s.id}
                     onClick={() => runNow(s)}
                   >
                     지금 한 번
@@ -155,7 +150,7 @@ export function SchedulesPanel({ agentId }: { agentId: string | null }) {
                   <button
                     type="button"
                     className="ghost"
-                    disabled={busy === s.id}
+                    disabled={action.busy === s.id}
                     onClick={() => remove(s)}
                   >
                     지우기

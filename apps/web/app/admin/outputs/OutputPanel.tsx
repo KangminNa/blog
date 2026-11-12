@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
 import { bytes, INLINE_MIMES, OUTPUT_KINDS, TEXT_MIMES, when } from '../../_task/labels';
 import type { Output, OutputPage, OutputSaved, OutputUsage } from '../../_task/types';
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 import { MakeForm } from './MakeForm';
 
 type Tab = 'all' | 'trash' | keyof typeof OUTPUT_KINDS;

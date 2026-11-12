@@ -1,12 +1,13 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { api } from '../_lib/client-api';
 import type { PackageEntry } from '../_plugins/package-types';
 import { useActivePackages } from '../_plugins/packages';
 import { countOf, usePendingApprovals } from '../_task/live';
 import { CairnMark } from '../_ui/CairnMark';
+import { NotifyContext } from '../_ui/notify';
 import { ThemeToggle } from '../_ui/ThemeToggle';
 import { useToast } from '../_ui/useToast';
 import { useWaitingChanges } from '../_vault/live';
@@ -16,13 +17,6 @@ import { NotificationBell } from './NotificationBell';
 /** 지금 메뉴인가. 홈(/admin)은 모든 메뉴의 앞부분이라 정확히 같을 때만 */
 function isCurrent(pathname: string, href: string): boolean {
   return href === HOME_HREF ? pathname === href : pathname.startsWith(href);
-}
-
-const NotifyContext = createContext<(text: string) => void>(() => {});
-
-/** 콘솔 아래쪽의 한 줄 알림 */
-export function useNotify(): (text: string) => void {
-  return useContext(NotifyContext);
 }
 
 // 콘솔의 틀: 왼쪽 메뉴 + 작업 칸. 좁은 화면에서는 메뉴가 서랍으로 열린다.

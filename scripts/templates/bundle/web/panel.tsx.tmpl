@@ -1,53 +1,43 @@
 'use client';
 
-import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import type {
   __Name__ListView,
   __Name__View,
 } from '__server_rel__/__module__/__bundle__/__bundle__.view';
-import { api, describe } from '../../_lib/client-api';
-import { useNotify } from '../AdminShell';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
+import { useLiveValue } from '../../_lib/use-live';
 
-// 응답 모양은 서버 view의 toJSON()이 원본이다. 웹에서 손으로 적지 않는다 (객체설계 6장).
+// 응답 모양은 서버 view의 toJSON()이 원본이다. 웹에서 손으로 적지 않는다 (.claude/rules/web.md).
 // 다른 메뉴도 쓰면 app/_<모듈>/types.ts로 옮겨 함께 쓴다.
 type Item = ReturnType<__Name__View['toJSON']>;
 type List = ReturnType<__Name__ListView['toJSON']>;
 
 // __label__: 이 메뉴가 하는 일을 한 줄로 적는다.
+// 패턴 "목록 + 만들기 폼": 읽기는 useLiveValue(신호가 오면 다시 읽는다), 쓰기는 useAction(바쁨 · 오류 · 알림 · 다시 읽기).
 export function __Name__Panel() {
-  const notify = useNotify();
-  const [items, setItems] = useState<Item[] | null>(null);
+  // 서버가 이 묶음의 변경 신호를 보내면 주제를 적는다 (예: ['__module__.__bundle__.*']). 없으면 처음과 다시 연결될 때만 읽는다
+  const list = useLiveValue('__plural__', () => api<List>('GET', '/api/__plural__'), []);
+  const action = useAction();
   const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   /** 응답을 못 받아 다시 눌러도 하나만 만들어지게, 만든 뒤에만 새 값으로 바꾼다 */
   const requestId = useRef('');
   if (!requestId.current) requestId.current = crypto.randomUUID();
-
-  const load = useCallback(async () => {
-    const reply = await api<List>('GET', '/api/__plural__');
-    if (!reply.ok) return setError(describe(reply.error));
-    setItems(reply.data.items);
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const items = list.data?.items ?? null;
+  const error = action.problem ?? list.error;
+  const busy = action.busy !== null;
 
   async function add(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    setError(null);
-    const reply = await api<Item>('POST', '/api/__plural__', {
-      requestId: requestId.current,
-      name: name.trim(),
-    });
-    setBusy(false);
-    if (!reply.ok) return setError(describe(reply.error));
+    const reply = await action.run(
+      'add',
+      () => api<Item>('POST', '/api/__plural__', { requestId: requestId.current, name: name.trim() }),
+      { done: '추가했어요', reload: list.reload },
+    );
+    if (!reply?.ok) return;
     requestId.current = crypto.randomUUID();
     setName('');
-    setItems((before) => [reply.data, ...(before ?? [])]);
-    notify('추가했어요');
   }
 
   return (

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import type { LoginLink, LoginMethod } from '../../_account/types';
+import type { LoginLink, LoginLinkList, LoginMethod, LoginMethodList } from '../../_account/types';
 import { api, describe } from '../../_lib/client-api';
 
 // 계정 화면의 "연결된 로그인": 켜진 로그인 플러그인마다 연결하거나 끊는다.
@@ -13,8 +13,8 @@ export function LinkedLogins({ onMessage }: { onMessage: (text: string) => void 
 
   const load = useCallback(async () => {
     const [m, l] = await Promise.all([
-      api<{ methods: LoginMethod[] }>('GET', '/api/auth/methods'),
-      api<{ links: LoginLink[] }>('GET', '/api/auth/links'),
+      api<LoginMethodList>('GET', '/api/auth/methods'),
+      api<LoginLinkList>('GET', '/api/auth/links'),
     ]);
     if (m.ok) setMethods(m.data.methods);
     if (l.ok) setLinks(l.data.links);

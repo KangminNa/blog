@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import type { AiToolListView } from '../../../../server/src/modules/task/ai/ai-login.view';
-import type { Device } from '../../_account/types';
+import type { Device, DeviceList } from '../../_account/types';
 import { api, describe } from '../../_lib/client-api';
 import { when } from '../../_task/labels';
 import type { Runner, RunnerList } from '../../_task/types';
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 
 /** 서버 러너의 기기 이름 (서버의 Device.SERVER_RUNNER) */
 const SERVER_RUNNER = '서버 러너';
@@ -31,7 +31,7 @@ export function RunnerPanel() {
   const load = useCallback(async () => {
     const [runners, devices, ai] = await Promise.all([
       api<RunnerList>('GET', '/api/runners'),
-      api<{ devices: Device[] }>('GET', '/api/devices'),
+      api<DeviceList>('GET', '/api/devices'),
       api<AiTools>('GET', '/api/ai'),
     ]);
     if (!runners.ok) return setError(describe(runners.error));

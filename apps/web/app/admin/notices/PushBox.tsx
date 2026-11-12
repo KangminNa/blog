@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
-import type { PushKey } from '../../_platform/types';
-import { useNotify } from '../AdminShell';
+import type { PushKey, PushTest } from '../../_platform/types';
+import { useNotify } from '../../_ui/notify';
 
 /** 이 브라우저의 푸시 상태 */
 type PushState = 'loading' | 'unsupported' | 'denied' | 'off' | 'on' | 'stale';
@@ -123,7 +123,7 @@ export function PushBox() {
     if (!subscription) return;
     setBusy(true);
     setProblem(null);
-    const reply = await api<{ sent: number; failed: number }>('POST', '/api/push/test', {
+    const reply = await api<PushTest>('POST', '/api/push/test', {
       endpoint: subscription.endpoint,
     });
     setBusy(false);

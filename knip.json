@@ -1,0 +1,28 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignore": ["**/*.tables.ts", "**/*.schema.ts"],
+  "ignoreExportsUsedInFile": true,
+  "exclude": ["unlisted"],
+  "workspaces": {
+    ".": { "entry": ["scripts/*.mjs"], "project": ["scripts/**/*.mjs"] },
+    "apps/server": {
+      "entry": ["src/plugin-api.ts", "src/**/*.test.ts", "../../plugins/*/server/**/*.ts"],
+      "project": ["src/**/*.ts", "../../plugins/*/server/**/*.ts"]
+    },
+    "apps/runner": {
+      "entry": ["src/**/*.test.ts", "e2e/**/*.{ts,mjs}"],
+      "project": ["src/**/*.ts", "e2e/**/*.{ts,mjs}"],
+      "ignoreDependencies": ["@playwright/mcp"]
+    },
+    "apps/egress": { "entry": ["src/**/*.test.ts"], "project": ["src/**/*.ts"] },
+    "packages/cli": { "entry": ["src/**/*.test.ts"], "project": ["src/**/*.ts"] },
+    "apps/web": {
+      "entry": [
+        "app/**/{page,layout,route,manifest}.{ts,tsx}",
+        "app/_plugins/slot-types.ts",
+        "../../plugins/*/web/**/*.{ts,tsx}"
+      ],
+      "project": ["app/**/*.{ts,tsx}", "../../plugins/*/web/**/*.{ts,tsx}"]
+    }
+  }
+}

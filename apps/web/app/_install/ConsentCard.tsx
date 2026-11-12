@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { Consent } from '../_account/types';
+import type { Consent, ConsentResult } from '../_account/types';
 import { api, describe } from '../_lib/client-api';
 import { SCOPE_LABELS } from '../_lib/types';
 import { CairnMark } from '../_ui/CairnMark';
@@ -24,7 +24,7 @@ export function ConsentCard({
   async function decide(approve: boolean) {
     setBusy(true);
     setError(null);
-    const reply = await api<{ redirect: string }>(
+    const reply = await api<ConsentResult>(
       'POST',
       approve ? '/api/connect/approve' : '/api/connect/deny',
       approve ? { request, name } : { request },

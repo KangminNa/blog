@@ -1,7 +1,7 @@
 'use client';
 
 import { callFor, packageOf } from '../../../_plugins/packages';
-import { useNotify } from '../../AdminShell';
+import { useNotify } from '../../../_ui/notify';
 
 /** 패키지 화면을 콘솔 틀 안에 그린다. 없는 패키지면 안내 */
 export function PackagePage({ plugin }: { plugin: string }) {

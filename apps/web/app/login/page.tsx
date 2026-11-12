@@ -1,4 +1,4 @@
-import type { LoginMethod } from '../_account/types';
+import type { LoginMethodList } from '../_account/types';
 import { LoginForm } from '../_install/LoginForm';
 import { serverGet } from '../_lib/server-api';
 
@@ -13,6 +13,6 @@ export default async function LoginPage({
 }) {
   const { return: back, error } = await searchParams;
   const safe = back?.startsWith('/') && !back.startsWith('//') ? back : '/admin';
-  const methods = (await serverGet<{ methods: LoginMethod[] }>('/api/auth/methods'))?.methods ?? [];
+  const methods = (await serverGet<LoginMethodList>('/api/auth/methods'))?.methods ?? [];
   return <LoginForm returnTo={safe} methods={methods} initialError={error ?? null} />;
 }

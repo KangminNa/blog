@@ -21,7 +21,7 @@ import {
 import { APPROVAL_TOPICS, useAgents } from '../../_task/live';
 import { ApprovalPill } from '../../_task/parts';
 import type { Agent, Approval, CodePull, TaskDetail } from '../../_task/types';
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 
 const DONE_NOTES: Record<string, string> = {
   approve: '승인됨',

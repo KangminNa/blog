@@ -8,7 +8,7 @@ import { flatTree, GOAL_STATUS, when } from '../../_task/labels';
 import { TASK_TOPICS, useGoals } from '../../_task/live';
 import { TaskPill } from '../../_task/parts';
 import type { Goal, TaskPage } from '../../_task/types';
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 
 /** 열린 입력 칸: 맨 위 목표 추가, 하위 목표 추가(부모 id), 편집(목표 id) */
 type Open = { kind: 'add'; parentId: string | null } | { kind: 'edit'; id: string } | null;

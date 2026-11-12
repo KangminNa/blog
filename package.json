@@ -19,9 +19,10 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "pnpm -r typecheck",
-    "check": "pnpm lint && pnpm typecheck && pnpm boundaries && pnpm structure",
+    "check": "pnpm lint && pnpm typecheck && pnpm boundaries && pnpm structure && pnpm deadcode",
+    "deadcode": "knip --no-progress",
     "boundaries": "node scripts/check-boundaries.mjs",
-    "structure": "node scripts/check-structure.mjs",
+    "structure": "node scripts/check-structure.mjs && node scripts/check-rules.mjs",
     "test": "node scripts/test.mjs",
     "slot": "node scripts/slot.mjs",
     "db:check": "node scripts/check-boundaries.mjs --db && node scripts/db-rows.mjs --check",
@@ -37,6 +38,7 @@
     "new:bundle": "node scripts/new-bundle.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15"
+    "@biomejs/biome": "2.5.15",
+    "knip": "5.88.1"
   }
 }

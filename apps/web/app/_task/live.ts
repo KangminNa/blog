@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { type ApiReply, api } from '../_lib/client-api';
 import { useLiveValue } from '../_lib/use-live';
-import type { AgentList, ApprovalPage, GoalList, TaskPage, Usage } from './types';
+import type { AgentList, ApprovalPage, GoalList, ScheduleList, TaskPage, Usage } from './types';
 
 // 여러 화면이 함께 쓰는 읽기.
 
@@ -35,6 +35,16 @@ export function useUsage() {
     return () => clearInterval(timer);
   }, [reload]);
   return usage;
+}
+
+/** 스케줄 목록. 스케줄이 작업을 만들면 오늘 횟수와 다음 시각이 바뀌므로 작업이 바뀔 때도 다시 읽는다 */
+export function useSchedules(agentId: string | null) {
+  const query = agentId ? `?agentId=${agentId}` : '';
+  return useLiveValue(
+    `schedules:${agentId ?? ''}`,
+    () => api<ScheduleList>('GET', `/api/schedules${query}`),
+    TASK_TOPICS,
+  );
 }
 
 /** 상태 하나의 작업 첫 쪽 (홈과 에이전트의 요약) */

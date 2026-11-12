@@ -19,7 +19,7 @@ apps/egress/   코드 러너 칸의 나가는 프록시. 허용 목록(egress/al
 db/            DB 이미지(Postgres 17 + pgvector + pg_bigm)와 SQL 마이그레이션(dbmate)
 packages/cli/  연결 명령 cairn connect · status (스킬 넣기 + MCP 등록 + 로그인). 배포 전에는 pnpm cairn
 plugins/       플러그인 (comments-giscus · sync-github · login-github · office · browser-tabs · code-github). 규칙은 plugins/CLAUDE.md, 객체설계 12장
-scripts/       모듈 경계 검사, 구조 검사, 묶음 생성기(templates/), 플러그인 화면 맞추기
+scripts/       모듈 경계 검사, 구조 검사, 규칙 검사(+ 예외 목록 ratchet.json), 묶음 생성기(templates/), 플러그인 화면 맞추기
 skills/        AI 도구와 러너의 스킬 (cairn-save · cairn-recall, 러너 전용 cairn-write · cairn-tidy · cairn-browse · cairn-code · cairn-make). 도구 입력 모양을 바꾸면 스킬도 함께 고친다
                러너 스킬은 저장소 판이고, 콘솔(스킬 메뉴)에서 그 위에 판을 쌓으면 서버가 일과 함께 그 판을 보낸다
                앱(ChatGPT·Claude)용 zip은 서버가 여기서 만든다(api/skills). 스크립트 테스트는 packages/cli
@@ -31,7 +31,7 @@ docs/          기획 문서 (기획서 · 테이블 설계 · 객체 설계 · 
 | 명령 | 하는 일 |
 |---|---|
 | `pnpm dev` | Docker Compose로 db → migrate → server(:4000) · worker(일꾼) → web(:3000) |
-| `pnpm check` | Biome 린트 + 타입 검사 + 모듈 경계 검사 + 구조 검사(새 파일 이름, 옆의 API 테스트, 메뉴와 화면, 웹 타입의 출처). 작업을 끝내기 전에 반드시 통과시킨다 |
+| `pnpm check` | Biome 린트 + 타입 검사 + 모듈 경계 검사 + 구조 검사(새 파일 이름, 옆의 API 테스트, 메뉴와 화면, 웹 타입의 출처) + 규칙 검사(웹의 읽기 · 쓰기 훅, `import type`, 파일 길이, 패턴 본보기. 예외 목록 `scripts/ratchet.json`은 줄어들기만 한다) + 안 쓰는 코드 검사(`pnpm deadcode`). 작업을 끝내기 전에 반드시 통과시킨다 |
 | `pnpm test` | 테스트 전용 DB(`cairn_test`)를 새로 만들어 단위 + API 테스트, 러너 통합 테스트, 나가는 프록시 시험까지. 개발 DB는 건드리지 않는다. `-- --test-name-pattern=<이름>`으로 골라서 |
 | `pnpm slot <1~9> <스크립트>` | 슬롯별 compose 프로젝트·포트·이미지로 실행 (`test`, `dev`, `db:reset` 등). 작업 트리에서 병렬로 일할 때 쓴다 |
 | `pnpm db:check` | DB의 모듈 경계 (모듈 사이 외래키, 주인 없는 스키마), 표 인터페이스가 DB와 같은지 |
@@ -77,6 +77,8 @@ docs/          기획 문서 (기획서 · 테이블 설계 · 객체 설계 · 
 ## 코드 규칙
 
 - 웹은 DB에 직접 접근하지 않고 서버 API만 부른다.
+- 웹의 규칙은 `.claude/rules/web.md`, 서버의 규칙은 `.claude/rules/server.md`. 새 기능은 객체설계 11장의 패턴 목록에서 본보기를 골라 시작한다.
+- 파일 하나의 코드는 300줄까지 (빈 줄 · 주석 · 시험 · 생성 파일 제외). `helpers` · `utils` · `common` · `misc` 같은 이름을 쓰지 않는다.
 - 트랜잭션은 짧게. AI 응답이나 외부 호출을 기다리는 동안 트랜잭션을 열어 두지 않는다.
 - 동시 요청은 `request_id`(중복 방지)와 `version`(낙관적 잠금)으로 다룬다. 실패를 조용히 덮지 않는다.
 - ID는 UUIDv7. 시간은 `timestamptz`.

@@ -11,7 +11,7 @@ import { useLiveValue } from '../../_lib/use-live';
 import { TOOL_LABELS, when } from '../../_task/labels';
 import { TASK_TOPICS } from '../../_task/live';
 import type { Task, TaskDetail } from '../../_task/types';
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 
 type AiTools = ReturnType<AiToolListView['toJSON']>;
 type AiTool = AiTools['tools'][number];

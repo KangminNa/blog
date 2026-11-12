@@ -1,9 +1,13 @@
 import type {
+  ConsentResultView,
   ConsentView,
+  DeviceListView,
   DeviceView,
 } from '../../../server/src/modules/account/device/device.view';
 import type {
+  LoginLinkListView,
   LoginLinkView,
+  LoginMethodListView,
   LoginMethodView,
 } from '../../../server/src/modules/account/owner/external-login.view';
 import type { OwnerView } from '../../../server/src/modules/account/owner/owner.view';
@@ -21,11 +25,16 @@ export type SpaceInfo = ReturnType<SpaceView['toJSON']>;
 export type InstallStatus = ReturnType<InstallStatusView['toJSON']>;
 /** 기기 하나 (콘솔의 기기 메뉴, 세션의 기기 이름) */
 export type Device = ReturnType<DeviceView['toJSON']>;
+export type DeviceList = ReturnType<DeviceListView['toJSON']>;
 /** 승인 화면 (/connect, 설치 마법사의 첫 기기) */
 export type Consent = ReturnType<ConsentView['toJSON']>;
+/** 승인 · 거절 뒤 돌아갈 주소 */
+export type ConsentResult = ReturnType<ConsentResultView['toJSON']>;
 /** 로그인한 주인 (관리 화면 위쪽) */
 export type Owner = ReturnType<OwnerView['toJSON']>;
 /** 로그인 화면의 버튼 (켜진 로그인 플러그인) */
 export type LoginMethod = ReturnType<LoginMethodView['toJSON']>;
+export type LoginMethodList = ReturnType<LoginMethodListView['toJSON']>;
 /** 주인에게 연결된 외부 계정 */
 export type LoginLink = ReturnType<LoginLinkView['toJSON']>;
+export type LoginLinkList = ReturnType<LoginLinkListView['toJSON']>;

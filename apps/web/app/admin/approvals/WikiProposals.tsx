@@ -4,9 +4,9 @@ import '../../_vault/vault.css';
 import { useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
 import { when } from '../../_task/labels';
+import { useNotify } from '../../_ui/notify';
 import { useGraph, useWaitingChanges } from '../../_vault/live';
 import type { ChangeSet, WaitingChange } from '../../_vault/types';
-import { useNotify } from '../AdminShell';
 
 const OP_LABELS: Record<string, string> = {
   'wiki.create': '위키 만들기',

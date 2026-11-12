@@ -1,6 +1,6 @@
 'use client';
 
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 import { DevicesPanel } from './DevicesPanel';
 
 export function DevicesPage({ siteUrl }: { siteUrl: string | null }) {

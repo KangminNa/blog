@@ -9,7 +9,7 @@ import { countOf, useAgents, usePendingApprovals, useTasksIn, useUsage } from '.
 import { AgentUsage, ApprovalPill, TaskPill } from '../_task/parts';
 import type { Agent, Task } from '../_task/types';
 import { UsageBlock } from '../_task/UsageBlock';
-import { useNotify } from './AdminShell';
+import { useNotify } from '../_ui/notify';
 
 /** 홈에 펼쳐 두는 줄 수. 나머지는 각 메뉴에서 본다 */
 const SHOWN = 4;

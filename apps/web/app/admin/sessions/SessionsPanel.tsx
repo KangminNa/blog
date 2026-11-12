@@ -7,7 +7,7 @@ import type {
   SessionRevisionView,
   SessionSummaryView,
 } from '../../../../server/src/modules/vault/session/session.view';
-import type { Device } from '../../_account/types';
+import type { DeviceList } from '../../_account/types';
 import { api, describe } from '../../_lib/client-api';
 import { TidyPanel } from './TidyPanel';
 
@@ -62,7 +62,7 @@ export function SessionsPanel({ initialId }: { initialId: string | null }) {
   }, [load, project]);
 
   useEffect(() => {
-    void api<{ devices: Device[] }>('GET', '/api/devices').then((reply) => {
+    void api<DeviceList>('GET', '/api/devices').then((reply) => {
       if (reply.ok) setDevices(Object.fromEntries(reply.data.devices.map((d) => [d.id, d.name])));
     });
   }, []);

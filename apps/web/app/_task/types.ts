@@ -20,7 +20,6 @@ import type {
 import type {
   SkillDetailView,
   SkillListView,
-  SkillRevisionView,
   SkillSavedView,
 } from '../../../server/src/modules/task/skill/skill.view';
 import type {
@@ -37,7 +36,6 @@ export type Task = ReturnType<TaskView['toJSON']>;
 export type TaskPage = ReturnType<TaskPageView['toJSON']>;
 export type TaskDetail = ReturnType<TaskDetailView['toJSON']>;
 export type TaskEvent = TaskDetail['events'][number];
-export type TaskGoal = TaskDetail['goalChain'][number];
 export type TaskRun = TaskDetail['runs'][number];
 export type TaskOutput = TaskDetail['outputs'][number];
 export type OutputPage = ReturnType<OutputPageView['toJSON']>;
@@ -49,7 +47,6 @@ export type GoalList = ReturnType<GoalListView['toJSON']>;
 export type SkillList = ReturnType<SkillListView['toJSON']>;
 export type SkillSummary = SkillList['skills'][number];
 export type SkillDetail = ReturnType<SkillDetailView['toJSON']>;
-export type SkillRevision = ReturnType<SkillRevisionView['toJSON']>;
 export type SkillSaved = ReturnType<SkillSavedView['toJSON']>;
 export type Runner = ReturnType<RunnerView['toJSON']>;
 export type RunnerList = ReturnType<RunnerListView['toJSON']>;

@@ -31,3 +31,8 @@ paths:
 - 위 종류에 맞지 않는 객체가 필요하면 만들기 전에 사용자와 정하고 `docs/객체설계.md`를 먼저 고친다.
 - 진입 계층의 HTTP 요청·응답 타입은 platform의 `HttpRequest`·`HttpResponse`, 쿠키는 `Cookies`만 쓴다. 경로는 `api/…`로 시작한다 (MCP·OAuth 제외).
 - API를 만들거나 바꾸면 `<이름>.api.test.ts`에 보는 사람별(방문자·주인) 결과를 적는다. `src/testing/api-client.ts`의 `ApiClient`로 실제 서버를 띄워 부른다. 손으로 curl 확인하지 않고 `pnpm test`로 확인한다.
+- 새 기능은 [객체설계 11장 "패턴 목록"](../../docs/객체설계.md)에서 맞는 패턴을 고르고 그 본보기에서 시작한다. 표 하나를 만들고 고치는 묶음은 `pnpm new:bundle`이 찍는다.
+- 응답이나 입력의 모양을 바꾸면 같은 변경에서 화면도 고친다. 순서는 표(마이그레이션) → 서버(input · view) → 웹(types · 화면). 웹은 view의 타입을 `import type`으로 쓴다 ([web 규칙](web.md)).
+- 파일 하나의 코드는 300줄까지 (빈 줄 · 주석 · 시험 · 생성 파일 제외). 넘으면 개념 단위로 나눈다. 이미 넘는 파일은 `scripts/ratchet.json`에 있고 그 목록은 줄어들기만 한다 (`pnpm check`의 규칙 검사).
+- `helpers` · `utils` · `common` · `misc` 같은 이름을 쓰지 않는다. 그 파일이 다루는 것의 이름을 붙인다.
+- 안 쓰는 export · 파일은 `pnpm deadcode`가 막는다. 생성 파일(`*.tables.ts` · `*.schema.ts`)은 손으로 고치지 않고 `pnpm db:rows`로 다시 만든다.

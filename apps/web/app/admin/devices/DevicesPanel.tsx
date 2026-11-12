@@ -1,7 +1,7 @@
 'use client';
 
 import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
-import type { Device, SpaceInfo } from '../../_account/types';
+import type { Device, DeviceList, SpaceInfo } from '../../_account/types';
 import { api, describe } from '../../_lib/client-api';
 import { SCOPE_LABELS } from '../../_lib/types';
 import { ConnectGuide } from './ConnectGuide';
@@ -33,7 +33,7 @@ export function DevicesPanel({
   );
 
   const load = useCallback(async () => {
-    const reply = await api<{ devices: Device[] }>('GET', '/api/devices');
+    const reply = await api<DeviceList>('GET', '/api/devices');
     if (!reply.ok) return setError(describe(reply.error));
     setDevices(reply.data.devices);
     onChange?.(reply.data.devices);

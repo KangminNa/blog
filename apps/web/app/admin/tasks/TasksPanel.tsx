@@ -9,7 +9,7 @@ import { TASK_STATUS, when } from '../../_task/labels';
 import { countOf, readPages, TASK_LOG_TOPICS, useAgents } from '../../_task/live';
 import { TaskPill } from '../../_task/parts';
 import type { Agent, Task, TaskPage } from '../../_task/types';
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 
 /** 보드의 칸. 끝난 작업은 완료 칸에 모은다 */
 const COLUMNS = [

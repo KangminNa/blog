@@ -1,7 +1,6 @@
 'use client';
 
 import { type FormEvent, useId, useRef, useState } from 'react';
-import { api, describe } from '../../_lib/client-api';
 import { flatTree, WEEKDAY_LABELS } from '../../_task/labels';
 import { useGoals } from '../../_task/live';
 import type { Agent, Schedule } from '../../_task/types';
@@ -21,25 +20,47 @@ function browserZone(): string {
   }
 }
 
-// 스케줄 하나를 만들거나 고친다. 정한 시각에 지시대로 작업이 생긴다.
+/** 저장할 때 보내는 본문 (POST · PATCH /api/schedules). 만들기의 requestId와 고치기의 version은 패널이 붙인다 */
+export type ScheduleBody = {
+  title: string;
+  agentId: string | null;
+  enabled: boolean;
+  mode: string;
+  atTime?: string;
+  weekdays?: readonly number[];
+  everyHours?: number;
+  timeZone: string;
+  instruction: string;
+  goalId: string | null;
+  dailyMax: number;
+};
+
+// 스케줄 하나를 만들거나 고치는 폼: 칸의 상태와 보낼 본문만 가진다. 저장은 패널이 돌린다 (onSubmit).
+// 정한 시각에 지시대로 작업이 생긴다.
 // 담당을 정하고 지시를 비우면 정기 확인(맡은 목표와 진행 중인 일을 확인)이 된다 (예전의 하트비트).
 // 앞 작업이 끝나지 않았거나 담당이 쉬는 중이면 그 차례는 건너뛰고, 하루 한도에 닿으면 그날은 더 만들지 않는다.
 export function ScheduleForm({
   schedule,
   agents,
   agentId: presetAgent,
-  onSaved,
+  busy,
+  problem,
+  onSubmit,
+  onEdit,
   onClose,
-  reload,
 }: {
   /** 고칠 스케줄. 없으면 새로 만든다 */
   schedule: Schedule | null;
   agents: readonly Agent[];
   /** 새로 만들 때 미리 고를 담당 (에이전트 화면에서 왔을 때) */
   agentId: string | null;
-  onSaved: (message: string) => void;
+  busy: boolean;
+  problem: string | null;
+  /** 저장. 됐으면 true (만들기의 requestId는 응답을 못 받아 다시 눌러도 같게 폼이 쥔다) */
+  onSubmit: (body: ScheduleBody, requestId: string) => Promise<boolean>;
+  /** 칸을 고쳤다: 앞의 오류 문구를 지운다 */
+  onEdit: () => void;
   onClose: () => void;
-  reload: () => Promise<void>;
 }) {
   const id = useId();
   const goals = useGoals();
@@ -54,8 +75,6 @@ export function ScheduleForm({
   const [goalId, setGoalId] = useState(schedule?.goalId ?? '');
   const [instruction, setInstruction] = useState(schedule?.instruction ?? '');
   const [dailyMax, setDailyMax] = useState(schedule?.dailyMax ?? 3);
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
   // 만들기: 같은 내용을 다시 보내면 같은 requestId (응답을 놓쳐 다시 눌러도 스케줄은 하나)
   const requestId = useRef<string | null>(null);
   const goalRows = flatTree(goals.data?.goals ?? [], (g) => g.parentId).filter(
@@ -64,7 +83,7 @@ export function ScheduleForm({
 
   function edit(apply: () => void) {
     requestId.current = null;
-    setProblem(null);
+    onEdit();
     apply();
   }
 
@@ -78,10 +97,7 @@ export function ScheduleForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    setProblem(null);
-    const body = {
+    const body: ScheduleBody = {
       title: title.trim(),
       agentId: agentId || null,
       enabled,
@@ -93,19 +109,7 @@ export function ScheduleForm({
       dailyMax,
     };
     requestId.current ??= crypto.randomUUID();
-    const reply = schedule
-      ? await api('PATCH', `/api/schedules/${schedule.id}`, { ...body, version: schedule.version })
-      : await api('POST', '/api/schedules', { ...body, requestId: requestId.current });
-    setBusy(false);
-    if (reply.ok) {
-      requestId.current = null;
-      return onSaved(`${body.title} ${enabled ? '켜짐' : '꺼짐'}`);
-    }
-    if (reply.status === 409) {
-      await reload();
-      return setProblem('이미 바뀐 스케줄이에요. 최신 내용을 다시 읽었어요');
-    }
-    setProblem(describe(reply.error));
+    if (await onSubmit(body, requestId.current)) requestId.current = null;
   }
 
   const noOrder = agentId === '' && instruction.trim() === '';

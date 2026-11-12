@@ -17,7 +17,7 @@ import {
 import { useAgents, usePendingApprovals } from '../../_task/live';
 import { TaskPill } from '../../_task/parts';
 import type { Task, TaskDetail, TaskEvent, TaskOutput, TaskRun } from '../../_task/types';
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 
 /** 서버가 상세에 보내는 실행 기록의 최대 개수 (TaskQuery.EVENTS) */
 const EVENTS_MAX = 500;

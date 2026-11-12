@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
 import type { SkillDetail, SkillList, SkillSaved, SkillSummary } from '../../_task/types';
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 
 const short = (hash: string) => hash.slice(0, 7);
 const sourceOf = (s: { source: string; revision: number | null }) =>

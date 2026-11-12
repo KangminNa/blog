@@ -8,7 +8,7 @@ import { actionLabel, flatTree, holdLabel, TOOL_LABELS, taskStatusLabel } from '
 import { useAgents, useTasksIn, useUsage } from '../../_task/live';
 import { AgentUsage } from '../../_task/parts';
 import type { Agent } from '../../_task/types';
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 import { AgentForm } from './AgentForm';
 
 const NEW = 'new';

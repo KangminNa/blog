@@ -1,6 +1,6 @@
 'use client';
 
-import { useNotify } from '../AdminShell';
+import { useNotify } from '../../_ui/notify';
 import { PostsPanel } from './PostsPanel';
 
 export default function PostsPage() {
