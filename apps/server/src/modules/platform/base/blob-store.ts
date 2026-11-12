@@ -104,7 +104,8 @@ export class BlobStore {
   /**
    * 파일을 값으로 가리키는 칸을 가진 모듈이 onModuleInit에서 등록한다. inUse는 넘긴 해시 중 그 칸들이 가리키는 것을 돌려준다.
    *   blobs.registerUse(['blog.assets.blob_hash'], (actor, hashes) => this.assets.usedBlobs(actor, hashes));
-   * 서버 시험(blob-sweep.api.test)이 DB의 *blob_hash 칸이 모두 등록됐는지 본다: 빠뜨리면 그 칸의 파일이 지워진다
+   * 서버 시험(blob-sweep.api.test)이 DB의 *blob_hash 칸이 모두 등록됐는지 본다: 빠뜨리면 그 칸의 파일이 지워진다.
+   * 해시를 jsonb 목록 안에 두는 칸은 그 시험에 이름을 따로 적는다
    */
   registerUse(
     columns: readonly string[],

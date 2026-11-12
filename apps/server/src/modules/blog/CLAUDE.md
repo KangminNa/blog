@@ -2,7 +2,7 @@
 
 ## 하는 일
 방문자가 읽는 블로그. 글(판·발행), 카테고리, 시리즈, 사진, 소재(글을 쓰기 위한 작업대).
-지금은 글, 사진, 소재, AI 도구의 초안까지 있다. 카테고리·시리즈는 뒤 단계에서.
+지금은 글, 사진, 소재, AI 도구의 초안, AI가 만든 페이지까지 있다. 카테고리·시리즈는 뒤 단계에서.
 
 - `post/`: 글(`Post` + 판 `PostRevision`), 내용(`PostContent`: 제목·본문 md, 앞부분·찾기용 글자), 주소 규칙(`SlugPolicy`).
   `api/posts`: 목록(방문자는 공개 글만, 주인은 공개 범위별 + 탭별 글 수), 주소로 열기(`by-slug/:slug`, 방문자는 공개·링크만),
@@ -16,6 +16,10 @@
   `POST api/posts/:id/assets`(주인만, 본문이 파일 그대로), `GET api/files/:hash`. 파일은 platform의 `BlobStore`에 있다
 - `basket/`: 소재(`BasketItem`, 공간마다 기본 상자 하나를 처음 담을 때 만든다). `api/basket/items`(주인만), MCP 도구 `basket_get`(write 권한).
   지금은 세션·글·링크·메모만 담는다. 사진·파일은 소재용 올리는 길이 없어 받지 않는다
+- `page/`: 페이지(`Page` + 판, 파일 목록 `PageFiles`, 보기 표 `PageTicket`). AI가 만든 HTML 묶음을 바깥 주소(`/pages/<이름>/`)로 내보낸다.
+  만들기 작업이 끝나면 `PageBuiltHandler`(`task.page.built`) → `PageService.built`: 페이지가 없으면 만들고(이름은 `Page.nameOf(title)`, 겹치면 번호) 판을 붙여 그 판을 보이게 한다.
+  `api/pages`: 목록(주인은 전부 + `lastTaskId`, 그 밖은 공개 페이지의 이름 · 제목만), 상세와 판 목록 · 제목 · 공개 범위(`PATCH`) · 보이는 판 옮기기(`/current`)는 주인만.
+  바깥 주소는 `GET api/pages/site/*path`(웹이 `/pages/…`를 넘긴다, `PageQuery.site` → `PageSiteAnswer`). 시험은 task와 이어져 `src/testing/page.api.test.ts`에 있다
 
 엔티티는 `TableEntity`(platform)로 표 한 줄을 들고, Repository(`TableRepository`)는 바뀐 칸만 저장한다 (객체설계 6장). 칼럼을 아는 곳은 `blog.tables.ts`, Entity의 `RULES`, Input의 `COLUMNS`, View의 `toJSON`, 보관·복원이다.
 글의 주소·태그·정렬은 `Post.RULES`를 지나 `edit(content, changes)`로 바뀌고(주소의 모양과 겹침은 `SlugPolicy`가 먼저 본다), 공개 범위·휴지통·wiki 연결은 동사 메서드로만 바뀐다.
@@ -23,13 +27,14 @@
 글의 View는 보는 사람마다 둘이다: 비공개까지 보는 요청자는 `PostView` · `PostPageView` · `SavedPostView`, 아니면 `Public…`(wiki 연결 없음). 읽기는 `PostQuery`가, 쓰기 결과는 `Post.view(actor)`가 고른다.
 
 ## 소유 데이터
-스키마 `blog`: categories, series, posts, post_revisions, assets, post_wiki_refs, chunks, chunk_embeddings, stone_log, edit_leases
+스키마 `blog`: categories, series, posts, post_revisions, assets, post_wiki_refs, chunks, chunk_embeddings, stone_log, edit_leases, pages, page_revisions(추가만)
 스키마 `work`: baskets, basket_items
 
 ## 데이터 묶음
 - 글: posts + post_revisions + post_wiki_refs + edit_leases(글)
 - 카테고리: categories
 - 사진: assets
+- 페이지: pages + page_revisions (파일은 platform.blobs를 값으로)
 - 소재: baskets + basket_items
 
 ## 공개 API (`index.ts`)
@@ -39,7 +44,10 @@
 `blog.post.published` · `blog.post.updated` · `blog.post.unpublished` · `blog.post.deleted` (v1: postId, slug, title, status, postVersion, mainWikiId, refWikiIds. vault가 글 자리 사본을 갱신한다). 임시 글은 알리지 않아 공개해야 그래프에 나온다.
 결재한 공개의 결과: 성공이면 `blog.post.published`에 `approvalId`·`outcome: 'done'`이 붙고(사람의 공개에는 없다), 실패면 `blog.post.publish_failed` (postId, approvalId, outcome: 'failed', error. 글 상태는 싣지 않아 사본을 고치는 데 쓰지 않는다). task가 받아 작업을 끝낸다.
 
-받는 이벤트: `task.approval.granted` 중 `action`이 `blog.post.publish`인 것만 (`CoreWorkers.expect`도 여기서 적는다)
+`blog.page.changed` (v1: pageId, name, currentSeq, visibility. 페이지가 생기거나 판이 붙거나 보이는 판 · 공개 범위 · 제목이 바뀔 때. 화면의 변경 신호로 쓴다)
+
+받는 이벤트: `task.approval.granted` 중 `action`이 `blog.post.publish`인 것만 (`CoreWorkers.expect`도 여기서 적는다).
+`task.page.built` (taskId, runId, pageId, title, note, files): 페이지의 새 판. 두 번 받아도 판은 하나다 (`page_revisions`의 `UNIQUE(page_id, run_id)`와 `PageRepository.hasRun`)
 
 ## 써도 되는 모듈
 platform, vault(Query만, 읽기 전용)
@@ -61,6 +69,10 @@ platform, vault(Query만, 읽기 전용)
 - 사진의 공개 여부는 파일이 아니라 그 파일이 붙은 글로 정한다: 공개·링크 공개 글 하나에라도 붙어 있으면 누구나, 나머지는 주인만. 임시·휴지통 글의 사진은 방문자에게 없는 파일과 똑같이 404
 - 파일은 트랜잭션 밖에서 쓴다. 파일이 먼저고 행이 나중이다. 행 없이 남은 파일은 다시 올리면 그대로 쓰인다
 - 파일을 가리키는 칸(`assets` · `posts.cover_blob_hash` · `basket_items`)은 `BlobStore.registerUse`로 등록해 둔다 (`AssetQuery` · `BasketQuery`의 `usedBlobs`). 새 칸을 만들면 함께 등록한다: 빠뜨리면 platform이 그 파일을 지운다
+- 페이지의 파일은 AI가 만든 것이라 믿지 않는다. 바깥 주소의 답에는 늘 격리 머리글을 붙인다 (`PageSiteAnswer.CSP`: `sandbox`에 `allow-same-origin`을 넣지 않는다. 넣으면 페이지의 스크립트가 주인의 로그인으로 API를 부른다). 형식은 파일 이름의 확장자로만 정하고 `nosniff`
+- 페이지는 비공개가 기본이다. 방문자와 기기에게 비공개 페이지는 없는 페이지와 똑같이 404이고, 공개는 주인의 `edit`만 한다 (AI · 기기가 공개하는 길은 없다)
+- 격리된 페이지 안에서는 쿠키가 실리지 않는다. 비공개 페이지의 딸린 파일은 보기 표(`PageTicket`, 서버 키로 봉인, 30분, 그 페이지 하나)가 든 주소로 받는다. 표 주소는 `no-referrer`로 밖에 실리지 않게 한다
+- 판(page_revisions)은 추가만 한다. 되돌리기는 `current_seq`를 옮기는 것이다. 판이 가리키는 파일은 `BlobStore.registerUse`(`PageQuery.usedBlobs`)로 지켜서, 결과물을 지워도 페이지는 남는다
 - SVG는 스크립트를 담을 수 있어 받지 않는다. 형식은 요청 머리글이 아니라 파일의 앞부분으로만 정한다
 - 소재에는 비공개 자료가 담긴다. REST는 주인만(`assertOwner`, write 권한 기기도 안 된다), MCP는 write 권한으로만 읽는다. 링크는 http·https만
 - 세션·글을 담을 때는 트랜잭션을 열기 전에 Query로 있는지 확인한다

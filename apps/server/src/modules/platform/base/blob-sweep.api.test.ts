@@ -48,9 +48,11 @@ describe('쓰지 않는 파일 지우기', () => {
         FROM information_schema.columns
        WHERE column_name LIKE '%blob_hash' AND table_schema NOT IN ('pg_catalog', 'information_schema')
        ORDER BY 1`;
+    // 해시를 jsonb 목록 안에 두는 칸(이름이 blob_hash로 끝나지 않는다)은 이 물음에 나오지 않아 따로 적는다
+    const inJson = ['blog.page_revisions.files'];
     assert.deepEqual(
-      rows.map((row) => String(row.name)),
-      store.usedColumns,
+      [...rows.map((row) => String(row.name)), ...inJson].sort(),
+      [...store.usedColumns].sort(),
       '새 칸은 그 모듈의 onModuleInit에서 BlobStore.registerUse로 등록한다',
     );
   });
