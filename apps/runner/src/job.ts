@@ -195,6 +195,8 @@ export class Job {
     readonly skillPackage: SkillPackage | null = null,
     /** 만들기 작업의 payload.make 그대로 (재료). 모양은 MakeMaterials가 본다 (그 밖의 일은 null) */
     readonly makePayload: unknown = null,
+    /** 결과를 페이지로 내보내는 만들기 작업인가 (payload.page). 문(index.html)을 만들어야 하고 웹 검색을 쓴다 */
+    readonly page = false,
   ) {}
 
   static from(raw: Json): Job {
@@ -231,6 +233,7 @@ export class Job {
       null,
       raw.field('skill_package') ? SkillPackage.from(raw.child('skill_package')) : null,
       task.text('kind') === Job.MAKE ? (task.child('payload').field('make') ?? null) : null,
+      task.text('kind') === Job.MAKE && Boolean(task.child('payload').field('page')),
     );
   }
 
@@ -258,6 +261,7 @@ export class Job {
       brief,
       this.skillPackage,
       this.makePayload,
+      this.page,
     );
   }
 

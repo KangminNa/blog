@@ -23,6 +23,8 @@ export class ClaudeCli implements AiTool {
   /** 코드 러너 칸의 일(코드 · 만들기)에만 더한다: 셸과 찾기 */
   private static readonly CODE_TOOLS = ['Bash', 'Glob', 'Grep'];
   private static readonly SKILL_TOOL = 'Skill';
+  /** 페이지를 만드는 일에만 연다. 검색은 Anthropic 쪽에서 돌아 칸의 나가는 허용 목록과 상관없다 */
+  private static readonly WEB_TOOL = 'WebSearch';
   /** 사용자 환경에서 넘기는 것. 나머지(기기 토큰 포함)는 AI CLI에게 가지 않는다 */
   private static readonly PASSED_ENV = [
     'PATH',
@@ -53,6 +55,7 @@ export class ClaudeCli implements AiTool {
   private browser: BrowserMcp | null = null;
   /** 셸을 여는가: 코드 러너 칸의 자리에서 하는 코드 작업만 */
   private shell = false;
+  private web = false;
 
   constructor(
     readonly bin: string,
@@ -68,6 +71,7 @@ export class ClaudeCli implements AiTool {
     const { runToken } = job;
     this.browser = runToken === null ? null : BrowserMcp.for(job, this.browserUrl);
     this.shell = job.sandboxed && room !== null && runToken !== null;
+    this.web = job.page && runToken !== null;
     return JobWorkspace.open(
       runToken === null ? null : ClaudeCli.mcpConfig(this.mcpUrl, runToken, this.browser),
       ClaudeCli.settings(process.env.HOME),
@@ -133,6 +137,7 @@ export class ClaudeCli implements AiTool {
     const tools = [
       ...ClaudeCli.FILE_TOOLS,
       ...(this.shell ? ClaudeCli.CODE_TOOLS : []),
+      ...(this.web ? [ClaudeCli.WEB_TOOL] : []),
       ...(workspace.skillReady ? [ClaudeCli.SKILL_TOOL] : []),
     ];
     return [
@@ -146,6 +151,7 @@ export class ClaudeCli implements AiTool {
       ...(this.browser ? [`mcp__${BrowserMcp.SERVER}__*`] : []),
       ...(workspace.skillReady ? [ClaudeCli.SKILL_TOOL] : []),
       ...(this.shell ? ClaudeCli.CODE_TOOLS : []),
+      ...(this.web ? [ClaudeCli.WEB_TOOL] : []),
       // 코드 러너 칸의 결과물 폴더는 저장소(작업 폴더) 밖이라 따로 열어 준다. 값을 여럿 받는 옵션이라 다음 옵션 앞에 둔다
       ...(workspace.outputsStage === null ? [] : ['--add-dir', workspace.outputsDir]),
       ...(workspace.inputsDir === null ? [] : ['--add-dir', workspace.inputsDir]),
