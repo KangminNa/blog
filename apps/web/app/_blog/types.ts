@@ -3,7 +3,11 @@ import type {
   BasketItemView,
   BasketView,
 } from '../../../server/src/modules/blog/basket/basket.view';
-import type { PageDetailView, PageListView } from '../../../server/src/modules/blog/page/page.view';
+import type {
+  PageDetailView,
+  PageListView,
+  PublicPageListView,
+} from '../../../server/src/modules/blog/page/page.view';
 import type {
   PostCountsView,
   PostPageView,
@@ -43,6 +47,8 @@ export type BasketItem = ReturnType<BasketItemView['toJSON']>;
 export type Basket = ReturnType<BasketView['toJSON']>;
 /** 페이지 목록 (AI가 만든 HTML 묶음). lastTaskId: 마지막 판을 만든 작업 */
 export type PageList = ReturnType<PageListView['toJSON']>;
+/** 방문자가 보는 공개 페이지 목록: 이름 · 제목 · 고친 때 */
+export type PublicPageList = ReturnType<PublicPageListView['toJSON']>;
 /** 페이지 하나와 판 목록 (새 판부터) */
 export type PageDetail = ReturnType<PageDetailView['toJSON']>;
 export type PageRevision = PageDetail['revisionList'][number];

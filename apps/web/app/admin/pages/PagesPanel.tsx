@@ -48,7 +48,7 @@ export function PagesPanel({ watch }: { watch: string | null }) {
       </p>
       <PageAskForm
         label="만들 페이지"
-        placeholder="예: 이번 주말 서울 데이트 코스 짜 줘"
+        placeholder="예: 이번 주말 서울 데이트 코스를 지도로 짜 줘"
         submit="만들기"
         busy={ask.busy !== null}
         problem={ask.problem}

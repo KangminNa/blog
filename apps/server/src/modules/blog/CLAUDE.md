@@ -71,7 +71,7 @@ platform, vault(Query만, 읽기 전용)
 - 파일을 가리키는 칸(`assets` · `posts.cover_blob_hash` · `basket_items`)은 `BlobStore.registerUse`로 등록해 둔다 (`AssetQuery` · `BasketQuery`의 `usedBlobs`). 새 칸을 만들면 함께 등록한다: 빠뜨리면 platform이 그 파일을 지운다
 - 페이지의 파일은 AI가 만든 것이라 믿지 않는다. 바깥 주소의 답에는 늘 격리 머리글을 붙인다 (`PageSiteAnswer.CSP`: `sandbox`에 `allow-same-origin`을 넣지 않는다. 넣으면 페이지의 스크립트가 주인의 로그인으로 API를 부른다). 형식은 파일 이름의 확장자로만 정하고 `nosniff`
 - 페이지는 비공개가 기본이다. 방문자와 기기에게 비공개 페이지는 없는 페이지와 똑같이 404이고, 공개는 주인의 `edit`만 한다 (AI · 기기가 공개하는 길은 없다)
-- 격리된 페이지 안에서는 쿠키가 실리지 않는다. 비공개 페이지의 딸린 파일은 보기 표(`PageTicket`, 서버 키로 봉인, 30분, 그 페이지 하나)가 든 주소로 받는다. 표 주소는 `no-referrer`로 밖에 실리지 않게 한다
+- 격리된 페이지 안에서는 쿠키가 실리지 않는다. 비공개 페이지의 딸린 파일은 보기 표(`PageTicket`, 서버 키로 봉인, 30분, 그 페이지 하나)가 든 주소로 받는다. 표 주소는 `no-referrer`로 밖에 실리지 않게 한다 (격리된 페이지는 애초에 Referer를 보내지 않는다. 브라우저로 확인. 머리글은 격리를 모르는 브라우저에 대비해 둔 것이다)
 - 판(page_revisions)은 추가만 한다. 되돌리기는 `current_seq`를 옮기는 것이다. 판이 가리키는 파일은 `BlobStore.registerUse`(`PageQuery.usedBlobs`)로 지켜서, 결과물을 지워도 페이지는 남는다
 - SVG는 스크립트를 담을 수 있어 받지 않는다. 형식은 요청 머리글이 아니라 파일의 앞부분으로만 정한다
 - 소재에는 비공개 자료가 담긴다. REST는 주인만(`assertOwner`, write 권한 기기도 안 된다), MCP는 write 권한으로만 읽는다. 링크는 http·https만

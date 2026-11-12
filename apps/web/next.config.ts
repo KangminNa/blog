@@ -67,8 +67,9 @@ const config: NextConfig = {
   },
   async headers() {
     return [
+      // 공개 페이지 목록(/pages)은 화면이라 화면의 머리글을 받는다
       { source: '/((?!pages/).*)', headers: securityHeaders },
-      { source: '/pages/:path*', headers: pageHeaders },
+      { source: '/pages/:path+', headers: pageHeaders },
     ];
   },
   async rewrites() {
