@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { POST_STATUS_LABELS } from '../../_blog/labels';
 import type { EditablePost } from '../../_blog/types';
-import { api, describe } from '../../_lib/client-api';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
 import { useLiveValue } from '../../_lib/use-live';
 import {
   actionLabel,
@@ -21,7 +22,6 @@ import {
 import { APPROVAL_TOPICS, useAgents } from '../../_task/live';
 import { ApprovalPill } from '../../_task/parts';
 import type { Agent, Approval, CodePull, TaskDetail } from '../../_task/types';
-import { useNotify } from '../../_ui/notify';
 
 const DONE_NOTES: Record<string, string> = {
   approve: '승인됨',
@@ -35,6 +35,12 @@ const SEALS: Record<string, string> = {
   cancelled: '취소',
 };
 const NO_VALUE = { ok: true, data: null } as const;
+/** 승인 직전에 다시 읽은 글이 보던 것과 다르다. 서버에 보내지 않고 이 오류로 멈춘다 */
+const POST_MOVED = {
+  ok: false,
+  status: 0,
+  error: { code: 'moved', message: '바뀐 글이에요. 달라진 내용을 확인한 뒤 다시 승인해 주세요' },
+} as const;
 
 // 결재 하나. 판단은 에이전트의 메모가 아니라 서버에서 읽은 대상 내용으로 한다.
 export function ApprovalDetail({ id }: { id: string }) {
@@ -263,17 +269,14 @@ function LimitTarget({ approval, agent }: { approval: Approval; agent: Agent | n
 
 /** code.pr.merge: 패키지가 기록한 PR (에이전트의 메모가 아니라). 결재 뒤 PR이 바뀌었으면 알린다 */
 function PullTarget({ approval }: { approval: Approval }) {
-  const [pull, setPull] = useState<CodePull | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
   const { id, version } = approval.target;
+  const { data: pull, error } = useLiveValue(
+    `pull:${id}`,
+    () => api<CodePull>('GET', `/api/p/code-github/pulls/${id}`),
+    [],
+  );
 
-  useEffect(() => {
-    void api<CodePull>('GET', `/api/p/code-github/pulls/${id}`).then((reply) =>
-      reply.ok ? setPull(reply.data) : setProblem(describe(reply.error)),
-    );
-  }, [id]);
-
-  if (problem) return <p className="error">{problem}</p>;
+  if (error) return <p className="error">{error}</p>;
   if (!pull) return <p className="label-mono">PR 불러오는 중…</p>;
   const failed = pull.checks.filter((c) => !c.ok);
   return (
@@ -334,38 +337,35 @@ function Decide({
   unchanged: () => Promise<boolean>;
   reload: () => Promise<void>;
 }) {
-  const notify = useNotify();
+  const action = useAction();
   const [note, setNote] = useState('');
   const [noteProblem, setNoteProblem] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const busy = action.busy !== null;
   const noteBox = useRef<HTMLTextAreaElement>(null);
 
-  async function decide(decision: string) {
-    setProblem(null);
+  function decide(decision: string) {
+    action.clear();
     if (decision === 'revise' && !note.trim()) {
       setNoteProblem('고칠 내용을 적어 주세요');
       noteBox.current?.focus();
       return;
     }
     setNoteProblem(null);
-    setBusy(true);
-    if (decision === 'approve' && !(await unchanged())) {
-      setBusy(false);
-      return setProblem('바뀐 글이에요. 달라진 내용을 확인한 뒤 다시 승인해 주세요');
-    }
-    const reply = await api<Approval>('POST', `/api/approvals/${approval.id}/decide`, {
-      version: approval.version,
+    void action.run(
       decision,
-      ...(note.trim() ? { note: note.trim() } : {}),
-    });
-    await reload();
-    setBusy(false);
-    if (reply.ok) return notify(DONE_NOTES[decision] ?? '결정됨');
-    setProblem(
-      reply.status === 409
-        ? '이미 바뀐 결재예요. 최신 내용을 다시 읽었어요'
-        : describe(reply.error),
+      async () =>
+        decision === 'approve' && !(await unchanged())
+          ? POST_MOVED
+          : api<Approval>('POST', `/api/approvals/${approval.id}/decide`, {
+              version: approval.version,
+              decision,
+              ...(note.trim() ? { note: note.trim() } : {}),
+            }),
+      {
+        done: DONE_NOTES[decision] ?? '결정됨',
+        reload,
+        conflict: '이미 바뀐 결재예요. 최신 내용을 다시 읽었어요',
+      },
     );
   }
 
@@ -389,7 +389,7 @@ function Decide({
         <small id="approval-note-help">수정 요청에는 필수</small>
         {noteProblem && <p className="error">{noteProblem}</p>}
       </div>
-      {problem && <p className="error">{problem}</p>}
+      {action.problem && <p className="error">{action.problem}</p>}
       {approval.action === PUBLISH_SITE && (
         <p className="note">
           서버는 실행하지 않아요. <Link href="/admin/p/browser-tabs">브라우저 화면</Link>에서 직접

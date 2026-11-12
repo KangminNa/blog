@@ -1,3 +1,8 @@
+import type { AssetView } from '../../../server/src/modules/blog/asset/asset.view';
+import type {
+  BasketItemView,
+  BasketView,
+} from '../../../server/src/modules/blog/basket/basket.view';
 import type {
   PostCountsView,
   PostPageView,
@@ -30,3 +35,8 @@ export type EditablePost = ReturnType<PostView['toJSON']>;
 export type PostPage = ReturnType<PublicPostView['toJSON']> & Partial<Pick<EditablePost, 'status'>>;
 /** 쓰기 결과 (편집기). revised: 이번 저장으로 새 판이 생겼나 */
 export type SavedPost = ReturnType<SavedPostView['toJSON']>;
+/** 올린 사진. url을 글 본문에 넣는다 */
+export type Asset = ReturnType<AssetView['toJSON']>;
+/** 소재 하나 (세션 · 글 · 링크 · 메모) */
+export type BasketItem = ReturnType<BasketItemView['toJSON']>;
+export type Basket = ReturnType<BasketView['toJSON']>;

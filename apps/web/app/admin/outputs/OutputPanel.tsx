@@ -1,12 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
-import { api, describe } from '../../_lib/client-api';
+import { useEffect, useRef, useState } from 'react';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
+import { useLiveValue } from '../../_lib/use-live';
 import { bytes, INLINE_MIMES, OUTPUT_KINDS, TEXT_MIMES, when } from '../../_task/labels';
-import type { Output, OutputPage, OutputSaved, OutputUsage } from '../../_task/types';
-import { useNotify } from '../../_ui/notify';
-import { MakeForm } from './MakeForm';
+import { readPages } from '../../_task/live';
+import type { Output, OutputPage, OutputSaved, OutputUsage, Task } from '../../_task/types';
+import { type MakeBody, MakeForm } from './MakeForm';
 
 type Tab = 'all' | 'trash' | keyof typeof OUTPUT_KINDS;
 
@@ -24,63 +26,62 @@ const fileUrl = (output: Output, inline = false) =>
   `/api/outputs/${output.id}/file${inline ? '?inline=1' : ''}`;
 const previewable = (o: Output) =>
   INLINE_MIMES.includes(o.mime) || (TEXT_MIMES.includes(o.mime) && o.sizeBytes <= TEXT_PREVIEW_MAX);
+/** 더 읽은 쪽을 앞 쪽 뒤에 잇는다. 쓰는 공간은 새로 읽은 값 */
+const mergePages = (before: OutputPage, more: OutputPage): OutputPage => ({
+  ...more,
+  outputs: [...before.outputs, ...more.outputs],
+});
 
 // 결과물: AI가 작업에서 만든 파일 (러너가 일이 끝난 뒤 올린다). 내려받기 · 미리 보기 · 휴지통.
 // 파일은 늘 내려받기로 주고, 미리 보기는 서버가 앞부분으로 확인한 그림 · PDF · 영상과 글자 파일만 연다.
 // 만들기: 고른 결과물 · 위키를 재료로 칸의 AI에게 PPT · 문서 · 영상을 맡긴다. 고쳐 달라는 그 결과물을 재료로 한 새 작업이다.
 export function OutputPanel({ taskId }: { taskId: string | null }) {
-  const notify = useNotify();
   const [tab, setTab] = useState<Tab>('all');
-  const [page, setPage] = useState<OutputPage | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  /** 읽어 둔 쪽 수. 종류를 바꾸면 처음으로 돌아간다 */
+  const pages = useRef(1);
   const [open, setOpen] = useState<Output | null>(null);
-  const [busy, setBusy] = useState(false);
+  const action = useAction();
+  const make = useAction();
   /** 만들기 폼이 열렸는가, 재료로 고른 결과물, 고쳐 달라로 열렸으면 그 결과물 */
   const [making, setMaking] = useState(false);
   const [materials, setMaterials] = useState<readonly Output[]>([]);
   const [revising, setRevising] = useState<Output | null>(null);
 
-  const load = useCallback(
-    async (cursor: string | null = null) => {
-      const query = new URLSearchParams();
-      if (tab === 'trash') query.set('trash', '1');
-      else if (tab !== 'all') query.set('kind', tab);
-      if (taskId) query.set('taskId', taskId);
-      if (cursor) query.set('cursor', cursor);
-      const reply = await api<OutputPage>('GET', `/api/outputs?${query}`);
-      if (!reply.ok) return setError(describe(reply.error));
-      setError(null);
-      setPage((before) =>
-        cursor && before
-          ? { ...reply.data, outputs: [...before.outputs, ...reply.data.outputs] }
-          : reply.data,
-      );
-    },
-    [tab, taskId],
-  );
+  const query = new URLSearchParams();
+  if (tab === 'trash') query.set('trash', '1');
+  else if (tab !== 'all') query.set('kind', tab);
+  if (taskId) query.set('taskId', taskId);
+  const filter = query.toString();
+  const path = filter ? `/api/outputs?${filter}` : '/api/outputs';
+  const list = useLiveValue(path, () => readPages(path, pages.current, mergePages), []);
+  const page = list.data;
+  const error = action.problem ?? list.error;
+  const busy = action.busy !== null;
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  async function act(output: Output, verb: 'delete' | 'restore' | 'purge', done: string) {
+    const reply = await action.run(
+      output.id,
+      () =>
+        api<OutputSaved>('POST', `/api/outputs/${output.id}/${verb}`, { version: output.version }),
+      {
+        done: `${output.name} ${done}`,
+        reload: list.reload,
+        conflict: '이미 바뀐 결과물이에요. 최신 목록을 다시 읽었어요',
+      },
+    );
+    if (reply?.ok && open?.id === output.id) setOpen(null);
+  }
 
-  async function act(output: Output, action: 'delete' | 'restore' | 'purge', done: string) {
-    setBusy(true);
-    const reply = await api<OutputSaved>('POST', `/api/outputs/${output.id}/${action}`, {
-      version: output.version,
-    });
-    setBusy(false);
-    if (!reply.ok)
-      return setError(
-        reply.status === 409
-          ? '이미 바뀐 결과물이에요. 최신 목록을 다시 읽었어요'
-          : describe(reply.error),
-      );
-    if (open?.id === output.id) setOpen(null);
-    notify(`${output.name} ${done}`);
-    await load();
+  // 만들기 작업은 패널이 맡긴다 (폼은 칸만). 됐으면 그 작업
+  async function submitMake(body: MakeBody, requestId: string) {
+    const reply = await make.run('make', () =>
+      api<Task>('POST', '/api/tasks', { requestId, ...body }),
+    );
+    return reply?.ok ? reply.data : null;
   }
 
   function startMaking(from: Output | null) {
+    make.clear();
     setMaking(true);
     setRevising(from);
     setMaterials(from ? [from] : []);
@@ -121,6 +122,7 @@ export function OutputPanel({ taskId }: { taskId: string | null }) {
             aria-selected={tab === id}
             onClick={() => {
               setOpen(null);
+              pages.current = 1;
               setTab(id);
             }}
           >
@@ -133,6 +135,10 @@ export function OutputPanel({ taskId }: { taskId: string | null }) {
           materials={materials}
           onRemove={(o) => setMaterials((before) => before.filter((m) => m.id !== o.id))}
           revising={revising}
+          busy={make.busy !== null}
+          problem={make.problem}
+          onSubmit={submitMake}
+          onClear={make.clear}
           onClose={() => {
             setMaking(false);
             setRevising(null);
@@ -228,7 +234,14 @@ export function OutputPanel({ taskId }: { taskId: string | null }) {
         </ul>
       )}
       {page?.next && (
-        <button type="button" className="ghost wide" onClick={() => load(page.next)}>
+        <button
+          type="button"
+          className="ghost wide"
+          onClick={() => {
+            pages.current += 1;
+            void list.reload();
+          }}
+        >
           더 보기
         </button>
       )}

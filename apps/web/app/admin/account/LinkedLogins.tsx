@@ -1,35 +1,34 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import type { LoginLink, LoginLinkList, LoginMethod, LoginMethodList } from '../../_account/types';
-import { api, describe } from '../../_lib/client-api';
+import type { LoginLinkList, LoginMethodList } from '../../_account/types';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
+import { useLiveValue } from '../../_lib/use-live';
 
 // 계정 화면의 "연결된 로그인": 켜진 로그인 플러그인마다 연결하거나 끊는다.
 // 연결해 둔 외부 계정으로만 로그인되므로, 플러그인이 아무 계정이나 주인으로 만들 수 없다.
 export function LinkedLogins({ onMessage }: { onMessage: (text: string) => void }) {
-  const [methods, setMethods] = useState<LoginMethod[] | null>(null);
-  const [links, setLinks] = useState<LoginLink[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    const [m, l] = await Promise.all([
-      api<LoginMethodList>('GET', '/api/auth/methods'),
-      api<LoginLinkList>('GET', '/api/auth/links'),
-    ]);
-    if (m.ok) setMethods(m.data.methods);
-    if (l.ok) setLinks(l.data.links);
-    if (!m.ok) setError(describe(m.error));
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // 로그인 방법과 연결에는 변경 신호가 없다. 연결을 못 읽으면 "연결 안 됨"으로 보인다
+  const found = useLiveValue(
+    'login-methods',
+    () => api<LoginMethodList>('GET', '/api/auth/methods'),
+    [],
+  );
+  const linked = useLiveValue(
+    'login-links',
+    () => api<LoginLinkList>('GET', '/api/auth/links'),
+    [],
+  );
+  const action = useAction();
+  const methods = found.data?.methods ?? null;
+  const links = linked.data?.links ?? [];
+  const error = action.problem ?? found.error;
 
   async function unlink(method: string) {
-    const reply = await api('DELETE', `/api/auth/links/${method}`);
-    if (!reply.ok) return setError(describe(reply.error));
-    onMessage('연결을 끊었어요. 그 계정으로는 더 로그인할 수 없어요');
-    await load();
+    const reply = await action.run(method, () => api('DELETE', `/api/auth/links/${method}`), {
+      reload: () => Promise.all([found.reload(), linked.reload()]),
+    });
+    if (reply?.ok) onMessage('연결을 끊었어요. 그 계정으로는 더 로그인할 수 없어요');
   }
 
   if (error) return <p className="error">{error}</p>;
@@ -48,7 +47,12 @@ export function LinkedLogins({ onMessage }: { onMessage: (text: string) => void 
                 {m.method} · {link ? `${link.label} 연결됨` : '연결 안 됨'}
               </span>
               {link ? (
-                <button type="button" className="ghost" onClick={() => unlink(m.method)}>
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={action.busy === m.method}
+                  onClick={() => unlink(m.method)}
+                >
                   끊기
                 </button>
               ) : (

@@ -1,5 +1,6 @@
 import type { PullView } from '../../../../plugins/code-github/server/views';
 import type { AgentListView, AgentView } from '../../../server/src/modules/task/agent/agent.view';
+import type { AiTestView, AiToolListView } from '../../../server/src/modules/task/ai/ai-login.view';
 import type {
   ApprovalPageView,
   ApprovalView,
@@ -45,7 +46,6 @@ export type OutputSaved = ReturnType<OutputSavedView['toJSON']>;
 export type Goal = ReturnType<GoalView['toJSON']>;
 export type GoalList = ReturnType<GoalListView['toJSON']>;
 export type SkillList = ReturnType<SkillListView['toJSON']>;
-export type SkillSummary = SkillList['skills'][number];
 export type SkillDetail = ReturnType<SkillDetailView['toJSON']>;
 export type SkillSaved = ReturnType<SkillSavedView['toJSON']>;
 export type Runner = ReturnType<RunnerView['toJSON']>;
@@ -59,5 +59,10 @@ export type ScheduleList = ReturnType<ScheduleListView['toJSON']>;
 export type Usage = ReturnType<UsageView['toJSON']>;
 export type UsageAgent = Usage['agents'][number];
 export type UsageWindow = Usage['plan'][number];
+/** AI 도구마다의 로그인 상태 (AI 메뉴, 러너 메뉴) */
+export type AiTools = ReturnType<AiToolListView['toJSON']>;
+export type AiTool = AiTools['tools'][number];
+/** 맡긴 연결 확인 · 웹 로그인의 작업 */
+export type AiTest = ReturnType<AiTestView['toJSON']>;
 /** code-github 패키지의 PR (결재 화면의 code.pr.merge 대상). 패키지의 view가 원본이다 */
 export type CodePull = ReturnType<PullView['toJSON']>;

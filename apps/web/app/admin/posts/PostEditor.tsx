@@ -5,12 +5,12 @@ import TextAlign from '@tiptap/extension-text-align';
 import { Placeholder } from '@tiptap/extensions';
 import { type Editor, EditorContent, useEditor, useEditorState } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AssetView } from '../../../../server/src/modules/blog/asset/asset.view';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { postPath } from '../../_blog/format';
 import { POST_STATUS_LABELS } from '../../_blog/labels';
-import type { EditablePost, PostStatus, SavedPost } from '../../_blog/types';
-import { api, describe, uploadFile } from '../../_lib/client-api';
+import type { Asset, EditablePost, PostStatus, SavedPost } from '../../_blog/types';
+import { type ApiReply, api, describe, uploadFile } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
 import { useToast } from '../../_ui/useToast';
 import { BigQuote } from './editor/big-quote';
 import { docToMarkdown, markdownToEditorHtml } from './editor/markdown-doc';
@@ -27,9 +27,6 @@ type Settings = {
   mainWikiId: string | null;
   refWikiIds: readonly string[];
 };
-
-/** 올린 사진 (서버의 asset.view.ts) */
-type Asset = ReturnType<AssetView['toJSON']>;
 
 /** 서버의 이미지 본문 한도와 같다 (HttpSetup.IMAGE_LIMIT) */
 const PHOTO_MAX = 10 * 1024 * 1024;
@@ -121,7 +118,8 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
   const [body, setBody] = useState(initial?.body ?? '');
   /** 불러온(또는 마지막으로 저장한) 본문을 편집기가 md로 다시 쓴 것. 바뀐 것이 있는지 이것과 견준다 */
   const [baseline, setBaseline] = useState(initial?.body ?? '');
-  const [busy, setBusy] = useState(false);
+  const action = useAction();
+  /** 보내기 전에 아는 오류(제목 없음 · 사진 크기)와 사진 올리기의 오류. 동작의 오류와 한 자리에 보인다 */
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [panel, setPanel] = useState(false);
@@ -168,13 +166,22 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
         slugChanged
       : title.trim() !== '' || body !== '');
 
-  const save = useCallback(async (): Promise<LinkedPost | null> => {
+  const busy = action.busy === 'save' || action.busy === 'status';
+  const problem = error ?? action.problem;
+
+  // 새 동작은 앞의 오류를 지우고 시작한다. 409면 쓰던 내용을 지키려고 다시 읽지 않고 "다시 불러오기"를 보여 준다
+  async function send<T>(name: string, call: () => Promise<ApiReply<T>>) {
+    setError(null);
+    const reply = await action.run(name, call);
+    if (reply && !reply.ok) setConflict(reply.status === 409);
+    return reply;
+  }
+
+  async function save(): Promise<LinkedPost | null> {
     if (!title.trim()) {
       setError('제목을 적어 주세요');
       return null;
     }
-    setBusy(true);
-    setError(null);
     const fields = {
       title,
       // 본문을 손대지 않았으면 저장된 md 그대로: 편집기가 다시 쓴 모양만 달라 새 판이 쌓이지 않게
@@ -184,23 +191,20 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
       ...(mainChanged ? { mainWikiId: settings.mainWikiId } : {}),
       ...(refsChanged ? { refWikiIds: settings.refWikiIds } : {}),
     };
-    const reply = post
-      ? await api<SavedPost>('PUT', `/api/posts/${post.id}`, {
-          ...fields,
-          version: post.version,
-          slug: slugChanged ? settings.slug.trim() : null,
-        })
-      : await api<SavedPost>('POST', '/api/posts', {
-          ...fields,
-          requestId: requestId.current,
-          slug: settings.slug.trim() || null,
-        });
-    setBusy(false);
-    if (!reply.ok) {
-      setConflict(reply.status === 409);
-      setError(describe(reply.error));
-      return null;
-    }
+    const reply = await send('save', () =>
+      post
+        ? api<SavedPost>('PUT', `/api/posts/${post.id}`, {
+            ...fields,
+            version: post.version,
+            slug: slugChanged ? settings.slug.trim() : null,
+          })
+        : api<SavedPost>('POST', '/api/posts', {
+            ...fields,
+            requestId: requestId.current,
+            slug: settings.slug.trim() || null,
+          }),
+    );
+    if (!reply?.ok) return null;
     const saved = reply.data;
     if (!post) window.history.replaceState(null, '', `/admin/posts/${saved.id}`);
     setPost(saved);
@@ -214,23 +218,20 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
     if (saved.revised) showToast(`저장했어요 · ${saved.revisionCount}판`);
     else showToast(saved.version === post?.version ? '바뀐 내용이 없어요' : '저장했어요');
     return saved;
-  }, [title, body, baseline, settings, post, slugChanged, mainChanged, refsChanged, showToast]);
+  }
 
   /** 발행 창의 "적용": 저장한 뒤 공개 범위가 다르면 바꾼다 */
   async function apply() {
     const current = !post || dirty ? await save() : post;
     if (!current) return;
     if (current.status !== choice) {
-      setBusy(true);
-      const reply = await api<SavedPost>('POST', `/api/posts/${current.id}/status`, {
-        version: current.version,
-        status: choice,
-      });
-      setBusy(false);
-      if (!reply.ok) {
-        setConflict(reply.status === 409);
-        return setError(describe(reply.error));
-      }
+      const reply = await send('status', () =>
+        api<SavedPost>('POST', `/api/posts/${current.id}/status`, {
+          version: current.version,
+          status: choice,
+        }),
+      );
+      if (!reply?.ok) return;
       setPost(reply.data);
       showToast(STATUS_DONE[choice]);
     }
@@ -245,17 +246,17 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
   async function trash() {
     if (!post) return;
     if (!window.confirm('휴지통으로 옮길까요? 30일 동안 되살릴 수 있어요')) return;
-    const reply = await api('DELETE', `/api/posts/${post.id}`, { version: post.version });
-    if (!reply.ok) return setError(describe(reply.error));
-    window.location.href = '/admin/posts';
+    const drop = () => api('DELETE', `/api/posts/${post.id}`, { version: post.version });
+    const reply = await send('trash', drop);
+    if (reply?.ok) window.location.href = '/admin/posts';
   }
 
   async function recover() {
     if (!post) return;
-    const reply = await api<SavedPost>('POST', `/api/posts/${post.id}/restore`, {
-      version: post.version,
-    });
-    if (!reply.ok) return setError(describe(reply.error));
+    const reply = await send('restore', () =>
+      api<SavedPost>('POST', `/api/posts/${post.id}/restore`, { version: post.version }),
+    );
+    if (!reply?.ok) return;
     setPost(reply.data);
     showToast('되살렸어요');
   }
@@ -267,6 +268,7 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
     if (!target) return;
     setUploading(true);
     setError(null);
+    action.clear();
     const reply = await uploadFile<Asset>(`/api/posts/${target.id}/assets`, file);
     setUploading(false);
     if (!reply.ok) return setError(reply.status === 413 ? PHOTO_TOO_BIG : describe(reply.error));
@@ -288,10 +290,10 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
 
   // 발행 창은 길어서 스크롤되므로 오류가 보이는 곳까지 옮긴다
   useEffect(() => {
-    if (error) noticeRef.current?.scrollIntoView({ block: 'nearest' });
-  }, [error]);
+    if (problem) noticeRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [problem]);
 
-  // ⌘S · Ctrl+S로 저장, 저장 안 한 채 떠나려 하면 묻는다
+  // ⌘S · Ctrl+S로 저장, 저장 안 한 채 떠나려 하면 묻는다. save가 그릴 때마다 새것이라 그때마다 다시 건다
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key?.toLowerCase() === 's') {
@@ -308,7 +310,7 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
       window.removeEventListener('keydown', key);
       window.removeEventListener('beforeunload', leave);
     };
-  }, [busy, dirty, save]);
+  });
 
   const trashed = post?.deletedAt != null;
   const status = post?.status ?? 'draft';
@@ -334,9 +336,9 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
   const chain = () => editor?.chain().focus();
   /** 저장 오류. 발행 창이 열려 있으면 창이 본문 위의 알림을 가리므로 창 안에 보여 준다 */
   const notice = (place: string) =>
-    error && (
+    problem && (
       <p ref={noticeRef} className={place} role="alert">
-        {error}
+        {problem}
         {conflict && (
           <button type="button" className="ghost" onClick={() => window.location.reload()}>
             다시 불러오기

@@ -9,6 +9,7 @@
 //   5. 패턴 목록(객체설계 11장)이 본보기로 가리키는 파일이 실제로 있다
 //
 // 예외 목록(scripts/ratchet.json)은 줄어들기만 한다: 새 항목을 더하지 않고, 고친 파일은 목록에서 지운다.
+// 목록의 why에는 아직 남은 화면마다 까닭을 적어 둔다 (검사는 보지 않는다).
 //   node scripts/check-rules.mjs --update   고쳐서 벗어난 항목을 지우고 줄어든 줄 수를 적는다 (새 항목은 더하지 않는다)
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -96,8 +97,10 @@ for (const file of webFiles) {
   const text = readFileSync(file, 'utf8');
   checkWebImports(file, text);
   checkHandWrittenReply(file, text);
-  // 공용 훅 자신은 본다 대상이 아니다
+  // 공용 훅 자신은 보는 대상이 아니다
   if (at(file).startsWith('apps/web/app/_lib/')) continue;
+  // 플러그인 화면은 react와 자기 폴더만 가져올 수 있어 공용 훅을 쓰지 못한다 (서버는 props의 call로 부른다)
+  if (at(file).startsWith('plugins/')) continue;
   if (/\bsetBusy\(/.test(text)) busyHits.add(at(file));
   // 화면이 뜰 때 손으로 읽는 모양: useEffect와 GET 호출이 있는데 useLiveValue가 없다 (읽기 훅 파일 자신은 뺀다)
   const reads = /\bapi(<[^>]*>)?\(\s*'GET'/.test(text) && /\buseEffect\(/.test(text);

@@ -1,43 +1,24 @@
 'use client';
 
-import { useCallback, useEffect, useId, useState } from 'react';
-import type {
-  PluginActionResultView,
-  PluginListView,
-  PluginSettingView,
-  PluginView,
-} from '../../../../server/src/modules/platform/plugin/plugin.view';
+import { useId, useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
-
-// 응답 모양은 서버 view의 toJSON()이 원본이다 (객체설계 6장)
-type Plugin = ReturnType<PluginView['toJSON']>;
-type PluginList = ReturnType<PluginListView['toJSON']>;
-type PluginSetting = ReturnType<PluginSettingView['toJSON']>;
-type ActionResult = ReturnType<PluginActionResultView['toJSON']>;
+import { useAction } from '../../_lib/use-action';
+import { usePlugins } from '../../_platform/live';
+import type { Plugin, PluginActionResult, PluginSetting } from '../../_platform/types';
 
 // 플러그인 켜기·설정·관리 동작. 설치 마법사의 5단계와 콘솔의 플러그인 메뉴가 함께 쓴다.
 // 켜기 전에 플러그인이 쓰는 권한을 보여주고, 켜는 순간 그 권한을 허락한 것으로 기록된다.
 export function PluginsPanel({ onMessage }: { onMessage: (text: string) => void }) {
-  const [plugins, setPlugins] = useState<Plugin[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const read = usePlugins();
+  const plugins = read.data?.plugins ?? null;
 
-  const load = useCallback(async () => {
-    const reply = await api<PluginList>('GET', '/api/plugins');
-    if (reply.ok) setPlugins(reply.data.plugins);
-    else setError(describe(reply.error));
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (error) return <p className="error">{error}</p>;
+  if (read.error) return <p className="error">{read.error}</p>;
   if (!plugins) return <p className="label-mono">불러오는 중…</p>;
   if (plugins.length === 0) return <p className="label-mono">설치된 플러그인 없음</p>;
   return (
     <div>
       {plugins.map((p) => (
-        <PluginRow key={p.name} plugin={p} reload={load} onMessage={onMessage} />
+        <PluginRow key={p.name} plugin={p} reload={read.reload} onMessage={onMessage} />
       ))}
     </div>
   );
@@ -53,21 +34,35 @@ function PluginRow({
   onMessage: (text: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // 켜고 끄기와 설정 저장은 오류가 보이는 자리가 다르다
+  const action = useAction();
+  const save = useAction();
 
   async function toggle() {
-    setBusy(true);
-    setError(null);
-    const reply = await api(
-      'POST',
-      `/api/plugins/${plugin.name}/${plugin.enabled ? 'disable' : 'enable'}`,
+    const reply = await action.run(
+      'toggle',
+      () => api('POST', `/api/plugins/${plugin.name}/${plugin.enabled ? 'disable' : 'enable'}`),
+      { reload },
     );
-    setBusy(false);
-    if (!reply.ok) return setError(describe(reply.error));
+    if (!reply?.ok) return;
     onMessage(plugin.enabled ? `${plugin.name}을(를) 껐어요` : `${plugin.name}을(를) 켰어요`);
     if (!plugin.enabled) setOpen(true);
-    await reload();
+  }
+
+  // 설정 저장은 줄이 돌린다 (폼은 칸만). 됐으면 true
+  async function saveSettings(values: Record<string, string>): Promise<boolean> {
+    const reply = await save.run(
+      'save',
+      () => api('PUT', `/api/plugins/${plugin.name}/settings`, { values }),
+      { reload },
+    );
+    if (reply?.ok) onMessage('설정을 저장했어요. 재시작 없이 바로 반영돼요');
+    return reply?.ok === true;
+  }
+
+  function fold() {
+    setOpen(!open);
+    save.clear();
   }
 
   const status = !plugin.enabled
@@ -94,7 +89,7 @@ function PluginRow({
           role="switch"
           aria-checked={plugin.enabled}
           aria-label={`${plugin.name} ${plugin.enabled ? '끄기' : '켜기'}`}
-          disabled={busy}
+          disabled={action.busy !== null}
           onClick={toggle}
         />
       </div>
@@ -105,41 +100,43 @@ function PluginRow({
           ))}
         </ul>
       )}
-      {error && <p className="error">{error}</p>}
+      {action.problem && <p className="error">{action.problem}</p>}
       {plugin.settings.length > 0 && (
-        <button type="button" className="ghost" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <button type="button" className="ghost" onClick={fold} aria-expanded={open}>
           설정 {open ? '접기' : '열기'}
         </button>
       )}
-      {open && <SettingsForm plugin={plugin} reload={reload} onMessage={onMessage} />}
+      {open && (
+        <SettingsForm
+          plugin={plugin}
+          busy={save.busy !== null}
+          problem={save.problem}
+          onSubmit={saveSettings}
+        />
+      )}
       {plugin.actions.length > 0 && <Actions plugin={plugin} />}
     </section>
   );
 }
 
+/** 설정 칸: 바꾼 칸의 값만 들고 있다가 보낸다. 저장은 줄이 돌린다 (onSubmit) */
 function SettingsForm({
   plugin,
-  reload,
-  onMessage,
+  busy,
+  problem,
+  onSubmit,
 }: {
   plugin: Plugin;
-  reload: () => Promise<void>;
-  onMessage: (text: string) => void;
+  busy: boolean;
+  problem: string | null;
+  /** 저장. 됐으면 true */
+  onSubmit: (values: Record<string, string>) => Promise<boolean>;
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    setBusy(true);
-    setError(null);
-    const reply = await api('PUT', `/api/plugins/${plugin.name}/settings`, { values });
-    setBusy(false);
-    if (!reply.ok) return setError(describe(reply.error));
-    setValues({});
-    onMessage('설정을 저장했어요. 재시작 없이 바로 반영돼요');
-    await reload();
+    if (await onSubmit(values)) setValues({});
   }
 
   return (
@@ -152,7 +149,7 @@ function SettingsForm({
           onChange={(v) => setValues({ ...values, [s.key]: v })}
         />
       ))}
-      {error && <p className="error">{error}</p>}
+      {problem && <p className="error">{problem}</p>}
       <button className="cta" type="submit" disabled={busy || Object.keys(values).length === 0}>
         <span>{busy ? '저장하는 중' : '설정 저장'}</span>
         <span className="arr">→</span>
@@ -218,13 +215,16 @@ function SettingField({
 }
 
 function Actions({ plugin }: { plugin: Plugin }) {
-  const [result, setResult] = useState<ActionResult | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [result, setResult] = useState<PluginActionResult | null>(null);
+  const action = useAction();
+  const { busy } = action;
 
+  // 실패도 결과 자리에 보인다 (action.problem은 쓰지 않는다)
   async function run(name: string) {
-    setBusy(name);
-    const reply = await api<ActionResult>('POST', `/api/plugins/${plugin.name}/actions/${name}`);
-    setBusy(null);
+    const reply = await action.run(name, () =>
+      api<PluginActionResult>('POST', `/api/plugins/${plugin.name}/actions/${name}`),
+    );
+    if (!reply) return;
     setResult(reply.ok ? reply.data : { ok: false, message: describe(reply.error), details: [] });
   }
 

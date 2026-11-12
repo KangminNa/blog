@@ -1,24 +1,28 @@
 'use client';
 
 import { useState } from 'react';
-import { api, describe } from '../../_lib/client-api';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
 
 // 비밀번호 바꾸기. 바꾸면 지금 로그인만 남고 다른 기기의 로그인은 끝난다.
 export function AccountForm({ onChanged }: { onChanged: () => void }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // 두 번 넣은 새 비밀번호가 다르다 (서버에 보내기 전에 막는다)
+  const [mismatch, setMismatch] = useState(false);
+  const action = useAction();
+  const busy = action.busy !== null;
+  const error = mismatch ? '새 비밀번호를 똑같이 두 번 넣어 주세요' : action.problem;
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    if (next !== again) return setError('새 비밀번호를 똑같이 두 번 넣어 주세요');
-    setBusy(true);
-    setError(null);
-    const reply = await api('PUT', '/api/auth/password', { current, next });
-    setBusy(false);
-    if (!reply.ok) return setError(describe(reply.error));
+    setMismatch(next !== again);
+    if (next !== again) return;
+    const reply = await action.run('save', () =>
+      api('PUT', '/api/auth/password', { current, next }),
+    );
+    if (!reply?.ok) return;
     setCurrent('');
     setNext('');
     setAgain('');

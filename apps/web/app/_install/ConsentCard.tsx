@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import type { Consent, ConsentResult } from '../_account/types';
-import { api, describe } from '../_lib/client-api';
+import { api } from '../_lib/client-api';
 import { SCOPE_LABELS } from '../_lib/types';
+import { useAction } from '../_lib/use-action';
 import { CairnMark } from '../_ui/CairnMark';
 
 // 기기 연결 승인 카드. 연결하면 AI 도구가 기다리는 주소로 돌아가고, 도구가 토큰을 받아 붙는다.
@@ -18,20 +19,20 @@ export function ConsentCard({
   problem: string | null;
 }) {
   const [name, setName] = useState(consent?.name ?? '');
-  const [error, setError] = useState<string | null>(problem);
-  const [busy, setBusy] = useState(false);
+  const action = useAction();
+  const busy = action.busy !== null;
+  // 승인 요청을 읽지 못했으면 problem만 있고 버튼이 없다
+  const error = action.problem ?? problem;
 
   async function decide(approve: boolean) {
-    setBusy(true);
-    setError(null);
-    const reply = await api<ConsentResult>(
-      'POST',
-      approve ? '/api/connect/approve' : '/api/connect/deny',
-      approve ? { request, name } : { request },
+    const reply = await action.run('decide', () =>
+      api<ConsentResult>(
+        'POST',
+        approve ? '/api/connect/approve' : '/api/connect/deny',
+        approve ? { request, name } : { request },
+      ),
     );
-    setBusy(false);
-    if (!reply.ok) return setError(describe(reply.error));
-    window.location.href = reply.data.redirect;
+    if (reply?.ok) window.location.href = reply.data.redirect;
   }
 
   return (

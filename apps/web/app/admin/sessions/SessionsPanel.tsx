@@ -1,22 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import type {
-  SessionDetailView,
-  SessionPageView,
-  SessionRevisionView,
-  SessionSummaryView,
-} from '../../../../server/src/modules/vault/session/session.view';
-import type { DeviceList } from '../../_account/types';
+import { useRef, useState } from 'react';
+import { useDevices } from '../../_account/live';
 import { api, describe } from '../../_lib/client-api';
+import { useLiveValue } from '../../_lib/use-live';
+import { readPages } from '../../_task/live';
+import type { SessionDetail, SessionPage, SessionRevision } from '../../_vault/types';
 import { TidyPanel } from './TidyPanel';
 
-// 응답 모양은 서버 view의 toJSON()이 원본이다 (객체설계 6장)
-type SessionSummary = ReturnType<SessionSummaryView['toJSON']>;
-type SessionPage = ReturnType<SessionPageView['toJSON']>;
-type SessionRevision = ReturnType<SessionRevisionView['toJSON']>;
-type SessionDetail = ReturnType<SessionDetailView['toJSON']>;
-
+/** 세션이 저장되거나 대표 위키가 정해지면 다시 읽는다 */
+const SESSION_TOPICS = ['vault.session.*'];
 const KIND_LABELS: Record<string, string> = { origin: '원본', human: '사람', merge: '합침' };
 /** 판 번호는 최근 몇 개만 펼쳐 둔다 (판이 많으면 노트가 밀려 내려가므로) */
 const RECENT_REVISIONS = 8;
@@ -27,45 +20,36 @@ function when(iso: string | null): string {
     : '';
 }
 
+function mergePages(before: SessionPage, more: SessionPage): SessionPage {
+  return { ...more, sessions: [...before.sessions, ...more.sessions] };
+}
+
 // 세션: AI 도구가 저장한 세션 목록(최근 저장 순, 프로젝트로 거르기) → 세션 하나(지금 판의 칸, 판 기록, 지난 판).
 export function SessionsPanel({ initialId }: { initialId: string | null }) {
-  const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
-  const [next, setNext] = useState<string | null>(null);
-  const [projects, setProjects] = useState<string[]>([]);
   const [project, setProject] = useState<string | null>(null);
-  const [devices, setDevices] = useState<Record<string, string>>({});
   const [openId, setOpenId] = useState<string | null>(initialId);
-  const [error, setError] = useState<string | null>(null);
+  /** 읽어 둔 쪽 수. "더 보기"로 늘고 프로젝트를 바꾸면 첫 쪽부터 */
+  const pages = useRef(1);
+  const path = project ? `/api/sessions?${new URLSearchParams({ project })}` : '/api/sessions';
+  const list = useLiveValue(
+    `sessions:${project ?? ''}`,
+    () => readPages(path, pages.current, mergePages),
+    SESSION_TOPICS,
+  );
+  const deviceList = useDevices();
+  const sessions = list.data?.sessions ?? null;
+  const devices: Record<string, string> = Object.fromEntries(
+    (deviceList.data?.devices ?? []).map((d) => [d.id, d.name]),
+  );
+  // 거른 목록에는 그 프로젝트만 있으므로, 지금까지 본 프로젝트를 기억해 둔다
+  const [projects, setProjects] = useState<readonly string[]>([]);
+  const seen = (sessions ?? []).flatMap((s) => (s.project ? [s.project] : []));
+  if (seen.some((p) => !projects.includes(p))) setProjects([...new Set([...projects, ...seen])]);
 
-  const load = useCallback(async (filter: string | null, cursor: string | null) => {
-    const query = new URLSearchParams();
-    if (filter) query.set('project', filter);
-    if (cursor) query.set('cursor', cursor);
-    const reply = await api<SessionPage>('GET', `/api/sessions?${query}`);
-    if (!reply.ok) return setError(describe(reply.error));
-    setError(null);
-    setSessions((before) =>
-      cursor ? [...(before ?? []), ...reply.data.sessions] : reply.data.sessions,
-    );
-    setNext(reply.data.next);
-    if (!filter)
-      setProjects((known) => [
-        ...new Set([
-          ...known,
-          ...reply.data.sessions.flatMap((s) => (s.project ? [s.project] : [])),
-        ]),
-      ]);
-  }, []);
-
-  useEffect(() => {
-    void load(project, null);
-  }, [load, project]);
-
-  useEffect(() => {
-    void api<DeviceList>('GET', '/api/devices').then((reply) => {
-      if (reply.ok) setDevices(Object.fromEntries(reply.data.devices.map((d) => [d.id, d.name])));
-    });
-  }, []);
+  function filter(to: string | null) {
+    pages.current = 1;
+    setProject(to);
+  }
 
   if (openId)
     return (
@@ -86,7 +70,7 @@ export function SessionsPanel({ initialId }: { initialId: string | null }) {
             type="button"
             className="chip"
             aria-pressed={project === null}
-            onClick={() => setProject(null)}
+            onClick={() => filter(null)}
           >
             전체
           </button>
@@ -96,14 +80,14 @@ export function SessionsPanel({ initialId }: { initialId: string | null }) {
               type="button"
               className="chip"
               aria-pressed={project === p}
-              onClick={() => setProject(project === p ? null : p)}
+              onClick={() => filter(project === p ? null : p)}
             >
               {p}
             </button>
           ))}
         </fieldset>
       )}
-      {error && <p className="error">{error}</p>}
+      {list.error && <p className="error">{list.error}</p>}
       {sessions === null ? (
         <p className="label-mono">불러오는 중…</p>
       ) : sessions.length === 0 ? (
@@ -132,8 +116,15 @@ export function SessionsPanel({ initialId }: { initialId: string | null }) {
           ))}
         </ul>
       )}
-      {next && (
-        <button type="button" className="ghost wide" onClick={() => load(project, next)}>
+      {list.data?.next && (
+        <button
+          type="button"
+          className="ghost wide"
+          onClick={() => {
+            pages.current += 1;
+            void list.reload();
+          }}
+        >
           더 보기
         </button>
       )}
@@ -151,25 +142,26 @@ function SessionView({
   deviceName: (id: string) => string;
   onBack: () => void;
 }) {
-  const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [shown, setShown] = useState<SessionRevision | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const session = useLiveValue(
+    `session:${id}`,
+    () => api<SessionDetail>('GET', `/api/sessions/${id}`),
+    SESSION_TOPICS,
+  );
+  /** 골라서 읽은 지난 판. 없으면 지금 판을 보여 준다 */
+  const [past, setPast] = useState<SessionRevision | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
   const [allRevisions, setAllRevisions] = useState(false);
+  const detail = session.data;
+  const shown = past ?? detail?.head ?? null;
+  const error = failed ?? session.error;
 
-  useEffect(() => {
-    void api<SessionDetail>('GET', `/api/sessions/${id}`).then((reply) => {
-      if (!reply.ok) return setError(describe(reply.error));
-      setDetail(reply.data);
-      setShown(reply.data.head);
-    });
-  }, [id]);
-
+  // 지난 판은 누를 때 읽는다
   async function pick(seq: number) {
     if (!detail) return;
-    if (seq === detail.head.seq) return setShown(detail.head);
+    if (seq === detail.head.seq) return setPast(null);
     const reply = await api<SessionRevision>('GET', `/api/sessions/${id}/revisions/${seq}`);
-    if (!reply.ok) return setError(describe(reply.error));
-    setShown(reply.data);
+    if (!reply.ok) return setFailed(describe(reply.error));
+    setPast(reply.data);
   }
 
   const headings = Object.fromEntries(

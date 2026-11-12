@@ -2,20 +2,14 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import type {
-  AiTestView,
-  AiToolListView,
-} from '../../../../server/src/modules/task/ai/ai-login.view';
-import { api, describe } from '../../_lib/client-api';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
 import { useLiveValue } from '../../_lib/use-live';
 import { TOOL_LABELS, when } from '../../_task/labels';
-import { TASK_TOPICS } from '../../_task/live';
-import type { Task, TaskDetail } from '../../_task/types';
+import { TASK_TOPICS, useAiTools } from '../../_task/live';
+import type { AiTest, AiTool, Task, TaskDetail } from '../../_task/types';
 import { useNotify } from '../../_ui/notify';
 
-type AiTools = ReturnType<AiToolListView['toJSON']>;
-type AiTool = AiTools['tools'][number];
-type AiTest = ReturnType<AiTestView['toJSON']>;
 type Signin = NonNullable<AiTool['signin']>;
 
 const DAY_MS = 86_400_000;
@@ -48,7 +42,7 @@ function safeUrl(url: string | null): string | null {
 // AI 로그인. 러너가 로그인 명령을 대신 돌리고(웹 로그인), 주인은 주소에서 로그인해 코드를 붙여 넣는다.
 // Claude는 토큰을 직접 넣을 수도 있다. 토큰은 서버가 돌려주지 않아 화면에 다시 보이지 않는다.
 export function AiPanel() {
-  const tools = useLiveValue('ai', () => api<AiTools>('GET', '/api/ai'), TASK_TOPICS);
+  const tools = useAiTools();
   const { reload } = tools;
   const signingIn = tools.data?.tools.some((t) => t.signin !== null) ?? false;
   useEffect(() => {
@@ -105,8 +99,7 @@ function ToolCard({ tool, reload }: { tool: AiTool; reload: () => Promise<void> 
 
 /** Claude: 만료와 연결 확인 */
 function ClaudeState({ tool }: { tool: AiTool }) {
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const action = useAction();
   // 맡긴 연결 확인의 작업. 끝나면 결과는 /api/ai로 온다
   const [testing, setTesting] = useState<string | null>(null);
   const test = useLiveValue(
@@ -122,17 +115,13 @@ function ClaudeState({ tool }: { tool: AiTool }) {
   const left = tool.expiresAt ? daysLeft(tool.expiresAt) : null;
 
   async function startTest() {
-    setBusy(true);
-    setProblem(null);
-    const reply = await api<AiTest>('POST', '/api/ai/claude/test');
-    setBusy(false);
-    if (!reply.ok) return setProblem(describe(reply.error));
-    setTesting(reply.data.taskId);
+    const reply = await action.run('test', () => api<AiTest>('POST', '/api/ai/claude/test'));
+    if (reply?.ok) setTesting(reply.data.taskId);
   }
 
   return (
     <>
-      {problem && <p className="error">{problem}</p>}
+      {action.problem && <p className="error">{action.problem}</p>}
       <dl className="kv">
         <dt>상태</dt>
         <dd>{stateOf(tool)}</dd>
@@ -157,7 +146,12 @@ function ClaudeState({ tool }: { tool: AiTool }) {
         </p>
       )}
       {tool.connected && (
-        <button type="button" className="ghost fit" disabled={busy || pending} onClick={startTest}>
+        <button
+          type="button"
+          className="ghost fit"
+          disabled={action.busy !== null || pending}
+          onClick={startTest}
+        >
           연결 확인
         </button>
       )}
@@ -173,8 +167,8 @@ function ClaudeState({ tool }: { tool: AiTool }) {
 function SigninBox({ tool, reload }: { tool: AiTool; reload: () => Promise<void> }) {
   const notify = useNotify();
   const name = TOOL_LABELS[tool.tool] ?? tool.tool;
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const action = useAction();
+  const busy = action.busy !== null;
   const [started, setStarted] = useState<string | null>(null);
   const signin = tool.signin;
   const ended = useLiveValue(
@@ -198,32 +192,30 @@ function SigninBox({ tool, reload }: { tool: AiTool; reload: () => Promise<void>
   }, [result?.status, name, notify]);
 
   async function start() {
-    setBusy(true);
-    setProblem(null);
-    const reply = await api<AiTest>('POST', `/api/ai/${tool.tool}/signin`);
-    setBusy(false);
-    if (!reply.ok) return setProblem(describe(reply.error));
+    const reply = await action.run('start', () =>
+      api<AiTest>('POST', `/api/ai/${tool.tool}/signin`),
+    );
+    if (!reply?.ok) return;
     setStarted(reply.data.taskId);
     await reload();
   }
 
+  // 취소에는 작업의 지금 version이 든다: 누를 때 읽어서 보낸다
   async function cancel(taskId: string) {
-    setBusy(true);
-    setProblem(null);
-    const task = await api<TaskDetail>('GET', `/api/tasks/${taskId}`);
-    const reply = task.ok
-      ? await api('POST', `/api/tasks/${taskId}/cancel`, { version: task.data.version })
-      : task;
-    setBusy(false);
+    await action.run('cancel', async () => {
+      const task = await api<TaskDetail>('GET', `/api/tasks/${taskId}`);
+      return task.ok
+        ? api('POST', `/api/tasks/${taskId}/cancel`, { version: task.data.version })
+        : task;
+    });
     setStarted(null);
-    if (!reply.ok) setProblem(describe(reply.error));
     await reload();
   }
 
   if (signin === null)
     return (
       <div className="stack">
-        {problem && <p className="error">{problem}</p>}
+        {action.problem && <p className="error">{action.problem}</p>}
         {failure && <p className="error">{failure}</p>}
         <button
           type="button"
@@ -238,7 +230,7 @@ function SigninBox({ tool, reload }: { tool: AiTool; reload: () => Promise<void>
 
   return (
     <section className="stack" aria-label={`${name} 로그인`}>
-      {problem && <p className="error">{problem}</p>}
+      {action.problem && <p className="error">{action.problem}</p>}
       <SigninSteps signin={signin} tool={tool.tool} />
       <button
         type="button"
@@ -292,18 +284,15 @@ function SigninSteps({ signin, tool }: { signin: Signin; tool: string }) {
 
 /** Claude: 브라우저에 나온 코드. 러너가 받아 로그인 명령에 쳐 넣는다 */
 function CodeForm({ taskId }: { taskId: string }) {
+  const action = useAction();
   const [code, setCode] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
 
   async function send(event: React.FormEvent) {
     event.preventDefault();
-    setBusy(true);
-    setProblem(null);
-    const reply = await api('POST', '/api/ai/claude/signin/code', { taskId, code: code.trim() });
-    setBusy(false);
-    if (!reply.ok) return setProblem(describe(reply.error));
-    setCode('');
+    const reply = await action.run('code', () =>
+      api('POST', '/api/ai/claude/signin/code', { taskId, code: code.trim() }),
+    );
+    if (reply?.ok) setCode('');
   }
 
   return (
@@ -317,37 +306,36 @@ function CodeForm({ taskId }: { taskId: string }) {
         onChange={(e) => setCode(e.target.value)}
         required
       />
-      <button className="cta small" type="submit" disabled={busy || !code.trim()}>
+      <button className="cta small" type="submit" disabled={action.busy !== null || !code.trim()}>
         넣기
       </button>
-      {problem && <p className="error">{problem}</p>}
+      {action.problem && <p className="error">{action.problem}</p>}
     </form>
   );
 }
 
 /** Claude: claude setup-token으로 직접 만든 토큰 */
 function TokenForm({ tool, reload }: { tool: AiTool; reload: () => Promise<void> }) {
-  const notify = useNotify();
+  const action = useAction();
   const [token, setToken] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
 
-  async function save(event: React.FormEvent) {
+  function save(event: React.FormEvent) {
     event.preventDefault();
-    setBusy(true);
-    setProblem(null);
-    const reply = await api('PUT', '/api/ai/claude/token', { token: token.trim() });
-    // 틀린 값도 칸에 남기지 않는다. 가려져 있어 고칠 수 없고 다시 붙여 넣으면 된다
-    setToken('');
-    setBusy(false);
-    if (!reply.ok) return setProblem(describe(reply.error));
-    notify('토큰 저장됨');
-    await reload();
+    void action.run(
+      'token',
+      async () => {
+        const reply = await api('PUT', '/api/ai/claude/token', { token: token.trim() });
+        // 틀린 값도 칸에 남기지 않는다. 가려져 있어 고칠 수 없고 다시 붙여 넣으면 된다
+        setToken('');
+        return reply;
+      },
+      { done: '토큰 저장됨', reload },
+    );
   }
 
   return (
     <form className="stack" onSubmit={save}>
-      {problem && <p className="error">{problem}</p>}
+      {action.problem && <p className="error">{action.problem}</p>}
       <label className="field">
         <span>{tool.expiresAt ? '새 토큰' : '토큰'}</span>
         <input
@@ -361,7 +349,11 @@ function TokenForm({ tool, reload }: { tool: AiTool; reload: () => Promise<void>
         />
         <small>claude setup-token의 값. 끊긴 곳 없이 한 줄로</small>
       </label>
-      <button className="cta small fit" type="submit" disabled={busy || !token.trim()}>
+      <button
+        className="cta small fit"
+        type="submit"
+        disabled={action.busy !== null || !token.trim()}
+      >
         저장
       </button>
     </form>

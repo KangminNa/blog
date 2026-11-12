@@ -1,8 +1,10 @@
 'use client';
 
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useState } from 'react';
+import { useSpace } from '../../_account/live';
 import type { SpaceInfo } from '../../_account/types';
-import { api, describe } from '../../_lib/client-api';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
 
 // 기기 화면 맨 위의 "연결하는 법". 도구마다 길이 다르다.
 //   이 컴퓨터의 도구(Claude Code · Codex): cairn connect가 스킬·검토자를 넣고 MCP 등록·로그인까지 한다
@@ -166,28 +168,23 @@ function AppSteps({
   onMessage: (text: string) => void;
   onSpaceChange?: (space: SpaceInfo) => void;
 }) {
-  const [space, setSpace] = useState<SpaceInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    void api<SpaceInfo>('GET', '/api/space').then((reply) => {
-      if (reply.ok) setSpace(reply.data);
-      else setError(describe(reply.error));
-    });
-  }, []);
+  const read = useSpace();
+  const action = useAction();
+  const space = read.data;
+  const error = action.problem ?? read.error;
 
   async function toggle() {
     if (!space) return;
-    setBusy(true);
-    const reply = await api<SpaceInfo>('PUT', '/api/space/hosted-apps', {
-      on: !space.hostedApps,
-      version: space.version,
-    });
-    setBusy(false);
-    if (!reply.ok) return setError(describe(reply.error));
-    setError(null);
-    setSpace(reply.data);
+    const reply = await action.run(
+      'toggle',
+      () =>
+        api<SpaceInfo>('PUT', '/api/space/hosted-apps', {
+          on: !space.hostedApps,
+          version: space.version,
+        }),
+      { reload: read.reload },
+    );
+    if (!reply?.ok) return;
     onSpaceChange?.(reply.data);
     onMessage(
       reply.data.hostedApps
@@ -212,7 +209,7 @@ function AppSteps({
           role="switch"
           aria-checked={on}
           aria-label={`앱 연결 ${on ? '끄기' : '켜기'}`}
-          disabled={busy || !space}
+          disabled={action.busy !== null || !space}
           onClick={toggle}
         />
       </div>

@@ -5,6 +5,11 @@ import type {
 } from '../../../server/src/modules/vault/change/change.view';
 import type { GraphView } from '../../../server/src/modules/vault/graph/graph.view';
 import type {
+  SessionDetailView,
+  SessionPageView,
+  SessionRevisionView,
+} from '../../../server/src/modules/vault/session/session.view';
+import type {
   TidyBacklogView,
   TidySettingsView,
 } from '../../../server/src/modules/vault/tidy/tidy.view';
@@ -23,6 +28,12 @@ import type {
 
 export type Graph = ReturnType<GraphView['toJSON']>;
 export type GraphNode = Graph['nodes'][number];
+/** 세션 목록 한 쪽. next가 있으면 ?cursor=next로 다음 쪽 */
+export type SessionPage = ReturnType<SessionPageView['toJSON']>;
+/** 세션의 판 하나: 그 판의 칸과 저장 전에 지운 비밀값 */
+export type SessionRevision = ReturnType<SessionRevisionView['toJSON']>;
+/** 세션 하나: 지금 판(head)과 판 기록 */
+export type SessionDetail = ReturnType<SessionDetailView['toJSON']>;
 export type WikiPage = ReturnType<WikiPageView['toJSON']>;
 export type WikiSummary = WikiPage['wikis'][number];
 export type WikiDetail = ReturnType<WikiDetailView['toJSON']>;

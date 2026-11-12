@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import type { LoginMethod } from '../_account/types';
-import { api, describe } from '../_lib/client-api';
+import { api } from '../_lib/client-api';
+import { useAction } from '../_lib/use-action';
 import { CairnMark } from '../_ui/CairnMark';
 
 // 로그인 카드. 켜진 로그인 플러그인(GitHub 등)의 버튼이 아래에 붙는다.
@@ -17,17 +18,19 @@ export function LoginForm({
 }) {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(initialError);
-  const [busy, setBusy] = useState(false);
+  // 주소로 온 오류 (외부 계정 로그인 실패 등). 로그인을 누르면 지운다
+  const [arrived, setArrived] = useState<string | null>(initialError);
+  const action = useAction();
+  const busy = action.busy !== null;
+  const error = action.problem ?? arrived;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    setBusy(true);
-    setError(null);
-    const reply = await api('POST', '/api/auth/login', { login, password });
-    setBusy(false);
-    if (!reply.ok) return setError(describe(reply.error));
-    window.location.href = returnTo;
+    setArrived(null);
+    const reply = await action.run('login', () =>
+      api('POST', '/api/auth/login', { login, password }),
+    );
+    if (reply?.ok) window.location.href = returnTo;
   }
 
   return (

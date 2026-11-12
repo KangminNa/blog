@@ -1,24 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import type { PluginListView } from '../../../server/src/modules/platform/plugin/plugin.view';
 import { api, describe } from '../_lib/client-api';
+import { usePlugins } from '../_platform/live';
 import type { PackageCall, PackageEntry } from './package-types';
 import { PACKAGES } from './packages.generated';
-
-type PluginList = ReturnType<PluginListView['toJSON']>;
 
 // 콘솔이 쓰는 기능 패키지: 들어 있는 것(packages.generated.ts) 중 지금 동작 중인 것만 메뉴에 둔다.
 // 동작 중인지는 서버에 묻는다 (켜고 끌 때 웹을 다시 빌드하지 않는다).
 export function useActivePackages(): readonly PackageEntry[] {
-  const [active, setActive] = useState<ReadonlySet<string>>(new Set());
-  useEffect(() => {
-    if (PACKAGES.length === 0) return;
-    api<PluginList>('GET', '/api/plugins').then((reply) => {
-      if (reply.ok)
-        setActive(new Set(reply.data.plugins.filter((p) => p.active).map((p) => p.name)));
-    });
-  }, []);
+  const plugins = usePlugins();
+  const active = new Set(plugins.data?.plugins.filter((p) => p.active).map((p) => p.name));
   return PACKAGES.filter((p) => active.has(p.plugin));
 }
 

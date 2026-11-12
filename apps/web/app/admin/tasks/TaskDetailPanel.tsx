@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
-import { api, describe } from '../../_lib/client-api';
+import { useEffect, useRef } from 'react';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
 import { useLiveValue } from '../../_lib/use-live';
 import {
   bytes,
@@ -17,7 +18,6 @@ import {
 import { useAgents, usePendingApprovals } from '../../_task/live';
 import { TaskPill } from '../../_task/parts';
 import type { Task, TaskDetail, TaskEvent, TaskOutput, TaskRun } from '../../_task/types';
-import { useNotify } from '../../_ui/notify';
 
 /** 서버가 상세에 보내는 실행 기록의 최대 개수 (TaskQuery.EVENTS) */
 const EVENTS_MAX = 500;
@@ -25,7 +25,6 @@ const DETAIL_TOPICS = ['task.task.changed', 'task.event.added'];
 
 // 작업 상세: 지시, 대상, 결과, 실행 로그. 로그는 신호가 올 때마다 다시 읽어 새로 고침 없이 늘어난다.
 export function TaskDetailPanel({ id }: { id: string }) {
-  const notify = useNotify();
   const task = useLiveValue(
     `task:${id}`,
     () => api<TaskDetail>('GET', `/api/tasks/${id}`),
@@ -34,24 +33,15 @@ export function TaskDetailPanel({ id }: { id: string }) {
   );
   const agents = useAgents();
   const approvals = usePendingApprovals();
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const action = useAction();
   const t = task.data;
 
-  async function cancel() {
-    if (!t) return;
-    setBusy(true);
-    setProblem(null);
-    const reply = await api<Task>('POST', `/api/tasks/${id}/cancel`, { version: t.version });
-    await task.reload();
-    setBusy(false);
-    if (reply.ok) return notify('작업 취소됨');
-    setProblem(
-      reply.status === 409
-        ? '이미 바뀐 작업이에요. 최신 내용을 다시 읽었어요'
-        : describe(reply.error),
-    );
-  }
+  const cancel = (version: number) =>
+    action.run('cancel', () => api<Task>('POST', `/api/tasks/${id}/cancel`, { version }), {
+      done: '작업 취소됨',
+      reload: task.reload,
+      conflict: '이미 바뀐 작업이에요. 최신 내용을 다시 읽었어요',
+    });
 
   const back = (
     <div>
@@ -143,7 +133,7 @@ export function TaskDetailPanel({ id }: { id: string }) {
         </div>
         <Log status={t.status} events={t.events} />
       </section>
-      {problem && <p className="error">{problem}</p>}
+      {action.problem && <p className="error">{action.problem}</p>}
       <div className="row">
         {t.waitReason === 'approval' && (
           <Link
@@ -154,7 +144,12 @@ export function TaskDetailPanel({ id }: { id: string }) {
           </Link>
         )}
         {CANCELLABLE.includes(t.status) && (
-          <button type="button" className="ghost" disabled={busy} onClick={cancel}>
+          <button
+            type="button"
+            className="ghost"
+            disabled={action.busy !== null}
+            onClick={() => cancel(t.version)}
+          >
             취소
           </button>
         )}

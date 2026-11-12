@@ -2,29 +2,30 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { api, describe } from '../../_lib/client-api';
+import { api } from '../../_lib/client-api';
 import { SCOPE_LABELS } from '../../_lib/types';
+import { useAction } from '../../_lib/use-action';
 import { actionLabel, flatTree, holdLabel, TOOL_LABELS, taskStatusLabel } from '../../_task/labels';
 import { useAgents, useTasksIn, useUsage } from '../../_task/live';
 import { AgentUsage } from '../../_task/parts';
 import type { Agent } from '../../_task/types';
-import { useNotify } from '../../_ui/notify';
-import { AgentForm } from './AgentForm';
+import { type AgentBody, AgentForm } from './AgentForm';
 
 const NEW = 'new';
+const CONFLICT = '이미 바뀐 에이전트예요. 최신 내용을 다시 읽었어요';
 
 // 에이전트: 조직도, 사용량과 한도, 추가, 편집, 중지, 재개.
 export function AgentsPanel({ adding }: { adding: boolean }) {
-  const notify = useNotify();
   const agents = useAgents();
   const running = useTasksIn('running');
   const waiting = useTasksIn('waiting');
   const usage = useUsage();
   // 열린 입력 칸: 추가, 또는 편집 중인 에이전트의 id
   const [open, setOpen] = useState<string | null>(adding ? NEW : null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const action = useAction();
+  const save = useAction();
   const list = agents.data?.agents;
+  const problem = agents.error ?? action.problem;
 
   /** 실행 중이거나 기다리는 작업이 있으면 그 상태 이름 (결재 · 하위 작업 대기를 나눈다) */
   function workOf(agent: Agent): string | null {
@@ -33,28 +34,46 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
     return waits ? taskStatusLabel(waits.status, waits.waitReason) : null;
   }
 
-  async function flip(agent: Agent) {
+  function flip(agent: Agent) {
     const paused = agent.status === 'paused';
-    setBusy(agent.id);
-    setProblem(null);
-    const reply = await api('POST', `/api/agents/${agent.id}/${paused ? 'resume' : 'pause'}`, {
-      version: agent.version,
-    });
-    await agents.reload();
-    setBusy(null);
-    if (reply.ok) return notify(`${agent.name} ${paused ? '재개됨' : '중지됨'}`);
-    setProblem(
-      reply.status === 409
-        ? '이미 바뀐 에이전트예요. 최신 내용을 다시 읽었어요'
-        : describe(reply.error),
+    void action.run(
+      agent.id,
+      () =>
+        api('POST', `/api/agents/${agent.id}/${paused ? 'resume' : 'pause'}`, {
+          version: agent.version,
+        }),
+      {
+        done: `${agent.name} ${paused ? '재개됨' : '중지됨'}`,
+        reload: agents.reload,
+        conflict: CONFLICT,
+      },
     );
   }
 
-  async function saved(text: string) {
+  /** 입력 칸을 열거나 닫는다. 앞 폼의 오류 문구는 남기지 않는다 */
+  function show(next: string | null) {
+    setOpen(next);
+    save.clear();
+  }
+
+  // 저장은 패널이 돌린다 (폼은 칸만). 고치기는 본 version, 만들기는 폼이 쥔 requestId를 붙인다
+  async function submit(target: Agent | null, body: AgentBody, requestId: string) {
+    const reply = await save.run(
+      'save',
+      () =>
+        target
+          ? api('PATCH', `/api/agents/${target.id}`, { ...body, version: target.version })
+          : api('POST', '/api/agents', { ...body, requestId }),
+      {
+        done: target ? '에이전트 저장됨' : '에이전트 추가됨',
+        reload: agents.reload,
+        conflict: '이미 바뀐 에이전트예요. 다시 저장하면 입력한 내용으로 덮어요',
+      },
+    );
+    if (!reply?.ok) return;
     setOpen(null);
-    notify(text);
     // 한도를 바꾸면 쉬는지도 바뀐다. 이 저장에는 사용량 신호가 없다
-    await Promise.all([agents.reload(), usage.reload()]);
+    await usage.reload();
   }
 
   return (
@@ -62,20 +81,22 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
       <header className="page-head">
         <h1>에이전트</h1>
         {list && list.length > 0 && open !== NEW && (
-          <button type="button" className="cta small" onClick={() => setOpen(NEW)}>
+          <button type="button" className="cta small" onClick={() => show(NEW)}>
             에이전트 추가
           </button>
         )}
       </header>
-      {(agents.error ?? problem) && <p className="error">{agents.error ?? problem}</p>}
+      {problem && <p className="error">{problem}</p>}
       {list && list.length > 0 && <OrgChart agents={list} />}
       {open === NEW && (
         <AgentForm
           agent={null}
           agents={list ?? []}
-          onSaved={saved}
-          onClose={() => setOpen(null)}
-          reload={agents.reload}
+          busy={save.busy !== null}
+          problem={save.problem}
+          onSubmit={(body, requestId) => submit(null, body, requestId)}
+          onClear={save.clear}
+          onClose={() => show(null)}
         />
       )}
       {list === undefined ? (
@@ -87,7 +108,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
             <p className="note">
               작업은 활성 에이전트가 생길 때까지 대기. 추가하면 대기 작업부터 실행
             </p>
-            <button type="button" className="cta small fit" onClick={() => setOpen(NEW)}>
+            <button type="button" className="cta small fit" onClick={() => show(NEW)}>
               에이전트 추가
             </button>
           </div>
@@ -100,9 +121,11 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
                 key={a.id}
                 agent={a}
                 agents={list}
-                onSaved={saved}
-                onClose={() => setOpen(null)}
-                reload={agents.reload}
+                busy={save.busy !== null}
+                problem={save.problem}
+                onSubmit={(body, requestId) => submit(a, body, requestId)}
+                onClear={save.clear}
+                onClose={() => show(null)}
               />
             ) : (
               <AgentCard
@@ -111,9 +134,9 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
                 work={workOf(a)}
                 hold={holdLabel(usage.data?.agents.find((u) => u.id === a.id))}
                 boss={list.find((b) => b.id === a.reportsTo)?.name ?? null}
-                busy={busy === a.id}
+                busy={action.busy === a.id}
                 onFlip={() => flip(a)}
-                onEdit={() => setOpen(a.id)}
+                onEdit={() => show(a.id)}
               />
             ),
           )}

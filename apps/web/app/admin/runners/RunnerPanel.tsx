@@ -1,77 +1,71 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
-import type { AiToolListView } from '../../../../server/src/modules/task/ai/ai-login.view';
-import type { Device, DeviceList } from '../../_account/types';
-import { api, describe } from '../../_lib/client-api';
+import { useCallback, useEffect } from 'react';
+import { useDevices } from '../../_account/live';
+import type { Device } from '../../_account/types';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
+import { useLiveValue } from '../../_lib/use-live';
 import { when } from '../../_task/labels';
+import { useAiTools } from '../../_task/live';
 import type { Runner, RunnerList } from '../../_task/types';
-import { useNotify } from '../../_ui/notify';
 
 /** 서버 러너의 기기 이름 (서버의 Device.SERVER_RUNNER) */
 const SERVER_RUNNER = '서버 러너';
 /** 연결 상태는 시간이 지나며 바뀌는데 신호가 없다. 이 간격으로 다시 읽는다 */
 const REREAD_MS = 15_000;
 
-type AiTools = ReturnType<AiToolListView['toJSON']>;
-
 /** 러너 하나와 그 기기 (이름·종류는 기기 목록에 있다) */
 type Row = { runner: Runner; device: Device };
 
 // 러너: 연결 상태, 지금 하는 일, 일 받기 켜기·끄기. 웹은 러너 프로세스를 켜지 않고, 서버가 일을 줄지 말지만 정한다.
 export function RunnerPanel() {
-  const notify = useNotify();
-  const [rows, setRows] = useState<Row[] | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const runners = useLiveValue('runners', () => api<RunnerList>('GET', '/api/runners'), []);
+  const devices = useDevices();
+  const ai = useAiTools();
+  const action = useAction();
+  const error = action.problem ?? runners.error ?? devices.error;
   /** AI 로그인이 하나라도 있는가. 없으면 러너는 연결돼 있어도 웹 로그인 말고는 일을 빌리지 않는다 (서버가 주지 않는다) */
-  const [hasAiToken, setHasAiToken] = useState<boolean | null>(null);
+  const hasAiToken = ai.data ? ai.data.tools.some((t) => t.connected) : null;
+  // 끊긴 기기의 러너는 보이지 않는다 (서버 러너는 끊기면 새 기기로 다시 연결한다)
+  const live = new Map(
+    (devices.data?.devices ?? []).filter((d) => d.revokedAt === null).map((d) => [d.id, d]),
+  );
+  const rows: Row[] | null =
+    runners.data && devices.data
+      ? runners.data.runners.flatMap((runner) => {
+          const device = live.get(runner.deviceId);
+          return device ? [{ runner, device }] : [];
+        })
+      : null;
 
-  const load = useCallback(async () => {
-    const [runners, devices, ai] = await Promise.all([
-      api<RunnerList>('GET', '/api/runners'),
-      api<DeviceList>('GET', '/api/devices'),
-      api<AiTools>('GET', '/api/ai'),
-    ]);
-    if (!runners.ok) return setError(describe(runners.error));
-    if (!devices.ok) return setError(describe(devices.error));
-    setError(null);
-    if (ai.ok) setHasAiToken(ai.data.tools.some((t) => t.connected));
-    // 끊긴 기기의 러너는 보이지 않는다 (서버 러너는 끊기면 새 기기로 다시 연결한다)
-    const live = new Map(
-      devices.data.devices.filter((d) => d.revokedAt === null).map((d) => [d.id, d]),
-    );
-    setRows(
-      runners.data.runners.flatMap((runner) => {
-        const device = live.get(runner.deviceId);
-        return device ? [{ runner, device }] : [];
-      }),
-    );
-  }, []);
-
+  const { reload: readRunners } = runners;
+  const { reload: readDevices } = devices;
+  const { reload: readAi } = ai;
+  const reload = useCallback(
+    () => Promise.all([readRunners(), readDevices(), readAi()]),
+    [readRunners, readDevices, readAi],
+  );
   useEffect(() => {
-    void load();
-    const timer = setInterval(() => void load(), REREAD_MS);
+    const timer = setInterval(() => void reload(), REREAD_MS);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [reload]);
 
-  async function flip({ runner, device }: Row) {
-    setBusy(runner.id);
-    setError(null);
-    const reply = await api('POST', `/api/runners/${runner.id}/accepting`, {
-      accepting: !runner.accepting,
-      version: runner.version,
-    });
-    await load();
-    setBusy(null);
-    if (reply.ok) return notify(`${device.name} 일 받기 ${runner.accepting ? '꺼짐' : '켜짐'}`);
-    setError(
-      reply.status === 409
-        ? '이미 바뀐 러너예요. 최신 내용을 다시 읽었어요'
-        : describe(reply.error),
+  const flip = ({ runner, device }: Row) =>
+    action.run(
+      runner.id,
+      () =>
+        api('POST', `/api/runners/${runner.id}/accepting`, {
+          accepting: !runner.accepting,
+          version: runner.version,
+        }),
+      {
+        done: `${device.name} 일 받기 ${runner.accepting ? '꺼짐' : '켜짐'}`,
+        reload,
+        conflict: '이미 바뀐 러너예요. 최신 내용을 다시 읽었어요',
+      },
     );
-  }
 
   return (
     <>
@@ -96,7 +90,7 @@ export function RunnerPanel() {
         <ul className="list" aria-label="러너 목록">
           {rows.map((row) => (
             <li key={row.runner.id}>
-              <RunnerRow row={row} busy={busy === row.runner.id} onFlip={() => flip(row)} />
+              <RunnerRow row={row} busy={action.busy === row.runner.id} onFlip={() => flip(row)} />
             </li>
           ))}
         </ul>

@@ -1,9 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { api, describe } from '../../_lib/client-api';
-import type { SkillDetail, SkillList, SkillSaved, SkillSummary } from '../../_task/types';
-import { useNotify } from '../../_ui/notify';
+import { useId, useRef, useState } from 'react';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
+import { useLiveValue } from '../../_lib/use-live';
+import type { SkillDetail, SkillList, SkillSaved } from '../../_task/types';
+
+const CONFLICT = '이미 바뀐 스킬이에요. 최신 내용을 다시 읽었어요';
 
 const short = (hash: string) => hash.slice(0, 7);
 const sourceOf = (s: { source: string; revision: number | null }) =>
@@ -13,20 +16,14 @@ const dateOf = (iso: string) => new Date(iso).toLocaleString('ko-KR');
 // 스킬: 러너가 일할 때 따르는 지침(cairn-write 등). 저장소 판 위에 콘솔 판을 쌓고, 쓸 판을 골라 되돌린다.
 // 저장하면 다음 작업부터 모든 러너가 그 판을 받는다 (서버가 일과 함께 실어 보낸다).
 export function SkillPanel() {
-  const [list, setList] = useState<SkillSummary[] | null>(null);
+  const skills = useLiveValue(
+    'runner-skills',
+    () => api<SkillList>('GET', '/api/runner-skills'),
+    [],
+  );
   const [open, setOpen] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    const reply = await api<SkillList>('GET', '/api/runner-skills');
-    if (!reply.ok) return setError(describe(reply.error));
-    setError(null);
-    setList(reply.data.skills);
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const list = skills.data?.skills ?? null;
+  const error = skills.error;
 
   return (
     <>
@@ -64,7 +61,7 @@ export function SkillPanel() {
                   저장소 판이 바뀌었어요 (배포). 비교해서 필요한 것을 옮겨 주세요
                 </p>
               )}
-              {open === skill.name && <SkillEditor name={skill.name} onChanged={load} />}
+              {open === skill.name && <SkillEditor name={skill.name} onChanged={skills.reload} />}
             </section>
           ))}
     </>
@@ -74,82 +71,56 @@ export function SkillPanel() {
 /** 스킬 하나: 지금 판 고치기, 저장소 판 보기, 판 목록과 되돌리기 */
 function SkillEditor({ name, onChanged }: { name: string; onChanged: () => Promise<void> }) {
   const id = useId();
-  const notify = useNotify();
-  const [detail, setDetail] = useState<SkillDetail | null>(null);
-  const [draft, setDraft] = useState<Record<string, string>>({});
+  const read = useLiveValue(
+    `runner-skill:${name}`,
+    () => api<SkillDetail>('GET', `/api/runner-skills/${name}`),
+    [],
+  );
+  const action = useAction();
+  // 고치는 중인 내용. 읽은 판이 바뀌면 버리고 읽은 내용으로 칸을 채운다 (저장 · 되돌리기 · 409 뒤)
+  const [edited, setEdited] = useState<{ version: number; files: Record<string, string> } | null>(
+    null,
+  );
   const [file, setFile] = useState('SKILL.md');
   const [note, setNote] = useState('');
   const [showRepo, setShowRepo] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
   // 응답을 놓쳐 다시 눌러도 판은 하나다. 저장이 끝나면 새로 만든다
   const requestId = useRef<string | null>(null);
-
-  const load = useCallback(async () => {
-    const reply = await api<SkillDetail>('GET', `/api/runner-skills/${name}`);
-    if (!reply.ok) return setProblem(describe(reply.error));
-    setDetail(reply.data);
-    setDraft(reply.data.files);
-  }, [name]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const detail = read.data;
+  const problem = action.problem ?? read.error;
+  const busy = action.busy !== null;
 
   if (detail === null) return problem ? <p className="error">{problem}</p> : null;
+  const { version } = detail;
+  const draft = edited?.version === version ? edited.files : detail.files;
   const changed = JSON.stringify(draft) !== JSON.stringify(detail.files);
   const files = Object.keys(draft).sort();
-
-  /** 바뀐 뒤: 이 스킬과 목록을 다시 읽고 알린다 */
-  async function done(text: string) {
-    await Promise.all([load(), onChanged()]);
-    setBusy(false);
-    notify(text);
-  }
+  /** 바뀐 뒤: 이 스킬과 목록을 다시 읽는다 */
+  const reload = () => Promise.all([read.reload(), onChanged()]);
 
   async function save() {
-    if (!detail) return;
-    setBusy(true);
-    setProblem(null);
     requestId.current ??= crypto.randomUUID();
-    const reply = await api<SkillSaved>('POST', `/api/runner-skills/${name}/revisions`, {
-      requestId: requestId.current,
-      files: draft,
-      note,
-      version: detail.version,
-    });
-    if (!reply.ok) {
-      setBusy(false);
-      if (reply.status === 409) {
-        await load();
-        return setProblem('이미 바뀐 스킬이에요. 최신 내용을 다시 읽었어요');
-      }
-      return setProblem(describe(reply.error));
-    }
+    const body = { requestId: requestId.current, files: draft, note, version };
+    const reply = await action.run(
+      'save',
+      () => api<SkillSaved>('POST', `/api/runner-skills/${name}/revisions`, body),
+      { done: (saved) => `${name} 콘솔 판 ${saved.revision} 저장`, reload, conflict: CONFLICT },
+    );
+    if (!reply?.ok) return;
     requestId.current = null;
     setNote('');
-    await done(`${name} 콘솔 판 ${reply.data.revision} 저장`);
   }
 
-  async function use(revision: number | null) {
-    if (!detail) return;
-    setBusy(true);
-    setProblem(null);
-    const reply = await api<SkillSaved>('PUT', `/api/runner-skills/${name}/active`, {
-      revision,
-      version: detail.version,
-    });
-    if (!reply.ok) {
-      setBusy(false);
-      await load();
-      return setProblem(
-        reply.status === 409
-          ? '이미 바뀐 스킬이에요. 최신 내용을 다시 읽었어요'
-          : describe(reply.error),
-      );
-    }
-    await done(`${name}: ${revision === null ? '저장소 판' : `콘솔 판 ${revision}`} 사용`);
-  }
+  const use = (revision: number | null) =>
+    action.run(
+      `use:${revision}`,
+      () => api<SkillSaved>('PUT', `/api/runner-skills/${name}/active`, { revision, version }),
+      {
+        done: `${name}: ${revision === null ? '저장소 판' : `콘솔 판 ${revision}`} 사용`,
+        reload,
+        conflict: CONFLICT,
+      },
+    );
 
   return (
     <div className="stack">
@@ -177,7 +148,7 @@ function SkillEditor({ name, onChanged }: { name: string; onChanged: () => Promi
         rows={22}
         spellCheck={false}
         value={draft[file] ?? ''}
-        onChange={(e) => setDraft({ ...draft, [file]: e.target.value })}
+        onChange={(e) => setEdited({ version, files: { ...draft, [file]: e.target.value } })}
       />
       <div className="row">
         <label className="sr" htmlFor={`${id}-note`}>
@@ -195,12 +166,7 @@ function SkillEditor({ name, onChanged }: { name: string; onChanged: () => Promi
           새 판으로 저장
         </button>
         {changed && (
-          <button
-            type="button"
-            className="ghost"
-            disabled={busy}
-            onClick={() => setDraft(detail.files)}
-          >
+          <button type="button" className="ghost" disabled={busy} onClick={() => setEdited(null)}>
             되돌리기
           </button>
         )}

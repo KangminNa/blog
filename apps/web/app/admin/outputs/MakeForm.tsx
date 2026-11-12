@@ -10,13 +10,26 @@ import type { WikiPage, WikiSummary } from '../../_vault/types';
 /** 결과물 · 위키 각각 (서버의 MakeMaterials.MAX와 맞춘다) */
 const MATERIALS_MAX = 10;
 
+/** 맡길 때 보내는 본문 (POST /api/tasks). requestId는 패널이 붙인다 */
+export type MakeBody = {
+  kind: 'make';
+  instruction: string;
+  agentId?: string;
+  materials: { outputIds: readonly string[]; wikiIds: readonly string[] };
+};
+
 // 만들기 작업 (결과물 2차): 코드 러너 칸에서 AI가 셸로 PPT · 문서 · 영상을 만든다.
 // 재료는 주인이 고른 결과물 파일과 위키뿐이다. 고른 비공개 위키도 칸 안의 AI가 읽는다 (작업 토큰에 그 위키만 읽기 허락).
 // "고쳐 달라"는 앞 결과물을 재료로 넣은 새 작업이다.
+// 폼은 칸의 상태와 보낼 본문을 가진다. 맡기기는 패널이 돌리고 (onSubmit), 위키 찾기만 누를 때 여기서 읽는다.
 export function MakeForm({
   materials,
   onRemove,
   revising,
+  busy,
+  problem,
+  onSubmit,
+  onClear,
   onClose,
 }: {
   /** 재료로 고른 결과물 (목록에서 더한다) */
@@ -24,6 +37,13 @@ export function MakeForm({
   onRemove: (output: Output) => void;
   /** 고쳐 달라로 열렸으면 그 결과물 */
   revising: Output | null;
+  busy: boolean;
+  /** 맡기기의 오류 문구 */
+  problem: string | null;
+  /** 맡긴다. 됐으면 그 작업 */
+  onSubmit: (body: MakeBody, requestId: string) => Promise<Task | null>;
+  /** 맡기기의 오류 문구를 지운다 (칸을 고쳤거나 찾기의 오류를 보일 때) */
+  onClear: () => void;
   onClose: () => void;
 }) {
   const id = useId();
@@ -34,10 +54,9 @@ export function MakeForm({
   const [wikis, setWikis] = useState<readonly WikiSummary[]>([]);
   const [query, setQuery] = useState('');
   const [found, setFound] = useState<readonly WikiSummary[] | null>(null);
-  const [busy, setBusy] = useState(false);
+  /** 위키 찾기의 오류 문구 */
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<Task | null>(null);
-  const sending = useRef(false);
   // 같은 내용을 다시 보내면 같은 requestId: 응답을 놓쳐 다시 눌러도 작업은 하나다
   const requestId = useRef<string | null>(null);
 
@@ -50,6 +69,7 @@ export function MakeForm({
   function edit(apply: () => void) {
     requestId.current = null;
     setError(null);
+    onClear();
     setMade(null);
     apply();
   }
@@ -58,29 +78,29 @@ export function MakeForm({
     event.preventDefault();
     const q = query.trim();
     const reply = await api<WikiPage>('GET', `/api/wikis?${new URLSearchParams(q ? { q } : {})}`);
-    if (!reply.ok) return setError(describe(reply.error));
+    if (!reply.ok) {
+      onClear();
+      return setError(describe(reply.error));
+    }
     setFound(reply.data.wikis);
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (sending.current) return;
-    sending.current = true;
-    setBusy(true);
     requestId.current ??= crypto.randomUUID();
-    const reply = await api<Task>('POST', '/api/tasks', {
-      requestId: requestId.current,
-      kind: 'make',
-      instruction: instruction.trim(),
-      ...(agentId ? { agentId } : {}),
-      materials: { outputIds: materials.map((o) => o.id), wikiIds: wikis.map((w) => w.id) },
-    });
-    sending.current = false;
-    setBusy(false);
-    if (!reply.ok) return setError(describe(reply.error));
+    const task = await onSubmit(
+      {
+        kind: 'make',
+        instruction: instruction.trim(),
+        ...(agentId ? { agentId } : {}),
+        materials: { outputIds: materials.map((o) => o.id), wikiIds: wikis.map((w) => w.id) },
+      },
+      requestId.current,
+    );
+    if (!task) return;
     requestId.current = null;
     setInstruction('');
-    setMade(reply.data);
+    setMade(task);
   }
 
   const fullWikis = wikis.length >= MATERIALS_MAX;
@@ -220,7 +240,7 @@ export function MakeForm({
             </ul>
           ))}
       </div>
-      {error && <p className="error">{error}</p>}
+      {(problem ?? error) && <p className="error">{problem ?? error}</p>}
       {made && (
         <p className="note" role="status">
           맡겼어요 · <Link href={`/admin/tasks/${made.id}`}>작업 보기</Link>

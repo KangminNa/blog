@@ -3,7 +3,15 @@
 import { useEffect } from 'react';
 import { type ApiReply, api } from '../_lib/client-api';
 import { useLiveValue } from '../_lib/use-live';
-import type { AgentList, ApprovalPage, GoalList, ScheduleList, TaskPage, Usage } from './types';
+import type {
+  AgentList,
+  AiTools,
+  ApprovalPage,
+  GoalList,
+  ScheduleList,
+  TaskPage,
+  Usage,
+} from './types';
 
 // 여러 화면이 함께 쓰는 읽기.
 
@@ -20,6 +28,11 @@ const USAGE_REREAD_MS = 60_000;
 
 export function useAgents() {
   return useLiveValue('agents', () => api<AgentList>('GET', '/api/agents'), AGENT_TOPICS);
+}
+
+/** AI 도구마다의 로그인 상태. 연결 확인과 웹 로그인은 작업으로 돌아서 작업이 바뀔 때 다시 읽는다 */
+export function useAiTools() {
+  return useLiveValue('ai', () => api<AiTools>('GET', '/api/ai'), TASK_TOPICS);
 }
 
 /** 목표 나무. 목표마다 이어진 작업 수가 있어 작업이 바뀔 때도 다시 읽는다 */

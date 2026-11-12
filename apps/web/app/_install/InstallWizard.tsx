@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react';
 import type { Device, InstallStatus, Owner, SpaceInfo } from '../_account/types';
 import { api, describe } from '../_lib/client-api';
+import { useAction } from '../_lib/use-action';
 import { CairnMark } from '../_ui/CairnMark';
 import { useToast } from '../_ui/useToast';
 import { DevicesPanel } from '../admin/devices/DevicesPanel';
@@ -130,17 +131,14 @@ function Progress({ step, onBack }: { step: Step; onBack: (() => void) | null })
 
 function CodeStep({ onDone }: { onDone: () => void }) {
   const [code, setCode] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const action = useAction();
+  const busy = action.busy !== null;
+  const error = action.problem;
 
   async function verify(event: React.FormEvent) {
     event.preventDefault();
-    setBusy(true);
-    setError(null);
-    const reply = await api('POST', '/api/install/verify', { code });
-    setBusy(false);
-    if (reply.ok) return onDone();
-    setError(describe(reply.error));
+    const reply = await action.run('verify', () => api('POST', '/api/install/verify', { code }));
+    if (reply?.ok) onDone();
   }
 
   return (
@@ -173,6 +171,7 @@ function CodeStep({ onDone }: { onDone: () => void }) {
   );
 }
 
+// 계정 만들기는 손으로 둔다: 401(설치 통행증이 끝남)에 이 화면만의 문구가 있어 useAction으로 쓸 수 없다
 function OwnerStep({ onDone }: { onDone: (login: string) => Promise<void> }) {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');

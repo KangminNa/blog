@@ -1,15 +1,11 @@
 'use client';
 
-import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import type {
-  BasketItemView,
-  BasketView,
-} from '../../../../server/src/modules/blog/basket/basket.view';
-import { api, describe } from '../../_lib/client-api';
-import { useNotify } from '../../_ui/notify';
+import { type FormEvent, useRef, useState } from 'react';
+import type { Basket, BasketItem as Item } from '../../_blog/types';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
+import { useLiveValue } from '../../_lib/use-live';
 
-type Item = ReturnType<BasketItemView['toJSON']>;
-type Basket = ReturnType<BasketView['toJSON']>;
 type NewKind = 'link' | 'note';
 
 const KIND_LABELS: Record<string, string> = {
@@ -62,70 +58,65 @@ function detailOf(item: Item): string | null {
 // 소재: 글을 쓰려고 모아 둔 세션·글·링크·메모. 여기서는 링크와 메모를 담고, 지우고, 초안 작업을 맡긴다.
 // 소재를 지워도 가리키던 세션·글은 그대로다.
 export function BasketPanel() {
-  const notify = useNotify();
-  const [items, setItems] = useState<Item[] | null>(null);
+  // 소재가 바뀌는 신호는 없다: 처음과 다시 연결될 때, 그리고 여기서 바꾼 뒤에 읽는다
+  const basket = useLiveValue('basket', () => api<Basket>('GET', '/api/basket/items'), []);
+  /** 추가 폼의 동작. 초안 쓰기 · 삭제와 함께 돌 수 있어 따로 둔다 */
+  const save = useAction();
+  const action = useAction();
   const [kind, setKind] = useState<NewKind>('link');
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [drafting, setDrafting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const items = basket.data?.items ?? null;
+  // 오류는 한 자리에 보인다: 추가와 초안 쓰기는 시작할 때 서로의 앞 오류도 지운다
+  const error = save.problem ?? action.problem ?? basket.error;
   /** 응답을 못 받아 다시 눌러도 하나만 담기게, 담은 뒤에만 새 값으로 바꾼다 */
   const requestId = useRef('');
   if (!requestId.current) requestId.current = crypto.randomUUID();
 
-  const load = useCallback(async () => {
-    const reply = await api<Basket>('GET', '/api/basket/items');
-    if (!reply.ok) return setError(describe(reply.error));
-    setItems(reply.data.items);
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
   async function add(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    setError(null);
-    const reply = await api<Item>('POST', '/api/basket/items', {
-      requestId: requestId.current,
-      kind,
-      title: title.trim() || null,
-      ...(kind === 'link' ? { url: url.trim() } : { note }),
-    });
-    setBusy(false);
-    if (!reply.ok) return setError(describe(reply.error));
+    action.clear();
+    const reply = await save.run(
+      'add',
+      () =>
+        api<Item>('POST', '/api/basket/items', {
+          requestId: requestId.current,
+          kind,
+          title: title.trim() || null,
+          ...(kind === 'link' ? { url: url.trim() } : { note }),
+        }),
+      { done: '소재에 추가했어요', reload: basket.reload },
+    );
+    if (!reply?.ok) return;
     requestId.current = crypto.randomUUID();
     setUrl('');
     setTitle('');
     setNote('');
-    setItems((before) => [reply.data, ...(before ?? [])]);
-    notify('소재에 추가했어요');
   }
 
   /** 누를 때마다 작업 하나. 담당은 정하지 않아 일을 받을 수 있는 에이전트가 맡는다 */
-  async function draft(from: readonly Item[]) {
-    setDrafting(true);
-    setError(null);
-    const reply = await api('POST', '/api/tasks', {
-      requestId: crypto.randomUUID(),
-      kind: 'draft_post',
-      title: `소재 ${from.length}개로 초안 쓰기`,
-      instruction: draftInstruction(from),
-    });
-    setDrafting(false);
-    if (!reply.ok) return setError(describe(reply.error));
-    notify('초안 작업을 만들었어요');
+  function draft(from: readonly Item[]) {
+    save.clear();
+    void action.run(
+      'draft',
+      () =>
+        api('POST', '/api/tasks', {
+          requestId: crypto.randomUUID(),
+          kind: 'draft_post',
+          title: `소재 ${from.length}개로 초안 쓰기`,
+          instruction: draftInstruction(from),
+        }),
+      { done: '초안 작업을 만들었어요' },
+    );
   }
 
-  async function remove(item: Item) {
+  function remove(item: Item) {
     if (!window.confirm(`삭제할까요? ${headOf(item)}`)) return;
-    const reply = await api('DELETE', `/api/basket/items/${item.id}`);
-    if (!reply.ok) return setError(describe(reply.error));
-    setItems((before) => (before ?? []).filter((i) => i.id !== item.id));
-    notify('삭제했어요');
+    void action.run(item.id, () => api('DELETE', `/api/basket/items/${item.id}`), {
+      done: '삭제했어요',
+      reload: basket.reload,
+    });
   }
 
   return (
@@ -186,8 +177,8 @@ export function BasketPanel() {
             {error}
           </p>
         )}
-        <button type="submit" className="cta small" disabled={busy}>
-          {busy ? '추가 중' : '추가'}
+        <button type="submit" className="cta small" disabled={save.busy !== null}>
+          {save.busy ? '추가 중' : '추가'}
         </button>
       </form>
 
@@ -196,10 +187,10 @@ export function BasketPanel() {
           <button
             type="button"
             className="cta small"
-            disabled={drafting}
-            onClick={() => void draft(items)}
+            disabled={action.busy === 'draft'}
+            onClick={() => draft(items)}
           >
-            {drafting ? '만드는 중' : '이 소재로 초안 쓰기'}
+            {action.busy === 'draft' ? '만드는 중' : '이 소재로 초안 쓰기'}
           </button>
         </div>
       )}
@@ -235,7 +226,7 @@ export function BasketPanel() {
                   type="button"
                   className="ghost"
                   aria-label={`삭제: ${headOf(item)}`}
-                  onClick={() => void remove(item)}
+                  onClick={() => remove(item)}
                 >
                   삭제
                 </button>

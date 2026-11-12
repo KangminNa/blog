@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
-import { api, describe } from '../_lib/client-api';
+import { api } from '../_lib/client-api';
+import { useAction } from '../_lib/use-action';
 import { flatTree } from './labels';
 import { useGoals } from './live';
 import type { Agent, Task } from './types';
@@ -29,33 +30,28 @@ export function AskForm({
   const goalRows = flatTree(goals.data?.goals ?? [], (g) => g.parentId).filter(
     ({ item }) => item.status === 'active',
   );
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const sending = useRef(false);
+  const action = useAction();
   // 같은 내용을 다시 보내면 같은 requestId: 응답을 놓쳐 다시 눌러도 작업은 하나다
   const requestId = useRef<string | null>(null);
 
   function edit(apply: () => void) {
     requestId.current = null;
-    setError(null);
+    action.clear();
     apply();
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (sending.current) return;
-    sending.current = true;
-    setBusy(true);
-    requestId.current ??= crypto.randomUUID();
-    const reply = await api<Task>('POST', '/api/tasks', {
-      requestId: requestId.current,
-      instruction: instruction.trim(),
-      ...(agentId ? { agentId } : {}),
-      ...(goalId ? { goalId } : {}),
+    const reply = await action.run('ask', () => {
+      requestId.current ??= crypto.randomUUID();
+      return api<Task>('POST', '/api/tasks', {
+        requestId: requestId.current,
+        instruction: instruction.trim(),
+        ...(agentId ? { agentId } : {}),
+        ...(goalId ? { goalId } : {}),
+      });
     });
-    sending.current = false;
-    setBusy(false);
-    if (!reply.ok) return setError(describe(reply.error));
+    if (!reply?.ok) return;
     requestId.current = null;
     setInstruction('');
     setAgentId('');
@@ -115,7 +111,11 @@ export function AskForm({
         )}
         <span className="note">발행·전송·삭제는 결재 후 실행</span>
         <span className="spacer" />
-        <button type="submit" className="cta small" disabled={busy || !instruction.trim()}>
+        <button
+          type="submit"
+          className="cta small"
+          disabled={action.busy !== null || !instruction.trim()}
+        >
           실행
         </button>
       </div>
@@ -125,7 +125,7 @@ export function AskForm({
           <Link href="/admin/agents?new=1">에이전트 추가</Link>
         </p>
       )}
-      {error && <p className="error">{error}</p>}
+      {action.problem && <p className="error">{action.problem}</p>}
     </form>
   );
 }

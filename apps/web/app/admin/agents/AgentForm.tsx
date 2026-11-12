@@ -1,7 +1,6 @@
 'use client';
 
 import { type FormEvent, useId, useRef, useState } from 'react';
-import { api, describe } from '../../_lib/client-api';
 import { SCOPE_LABELS } from '../../_lib/types';
 import {
   actionLabel,
@@ -52,20 +51,38 @@ function bossesFor(agent: Agent | null, agents: readonly Agent[]): readonly Agen
   return agents.filter((a) => !below.has(a.id));
 }
 
-// 에이전트 추가·편집. agent가 있으면 편집이다.
+/** 저장할 때 보내는 본문 (POST · PATCH /api/agents). 만들기의 requestId와 고치기의 version은 패널이 붙인다 */
+export type AgentBody = {
+  name: string;
+  role: string;
+  tool: string;
+  scopes: readonly string[];
+  approvalActions: readonly string[];
+  monthlyLimit: number | null;
+  fiveHourLimit: number | null;
+  planStopPercent: number | null;
+  reportsTo: string | null;
+};
+
+// 에이전트 추가·편집 폼: 칸의 상태와 보낼 본문만 가진다. 저장은 패널이 돌린다 (onSubmit). agent가 있으면 편집이다.
 export function AgentForm({
   agent,
   agents,
-  onSaved,
+  busy,
+  problem,
+  onSubmit,
+  onClear,
   onClose,
-  reload,
 }: {
   agent: Agent | null;
   /** 공간의 모든 에이전트 (보고 대상 고르기) */
   agents: readonly Agent[];
-  onSaved: (message: string) => void;
+  busy: boolean;
+  problem: string | null;
+  onSubmit: (body: AgentBody, requestId: string) => void;
+  /** 다시 저장한다: 앞의 오류 문구를 지운다 */
+  onClear: () => void;
   onClose: () => void;
-  reload: () => Promise<void>;
 }) {
   const id = useId();
   const [name, setName] = useState(agent?.name ?? '');
@@ -82,9 +99,6 @@ export function AgentForm({
     fiveHour?: string;
     planStop?: string;
   }>({});
-  const [problem, setProblem] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const sending = useRef(false);
   // 같은 내용을 다시 보내면 같은 requestId: 응답을 놓쳐 다시 눌러도 에이전트는 하나다
   const requestId = useRef<string | null>(null);
 
@@ -93,7 +107,7 @@ export function AgentForm({
     apply();
   }
 
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
     const monthlyLimit = limitOf(limit);
     const fiveHourLimit = limitOf(fiveHour);
@@ -104,33 +118,24 @@ export function AgentForm({
       ...(planStopPercent === undefined ? { planStop: '1~100 사이의 정수를 입력해 주세요' } : {}),
     };
     setProblems(found);
-    setProblem(null);
-    if (Object.keys(found).length > 0 || sending.current) return;
-    sending.current = true;
-    setBusy(true);
-    const fields = {
-      name: name.trim(),
-      role: role.trim(),
-      tool,
-      scopes,
-      approvalActions: actions,
-      monthlyLimit,
-      fiveHourLimit,
-      planStopPercent,
-      reportsTo: reportsTo || null,
-    };
+    onClear();
+    if (monthlyLimit === undefined || fiveHourLimit === undefined || planStopPercent === undefined)
+      return;
     requestId.current ??= crypto.randomUUID();
-    const reply = agent
-      ? await api('PATCH', `/api/agents/${agent.id}`, { ...fields, version: agent.version })
-      : await api('POST', '/api/agents', { ...fields, requestId: requestId.current });
-    sending.current = false;
-    setBusy(false);
-    if (reply.ok) return onSaved(agent ? '에이전트 저장됨' : '에이전트 추가됨');
-    if (reply.status === 409) {
-      await reload();
-      return setProblem('이미 바뀐 에이전트예요. 다시 저장하면 입력한 내용으로 덮어요');
-    }
-    setProblem(describe(reply.error));
+    onSubmit(
+      {
+        name: name.trim(),
+        role: role.trim(),
+        tool,
+        scopes,
+        approvalActions: actions,
+        monthlyLimit,
+        fiveHourLimit,
+        planStopPercent,
+        reportsTo: reportsTo || null,
+      },
+      requestId.current,
+    );
   }
 
   return (

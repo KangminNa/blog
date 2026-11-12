@@ -24,6 +24,8 @@ paths:
 
 - 읽기: `useLiveValue(key, read, topics)`. 처음 한 번, 서버의 변경 신호가 올 때, 다시 연결될 때 읽는다. 다시 읽는 동안에도 앞의 값을 보여 준다 (오류와 값을 따로 그린다).
 - 쓰기: `const action = useAction()` → `action.run(이름, () => api(…), { done, reload, conflict })`. 바쁨(`action.busy`) · 오류 문구(`action.problem`) · 아래 알림 · 다시 읽기 · 409 처리를 한 곳에서 한다. 줄마다 버튼이 있으면 이름에 그 줄의 id를 준다.
+- 409는 다시 읽고 서버의 문구를 보여 준다. 본 `version`이 낡은 경우에만 `conflict`로 화면의 말을 준다 (서버 문구에는 판 번호가 있다). 이름이 겹침처럼 409가 다른 뜻이면 주지 않는다.
+- 훅 하나는 한 번에 동작 하나만 돌린다. 함께 돌 수 있거나 오류를 다른 자리에 보여 줄 동작은 `useAction()`을 따로 둔다.
 - 동작(`useAction`)은 다시 만들어지지 않는 쪽(패널)에 둔다. 폼 안에 두면 409 뒤에 다시 읽어 폼이 새로 만들어질 때 오류 문구가 함께 사라진다.
 - 오류 문구는 `describe(error)`로만 만든다. 서버 오류의 `message`를 화면에서 다시 조립하지 않는다.
 - 만들기는 `requestId`를 함께 보낸다 (응답을 못 받아 다시 눌러도 하나만 생기게). 고치기는 본 `version`을 함께 보낸다.
@@ -43,6 +45,7 @@ paths:
 ## 크기와 이름
 
 - ★ 파일 하나의 코드는 300줄까지 (빈 줄 · 주석 제외). 넘으면 개념 단위로 나눈다: 패널(읽기 · 틀)과 폼(칸), 그리는 조각.
-- 이미 넘는 파일과 아직 훅으로 옮기지 않은 화면은 `scripts/ratchet.json`에 있다. 이 목록은 줄어들기만 한다: 새 항목을 더하지 않고, 고친 파일은 `node scripts/check-rules.mjs --update`로 지운다.
+- 플러그인 화면(`plugins/*/web`)은 react와 자기 폴더만 가져올 수 있어 공용 훅을 쓰지 못한다 (서버는 props의 `call`로 부른다).
+- 이미 넘는 파일과 훅으로 옮기지 못한 화면은 `scripts/ratchet.json`에 있다 (남은 까닭은 `why`). 이 목록은 줄어들기만 한다: 새 항목을 더하지 않고, 고친 파일은 `node scripts/check-rules.mjs --update`로 지운다.
 - `helpers` · `utils` · `common` · `misc` 같은 이름을 쓰지 않는다. 그 파일이 다루는 것의 이름을 붙인다.
 - 안 쓰는 export · 파일은 `pnpm deadcode`(`pnpm check`에 들어 있다)가 막는다.

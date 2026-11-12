@@ -8,9 +8,12 @@ import { type ApiReply, describe } from './client-api';
 export type ActionPlan<T> = {
   /** 끝나면 아래 한 줄 알림 */
   done?: string | ((data: T) => string);
-  /** 끝난 뒤, 그리고 다른 곳에서 먼저 바뀌었을 때(409) 다시 읽는다 */
+  /** 끝난 뒤, 그리고 409일 때 다시 읽는다 */
   reload?: () => unknown;
-  /** 409일 때의 문구 */
+  /**
+   * 본 version이 낡았을 때(409)의 문구. 서버의 문구에는 판 번호가 들어 있어 화면의 말로 바꾼다.
+   * 409가 다른 뜻인 동작(이름이 겹침 등)에는 주지 않는다: 서버의 문구를 그대로 보여 준다
+   */
   conflict?: string;
 };
 
@@ -29,10 +32,9 @@ export type Action = {
   ): Promise<ApiReply<T> | null>;
 };
 
-const CONFLICT = '다른 곳에서 먼저 바뀌었어요. 최신 내용을 다시 읽었어요';
-
 // 화면의 쓰기 동작 (web 규칙: 쓰기는 useAction). 누름 → 바쁨 표시 → 호출 → 오류 문구나 알림 → 다시 읽기.
-// 패널마다 busy · problem 상태와 409 처리를 손으로 쓰지 않게 한 곳에 둔다. 읽기는 useLiveValue.
+// 패널마다 busy · problem 상태와 409 처리(다시 읽기)를 손으로 쓰지 않게 한 곳에 둔다. 읽기는 useLiveValue.
+// 보내기 전의 확인이 실패하면 send가 서버에 보내지 않고 실패 응답({ ok: false, … })을 돌려줘도 된다: 그 문구가 problem이 된다.
 export function useAction(): Action {
   const notify = useNotify();
   const [busy, setBusy] = useState<string | null>(null);
@@ -56,7 +58,7 @@ export function useAction(): Action {
           await plan.reload?.();
         } else if (reply.status === 409) {
           await plan.reload?.();
-          setProblem(plan.conflict ?? CONFLICT);
+          setProblem(plan.conflict ?? describe(reply.error));
         } else {
           setProblem(describe(reply.error));
         }

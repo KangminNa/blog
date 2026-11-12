@@ -1,10 +1,9 @@
 'use client';
 
 import '../../_vault/vault.css';
-import { useState } from 'react';
-import { api, describe } from '../../_lib/client-api';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
 import { when } from '../../_task/labels';
-import { useNotify } from '../../_ui/notify';
 import { useGraph, useWaitingChanges } from '../../_vault/live';
 import type { ChangeSet, WaitingChange } from '../../_vault/types';
 
@@ -71,32 +70,29 @@ function Proposal({
   labelOf: (id: unknown) => string;
   reload: () => Promise<void>;
 }) {
-  const notify = useNotify();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const action = useAction();
   const payload = (c.payload ?? {}) as Record<string, unknown>;
   const title = typeof payload.title === 'string' ? payload.title : null;
   const body = typeof payload.body_md === 'string' ? payload.body_md : null;
   const edge = typeof payload.kind === 'string' ? payload.kind : null;
   const refs = REFS.filter(([key]) => payload[key]);
 
-  async function decide(decision: 'approve' | 'decline') {
-    setBusy(true);
-    setError(null);
-    const reply = await api<ChangeSet>('POST', `/api/changes/${c.setId}/ops/${c.seq}/decide`, {
-      version: c.version,
+  const decide = (decision: 'approve' | 'decline') =>
+    action.run(
       decision,
-    });
-    setBusy(false);
-    if (!reply.ok) {
-      setError(describe(reply.error));
-      await reload();
-      return;
-    }
-    const op = reply.data.ops.find((o) => o.seq === c.seq);
-    notify(op?.status === 'superseded' ? '그사이 대상이 바뀌어 넘어갔어요' : '결정했어요');
-    await reload();
-  }
+      () =>
+        api<ChangeSet>('POST', `/api/changes/${c.setId}/ops/${c.seq}/decide`, {
+          version: c.version,
+          decision,
+        }),
+      {
+        done: (set) =>
+          set.ops.find((o) => o.seq === c.seq)?.status === 'superseded'
+            ? '그사이 대상이 바뀌어 넘어갔어요'
+            : '결정했어요',
+        reload,
+      },
+    );
 
   return (
     <article className="panel proposal" aria-label={OP_LABELS[c.op] ?? c.op}>
@@ -139,17 +135,22 @@ function Proposal({
         ))}
       </dl>
       {body !== null && <pre className="proposal-body">{body}</pre>}
-      {error && <p className="error">{error}</p>}
+      {action.problem && <p className="error">{action.problem}</p>}
       <div className="row">
         <button
           type="button"
           className="cta small"
-          disabled={busy}
+          disabled={action.busy !== null}
           onClick={() => decide('approve')}
         >
           승인
         </button>
-        <button type="button" className="ghost" disabled={busy} onClick={() => decide('decline')}>
+        <button
+          type="button"
+          className="ghost"
+          disabled={action.busy !== null}
+          onClick={() => decide('decline')}
+        >
           거절
         </button>
       </div>

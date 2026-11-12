@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { type FormEvent, useMemo, useRef, useState } from 'react';
 import { api, describe } from '../../_lib/client-api';
 import { renderMarkdown } from '../../_lib/markdown';
+import { useAction } from '../../_lib/use-action';
 import { useLiveValue } from '../../_lib/use-live';
 import { readPages } from '../../_task/live';
 import { useNotify } from '../../_ui/notify';
@@ -208,6 +209,8 @@ function WikiView({
     WIKI_TOPICS,
   );
   const graph = useGraph();
+  const action = useAction();
+  const save = useAction();
   const [editing, setEditing] = useState(false);
   const sources = useMemo(() => {
     const nodes = graph.data?.nodes ?? [];
@@ -231,10 +234,17 @@ function WikiView({
 
   async function trash(version: number) {
     if (!window.confirm('휴지통으로 보낼까요? 휴지통에서 되살릴 수 있어요')) return;
-    const reply = await api('POST', `/api/wikis/${id}/trash`, { version });
-    if (!reply.ok) return notify(describe(reply.error));
-    notify('휴지통으로 보냈어요');
-    router.push(back);
+    const send = () => api('POST', `/api/wikis/${id}/trash`, { version });
+    const reply = await action.run('trash', send, { done: '휴지통으로 보냈어요' });
+    if (reply?.ok) router.push(back);
+    else if (reply) notify(describe(reply.error));
+  }
+
+  // 저장은 여기서 돌린다 (폼은 칸만)
+  async function submit(body: WikiBody) {
+    const plan = { done: '위키를 저장했어요', reload: wiki.reload };
+    const reply = await save.run('save', () => api('PUT', `/api/wikis/${id}`, body), plan);
+    if (reply?.ok) setEditing(false);
   }
 
   if (editing)
@@ -242,11 +252,13 @@ function WikiView({
       <WikiEdit
         wiki={w}
         categories={categories}
-        done={async () => {
-          await wiki.reload();
+        busy={save.busy !== null}
+        problem={save.problem}
+        onSubmit={submit}
+        cancel={() => {
+          save.clear();
           setEditing(false);
         }}
-        cancel={() => setEditing(false)}
       />
     );
 
@@ -454,6 +466,7 @@ function StaleList({ openId }: { openId: string | null }) {
 /** 휴지통: 지운 때가 늦은 순. 되살리면 판 · 연결 · 세션의 대표가 그대로 돌아온다 */
 function TrashList() {
   const notify = useNotify();
+  const action = useAction();
   const trash = useLiveValue(
     'wiki-trash',
     () => api<WikiTrash>('GET', '/api/wikis/trash'),
@@ -461,10 +474,10 @@ function TrashList() {
   );
 
   async function restore(wiki: TrashedWiki) {
-    const reply = await api('POST', `/api/wikis/${wiki.id}/restore`, { version: wiki.version });
-    if (!reply.ok) return notify(describe(reply.error));
-    notify(`${wiki.title} 되살림`);
-    await trash.reload();
+    const send = () => api('POST', `/api/wikis/${wiki.id}/restore`, { version: wiki.version });
+    const plan = { done: `${wiki.title} 되살림`, reload: trash.reload };
+    const reply = await action.run(wiki.id, send, plan);
+    if (reply && !reply.ok) notify(describe(reply.error));
   }
 
   if (trash.error) return <p className="error">{trash.error}</p>;
@@ -503,8 +516,9 @@ function ReplaceBox({ id }: { id: string }) {
     () => api<WikiScoreBoard>('GET', '/api/wiki-scores'),
     SCORE_TOPICS,
   );
+  const action = useAction();
   const [oldId, setOldId] = useState('');
-  const [busy, setBusy] = useState(false);
+  const reload = () => Promise.all([score.reload(), board.reload()]);
   const s = score.data;
   if (!s) return null;
   const all = [
@@ -519,20 +533,16 @@ function ReplaceBox({ id }: { id: string }) {
 
   async function replace(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    const reply = await api('POST', `/api/wikis/${id}/replaces`, { oldId });
-    setBusy(false);
-    if (!reply.ok) return notify(describe(reply.error));
-    setOldId('');
-    notify('대체로 표시했어요');
-    await Promise.all([score.reload(), board.reload()]);
+    const send = () => api('POST', `/api/wikis/${id}/replaces`, { oldId });
+    const reply = await action.run('replace', send, { done: '대체로 표시했어요', reload });
+    if (reply?.ok) setOldId('');
+    else if (reply) notify(describe(reply.error));
   }
 
   async function release(old: string) {
-    const reply = await api('DELETE', `/api/wikis/${id}/replaces/${old}`);
-    if (!reply.ok) return notify(describe(reply.error));
-    notify('대체 표시를 지웠어요');
-    await Promise.all([score.reload(), board.reload()]);
+    const send = () => api('DELETE', `/api/wikis/${id}/replaces/${old}`);
+    const reply = await action.run(old, send, { done: '대체 표시를 지웠어요', reload });
+    if (reply && !reply.ok) notify(describe(reply.error));
   }
 
   return (
@@ -570,7 +580,7 @@ function ReplaceBox({ id }: { id: string }) {
             </option>
           ))}
         </select>
-        <button type="submit" className="ghost" disabled={busy || !oldId}>
+        <button type="submit" className="ghost" disabled={action.busy === 'replace' || !oldId}>
           대체로 표시
         </button>
       </form>
@@ -578,44 +588,38 @@ function ReplaceBox({ id }: { id: string }) {
   );
 }
 
+/** 저장할 때 보내는 본문 (PUT /api/wikis/:id). 본 version을 함께 보낸다 */
+type WikiBody = Pick<WikiDetail, 'version' | 'title' | 'bodyMd' | 'categoryId' | 'visibility'>;
+
+/** 위키 고치기 폼: 칸의 상태와 보낼 본문만 가진다. 저장은 WikiView가 돌린다 (onSubmit) */
 function WikiEdit({
   wiki,
   categories,
-  done,
+  busy,
+  problem,
+  onSubmit,
   cancel,
 }: {
   wiki: WikiDetail;
   categories: CategoryList | null;
-  done: () => Promise<void>;
+  busy: boolean;
+  problem: string | null;
+  onSubmit: (body: WikiBody) => void;
   cancel: () => void;
 }) {
-  const notify = useNotify();
   const [title, setTitle] = useState(wiki.title);
   const [body, setBody] = useState(wiki.bodyMd);
   const [category, setCategory] = useState(wiki.categoryId ?? NO_CATEGORY);
   const [visibility, setVisibility] = useState(wiki.visibility);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  async function save(e: FormEvent) {
+  function submit(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    setError(null);
-    const reply = await api('PUT', `/api/wikis/${wiki.id}`, {
-      version: wiki.version,
-      title,
-      bodyMd: body,
-      categoryId: category === NO_CATEGORY ? null : category,
-      visibility,
-    });
-    setBusy(false);
-    if (!reply.ok) return setError(describe(reply.error));
-    notify('위키를 저장했어요');
-    await done();
+    const categoryId = category === NO_CATEGORY ? null : category;
+    onSubmit({ version: wiki.version, title, bodyMd: body, categoryId, visibility });
   }
 
   return (
-    <form className="panel wiki-edit" aria-label={`${wiki.title} 고치기`} onSubmit={save}>
+    <form className="panel wiki-edit" aria-label={`${wiki.title} 고치기`} onSubmit={submit}>
       <label className="field" htmlFor="wiki-title">
         <span>제목</span>
         <input
@@ -666,7 +670,7 @@ function WikiEdit({
           onChange={(e) => setBody(e.target.value)}
         />
       </label>
-      {error && <p className="error">{error}</p>}
+      {problem && <p className="error">{problem}</p>}
       <div className="row">
         <button type="submit" className="cta small" disabled={busy}>
           {busy ? '저장 중…' : '저장'}

@@ -2,49 +2,63 @@
 
 import Link from 'next/link';
 import { type FormEvent, useId, useRef, useState } from 'react';
-import { api, describe } from '../../_lib/client-api';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
 import { useLiveValue } from '../../_lib/use-live';
 import { flatTree, GOAL_STATUS, when } from '../../_task/labels';
 import { TASK_TOPICS, useGoals } from '../../_task/live';
 import { TaskPill } from '../../_task/parts';
 import type { Goal, TaskPage } from '../../_task/types';
-import { useNotify } from '../../_ui/notify';
 
 /** 열린 입력 칸: 맨 위 목표 추가, 하위 목표 추가(부모 id), 편집(목표 id) */
 type Open = { kind: 'add'; parentId: string | null } | { kind: 'edit'; id: string } | null;
+/** 저장할 때 보내는 본문 (POST · PATCH /api/goals). 부모 · requestId · version은 패널이 붙인다 */
+type GoalBody = { title: string; description: string };
 
 // 목표: 회사 목표부터 이어지는 나무와 목표별 작업. 목표를 정하는 건 주인만, 에이전트는 작업의 목표 사슬로 읽는다.
 export function GoalPanel() {
-  const notify = useNotify();
   const goals = useGoals();
   const [open, setOpen] = useState<Open>(null);
   const [tasksOf, setTasksOf] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  const action = useAction();
+  const save = useAction();
   const list = goals.data?.goals;
   const rows = list ? flatTree(list, (g) => g.parentId) : [];
+  const problem = goals.error ?? action.problem;
+  const parent = open?.kind === 'add' ? (list?.find((g) => g.id === open.parentId) ?? null) : null;
 
-  async function move(goal: Goal, status: string) {
-    setBusy(goal.id);
-    setProblem(null);
-    const reply = await api('POST', `/api/goals/${goal.id}/status`, {
-      status,
-      version: goal.version,
-    });
-    await goals.reload();
-    setBusy(null);
-    if (reply.ok) return notify(`${goal.title}: ${GOAL_STATUS[status]}`);
-    setProblem(
-      reply.status === 409
-        ? '이미 바뀐 목표예요. 최신 내용을 다시 읽었어요'
-        : describe(reply.error),
+  const move = (goal: Goal, status: string) =>
+    action.run(
+      goal.id,
+      () => api('POST', `/api/goals/${goal.id}/status`, { status, version: goal.version }),
+      {
+        done: `${goal.title}: ${GOAL_STATUS[status]}`,
+        reload: goals.reload,
+        conflict: '이미 바뀐 목표예요. 최신 내용을 다시 읽었어요',
+      },
     );
+
+  /** 입력 칸을 열거나 닫는다. 앞 폼의 오류 문구는 남기지 않는다 */
+  function show(next: Open) {
+    setOpen(next);
+    save.clear();
   }
 
-  async function saved(text: string) {
-    setOpen(null);
-    notify(text);
-    await goals.reload();
+  // 저장은 패널이 돌린다 (폼은 칸만). 고치기는 본 version, 만들기는 부모와 폼이 쥔 requestId를 붙인다
+  async function submit(goal: Goal | null, body: GoalBody, requestId: string) {
+    const reply = await save.run(
+      'save',
+      () =>
+        goal
+          ? api('PATCH', `/api/goals/${goal.id}`, { ...body, version: goal.version })
+          : api('POST', '/api/goals', { ...body, parentId: parent?.id ?? null, requestId }),
+      {
+        done: goal ? '목표 저장됨' : '목표 추가됨',
+        reload: goals.reload,
+        conflict: '이미 바뀐 목표예요. 다시 저장하면 입력한 내용으로 덮어요',
+      },
+    );
+    if (reply?.ok) setOpen(null);
   }
 
   return (
@@ -55,20 +69,21 @@ export function GoalPanel() {
           <button
             type="button"
             className="cta small"
-            onClick={() => setOpen({ kind: 'add', parentId: null })}
+            onClick={() => show({ kind: 'add', parentId: null })}
           >
             목표 추가
           </button>
         )}
       </header>
-      {(goals.error ?? problem) && <p className="error">{goals.error ?? problem}</p>}
+      {problem && <p className="error">{problem}</p>}
       {open?.kind === 'add' && (
         <GoalForm
           goal={null}
-          parent={list?.find((g) => g.id === open.parentId) ?? null}
-          onSaved={saved}
-          onClose={() => setOpen(null)}
-          reload={goals.reload}
+          parent={parent}
+          busy={save.busy !== null}
+          problem={save.problem}
+          onSubmit={(body, requestId) => submit(null, body, requestId)}
+          onClose={() => show(null)}
         />
       )}
       {list === undefined ? (
@@ -84,7 +99,7 @@ export function GoalPanel() {
             <button
               type="button"
               className="cta small fit"
-              onClick={() => setOpen({ kind: 'add', parentId: null })}
+              onClick={() => show({ kind: 'add', parentId: null })}
             >
               목표 추가
             </button>
@@ -98,17 +113,18 @@ export function GoalPanel() {
                 <GoalForm
                   goal={g}
                   parent={null}
-                  onSaved={saved}
-                  onClose={() => setOpen(null)}
-                  reload={goals.reload}
+                  busy={save.busy !== null}
+                  problem={save.problem}
+                  onSubmit={(body, requestId) => submit(g, body, requestId)}
+                  onClose={() => show(null)}
                 />
               ) : (
                 <GoalRow
                   goal={g}
-                  busy={busy === g.id}
+                  busy={action.busy === g.id}
                   showingTasks={tasksOf === g.id}
-                  onAddChild={() => setOpen({ kind: 'add', parentId: g.id })}
-                  onEdit={() => setOpen({ kind: 'edit', id: g.id })}
+                  onAddChild={() => show({ kind: 'add', parentId: g.id })}
+                  onEdit={() => show({ kind: 'edit', id: g.id })}
                   onMove={(status) => move(g, status)}
                   onTasks={() => setTasksOf(tasksOf === g.id ? null : g.id)}
                 />
@@ -217,25 +233,25 @@ function GoalTasks({ goalId }: { goalId: string }) {
   );
 }
 
-/** 목표 추가 · 편집. goal이 있으면 편집이다. 부모는 만들 때만 정한다 */
+/** 목표 추가 · 편집 폼: 칸과 보낼 본문만 가진다 (저장은 패널). goal이 있으면 편집이다. 부모는 만들 때만 정한다 */
 function GoalForm({
   goal,
   parent,
-  onSaved,
+  busy,
+  problem,
+  onSubmit,
   onClose,
-  reload,
 }: {
   goal: Goal | null;
   parent: Goal | null;
-  onSaved: (message: string) => void;
+  busy: boolean;
+  problem: string | null;
+  onSubmit: (body: GoalBody, requestId: string) => void;
   onClose: () => void;
-  reload: () => Promise<void>;
 }) {
   const id = useId();
   const [title, setTitle] = useState(goal?.title ?? '');
   const [description, setDescription] = useState(goal?.description ?? '');
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
   // 같은 내용을 다시 보내면 같은 requestId: 응답을 놓쳐 다시 눌러도 목표는 하나다
   const requestId = useRef<string | null>(null);
 
@@ -244,27 +260,10 @@ function GoalForm({
     apply();
   }
 
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    setProblem(null);
-    const fields = { title: title.trim(), description: description.trim() };
     requestId.current ??= crypto.randomUUID();
-    const reply = goal
-      ? await api('PATCH', `/api/goals/${goal.id}`, { ...fields, version: goal.version })
-      : await api('POST', '/api/goals', {
-          ...fields,
-          parentId: parent?.id ?? null,
-          requestId: requestId.current,
-        });
-    setBusy(false);
-    if (reply.ok) return onSaved(goal ? '목표 저장됨' : '목표 추가됨');
-    if (reply.status === 409) {
-      await reload();
-      return setProblem('이미 바뀐 목표예요. 다시 저장하면 입력한 내용으로 덮어요');
-    }
-    setProblem(describe(reply.error));
+    onSubmit({ title: title.trim(), description: description.trim() }, requestId.current);
   }
 
   const label = goal ? `${goal.title} 편집` : parent ? `${parent.title}의 하위 목표` : '목표 추가';
