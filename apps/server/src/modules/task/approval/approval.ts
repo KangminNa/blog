@@ -1,5 +1,6 @@
 import { BaseEntity, DomainEvent, RuleViolation, TableEntity } from '../../platform';
 import type { Agent } from '../agent/agent';
+import type { GoalRun } from '../goal-run/goal-run';
 import { Task } from '../task/task';
 import type { ApprovalNew, ApprovalRow } from '../task.tables';
 import { ApprovalRequestedView, ApprovalView } from './approval.view';
@@ -23,6 +24,10 @@ export class Approval extends TableEntity<ApprovalRow, ApprovalNew> {
   ];
   /** 서버가 올리는 동작: 에이전트가 한 달 한도를 넘겼다 */
   static readonly RAISE_LIMIT = 'task.agent.raise_limit';
+  /** 서버가 올리는 동작: 목표 실행의 중간 결재 (승인하면 다음 회차) · 최종 결재 (승인하면 완료) */
+  static readonly GOAL_CONTINUE = 'task.goal.continue';
+  static readonly GOAL_COMPLETE = 'task.goal.complete';
+  static readonly GOAL_RUN = 'goal_run';
   private static readonly NOTE_MAX = 4000;
 
   /** 에이전트가 올린다. 작업은 결재를 기다린다. 요청자·작업은 작업 토큰에서 나온다 */
@@ -70,6 +75,28 @@ export class Approval extends TableEntity<ApprovalRow, ApprovalNew> {
     return approval;
   }
 
+  /**
+   * 목표 실행의 결재 (서버가 올린다): 중간(task.goal.continue) · 최종(task.goal.complete).
+   * 작업에 묶이지 않는다 (회차 작업은 이미 끝났다). 대상은 실행이고, 결정은 task 모듈의 GoalRunService가 받는다
+   */
+  static forGoalRun(run: GoalRun, action: string, note: string, now: Date): Approval {
+    const approval = Approval.pending(
+      {
+        space_id: run.spaceId,
+        task_id: null,
+        agent_id: run.agentId,
+        action,
+        target_kind: Approval.GOAL_RUN,
+        target_id: run.id,
+        target_version: run.version,
+        note: Approval.cleanNote(note),
+      },
+      now,
+    );
+    approval.announce('task.approval.requested');
+    return approval;
+  }
+
   static restore(row: ApprovalRow): Approval {
     return new Approval(row);
   }
@@ -94,6 +121,23 @@ export class Approval extends TableEntity<ApprovalRow, ApprovalNew> {
 
   get targetId(): string {
     return this.row.target_id;
+  }
+
+  get targetKind(): string {
+    return this.row.target_kind;
+  }
+
+  get action(): string {
+    return this.row.action;
+  }
+
+  get status(): string {
+    return this.row.status;
+  }
+
+  /** 주인이 정하며 남긴 말 (고쳐 달라면 고칠 내용) */
+  get note(): string | null {
+    return this.row.note;
   }
 
   get approved(): boolean {

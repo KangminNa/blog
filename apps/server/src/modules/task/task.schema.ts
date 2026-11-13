@@ -66,6 +66,42 @@ export const approvals = taskSchema.table('approvals', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
 });
 
+/** task.goal_rounds */
+export const goalRounds = taskSchema.table('goal_rounds', {
+  id: uuid('id').notNull(),
+  space_id: uuid('space_id').notNull(),
+  run_id: uuid('run_id').notNull(),
+  round: integer('round').notNull(),
+  task_id: uuid('task_id').notNull(),
+  summary: text('summary').notNull(),
+  completed: text('completed').array().notNull(),
+  remaining: text('remaining').array().notNull(),
+  evidence: jsonb('evidence').notNull(),
+  next_plan: text('next_plan').notNull(),
+  done: boolean('done').notNull(),
+  milestone: boolean('milestone').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
+/** task.goal_runs */
+export const goalRuns = taskSchema.table('goal_runs', {
+  id: uuid('id').notNull(),
+  space_id: uuid('space_id').notNull(),
+  goal_id: uuid('goal_id').notNull(),
+  agent_id: uuid('agent_id').notNull(),
+  title: text('title').notNull(),
+  instruction: text('instruction').notNull(),
+  criteria: text('criteria').array().notNull(),
+  checkpoint: text('checkpoint').notNull(),
+  round: integer('round').notNull(),
+  max_rounds: integer('max_rounds').notNull(),
+  status: text('status').notNull(),
+  request_id: text('request_id').notNull(),
+  version: integer('version').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+  finished_at: timestamp('finished_at', { withTimezone: true }),
+});
+
 /** task.goals */
 export const goals = taskSchema.table('goals', {
   id: uuid('id').notNull(),

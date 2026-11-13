@@ -17,6 +17,14 @@ export class ApprovalRepository extends TableRepository<ApprovalRow, Approval> {
     return this.maybeOne(await this.select(spaceId, id, false));
   }
 
+  /** 대상이 기다리는 결재를 잠근다 (작업에 묶이지 않는 결재: 목표 실행) */
+  async lockPendingFor(targetKind: string, targetId: string): Promise<Approval | null> {
+    return this.findOne(
+      { target_kind: targetKind, target_id: targetId, status: Approval.PENDING },
+      { lock: true },
+    );
+  }
+
   /** 작업이 기다리는 결재를 잠근다 (작업 하나에 하나뿐이다) */
   async lockPending(taskId: string): Promise<Approval | null> {
     return this.findOne({ task_id: taskId, status: Approval.PENDING }, { lock: true });

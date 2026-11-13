@@ -862,6 +862,7 @@ describe('작업 토큰', () => {
       'request_approval',
       'delegate_task',
       'read_url',
+      'report_round',
     ]);
     assert.equal((await tool(reader.run_token, 'save_session')).body.scope, 'upload');
     assert.equal((await tool(reader.run_token, 'next_jobs')).body.scope, 'run');
@@ -872,6 +873,7 @@ describe('작업 토큰', () => {
       'check_session',
       'delegate_task',
       'read_url',
+      'report_round',
       'request_approval',
       'save_session',
     ]);

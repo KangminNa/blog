@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { BaseTool } from '../platform';
 import { AiLoginRefreshTool, AiLoginTool, AiSigninTool } from './ai/ai-login.tool';
 import { RequestApprovalTool } from './approval/approval.tool';
+import { ReportRoundTool } from './goal-run/goal-run.tool';
 import { BeginDownloadTool, BeginUploadTool } from './output/output.tool';
 import { DelegateTaskTool } from './task/delegate.tool';
 import {
@@ -30,6 +31,7 @@ export class TaskTools {
     beginUpload: BeginUploadTool,
     beginDownload: BeginDownloadTool,
     readUrl: ReadUrlTool,
+    reportRound: ReportRoundTool,
   ) {
     this.tools = [
       nextJobs,
@@ -44,6 +46,7 @@ export class TaskTools {
       beginUpload,
       beginDownload,
       readUrl,
+      reportRound,
     ];
   }
 }

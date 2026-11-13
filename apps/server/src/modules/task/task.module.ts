@@ -15,6 +15,11 @@ import { ApprovalResultHandler } from './approval/approval-result.handler';
 import { GoalController } from './goal/goal.api';
 import { GoalQuery } from './goal/goal.query';
 import { GoalService } from './goal/goal.service';
+import { GoalRunController } from './goal-run/goal-run.api';
+import { GoalRunHandler } from './goal-run/goal-run.handler';
+import { GoalRunQuery } from './goal-run/goal-run.query';
+import { GoalRunService } from './goal-run/goal-run.service';
+import { ReportRoundTool } from './goal-run/goal-run.tool';
 import { OutputController } from './output/output.api';
 import { OutputPolicy } from './output/output.policy';
 import { OutputQuery } from './output/output.query';
@@ -98,6 +103,11 @@ import { WebPageGateway } from './web/web-page.gateway';
     OutputQuery,
     OutputService,
     BeginUploadTool,
+    // 목표 실행: 회차 루프와 결재 (GoalRunHandler가 회차 끝 · 결재를 받는다)
+    GoalRunQuery,
+    GoalRunService,
+    GoalRunHandler,
+    ReportRoundTool,
     // 주소 읽기 (read_url): 서버가 AI 대신 연다. 목줄은 WebReach
     WebPageGateway,
     WebQuery,
@@ -116,6 +126,7 @@ import { WebPageGateway } from './web/web-page.gateway';
     RunnerController,
     SkillController,
     OutputController,
+    GoalRunController,
   ],
   exports: [TaskTools, TaskQuery],
 })
@@ -138,11 +149,14 @@ export class TaskModule implements OnModuleInit {
     private readonly outputs: OutputQuery,
     private readonly leaseChecks: Leases,
     private readonly tasks: TaskQuery,
+    private readonly goalRuns: GoalRunHandler,
   ) {}
 
   onModuleInit(): void {
     this.workers.on(Task.REQUESTED, this.requested);
     this.workers.on(Task.CHANGED, this.settled);
+    this.workers.on(Task.CHANGED, this.goalRuns);
+    for (const topic of GoalRunHandler.DECIDED) this.workers.on(topic, this.goalRuns);
     this.workers.on('*', this.results);
     this.workers.every(this.leases, TaskModule.LEASE_CHECK_MS);
     this.workers.every(this.schedules, TaskModule.SCHEDULE_CHECK_MS);

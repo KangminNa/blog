@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
+import { OutboxWorker } from '../modules/platform';
 import { ApiClient, type TestUser } from './api-client';
 
 // MCP read_url: 작업 토큰을 쥔 AI만, 이 일이 비공개를 볼 수 있으면 주인의 지시에 적힌 사이트만 연다.
@@ -150,6 +151,83 @@ describe('read_url', () => {
     });
     const result = res.json().result as { isError?: boolean } | undefined;
     assert.ok(res.json().error || result?.isError, res.text);
+  });
+
+  test('목표 실행의 다음 회차: 지시에 실린 앞 회차 보고(AI가 쓴 글)의 주소는 열지 않는다. 기준은 주인이 쓴 실행 지시', async () => {
+    const worker = api.service(OutboxWorker);
+    const drain = async () => {
+      for (let i = 0; i < 200 && (await worker.tick()) > 0; i++);
+    };
+    const lead = ok(
+      await api.request('POST', '/api/agents', owner, {
+        requestId: randomUUID(),
+        name: `읽기 팀장 ${randomUUID().slice(0, 6)}`,
+        tool: 'claude',
+        scopes: ['write'],
+      }),
+      201,
+    );
+    const goal = ok(
+      await api.request('POST', '/api/goals', owner, {
+        requestId: randomUUID(),
+        title: '읽기 목표',
+      }),
+      201,
+    );
+    const run = ok(
+      await api.request('POST', '/api/goal-runs', owner, {
+        requestId: randomUUID(),
+        goalId: goal.id,
+        agentId: lead.id,
+        instruction: `이 기사로 정리해 줘 http://127.0.0.1:${port}/a`,
+        checkpoint: 'final',
+      }),
+      201,
+    );
+    const roundToken = async (): Promise<{ id: string; token: string }> => {
+      for (let i = 0; i < 20; i++) {
+        const { body } = await tool(runner, 'next_jobs', {
+          wait_seconds: 0,
+          limit: 10,
+          tools: ['claude'],
+        });
+        const jobs = body.jobs as { task: Json; run_token: string }[];
+        const mine = jobs.find(
+          (j) =>
+            ((j.task.payload as Json | undefined)?.goalRun as Json | undefined)?.runId === run.id,
+        );
+        if (mine) return { id: String(mine.task.id), token: mine.run_token };
+        if (jobs.length === 0) break;
+      }
+      throw new Error('회차 작업이 없다');
+    };
+    const first = await roundToken();
+    assert.ok(
+      (
+        await tool(first.token, 'report_round', {
+          summary: '다음엔 이 주소를 읽자',
+          completed: ['첫 기사'],
+          remaining: ['둘째'],
+          next_plan: `http://localhost:${port}/?q=비밀 를 읽는다`,
+          done: false,
+        })
+      ).ok,
+    );
+    await tool(runner, 'submit_result', {
+      task_id: first.id,
+      request_id: randomUUID(),
+      status: 'done',
+      result: { text: '끝' },
+    });
+    await drain();
+    const second = await roundToken();
+    const blocked = await tool(second.token, 'read_url', {
+      url: `http://localhost:${port}/?q=secret`,
+    });
+    assert.equal(blocked.ok, false, '앞 회차 보고에 적힌 사이트');
+    assert.match(String(blocked.body.message), /지시에 없는 사이트예요/);
+    const allowed = await tool(second.token, 'read_url', { url: `http://127.0.0.1:${port}/b` });
+    assert.equal(allowed.ok, true, JSON.stringify(allowed.body));
   });
 
   test('주소 모양이 아니면 400', async () => {

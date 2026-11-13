@@ -66,6 +66,44 @@ export interface ApprovalRow {
 }
 export type ApprovalNew = Partial<ApprovalRow> & Pick<ApprovalRow, 'id' | 'space_id' | 'action' | 'target_kind' | 'target_id' | 'target_version'>;
 
+/** task.goal_rounds */
+export interface GoalRoundRow {
+  id: string;
+  space_id: string;
+  run_id: string;
+  round: number;
+  task_id: string;
+  summary: string;
+  completed: readonly string[];
+  remaining: readonly string[];
+  evidence: unknown;
+  next_plan: string;
+  done: boolean;
+  milestone: boolean;
+  created_at: Date;
+}
+export type GoalRoundNew = Partial<GoalRoundRow> & Pick<GoalRoundRow, 'id' | 'space_id' | 'run_id' | 'round' | 'task_id' | 'summary' | 'done' | 'milestone'>;
+
+/** task.goal_runs */
+export interface GoalRunRow {
+  id: string;
+  space_id: string;
+  goal_id: string;
+  agent_id: string;
+  title: string;
+  instruction: string;
+  criteria: readonly string[];
+  checkpoint: string;
+  round: number;
+  max_rounds: number;
+  status: string;
+  request_id: string;
+  version: number;
+  created_at: Date;
+  finished_at: Date | null;
+}
+export type GoalRunNew = Partial<GoalRunRow> & Pick<GoalRunRow, 'id' | 'space_id' | 'goal_id' | 'agent_id' | 'title' | 'instruction' | 'checkpoint' | 'max_rounds' | 'status' | 'request_id'>;
+
 /** task.goals */
 export interface GoalRow {
   id: string;
