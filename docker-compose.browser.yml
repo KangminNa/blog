@@ -26,7 +26,9 @@ services:
       - browser-profile:/home/neko/.config/chromium   # 로그인 유지
     ports:
       - "127.0.0.1:${BROWSER_VIEW_PORT:-4100}:8080"   # 화면 페이지: 이 서버 안에서만 (Caddy가 넘긴다)
-      - "52000:52000/udp"                             # 화면 영상
+      # 화면 영상. Docker가 연 포트는 서버의 방화벽(ufw)을 거치지 않는다: 막으려면 클라우드 보안 그룹이나 BROWSER_UDP_BIND로
+      # BROWSER_UDP_BIND=100.x.x.x(Tailscale 주소)면 그 주소에만 연다. 비우면 모든 주소에 연다
+      - "${BROWSER_UDP_BIND:+${BROWSER_UDP_BIND}:}52000:52000/udp"
 
   runner:
     # 브라우저의 네트워크를 함께 쓴다. 서버(cairn-server)에는 그대로 닿는다

@@ -50,9 +50,29 @@ export default function BrowserPage({ call, notify }: Props) {
   );
 }
 
+/** 내 컴퓨터(개발)에서 연 콘솔인가. 앞단 프록시가 없어 /browser/가 열리지 않는다 */
+const isLocal = () => ['localhost', '127.0.0.1'].includes(window.location.hostname);
+/** 내 컴퓨터에서 화면 페이지가 열리는 곳 (BROWSER_VIEW_PORT 기본값) */
+const LOCAL_VIEWER = 'http://localhost:4100';
+
 /** 실시간 화면. 볼 때만 연다 (화면 전송은 CPU를 쓴다) */
 function Viewer() {
   const [open, setOpen] = useState(false);
+  // 서버에서 그린 첫 화면과 맞추려고 주소는 화면이 뜬 뒤에 본다
+  const [local, setLocal] = useState(false);
+  useEffect(() => setLocal(isLocal()), []);
+  if (local)
+    return (
+      <section className="panel" aria-label="브라우저 화면">
+        <b>화면</b>
+        <p className="note">
+          내 컴퓨터에서는 화면 칸 대신 새 탭으로 열어요 (.env의 CAIRN_BROWSER_PASSWORD로 들어가요)
+        </p>
+        <a className="cta small fit" href={LOCAL_VIEWER} target="_blank" rel="noopener">
+          새 탭에서 화면 열기
+        </a>
+      </section>
+    );
   return (
     <section className="panel" aria-label="브라우저 화면">
       <b>화면</b>
