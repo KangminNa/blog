@@ -86,6 +86,7 @@
 | `run` | `ai_login_refresh { task_id, tool, version, credential }` → `{ version }` | 러너 (Codex 자격 되돌려 쓰기) | 4 |
 | `run` | `ai_signin { task_id, url?, user_code?, credential? }` → `{ code, cancelled, status }` | 러너 (웹 로그인) | 4 |
 | 작업 토큰 | `request_approval` | 에이전트 | 3 |
+| 작업 토큰 | `read_url { url }` → `{ url, title, content_type, truncated, note, text }` | 에이전트 (서버가 대신 연다. 비공개를 볼 수 있는 일은 주인의 지시에 적힌 사이트만, 내부망 · 글이 아닌 형식은 거절. `WebReach` · `WebPageGateway`) | 2026-11-13 |
 | 작업 토큰 | `delegate_task` | 팀장 에이전트 | 조직 |
 | `write` | `blog_get_post`, `blog_save_draft`, `basket_get` | 에이전트 | 5 |
 | `read_*` | `search_sessions`, `get_session` | AI 도구, 에이전트 | 있음 |

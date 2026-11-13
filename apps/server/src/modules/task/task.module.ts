@@ -50,6 +50,9 @@ import { TaskNotices } from './task-notices';
 import { TaskTools } from './task-tools';
 import { UsageController } from './usage/usage.api';
 import { UsageQuery } from './usage/usage.query';
+import { WebQuery } from './web/web.query';
+import { ReadUrlTool } from './web/web.tool';
+import { WebPageGateway } from './web/web-page.gateway';
 
 // 에이전트가 일하고 주인이 결재하는 구조: 에이전트(조직도 · 하트비트), 목표, 작업(실행 기록 · 위임), 결재. platform에만 의존한다.
 // 결재 뒤 실행은 대상을 가진 모듈이 이벤트로 한다. task.approval.granted를 받는 모듈이 expect도 적는다 (지금은 blog).
@@ -95,6 +98,10 @@ import { UsageQuery } from './usage/usage.query';
     OutputQuery,
     OutputService,
     BeginUploadTool,
+    // 주소 읽기 (read_url): 서버가 AI 대신 연다. 목줄은 WebReach
+    WebPageGateway,
+    WebQuery,
+    ReadUrlTool,
     BeginDownloadTool,
     OutputPurgeJob,
   ],
