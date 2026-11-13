@@ -23,7 +23,11 @@ export class ClaudeCli implements AiTool {
   /** 코드 러너 칸의 일(코드 · 만들기)에만 더한다: 셸과 찾기 */
   private static readonly CODE_TOOLS = ['Bash', 'Glob', 'Grep'];
   private static readonly SKILL_TOOL = 'Skill';
-  /** 페이지를 만드는 일에만 연다. 검색은 Anthropic 쪽에서 돌아 칸의 나가는 허용 목록과 상관없다 */
+  /**
+   * 웹 검색: MCP가 붙는 모든 일에 연다 (2026-11-13). 검색은 Anthropic 쪽에서 돌고 제목 · 주소만 돌려주므로
+   * 칸의 나가는 허용 목록과 상관없다. 주소를 직접 여는 WebFetch는 열지 않는다: 주소 읽기는 서버의 read_url이
+   * 유출 · 내부망 규칙을 보고 대신 한다 (task 모듈)
+   */
   private static readonly WEB_TOOL = 'WebSearch';
   /** 사용자 환경에서 넘기는 것. 나머지(기기 토큰 포함)는 AI CLI에게 가지 않는다 */
   private static readonly PASSED_ENV = [
@@ -55,6 +59,7 @@ export class ClaudeCli implements AiTool {
   private browser: BrowserMcp | null = null;
   /** 셸을 여는가: 코드 러너 칸의 자리에서 하는 코드 작업만 */
   private shell = false;
+  /** 웹 검색을 여는가: MCP가 붙는 일 (연결 확인은 도구가 없다) */
   private web = false;
 
   constructor(
@@ -71,7 +76,7 @@ export class ClaudeCli implements AiTool {
     const { runToken } = job;
     this.browser = runToken === null ? null : BrowserMcp.for(job, this.browserUrl);
     this.shell = job.sandboxed && room !== null && runToken !== null;
-    this.web = job.page && runToken !== null;
+    this.web = runToken !== null;
     return JobWorkspace.open(
       runToken === null ? null : ClaudeCli.mcpConfig(this.mcpUrl, runToken, this.browser),
       ClaudeCli.settings(process.env.HOME),

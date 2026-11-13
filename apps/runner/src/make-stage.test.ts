@@ -44,7 +44,7 @@ describe('만들기 작업', () => {
     assert.equal(general.makePayload, null);
   });
 
-  test('결과를 페이지로 내보내는 일(payload.page)에만 웹 검색을 연다', async () => {
+  test('웹 검색은 작업 토큰이 있는 모든 일에 연다 (페이지 일 표시는 그대로 읽는다)', async () => {
     const raw = (payload: object) =>
       Json.parse(
         JSON.stringify({
@@ -71,8 +71,8 @@ describe('만들기 작업', () => {
       return [args[args.indexOf('--tools') + 1], args.includes('WebSearch')];
     };
     assert.deepEqual(await toolsOf(page), ['Read,Write,Edit,WebSearch', true]);
-    assert.deepEqual(await toolsOf(plain), ['Read,Write,Edit', false]);
-    // 다른 종류의 일은 page를 적어도 웹 검색이 열리지 않는다
+    assert.deepEqual(await toolsOf(plain), ['Read,Write,Edit,WebSearch', true]);
+    // 다른 종류의 일은 page를 적어도 페이지 일이 아니다. 웹 검색은 열린다
     const general = Job.from(
       Json.parse(
         JSON.stringify({
@@ -84,6 +84,20 @@ describe('만들기 작업', () => {
       ) as Json,
     );
     assert.equal(general.page, false);
-    assert.deepEqual(await toolsOf(general), ['Read,Write,Edit', false]);
+    assert.deepEqual(await toolsOf(general), ['Read,Write,Edit,WebSearch', true]);
+    // 작업 토큰이 없는 일(연결 확인)은 도구가 없다
+    const probe = Job.from(
+      Json.parse(
+        JSON.stringify({
+          task: { id: id(96), kind: 'general', title: '일', payload: {} },
+          agent: { name: '일반', role: '', tool: 'claude' },
+          instruction: '해 주세요',
+        }),
+      ) as Json,
+    );
+    const cli = new ClaudeCli('claude', 'oauth-token', 'http://cairn-server:4000/mcp', '/nowhere');
+    const workspace = await cli.open(probe);
+    assert.equal(cli.args(workspace).includes('WebSearch'), false);
+    await workspace.remove();
   });
 });

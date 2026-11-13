@@ -411,7 +411,7 @@ describe('러너가 일을 처리한다', () => {
     for (const flag of ['-p', '--verbose', '--strict-mcp-config']) assert.ok(args.includes(flag));
     assert.equal(args.includes('--bare'), false);
     assert.equal(args[args.indexOf('--output-format') + 1], 'stream-json');
-    assert.equal(args[args.indexOf('--tools') + 1], 'Read,Write,Edit');
+    assert.equal(args[args.indexOf('--tools') + 1], 'Read,Write,Edit,WebSearch');
 
     await until('자리가 지워짐', () =>
       [seen.cwd, env.CLAUDE_CONFIG_DIR, env.HOME, seen.mcpConfigPath].some((p) =>
@@ -455,7 +455,7 @@ describe('러너가 일을 처리한다', () => {
     assert.ok(String(seen.prompt).includes('cairn-write 스킬을 따릅니다'));
     assert.ok((seen.configEntries as string[]).includes('skills'));
     const args = seen.argv as string[];
-    assert.equal(args[args.indexOf('--tools') + 1], 'Read,Write,Edit,Skill');
+    assert.equal(args[args.indexOf('--tools') + 1], 'Read,Write,Edit,WebSearch,Skill');
   });
 
   test('0이 아닌 코드로 끝나면 failed와 짧은 이유', async () => {

@@ -269,7 +269,7 @@ describe('코드 러너 칸의 코드 작업', () => {
     const workspace = await cli.open(codeJob(), room);
     await workspace.handOver();
     const args = [...cli.args(workspace)];
-    assert.equal(args[args.indexOf('--tools') + 1], 'Read,Write,Edit,Bash,Glob,Grep');
+    assert.equal(args[args.indexOf('--tools') + 1], 'Read,Write,Edit,Bash,Glob,Grep,WebSearch');
     for (const tool of ['Bash', 'Glob', 'Grep']) assert.ok(args.includes(tool), tool);
     assert.equal(workspace.workDir, room.workDir);
     assert.equal(workspace.user, self);
