@@ -6,6 +6,8 @@ services:
     build:
       context: .
       dockerfile: browser/Dockerfile
+      args:
+        - CAIRN_NEKO_IMAGE   # .env에 있을 때만 넘긴다. 없으면 Dockerfile의 시험한 이미지
     image: cairn-browser:${CAIRN_IMAGE_TAG:-dev}
     restart: unless-stopped
     shm_size: 1g
