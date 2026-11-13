@@ -114,6 +114,7 @@ pnpm cairn connect https://내블로그주소 --tool codex  # Codex
 
 ```
 COMPOSE_FILE=docker-compose.prod.yml:docker-compose.browser.yml
+COMPOSE_PATH_SEPARATOR=:     # 파일을 :로 잇기 (Windows는 기본이 ;)
 CAIRN_BROWSER_PASSWORD=화면에-들어갈-때-묻는-비밀번호
 CAIRN_PUBLIC_IP=서버의-공인-IP
 ```
