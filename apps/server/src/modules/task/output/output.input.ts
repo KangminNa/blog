@@ -107,3 +107,17 @@ export class OutputActionInput extends BaseRequest {
     );
   }
 }
+
+/** POST api/outputs/files?name=<파일 이름>: 주인이 파일 하나를 올린다 (본문은 파일 그대로) */
+export class UploadOutputInput extends BaseRequest {
+  private constructor(readonly name: string) {
+    super();
+  }
+
+  static from(query: unknown): UploadOutputInput {
+    return BaseRequest.read(
+      query,
+      (f) => new UploadOutputInput(f.text('name', OutputPolicy.NAME_MAX)),
+    );
+  }
+}

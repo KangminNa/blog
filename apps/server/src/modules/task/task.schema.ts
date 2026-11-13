@@ -83,8 +83,8 @@ export const goals = taskSchema.table('goals', {
 export const outputs = taskSchema.table('outputs', {
   id: uuid('id').notNull(),
   space_id: uuid('space_id').notNull(),
-  task_id: uuid('task_id').notNull(),
-  run_id: uuid('run_id').notNull(),
+  task_id: uuid('task_id'),
+  run_id: uuid('run_id'),
   name: text('name').notNull(),
   kind: text('kind').notNull(),
   mime: text('mime').notNull(),

@@ -33,7 +33,7 @@ const NO_FILES = {
 
 /** 고칠 때 넘길 재료: 그 판을 만든 실행의 파일. 문(index.html)을 맨 앞에, 받는 수까지만 */
 function materialsOf(outputs: readonly Output[]): string[] {
-  const last = Math.max(0, ...outputs.map((o) => o.runSeq));
+  const last = Math.max(0, ...outputs.map((o) => o.runSeq ?? 0));
   return outputs
     .filter((o) => o.runSeq === last)
     .sort((a, b) => Number(b.name === ENTRY) - Number(a.name === ENTRY))

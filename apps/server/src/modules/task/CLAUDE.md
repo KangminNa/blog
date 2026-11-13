@@ -15,7 +15,7 @@
 - `ai/`: AI 도구의 로그인 (`AiLogin`, 도구는 claude · codex). 콘솔에 넣거나 웹 로그인으로 받은 자격을 서버 키로 잠가 두고 서버 러너에게 건넨다.
   `api/ai`, MCP `ai_login` · `ai_login_refresh`(CLI가 갱신한 자격 되돌려 쓰기) · `ai_signin`(러너가 로그인 명령을 대신 돌린다), 받는 값의 모양은 `AiSigninPolicy`
 - `runner/`: 러너의 상태 (`Runner`). 마지막으로 닿은 때, 일 받기 켜기·끄기. `api/runners`. 기기 이름·종류는 account의 것이라 화면이 합친다
-- `output/`: 결과물 (`Output`, 이름 · 종류 · 형식 · 한도 `OutputPolicy`, 올리기 표 `UploadTicket`, 재료 내려받기 표 `DownloadTicket`). 러너가 MCP `begin_upload`로 표를 받아 `PUT api/outputs/upload`(머리글 `x-cairn-upload`)로 파일을 흘려 보낸다. 만들기 작업의 재료는 거꾸로 `begin_download` → `GET api/outputs/download`(머리글 `x-cairn-download`). `api/outputs`(주인만: 목록 · 내려받기 · 휴지통), 일꾼 `OutputPurgeJob`
+- `output/`: 결과물 (`Output`, 이름 · 종류 · 형식 · 한도 `OutputPolicy`, 올리기 표 `UploadTicket`, 재료 내려받기 표 `DownloadTicket`). 러너가 MCP `begin_upload`로 표를 받아 `PUT api/outputs/upload`(머리글 `x-cairn-upload`)로 파일을 흘려 보낸다. 만들기 작업의 재료는 거꾸로 `begin_download` → `GET api/outputs/download`(머리글 `x-cairn-download`). `api/outputs`(주인만: 목록 · 내려받기 · 휴지통 · 올리기 `POST api/outputs/files`), 일꾼 `OutputPurgeJob`. 주인이 올린 파일은 작업 · 실행 없이(`task_id` · `run_id` 둘 다 null, DB CHECK) 결과물이 되어 만들기 일의 재료로 쓴다 (2026-11-13)
 - `web/`: 주소 읽기 (MCP `read_url`, 작업 토큰). 서버가 AI 대신 페이지를 열어 글자만 준다 (`WebQuery`). 목줄은 `WebReach`: 비공개를 볼 수 있는 일(전체 읽기 · 쓰기 · 코드 권한, 재료 읽기 허락)은 주인의 지시(위임된 일이면 맨 위 일)에 적힌 사이트와 그 하위만, 아니면 공개 주소 어디든. 내부망 · 이 서버 · 메타데이터 주소는 이름을 풀어 본 뒤 그 주소로만 붙어 막는다 (`WebPageGateway`, 리다이렉트 3번까지 매번 다시). 2MB · 15초, 글이 아닌 형식은 거절. 받은 글은 자료라는 표시(`note`)와 함께
 - `skill/`: 러너 스킬의 콘솔 판 (`Skill`, 파일 규칙과 해시 `SkillFiles`, 쓸 판 고르기 `SkillPackage`, 저장소 판 읽기 `RepoSkillGateway`). `api/runner-skills`. `next_jobs`의 `skill_package`로 러너에게 간다
 

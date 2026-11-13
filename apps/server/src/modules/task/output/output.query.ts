@@ -59,10 +59,13 @@ export class OutputQuery extends BaseQuery {
   async list(actor: Actor, req: ListOutputsInput): Promise<OutputPageView> {
     actor.assertOwner();
     const spaceId = actor.requireSpace();
-    const rows = await this.sql<(OutputRow & { task_title: string; run_seq: number })[]>`
+    // 주인이 올린 파일은 작업 · 실행이 없다 (LEFT JOIN)
+    const rows = await this.sql<
+      (OutputRow & { task_title: string | null; run_seq: number | null })[]
+    >`
       SELECT o.*, t.title AS task_title, r.seq AS run_seq FROM task.outputs o
-      JOIN task.tasks t ON t.id = o.task_id
-      JOIN task.task_runs r ON r.id = o.run_id
+      LEFT JOIN task.tasks t ON t.id = o.task_id
+      LEFT JOIN task.task_runs r ON r.id = o.run_id
       WHERE o.space_id = ${spaceId}
         AND ${req.trash ? this.sql`o.deleted_at IS NOT NULL` : this.sql`o.deleted_at IS NULL`}
         ${req.kind === null ? this.sql`` : this.sql`AND o.kind = ${req.kind}`}

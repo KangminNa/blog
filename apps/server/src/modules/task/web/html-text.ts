@@ -1,5 +1,6 @@
 // 받은 HTML을 AI가 읽을 글자로 (read_url). 그리지 않고 글자만 남긴다: 스크립트 · 스타일 · 그림은 버리고
 // 문단 · 줄 바꿈만 살린다. 라이브러리 없이 하는 만큼이라 모양이 복잡한 페이지는 글자가 섞일 수 있다.
+// biome-ignore lint/complexity/noStaticOnlyClass: 글자 바꾸기 묶음. 상태가 없다 (FileSniff와 같은 모양)
 export class HtmlText {
   /** 통째로 버리는 덩어리 */
   private static readonly DROP =

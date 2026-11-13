@@ -11,6 +11,7 @@ import { ApiClient, type TestUser } from './api-client';
 // 칸 안의 AI는 작업 토큰에 봉인한 허락으로 고른 위키만 읽는다. 보는 사람별: 방문자 · 칸이 아닌 러너 · 칸 러너 · 작업 토큰 · 주인.
 
 type Json = Record<string, unknown>;
+type TestUserLike = { cookies: Record<string, string> };
 type Download = {
   download_path: string;
   header: string;
@@ -208,6 +209,49 @@ describe('만들기 작업을 맡긴다', () => {
     assert.equal(trashed.status, 422);
     assert.match(trashed.text, /휴지통/);
     assert.equal((await makeTask({ wikiIds: [] }, 'general', writer.id)).status, 422);
+  });
+});
+
+describe('주인이 파일을 올려 재료로 준다', () => {
+  const put = (name: string, body: Buffer, as: Record<string, string> | TestUserLike = owner) =>
+    fetch(`${api.baseUrl}/api/outputs/files?name=${encodeURIComponent(name)}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/octet-stream',
+        ...('cookies' in as
+          ? { cookie: `cairn_session=${(as as TestUserLike).cookies.cairn_session}` }
+          : as),
+      },
+      body,
+    });
+
+  test('주인만 올린다: 결과물 목록에 작업 없이 보이고, 만들기 일의 재료가 되고, 칸이 표로 받는다', async () => {
+    const bytes = Buffer.from('이름,점수\n가,1\n나,2\n');
+    const res = await put('점수표.csv', bytes);
+    assert.equal(res.status, 201, await res.clone().text());
+    const up = (await res.json()) as Json;
+    assert.deepEqual([up.name, up.taskId, up.sizeBytes], ['점수표.csv', null, bytes.length]);
+    const list = ok(await api.get('/api/outputs', owner)) as { outputs: Json[] };
+    const row = list.outputs.find((o) => o.id === up.id);
+    assert.deepEqual([row?.taskTitle, row?.runSeq], [null, null]);
+
+    const task = ok(await makeTask({ outputIds: [up.id], wikiIds: [] }), 201);
+    assert.ok(await lease(slot, String(task.id)));
+    const ticket = await mcp(slot, 'begin_download', { task_id: task.id, output_id: up.id });
+    assert.ok(ticket.ok, JSON.stringify(ticket.body));
+    const got = await download(ticket.body as unknown as Download);
+    assert.equal(sha(Buffer.from(await got.arrayBuffer())), sha(bytes));
+  });
+
+  test('방문자 · write 기기는 올리지 못하고, 이름 규칙을 어기면 422 · 빈 파일은 422', async () => {
+    assert.equal((await put('a.csv', Buffer.from('x'), {})).status, 403);
+    const writerToken = await api.writeDevice(owner, `upload-writer-${randomUUID().slice(0, 6)}`);
+    assert.equal(
+      (await put('a.csv', Buffer.from('x'), { authorization: `Bearer ${writerToken}` })).status,
+      403,
+    );
+    assert.equal((await put('.숨김', Buffer.from('x'))).status, 422);
+    assert.equal((await put('빈.csv', Buffer.alloc(0))).status, 422);
   });
 });
 

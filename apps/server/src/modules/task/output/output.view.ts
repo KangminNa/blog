@@ -25,8 +25,9 @@ export class OutputSavedView {
 export class OutputView extends OutputSavedView {
   constructor(
     row: Readonly<OutputRow>,
-    private readonly taskTitle: string,
-    private readonly runSeq: number,
+    /** 주인이 올린 파일이면 null */
+    private readonly taskTitle: string | null,
+    private readonly runSeq: number | null,
   ) {
     super(row);
   }

@@ -12,10 +12,15 @@ export async function api<T>(method: string, path: string, body?: object): Promi
 }
 
 /** 파일을 본문 그대로 올린다. 형식은 서버가 파일의 앞부분으로 정한다 */
-export async function uploadFile<T>(path: string, file: File): Promise<ApiReply<T>> {
+export async function uploadFile<T>(
+  path: string,
+  file: File,
+  /** 본문의 형식. 서버가 JSON으로 읽지 않게 파일 그대로 보낼 때는 application/octet-stream */
+  type = file.type || 'image/png',
+): Promise<ApiReply<T>> {
   return send<T>(path, {
     method: 'POST',
-    headers: { 'content-type': file.type || 'image/png' },
+    headers: { 'content-type': type },
     body: file,
   });
 }

@@ -19,7 +19,12 @@ import {
   type HttpUpload,
 } from '../../platform';
 import { DownloadTicket } from './download-ticket';
-import { ListOutputsInput, OutputActionInput, OutputFileInput } from './output.input';
+import {
+  ListOutputsInput,
+  OutputActionInput,
+  OutputFileInput,
+  UploadOutputInput,
+} from './output.input';
 import { OutputFile, OutputQuery } from './output.query';
 import { OutputService } from './output.service';
 import type { OutputPageView, OutputSavedView } from './output.view';
@@ -82,6 +87,24 @@ export class OutputController {
     const length = Number(req.headers['content-length']);
     const output = await this.service.receive(
       typeof token === 'string' ? token : null,
+      req,
+      Number.isSafeInteger(length) ? length : null,
+    );
+    return output.view();
+  }
+
+  /** 주인: 파일 하나 올리기 (재료로). ?name=<이름>, 본문은 파일 그대로 (application/octet-stream) */
+  @HttpCode(201)
+  @Post('files')
+  async uploadMine(
+    @CurrentActor() actor: Actor,
+    @Query() query: unknown,
+    @Req() req: HttpUpload,
+  ): Promise<OutputSavedView> {
+    const length = Number(req.headers['content-length']);
+    const output = await this.service.upload(
+      actor,
+      UploadOutputInput.from(query),
       req,
       Number.isSafeInteger(length) ? length : null,
     );

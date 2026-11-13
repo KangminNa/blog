@@ -12,7 +12,7 @@ import {
 } from '../../platform';
 import { TaskQuery } from '../task/task.query';
 import { Output } from './output';
-import type { BeginUploadInput, OutputActionInput } from './output.input';
+import type { BeginUploadInput, OutputActionInput, UploadOutputInput } from './output.input';
 import { OutputPolicy } from './output.policy';
 import { OutputRepository } from './output.repository';
 import { UploadTicketView } from './output.view';
@@ -113,6 +113,39 @@ export class OutputService extends EntityService<Output> {
         blob.size,
       );
       const output = Output.receive(ticket, blob, sniffed, now);
+      await store.save(output);
+      return output;
+    });
+  }
+
+  /**
+   * 주인: 파일 하나를 올린다 (만들기 일의 재료로). 트랜잭션 밖에서 흘려 저장하고, 짧은 트랜잭션에서 공간 한도를 다시 센다.
+   * 한도를 넘어 줄을 만들지 못하면 받은 파일은 아무도 쓰지 않는 파일로 남아 BlobSweepJob이 지운다
+   */
+  async upload(
+    actor: Actor,
+    req: UploadOutputInput,
+    body: AsyncIterable<Uint8Array>,
+    contentLength: number | null,
+  ): Promise<Output> {
+    actor.assertOwner();
+    const spaceId = actor.requireSpace();
+    OutputPolicy.assertName(req.name);
+    if (contentLength !== null && contentLength > OutputPolicy.FILE_MAX)
+      throw new TooLarge(`파일 하나는 ${OutputPolicy.FILE_MAX / 1024 / 1024}MB까지예요`);
+    let sniffed: string | null = null;
+    const blob = await this.blobs.saveStream(body, OutputPolicy.FILE_MAX, (head) => {
+      sniffed = FileSniff.mimeOf(head);
+      return OutputPolicy.mimeOf(req.name, sniffed);
+    });
+    if (blob.size === 0) throw new RuleViolation('빈 파일이에요');
+    const freeBytes = await this.blobs.freeBytes();
+    const now = new Date();
+    return this.transaction(async (tx) => {
+      const store = new OutputRepository(tx);
+      await store.lockSpace(spaceId);
+      this.policy.assertRoom(await store.usedBytes(spaceId), freeBytes + blob.size, blob.size);
+      const output = Output.upload(spaceId, req.name, blob, sniffed, now);
       await store.save(output);
       return output;
     });

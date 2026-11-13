@@ -84,8 +84,8 @@ export type GoalNew = Partial<GoalRow> & Pick<GoalRow, 'id' | 'space_id' | 'titl
 export interface OutputRow {
   id: string;
   space_id: string;
-  task_id: string;
-  run_id: string;
+  task_id: string | null;
+  run_id: string | null;
   name: string;
   kind: string;
   mime: string;
@@ -97,7 +97,7 @@ export interface OutputRow {
   deleted_at: Date | null;
   purge_after: Date | null;
 }
-export type OutputNew = Partial<OutputRow> & Pick<OutputRow, 'id' | 'space_id' | 'task_id' | 'run_id' | 'name' | 'kind' | 'mime' | 'size_bytes' | 'blob_hash'>;
+export type OutputNew = Partial<OutputRow> & Pick<OutputRow, 'id' | 'space_id' | 'name' | 'kind' | 'mime' | 'size_bytes' | 'blob_hash'>;
 
 /** task.plan_usage */
 export interface PlanUsageRow {

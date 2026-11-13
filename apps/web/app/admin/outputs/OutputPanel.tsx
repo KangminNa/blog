@@ -168,8 +168,14 @@ export function OutputPanel({ taskId }: { taskId: string | null }) {
                 <b>{o.name}</b>
                 <small>
                   {OUTPUT_KINDS[o.kind] ?? o.kind} · {bytes(o.sizeBytes)} ·{' '}
-                  <Link href={`/admin/tasks/${o.taskId}`}>{o.taskTitle}</Link> {o.runSeq}회 ·{' '}
-                  {when(o.createdAt)}
+                  {o.taskId ? (
+                    <>
+                      <Link href={`/admin/tasks/${o.taskId}`}>{o.taskTitle}</Link> {o.runSeq}회
+                    </>
+                  ) : (
+                    '올린 파일'
+                  )}{' '}
+                  · {when(o.createdAt)}
                 </small>
               </div>
               <div className="row">
