@@ -24,14 +24,17 @@ function isCurrent(pathname: string, href: string): boolean {
 export function AdminShell({
   login,
   siteName,
+  activePlugins,
   children,
 }: {
   login: string;
   siteName: string;
+  /** 서버에서 읽은 켜진 플러그인 이름. 메뉴를 처음부터 그 모양으로 그린다 */
+  activePlugins: readonly string[];
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const packages = useActivePackages();
+  const packages = useActivePackages(activePlugins);
   const [open, setOpen] = useState(false);
   const [toast, showToast] = useToast();
   const pending = usePendingApprovals();

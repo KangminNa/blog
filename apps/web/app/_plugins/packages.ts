@@ -7,9 +7,14 @@ import { PACKAGES } from './packages.generated';
 
 // 콘솔이 쓰는 기능 패키지: 들어 있는 것(packages.generated.ts) 중 지금 동작 중인 것만 메뉴에 둔다.
 // 동작 중인지는 서버에 묻는다 (켜고 끌 때 웹을 다시 빌드하지 않는다).
-export function useActivePackages(): readonly PackageEntry[] {
+// 처음 값(initial)은 콘솔 틀이 서버에서 읽어 넘긴 이름이다. 없으면 화면을 열 때마다 메뉴가 빈 채로 그려졌다가
+// 읽은 뒤에 패키지 메뉴가 끼어들어 아래 메뉴가 한 줄씩 밀린다
+export function useActivePackages(initial: readonly string[]): readonly PackageEntry[] {
   const plugins = usePlugins();
-  const active = new Set(plugins.data?.plugins.filter((p) => p.active).map((p) => p.name));
+  const names = plugins.data
+    ? plugins.data.plugins.filter((p) => p.active).map((p) => p.name)
+    : initial;
+  const active = new Set(names);
   return PACKAGES.filter((p) => active.has(p.plugin));
 }
 
