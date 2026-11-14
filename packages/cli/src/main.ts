@@ -1,8 +1,9 @@
 import type { AiTool } from './ai-tool';
 import { ClaudeCode } from './claude-code';
 import { Codex } from './codex';
+import { CollectSetup } from './collect-setup';
 import { ConnectCommand, REVIEWERS } from './connect.command';
-import { NewsLogin } from './news-login';
+import { DeviceLogin } from './device-login';
 import { NewsSetup } from './news-setup';
 import { Shell } from './shell';
 import { SkillPackage } from './skill';
@@ -16,8 +17,9 @@ const HELP = `cairn: 작업하는 컴퓨터의 AI 도구를 Cairn 블로그에 �
   cairn connect <블로그 주소> [--tool claude-code|codex] [--review-with claude|codex|gemini] [--yes]
       스킬 · 검토자 넣기 + MCP 등록 + 로그인 + 연결 확인
       Claude Code는 팀 소식도: 소식 기기(소식 읽기만) + 말을 걸 때마다 소식을 덧붙이는 훅 + 상태 줄
+      세션 자동 저장도: 세션 저장 기기(세션 올리기만) + 세션이 끝나면 블로그에 올리는 훅
       --review-with: 다른 회사 모델로 교차 검토할 때 쓸 명령줄
-  cairn status [--tool claude-code|codex]   넣은 스킬과 연결 상태, 소식 기기 · 훅 · 상태 줄
+  cairn status [--tool claude-code|codex]   넣은 스킬과 연결 상태, 소식 · 세션 저장 기기와 훅
 
 ChatGPT · Claude 앱은 블로그 관리 화면 → 기기에서 연결해요.`;
 
@@ -44,10 +46,13 @@ async function main(argv: readonly string[]): Promise<void> {
     throw new CliError(`--review-with는 ${REVIEWERS.join(' · ')} 중 하나예요`);
   const skills = SkillPackage.bundled();
   const settings = tool.settingsFile;
-  const news = settings ? new NewsSetup(terminal, settings, new NewsLogin(terminal, shell)) : null;
+  const login = new DeviceLogin(terminal, shell);
+  const devices = settings
+    ? [new NewsSetup(terminal, settings, login), new CollectSetup(terminal, settings, login)]
+    : [];
   if (command === 'connect' && args[0])
-    return new ConnectCommand(terminal, tool, skills, reviewWith, news).run(args[0]);
-  if (command === 'status') return new StatusCommand(terminal, tool, skills, news).run();
+    return new ConnectCommand(terminal, tool, skills, reviewWith, devices).run(args[0]);
+  if (command === 'status') return new StatusCommand(terminal, tool, skills, devices).run();
   terminal.say(HELP);
   if (command) process.exitCode = 1;
 }

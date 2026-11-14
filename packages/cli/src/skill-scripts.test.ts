@@ -361,4 +361,11 @@ describe('before-send.mjs: 보내기 전 비밀값 검사 (cairn-team)', () => {
     assert.equal(result.stdout.includes(token), false);
     assert.equal(result.stdout.includes('hunter2abc1'), false);
   });
+
+  test('Cairn 토큰은 서버와 같은 무늬로 본다: 접속 · 갱신 · 기기 · 러너(cairn_run_)', () => {
+    const tokens = ['at', 'rt', 'dt', 'run'].map((kind) => `cairn_${kind}_${'c'.repeat(24)}`);
+    const result = send(`토큰들\n${tokens.join('\n')}\ncairn_xx_${'c'.repeat(24)}`);
+    assert.equal(result.code, 1);
+    assert.deepEqual(result.json().found, [{ kind: 'Cairn 토큰', count: 4 }]);
+  });
 });

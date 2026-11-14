@@ -38,11 +38,18 @@ export class SkillPackage {
     return /^cairn-where: runner$/m.test(this.files.get('SKILL.md') ?? '');
   }
 
-  /** 이 명령에 함께 든, 사람의 AI 도구에 넣을 스킬. 저장소에서는 <저장소>/skills, 배포한 패키지에서는 <패키지>/skills */
-  static bundled(): SkillPackage[] {
-    const dir = [join(__dirname, '../skills'), join(__dirname, '../../../skills')].find((d) =>
-      existsSync(d),
+  /** 이 명령에 함께 든 스킬 폴더. 저장소에서는 <저장소>/skills, 배포한 패키지에서는 <패키지>/skills */
+  static root(): string | null {
+    return (
+      [join(__dirname, '../skills'), join(__dirname, '../../../skills')].find((d) =>
+        existsSync(d),
+      ) ?? null
     );
+  }
+
+  /** 이 명령에 함께 든, 사람의 AI 도구에 넣을 스킬 */
+  static bundled(): SkillPackage[] {
+    const dir = SkillPackage.root();
     if (!dir) return [];
     return readdirSync(dir)
       .filter((name) => existsSync(join(dir, name, 'SKILL.md')))

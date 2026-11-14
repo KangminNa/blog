@@ -16,11 +16,11 @@ import { after, afterEach, before, beforeEach, describe, test } from 'node:test'
 import { pathToFileURL } from 'node:url';
 import { FakeCairn } from './testing/fake-cairn';
 
-// 훅 · 상태 줄 스크립트 (packages/cli/news, cairn connect가 ~/.cairn/bin에 넣는다). 가짜 블로그에 붙여 프로세스로 돌린다.
+// 소식 훅 · 상태 줄 스크립트 (packages/cli/hooks, cairn connect가 ~/.cairn/bin에 넣는다). 가짜 블로그에 붙여 프로세스로 돌린다.
 // HOME을 임시 폴더로 바꿔 ~/.cairn이 그 안에 생긴다. 지금 폴더는 git 원격이 있는 임시 저장소.
 
-const NEWS = join(__dirname, '../news');
-const SCRIPT = join(NEWS, 'cairn-news.mjs');
+const HOOKS = join(__dirname, '../hooks');
+const SCRIPT = join(HOOKS, 'cairn-news.mjs');
 const TOKEN = 'cairn_at_hooktest';
 
 class Run {
@@ -134,7 +134,7 @@ describe('프로젝트 (git 주소 → 서버와 같은 모양)', () => {
     // ask_agent의 project와 훅의 거르기가 맞는다
     const remotes = JSON.stringify(cases.map(([remote]) => remote));
     for (const file of [
-      join(NEWS, 'news-state.mjs'),
+      join(HOOKS, 'news-state.mjs'),
       join(__dirname, '../../../skills/cairn-team/scripts/before-send.mjs'),
     ]) {
       const url = JSON.stringify(pathToFileURL(file).href);

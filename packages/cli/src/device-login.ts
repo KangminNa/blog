@@ -5,8 +5,34 @@ import type { SiteAddress } from './cairn-site';
 import type { Shell } from './shell';
 import { CliError, type Terminal } from './terminal';
 
-/** 소식 기기의 열쇠 (~/.cairn/credentials.json의 news). 토큰은 화면에 찍지 않는다 */
-export class NewsCredential {
+/** cairn connect가 만드는 기기의 종류: 요청할 권한, 블로그가 줘야 하는 권한, 화면 이름 */
+export class DeviceKind {
+  /** 팀 소식 읽기 (2차 1-3) */
+  static readonly NEWS = new DeviceKind('news', 'news', '소식 기기', '소식', '소식 읽기만');
+  /** Claude Code 세션 저장 (2차 4): 블로그는 세션 올리기(upload)만 가진 기기를 만든다 */
+  static readonly COLLECT = new DeviceKind(
+    'collect',
+    'upload',
+    '세션 저장 기기',
+    '세션 저장',
+    '세션 올리기만',
+  );
+
+  private constructor(
+    /** 요청할 scope이자 credentials.json의 키 */
+    readonly scope: string,
+    /** 받은 토큰의 권한이 정확히 이것이어야 한다 (아니면 버린다) */
+    readonly granted: string,
+    readonly label: string,
+    /** 기기 이름의 뒷부분 ("mac · 소식") */
+    readonly suffix: string,
+    /** 승인할 권한을 사람에게 보이는 말 */
+    readonly permission: string,
+  ) {}
+}
+
+/** 기기의 열쇠 (~/.cairn/credentials.json의 news · collect). 토큰은 화면에 찍지 않는다 */
+export class DeviceCredential {
   constructor(
     readonly site: string,
     readonly mcp: string,
@@ -18,7 +44,7 @@ export class NewsCredential {
     readonly expiresAt: Date,
   ) {}
 
-  /** credentials.json에 쓰는 모양 (훅 · 상태 줄의 news-access.mjs가 읽는다) */
+  /** credentials.json에 쓰는 모양 (훅 · 상태 줄의 device-access.mjs가 읽는다) */
   toJSON(): object {
     return {
       site: this.site,
@@ -38,9 +64,10 @@ class LoopbackCallback {
   private constructor(
     private readonly server: Server,
     private readonly answer: Promise<URLSearchParams>,
+    private readonly kind: DeviceKind,
   ) {}
 
-  static async open(): Promise<LoopbackCallback> {
+  static async open(kind: DeviceKind): Promise<LoopbackCallback> {
     let deliver: (query: URLSearchParams) => void = () => {};
     const answer = new Promise<URLSearchParams>((done) => {
       deliver = done;
@@ -54,12 +81,12 @@ class LoopbackCallback {
       const ok = url.searchParams.has('code');
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(
-        `<!doctype html><meta charset="utf-8"><title>Cairn</title><p>${ok ? '소식 기기를 연결했어요. 이 창을 닫아도 돼요.' : '연결하지 못했어요. 터미널을 봐 주세요.'}</p>`,
+        `<!doctype html><meta charset="utf-8"><title>Cairn</title><p>${ok ? `${kind.label}를 연결했어요. 이 창을 닫아도 돼요.` : '연결하지 못했어요. 터미널을 봐 주세요.'}</p>`,
       );
       deliver(url.searchParams);
     });
     await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
-    return new LoopbackCallback(server, answer);
+    return new LoopbackCallback(server, answer, kind);
   }
 
   get uri(): string {
@@ -74,7 +101,7 @@ class LoopbackCallback {
         () =>
           fail(
             new CliError(
-              '소식 기기 승인을 기다리다 그만뒀어요. cairn connect를 다시 실행해 주세요',
+              `${this.kind.label} 승인을 기다리다 그만뒀어요. cairn connect를 다시 실행해 주세요`,
             ),
           ),
         waitMs,
@@ -93,30 +120,29 @@ class LoopbackCallback {
   }
 }
 
-// 소식 기기 만들기 (2차 1-3): 블로그의 OAuth(PKCE)로 scope=news를 요청한다. 스스로 등록 → 브라우저로 승인 화면 →
-// 이 컴퓨터(127.0.0.1)로 돌아온 코드 → 토큰. 승인 화면은 "소식 읽기"만 보이고, 승인하면 그 권한만 가진 기기가 생긴다.
-// 블로그가 news를 모르는 옛 버전이면 넓은 권한의 토큰을 받게 되므로, 받은 권한이 news가 아니면 버리고 멈춘다.
-export class NewsLogin {
-  static readonly SCOPE = 'news';
+// 기기 만들기 (소식 2차 1-3 · 세션 저장 2차 4): 블로그의 OAuth(PKCE)로 그 기기의 scope를 요청한다. 스스로 등록 →
+// 브라우저로 승인 화면 → 이 컴퓨터(127.0.0.1)로 돌아온 코드 → 토큰. 승인 화면은 그 권한만 보이고, 승인하면 그 권한만 가진 기기가 생긴다.
+// 블로그가 그 scope를 모르는 옛 버전이면 넓은 권한의 토큰을 받게 되므로, 받은 권한이 정확히 그것이 아니면 버리고 멈춘다.
+export class DeviceLogin {
   private static readonly WAIT_MS = 5 * 60_000;
   private static readonly TIMEOUT_MS = 10_000;
 
   constructor(
     private readonly terminal: Terminal,
     private readonly shell: Shell,
-    private readonly waitMs = NewsLogin.WAIT_MS,
+    private readonly waitMs = DeviceLogin.WAIT_MS,
   ) {}
 
-  async run(at: SiteAddress, device: string): Promise<NewsCredential> {
-    const meta = await this.json(`${at.site}/.well-known/oauth-authorization-server`);
+  async run(at: SiteAddress, device: string, kind: DeviceKind): Promise<DeviceCredential> {
+    const meta = await this.json(kind, `${at.site}/.well-known/oauth-authorization-server`);
     const endpoint = (key: string) => {
       const value = meta[key];
       if (typeof value !== 'string') throw new CliError(`블로그의 OAuth 안내에 ${key}가 없어요`);
       return value;
     };
-    const callback = await LoopbackCallback.open();
+    const callback = await LoopbackCallback.open(kind);
     try {
-      const client = await this.json(endpoint('registration_endpoint'), {
+      const client = await this.json(kind, endpoint('registration_endpoint'), {
         client_name: device,
         redirect_uris: [callback.uri],
       });
@@ -131,10 +157,12 @@ export class NewsLogin {
         code_challenge: createHash('sha256').update(verifier).digest('base64url'),
         code_challenge_method: 'S256',
         state,
-        scope: NewsLogin.SCOPE,
+        scope: kind.scope,
       }))
         url.searchParams.set(key, value);
-      this.terminal.say(`브라우저에서 소식 기기 "${device}"를 승인해 주세요 (권한: 소식 읽기만).`);
+      this.terminal.say(
+        `브라우저에서 ${kind.label} "${device}"를 승인해 주세요 (권한: ${kind.permission}).`,
+      );
       this.terminal.say(`  열리지 않으면 이 주소: ${url}`);
       await this.shell.openBrowser(url.toString());
       const back = await callback.wait(this.waitMs);
@@ -144,26 +172,26 @@ export class NewsLogin {
         throw new CliError('다른 블로그가 보낸 승인 응답이에요');
       if (back.get('error'))
         throw new CliError(
-          `소식 기기를 만들지 못했어요: ${back.get('error_description') ?? back.get('error')}`,
+          `${kind.label}를 만들지 못했어요: ${back.get('error_description') ?? back.get('error')}`,
         );
-      const token = await this.form(endpoint('token_endpoint'), {
+      const token = await this.form(kind, endpoint('token_endpoint'), {
         grant_type: 'authorization_code',
         code: back.get('code') ?? '',
         redirect_uri: callback.uri,
         client_id: clientId,
         code_verifier: verifier,
       });
-      if (token.scope !== NewsLogin.SCOPE) {
+      if (token.scope !== kind.granted) {
         const revoke =
           typeof meta.revocation_endpoint === 'string' ? meta.revocation_endpoint : null;
         if (revoke)
           for (const key of ['refresh_token', 'access_token'])
-            await this.form(revoke, { token: String(token[key] ?? '') }).catch(() => ({}));
+            await this.form(kind, revoke, { token: String(token[key] ?? '') }).catch(() => ({}));
         throw new CliError(
-          '블로그가 소식 기기를 모르는 버전이에요. 서버를 새 버전으로 올린 뒤 cairn connect를 다시 실행해 주세요',
+          `블로그가 ${kind.label}를 모르는 버전이에요. 서버를 새 버전으로 올린 뒤 cairn connect를 다시 실행해 주세요`,
         );
       }
-      return new NewsCredential(
+      return new DeviceCredential(
         at.site,
         at.mcp,
         endpoint('token_endpoint'),
@@ -179,8 +207,12 @@ export class NewsLogin {
   }
 
   /** GET(본문 없음)이나 JSON POST. OAuth 오류면 그 설명으로 CliError */
-  private async json(url: string, body?: object): Promise<Record<string, unknown>> {
-    return this.send(url, {
+  private async json(
+    kind: DeviceKind,
+    url: string,
+    body?: object,
+  ): Promise<Record<string, unknown>> {
+    return this.send(kind, url, {
       method: body ? 'POST' : 'GET',
       ...(body
         ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
@@ -189,20 +221,25 @@ export class NewsLogin {
   }
 
   private async form(
+    kind: DeviceKind,
     url: string,
     values: Record<string, string>,
   ): Promise<Record<string, unknown>> {
-    return this.send(url, {
+    return this.send(kind, url, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(values).toString(),
     });
   }
 
-  private async send(url: string, init: RequestInit): Promise<Record<string, unknown>> {
+  private async send(
+    kind: DeviceKind,
+    url: string,
+    init: RequestInit,
+  ): Promise<Record<string, unknown>> {
     let res: Response;
     try {
-      res = await fetch(url, { ...init, signal: AbortSignal.timeout(NewsLogin.TIMEOUT_MS) });
+      res = await fetch(url, { ...init, signal: AbortSignal.timeout(DeviceLogin.TIMEOUT_MS) });
     } catch (error) {
       throw new CliError(
         `블로그에 닿지 않아요: ${new URL(url).origin} (${(error as Error).message})`,
@@ -211,7 +248,7 @@ export class NewsLogin {
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
       const why = body.error_description ?? body.message ?? body.error ?? res.status;
-      throw new CliError(`소식 기기를 만들지 못했어요: ${String(why)}`);
+      throw new CliError(`${kind.label}를 만들지 못했어요: ${String(why)}`);
     }
     return body;
   }

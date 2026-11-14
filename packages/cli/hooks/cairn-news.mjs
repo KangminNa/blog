@@ -2,12 +2,13 @@
 //
 //   node cairn-news.mjs hook     UserPromptSubmit 훅: 말을 걸 때마다 새 소식을 덧붙일 맥락으로 찍는다 (1,500자까지)
 //   node cairn-news.mjs status   상태 줄: "Cairn · 진행 2 · 소식 3" (20초에 한 번만 서버에 묻는다)
-//   node cairn-news.mjs refresh  소식 기기의 토큰 갱신. 훅 · 상태 줄이 끝나 가는 토큰을 보면 따로 띄운다 (news-access.mjs)
+//   토큰 갱신은 끝나 가는 토큰을 보면 따로 띄운다 (device-access.mjs → cairn-refresh.mjs news)
 //
 // 표준 입력은 Claude Code가 주는 JSON (cwd). 지금 폴더의 git 주소로 프로젝트를 정하고, 소식 기기의 토큰으로
 // MCP agent_updates { project, after }를 부른다. 2초 안에 끝내고, 무엇이든 실패하면 훅은 아무것도 찍지 않고 0으로 끝난다
 // (사용자의 말을 막지 않는다). 소식은 AI 팀이 쓴 글이라 자료로 보이게 머리말을 붙인다. Node 내장 모듈만 쓴다.
-import { callTool, Disconnected, newsCredential, refreshNow } from './news-access.mjs';
+import { callTool, Disconnected, deviceCredential } from './device-access.mjs';
+import { readHookInput } from './hook-input.mjs';
 import {
   dropStatus,
   projectOf,
@@ -39,29 +40,6 @@ const LABELS = {
   routed: '맡음',
 };
 const RECONNECT = 'Cairn · 다시 연결 (cairn connect)';
-
-/** Claude Code가 표준 입력으로 주는 JSON. 없거나 깨졌으면 빈 것 */
-function readInput() {
-  if (process.stdin.isTTY) return Promise.resolve({});
-  return new Promise((resolve) => {
-    let raw = '';
-    const done = () => {
-      process.stdin.destroy();
-      try {
-        resolve(JSON.parse(raw));
-      } catch {
-        resolve({});
-      }
-    };
-    process.stdin.setEncoding('utf8');
-    process.stdin.on('data', (chunk) => {
-      raw += chunk;
-    });
-    process.stdin.on('end', done);
-    process.stdin.on('error', done);
-    setTimeout(done, 300).unref();
-  });
-}
 
 /** 한 줄로 펴고 max자까지. 끝에 콘솔 주소가 있으면 남긴다 (최종 답은 "앞부분 + 콘솔 주소") */
 function brief(text, max) {
@@ -102,7 +80,7 @@ function newsText(news, board, max = HOOK_MAX) {
 
 /** 이 폴더의 소식 자리: 블로그 · 프로젝트 · 열쇠 */
 function placeOf(cwd) {
-  const credential = newsCredential();
+  const credential = deviceCredential('news');
   if (!credential || credential.dead) return null;
   const remote = remoteOf(cwd);
   const project = remote ? projectOf(remote) : null;
@@ -115,6 +93,7 @@ function placeOf(cwd) {
 async function updates(place, cursor, signal) {
   const base = place.project ? { project: place.project } : {};
   const reply = await callTool(
+    'news',
     'agent_updates',
     cursor === null ? base : { ...base, after: cursor },
     signal,
@@ -122,7 +101,7 @@ async function updates(place, cursor, signal) {
   if (reply.value) return { ...reply.value, fresh: cursor === null };
   if (cursor === null || reply.refused?.code !== 'rule_violation')
     throw new Error(reply.refused?.message || '서버가 소식을 주지 않았어요');
-  const again = await callTool('agent_updates', base, signal);
+  const again = await callTool('news', 'agent_updates', base, signal);
   if (!again.value) throw new Error(again.refused?.message || '서버가 소식을 주지 않았어요');
   return { ...again.value, fresh: true };
 }
@@ -169,7 +148,7 @@ async function main() {
   // 무슨 일이 있어도 사용자의 말을 오래 붙잡지 않는다
   setTimeout(() => process.exit(0), BUDGET_MS + 500).unref();
   const mode = process.argv[2];
-  const input = await readInput();
+  const input = await readHookInput();
   const cwd = input.cwd || input.workspace?.current_dir || process.cwd();
   const signal = AbortSignal.timeout(BUDGET_MS);
   let out = '';
@@ -184,8 +163,3 @@ async function main() {
 }
 
 if (process.argv[2] === 'hook' || process.argv[2] === 'status') void main();
-else if (process.argv[2] === 'refresh')
-  refreshNow(process.argv[3] === 'force').then(
-    () => process.exit(0),
-    () => process.exit(0),
-  );

@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
 import { SiteAddress } from './cairn-site';
-import { NewsLogin } from './news-login';
+import { DeviceLogin } from './device-login';
 import { NewsSetup } from './news-setup';
 import { Shell } from './shell';
 import { Terminal } from './terminal';
@@ -49,7 +49,7 @@ const cairnDir = () => join(dir, '.cairn');
 const settings = () => JSON.parse(readFileSync(settingsFile(), 'utf8'));
 const credentials = () => JSON.parse(readFileSync(join(cairnDir(), 'credentials.json'), 'utf8'));
 const setup = () =>
-  new NewsSetup(terminal, settingsFile(), new NewsLogin(terminal, browser, 5_000), cairnDir());
+  new NewsSetup(terminal, settingsFile(), new DeviceLogin(terminal, browser, 5_000), cairnDir());
 const script = () => join(cairnDir(), 'bin', 'cairn-news.mjs');
 
 before(async () => {
@@ -62,7 +62,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'cairn-news-setup-'));
   terminal = new FakeTerminal();
   browser = new FakeBrowser();
-  blog.grantScope = 'news';
+  blog.grant = (scope) => (scope === 'collect' ? 'upload' : (scope ?? ''));
   blog.asked.length = 0;
   blog.revoked.length = 0;
 });
@@ -98,7 +98,7 @@ describe('소식 기기', () => {
   });
 
   test('블로그가 news를 모르는 버전이면 받은 토큰을 버리고 까닭을 알린다 (넓은 토큰을 두지 않는다)', async () => {
-    blog.grantScope = 'upload read_public';
+    blog.grant = () => 'upload read_public';
     await setup().run(at, true);
     assert.equal(blog.revoked.length, 2, 'access · refresh 둘 다 버린다');
     assert.equal(existsSync(join(cairnDir(), 'credentials.json')), false);
