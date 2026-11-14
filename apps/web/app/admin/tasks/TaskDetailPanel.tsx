@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react';
 import { api } from '../../_lib/client-api';
 import { useAction } from '../../_lib/use-action';
 import { useLiveValue } from '../../_lib/use-live';
+import { BrowserShots } from '../../_task/BrowserShots';
 import {
   bytes,
   CANCELLABLE,
@@ -96,6 +97,7 @@ export function TaskDetailPanel({ id }: { id: string }) {
       </section>
       <TaskResult result={t.result} />
       <Outputs taskId={t.id} outputs={t.outputs} />
+      {t.kind === 'browse' && <BrowserShots taskId={t.id} />}
       {(t.parentId || t.children.length > 0) && (
         <section className="panel" aria-labelledby="task-family">
           <h2 id="task-family">위임</h2>
