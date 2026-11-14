@@ -9,7 +9,10 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
   MCP 도구 `check_session`(`CheckSessionTool`: 올리기 전 검사, 저장하지 않음. request_id·대화 id·같은 대화의 판 수·지울 민감정보)과 `save_session`(`SaveSessionTool`),
   `search_sessions`(`SearchSessionsTool`: 제목·지금 판 본문의 키워드 찾기, pg_bigm `LIKE likequery()`라 대소문자 구분. 순서와 커서는 바뀌지 않는 세션 id)와
   `get_session`(`GetSessionTool`: 지금 판 하나). 두 읽기 도구는 `read_public`이나 `read_all` 중 하나로 열리고(`BaseTool.orScope`), 볼 수 없는 세션은 없는 세션과 똑같이 답한다.
-  관리 화면 API `api/sessions`(목록·상세·지난 판, 비공개까지 볼 수 있는 요청자만)
+  관리 화면 API `api/sessions`(목록·상세·지난 판 · 원문, 비공개까지 볼 수 있는 요청자만)
+  원문 (2차 4단계, `SessionTranscript`, `session_transcripts` 추가만): 수집 훅 · 확장이 MCP `save_transcript`(upload, `transcript.tool.ts`)로 올린다. 같은 대화 자리를 잠그고(`lockBySource`), 같은 원문은 쌓지 않고, 새 원문이면 `Session.receiveTranscript`가 원문을 쌓고 세션 노트 일을 요청한다 (`task.agentless.requested`, kind `session_note`, 대상 세션 · 판은 원문 번호, requestId `note:<세션>:<번호>`. 원문은 이벤트에 싣지 않는다). 노트가 아직 없는 세션은 `head_revision_id` NULL이고 보낸 제목을 보인다.
+  세션 노트 일을 쥔 러너만(platform `Leases`, `Session.noteWork`) MCP `read_transcript`(run)로 원문을 받고(`forPrompt`: 앞 4만 · 뒤 8만 자), `save_note`(run)로 AI의 답을 보낸다: `SessionNote.fromAnswer`가 JSON을 읽고(글 목록은 줄마다 "- ", 길면 자름) 민감정보를 지운 뒤 `Session.writeNote`가 원본 판(`actor_type` ai)으로 쌓는다. 더 새 원문의 노트가 이미 있으면(`noted_seq`) 쌓지 않는다(skipped)
+- `project/`: 프로젝트 규칙(`ProjectRule`, `project_rules`, 2차 4단계). 모으기를 끈 프로젝트의 원문은 `save_transcript`가 쌓지 않는다(skipped, 트랜잭션 전에 `ProjectRuleQuery.collects`). `api/project-rules`(주인만: 목록은 세션에 나온 프로젝트와 규칙, `PUT`은 늘 덮어쓴다)
 - `wiki/`: wiki(`Wiki` + 판 `WikiRevision`), 본문(`WikiBody`: md 원문과 `##` 제목 단위의 칸 `WikiSection`, 코드 블록 안의 `##`은 제목이 아니다).
   `api/wikis`(목록 `?q=&category=&cursor=`, 하나, 만들기, 고치기, 휴지통 `trash` · `restore` · 목록 `api/wikis/trash`, 대체 `replaces`), MCP `search_wikis` · `get_wiki`(`read_public`이나 `read_all`. `get_wiki`는 작업 토큰에 봉인된 읽기 허락(`Actor.mayRead`, 만들기 작업의 재료)이 있으면 그 wiki만 읽기 권한 없이도 연다). 읽기는 방문자도 공개 wiki까지, 쓰기는 주인만
 - `wiki-score/`: wiki 점수(docs/wiki점수.md). 식(`WikiScorePolicy`: 입력 → 점수, DB 없음)과 읽기(`WikiScoreQuery`). `api/wiki-scores`(카테고리별 순위 · 히스토리), `api/wiki-scores/:id`. 주인만.
@@ -37,12 +40,13 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
 - wiki · 카테고리의 View는 보는 사람마다 둘이다: 비공개까지 보는 요청자는 `WikiPageView` · `WikiDetailView` · `CategoryListView`, 아니면 `Public…` (`WikiQuery` · `CategoryQuery`가 고른다)
 
 ## 소유 데이터
-스키마 `vault`: node_kinds, edge_kinds, nodes, sessions, session_revisions, categories, wikis, wiki_revisions, wiki_aliases,
+스키마 `vault`: node_kinds, edge_kinds, nodes, sessions, session_revisions, session_transcripts, categories, wikis, wiki_revisions, wiki_aliases,
 edges, project_rules, graph_views, node_layout, post_marks,
 change_sets, change_ops, review_rules, changes, tidy_settings, stale_wikis
 
 ## 데이터 묶음
-- 세션: nodes(세션) + sessions + session_revisions
+- 세션: nodes(세션) + sessions + session_revisions + session_transcripts
+- 프로젝트 규칙: project_rules
 - 카테고리: nodes(카테고리) + categories
 - wiki: nodes(wiki) + wikis + wiki_revisions + wiki_aliases
 - 연결선: edges(`material`·`link`·`replaces`·`similar`)
@@ -68,6 +72,7 @@ change_sets, change_ops, review_rules, changes, tidy_settings, stale_wikis
 | `vault.change.decided` | changeSetId, seq, status |
 | `vault.change.reverted` | changeSetId, revertId |
 | `task.task.requested` | requestId(`tidy:<세션>:<판>`), kind(`tidy_session`), title, targetKind, targetId, baseVersion. task 모듈이 받는 일 요청 |
+| `task.agentless.requested` | requestId(`note:<세션>:<원문 번호>`), kind(`session_note`), title, targetKind(`session`), targetId, baseVersion(원문 번호). task가 에이전트 없이 서버의 로그인으로 돌릴 세션 노트 일 (2차 4단계). 원문은 싣지 않는다 |
 
 알리는 것 (`VaultNotices`, 7단계. platform `NoticeCatalog`에 등록, 이벤트와 같은 트랜잭션에서 생긴다):
 `vault.change.review` 검토할 제안 (묶음, `vault.change.submitted`의 status가 review일 때, 묶음 키 하나), `vault.session.saved` 세션 들어옴 (묶음, 새 세션만), `vault.wiki.stale` 지울 만한 위키 (묶음, 이벤트 없이 `WikiScoreService.notice`가 남긴다)
@@ -83,6 +88,7 @@ platform
 - 그래프를 바꾸는 쓰기는 모두 `ChangeService`를 거쳐 변경 묶음으로 남긴다 (관리 화면 편집 포함). 이 Service만 여러 데이터 묶음의 Repository를 쓴다 (객체설계 4장 예외). `TidyService`가 세션 Repository로 부르는 `noteTidyRequested` 하나는 요청 기록이라 그래프를 바꾸지 않는다
 - AI 변경의 바로 합치기·검토·거부는 `ReviewPolicy` 한 곳에서만 판단한다. 규칙을 늘릴 때는 `ReviewRule` 하위 클래스 하나
 - 민감정보는 첫 저장 전에 지운다 (판은 고칠 수 없으므로). 무늬는 platform의 `SensitivePolicy`(blog 초안과 같다). 새 종류는 `SensitivePolicy.RULES`에 한 줄, `session.test.ts`에 한 줄, `skills/cairn-save/scripts/secrets.mjs`도 함께
+- 세션 원문(`session_transcripts`)도 추가만 한다 (트리거). 원문을 다른 모듈의 표 · 이벤트에 복사하지 않는다: 세션 노트 일을 쥔 러너만 `read_transcript`로 받는다 (휴지통으로 보내도 사본이 남지 않게). 원문의 민감정보는 쌓기 전에 지운다 (올린 쪽도 지웠다). 보관 형식에는 아직 원문이 없다 (리팩토링계획 13장 다음)
 - 세션 저장은 변경 묶음이 아니라 판으로만 남는다. 같은 대화의 저장은 대화 자리를 잠가 하나씩 처리한다 (`SessionRepository.lockBySource`)
 - AI는 공개 여부를 정할 수 없다. 새 세션은 비공개 (프로젝트 규칙은 그 관리 화면이 생길 때 읽는다)
 - 사람이 고친 칸·연결(`pinned`)은 AI가 덮지 않고 검토로 남긴다. `HumanOwnedRule`은 주인이 값을 바꿔도 `review`보다 느슨해지지 않는다

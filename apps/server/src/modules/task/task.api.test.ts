@@ -873,11 +873,13 @@ describe('작업 토큰', () => {
     assert.deepEqual((await toolNames(uploader.run_token)).sort(), [
       'check_session',
       'delegate_task',
+      'keep_page',
       'post_update',
       'read_url',
       'report_round',
       'request_approval',
       'save_session',
+      'save_transcript',
     ]);
   });
 

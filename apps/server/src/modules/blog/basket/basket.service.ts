@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseService, Database, Idempotency, SensitivePolicy } from '../../platform';
+import {
+  Actor,
+  BaseService,
+  Database,
+  Idempotency,
+  RuleViolation,
+  SensitivePolicy,
+} from '../../platform';
 import { GetSessionInput, SessionQuery } from '../../vault';
 import { ReadPostInput } from '../post/post.input';
 import { PostQuery } from '../post/post.query';
@@ -32,6 +39,8 @@ export class BasketService extends BaseService {
    */
   async keep(actor: Actor, req: KeepPageInput): Promise<KeptPageView> {
     actor.assertCan(Actor.UPLOAD);
+    // 에이전트도 upload를 가질 수 있지만 소재는 사람이 고른 것만 (브라우저 확장 · 연결된 기기)
+    if (actor.kind !== 'device') throw new RuleViolation('페이지 보관은 연결된 기기에서만 해요');
     const spaceId = actor.requireSpace();
     const [note] = req.text ? this.sensitive.scrub(BasketService.PAGE_TEXT, req.text) : [null];
     return this.transaction(async (tx) => {

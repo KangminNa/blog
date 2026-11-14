@@ -15,6 +15,7 @@
 - `asset/`: 사진(`Asset`, 글 ↔ 파일 한 행), 형식 판단(`ImagePolicy`: 파일의 앞부분으로, PNG · JPEG · WebP · GIF만).
   `POST api/posts/:id/assets`(주인만, 본문이 파일 그대로), `GET api/files/:hash`. 파일은 platform의 `BlobStore`에 있다
 - `basket/`: 소재(`BasketItem`, 공간마다 기본 상자 하나를 처음 담을 때 만든다). `api/basket/items`(주인만), MCP 도구 `basket_get`(write 권한).
+  브라우저 확장의 "이 페이지 보관"은 MCP `keep_page`(upload 기기, 2차 4단계, `BasketService.keep`): 링크 소재 하나(`actor_type` device), 읽은 글은 비밀값을 지워 메모로, 같은 주소는 한 번(`duplicate`).
   지금은 세션·글·링크·메모만 담는다. 사진·파일은 소재용 올리는 길이 없어 받지 않는다
 - `page/`: 페이지(`Page` + 판, 파일 목록 `PageFiles`, 보기 표 `PageTicket`). AI가 만든 HTML 묶음을 바깥 주소(`/pages/<이름>/`)로 내보낸다.
   만들기 작업이 끝나면 `PageBuiltHandler`(`task.page.built`) → `PageService.built`: 페이지가 없으면 만들고(이름은 `Page.nameOf(title)`, 겹치면 번호) 판을 붙여 그 판을 보이게 한다.
@@ -74,7 +75,7 @@ platform, vault(Query만, 읽기 전용)
 - 격리된 페이지 안에서는 쿠키가 실리지 않는다. 비공개 페이지의 딸린 파일은 보기 표(`PageTicket`, 서버 키로 봉인, 30분, 그 페이지 하나)가 든 주소로 받는다. 표 주소는 `no-referrer`로 밖에 실리지 않게 한다 (격리된 페이지는 애초에 Referer를 보내지 않는다. 브라우저로 확인. 머리글은 격리를 모르는 브라우저에 대비해 둔 것이다)
 - 판(page_revisions)은 추가만 한다. 되돌리기는 `current_seq`를 옮기는 것이다. 판이 가리키는 파일은 `BlobStore.registerUse`(`PageQuery.usedBlobs`)로 지켜서, 결과물을 지워도 페이지는 남는다
 - SVG는 스크립트를 담을 수 있어 받지 않는다. 형식은 요청 머리글이 아니라 파일의 앞부분으로만 정한다
-- 소재에는 비공개 자료가 담긴다. REST는 주인만(`assertOwner`, write 권한 기기도 안 된다), MCP는 write 권한으로만 읽는다. 링크는 http·https만
+- 소재에는 비공개 자료가 담긴다. REST는 주인만(`assertOwner`, write 권한 기기도 안 된다), MCP는 write 권한으로만 읽는다. 기기가 담는 길은 `keep_page` 하나(upload, 링크만). 링크는 http·https만
 - 세션·글을 담을 때는 트랜잭션을 열기 전에 Query로 있는지 확인한다
 - 방문자는 공간을 모른다: MVP는 공간 하나라 방문자 읽기는 공간으로 거르지 않는다 (공간이 여럿이 되면 Guard가 주소로 정한다)
 

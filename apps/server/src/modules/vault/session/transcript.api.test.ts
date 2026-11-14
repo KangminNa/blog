@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, beforeEach, describe, test } from 'node:test';
+import { after, before, describe, test } from 'node:test';
 import { ApiClient, type ApiResult, type TestUser } from '../../../testing/api-client';
-import { Database, OutboxWorker } from '../../platform';
+import { OutboxWorker } from '../../platform';
 
 // 모으기 (2차 4단계 · 서브나 8장): 수집 훅 · 확장이 원문을 올리면(save_transcript) 노트 없는 세션이 생기고,
 // 서버 러너가 세션 노트 일을 빌려 원문을 받고(read_transcript) AI의 답(JSON)을 보내면(save_note) 노트의 판이 된다.
@@ -13,7 +13,6 @@ type Json = Record<string, any>;
 
 let api: ApiClient;
 let owner: TestUser;
-let db: Database;
 let runner: string;
 let otherRunner: string;
 let collector: string;
@@ -80,7 +79,6 @@ const NOTE = JSON.stringify({
 before(async () => {
   api = await ApiClient.start();
   owner = await api.signIn();
-  db = api.service(Database);
   const { version } = (await api.get('/api/space')).json() as { version: number };
   ok(
     await api.request('PUT', '/api/space', owner, {
@@ -96,8 +94,8 @@ before(async () => {
         201,
       ).token,
     );
-  runner = await made('모으기 러너');
-  otherRunner = await made('다른 러너');
+  runner = await made(`모으기 러너 ${randomUUID().slice(0, 6)}`);
+  otherRunner = await made(`모으기 다른 러너 ${randomUUID().slice(0, 6)}`);
   ok(
     await api.request('PUT', '/api/ai/claude/token', owner, {
       token: `sk-ant-oat01-${randomUUID()}`,
@@ -106,14 +104,6 @@ before(async () => {
   collector = await api.connectDevice(owner, '노트북 · 세션 저장', 'collect');
 });
 after(() => api.close());
-
-/** 이 시험의 일만 빌려 가게 앞 시험이 남긴 일을 치운다 */
-beforeEach(async () => {
-  await drain();
-  await db.sql`
-    UPDATE task.tasks SET status = 'cancelled', lease_until = NULL, wait_reason = NULL
-    WHERE status IN ('queued', 'running', 'waiting')`;
-});
 
 describe('원문 올리기 (save_transcript)', () => {
   test('원문이 오면 노트 없는 세션 · 원문 1번이 생긴다. 비밀값은 지우고, 같은 원문은 쌓지 않는다', async () => {

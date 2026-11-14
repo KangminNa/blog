@@ -391,7 +391,12 @@ describe('세션 읽기 도구 (search_sessions · get_session)', () => {
     test('read_public이나 read_all 하나만 있어도 보이고, 둘 다 없으면 목록에 없고 불러도 forbidden', async () => {
       assert.deepEqual(await toolNames(publicReader), READ_TOOLS);
       assert.deepEqual(await toolNames(allReader), READ_TOOLS);
-      assert.deepEqual(await toolNames(uploadOnly), ['check_session', 'save_session']);
+      assert.deepEqual(await toolNames(uploadOnly), [
+        'check_session',
+        'save_session',
+        'save_transcript',
+        'keep_page',
+      ]);
       const denied = await Promise.all([
         read(uploadOnly, 'search_sessions', { query: '세션' }),
         read(uploadOnly, 'get_session', { session_id: MISSING }),

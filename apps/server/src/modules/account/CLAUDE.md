@@ -12,6 +12,7 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
   `OAuthController`(`/.well-known/*`, `/oauth/*`: 표준 경로라 /api 아래가 아님), `DeviceController`(`api/connect` 승인 화면, `api/devices` 기기 화면)
 - 기기 권한 `delegate`(에이전트에게 맡기기, 2026-11-14): 관리자가 켠다. 그 기기의 AI 도구가 task의 MCP `ask_agent`로 서버 팀에 일을 맡기고 `agent_updates`로 그 대화의 소식 · 답을 읽는다 (스킬 `cairn-team`) (칸 기기는 받지 못한다: `devices_sandbox_only`)
 - 기기 권한 `news`(소식 읽기, 2차 1-3): `cairn connect`가 OAuth 승인 요청에 `scope=news`를 실어 만드는 소식 기기만 갖는다 (내 컴퓨터의 훅 · 상태 줄이 task의 MCP `agent_updates`로 대화의 소식을 읽는다). 요청한 권한은 승인 요청(`ConsentInput`) → 승인 코드(`device_draft.scopes`) → `Device.connect`로 간다. 규칙은 `AuthorizationPolicy`: `news`만 보고, 다른 권한과 섞이거나 앱의 주소면 `invalid_scope`, `news`가 없으면 지금처럼 기본 권한
+- 기기 모양 (2차 4단계): 앱이 승인 요청의 `scope`에 이름 하나를 실어 기기를 고른다 (`Device.PROFILES`): `news` → `news`, `collect` → `upload`(세션 저장 기기, `cairn connect`의 `SessionEnd` 훅), `extension` → `upload` · `delegate` · `inbox`(브라우저 확장). 섞어 요청하지 못하고, `news` · `collect`는 이 컴퓨터의 주소만, `extension`은 확장의 주소(`https://<확장 id a~p 32자>.chromiumapp.org/`, `OAuthClient.isExtension`)만, 확장의 주소는 `extension`만 요청한다 (`AuthorizationPolicy`). 승인 화면은 그 모양의 권한을 보인다 (`Device.scopesFor`). 권한 `inbox`(결재 · 질문 보기, task의 MCP `inbox`)는 관리자도 기기 메뉴에서 줄 수 있다
 - 러너는 OAuth 없이 콘솔에서 만든다 (`POST api/devices/runner`, `Device.forRunner`). 권한은 `run` 하나, 토큰은 응답에 한 번
 - 서버 러너는 스스로 연결한다 (`POST api/devices/server-runner`, `Device.forServerRunner`): 서버 키에서 만든 연결 값(`ServerRunnerPolicy`)을 서버가 시작할 때 볼륨에 쓰고(`ServerRunnerGateway`, `CAIRN_RUNNER_PAIRING_FILE`), 러너가 그 값을 내밀면 토큰을 준다
 - 코드 러너 칸도 같은 길로 붙는다 (`POST api/devices/code-runner { secret, slot }`, `Device.forCodeRunner`, docs/코드작업.md). 연결 값은 서버 러너와 다르고(`codeSecret`, 파일 `CAIRN_CODE_PAIRING_FILE`, 0640: 칸의 러너는 root지만 남의 파일을 읽는 권한이 없어 node 그룹으로 읽는다) 칸마다 기기 하나("코드 러너 <칸>"). 권한은 `run` · `sandbox`로 정해져 있다
@@ -58,7 +59,7 @@ platform
 - OAuth 오류는 `OAuthError`({ error, error_description }) 모양으로. AI 도구는 이 모양만 읽는다
 - 갱신 토큰은 한 번만 쓴다. 이미 쓴 것이 다시 오면 기기를 끊는다 (도난 감지)
 - 사이트 주소는 https만 (`localhost` · `127.0.0.1` · `[::1]` · `*.localhost`만 http도)
-- 돌려보낼 주소(redirect_uri)는 이 컴퓨터(localhost · 127.0.0.1 · [::1])와, 주인이 "앱 연결 허용"을 켰을 때만 claude.ai · chatgpt.com의 정해진 콜백 주소(`OAuthClient`의 목록). 남이 보낸 승인 링크를 눌러도 열쇠는 내 컴퓨터나 직접 켠 앱으로만 간다. 앱의 연결이면 승인 화면이 앱 이름(`ConsentView.app`)과 경고를 보인다. 승인 응답에는 `iss`(RFC 9207)
+- 돌려보낼 주소(redirect_uri)는 이 컴퓨터(localhost · 127.0.0.1 · [::1]), 브라우저 확장의 주소(브라우저가 그 확장에게만 넘긴다, 2차 4단계)와, 주인이 "앱 연결 허용"을 켰을 때만 claude.ai · chatgpt.com의 정해진 콜백 주소(`OAuthClient`의 목록). 남이 보낸 승인 링크를 눌러도 열쇠는 내 컴퓨터나 직접 켠 앱으로만 간다. 앱의 연결이면 승인 화면이 앱 이름(`ConsentView.app`)과 경고를 보인다. 승인 응답에는 `iss`(RFC 9207)
 - 스스로 등록(`/oauth/register`)은 한 곳(IPv4 하나, IPv6는 /64, `AttemptLimiter.place`)에서 1시간 20번. 하루가 지나도록 토큰을 받지 않은 등록은 새 등록 때 지운다
 - 서버 러너: 공간마다 살아 있는 것은 하나 (살아 있는 기기 이름의 유일 인덱스, 이름 "서버 러너"). 연결할 때마다 같은 기기의 기기 토큰을 모두 막고 새로 준다. 주인(user)이 없다. 연결은 한 곳에서 1시간 30번, 설치 전에는 409. 연결 값과 토큰은 로그·응답 밖으로 내보내지 않는다 (토큰은 연결 응답에 한 번)
 - 소식 기기: `news`는 다른 권한과 함께 두지 않는다 (`Device.edit`이 권한 바꾸기를 막고, `ALL_SCOPES`에 없어 다른 기기에 줄 수 없고, DB CHECK `devices_news_only`). 안내 문서의 `scopes_supported`에 넣지 않는다: 그 목록을 통째로 요청하는 AI 도구가 섞인 요청으로 막히지 않게

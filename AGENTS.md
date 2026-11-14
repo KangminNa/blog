@@ -17,8 +17,9 @@ apps/server/   NestJS. src/modules/<모듈>/ (platform · account · vault · bl
 apps/web/      Next.js (App Router). app/(blog)/ 공개 화면, app/admin/<메뉴>/ 콘솔, app/_task/ 작업·결재·에이전트 공용
 apps/runner/   러너. 서버에서 일을 빌려 AI CLI로 처리한다. MCP로만 서버와 이야기하고 DB에 닿지 않는다 (서버 러너의 첫 연결만 REST)
 apps/egress/   코드 러너 칸의 나가는 프록시. 허용 목록(egress/allow.txt)의 호스트로만 HTTPS 터널을 연다 (docs/코드작업.md)
+apps/extension/ 브라우저 확장 (Chrome MV3, 번들러 없음). 웹 AI 대화 모으기 · 페이지 보관 · 맡기기 · 결재 배지. OAuth scope=extension으로 연결하고 MCP로만 서버와 이야기한다
 db/            DB 이미지(Postgres 17 + pgvector + pg_bigm)와 SQL 마이그레이션(dbmate)
-packages/cli/  연결 명령 cairn connect · status (스킬 넣기 + MCP 등록 + 로그인). 배포 전에는 pnpm cairn
+packages/cli/  연결 명령 cairn connect · status (스킬 넣기 + MCP 등록 + 로그인 + 소식 · 세션 저장 훅). 배포 전에는 pnpm cairn
 plugins/       플러그인 (comments-giscus · sync-github · login-github · office · browser-tabs · code-github). 규칙은 plugins/CLAUDE.md, 객체설계 12장
 scripts/       모듈 경계 검사, 구조 검사, 규칙 검사(+ 예외 목록 ratchet.json), 묶음 생성기(templates/), 플러그인 화면 맞추기
 skills/        AI 도구와 러너의 스킬 (cairn-save · cairn-recall · cairn-team, 러너 전용 cairn-write · cairn-tidy · cairn-browse · cairn-code · cairn-make, 지시문 틀 cairn-runner). 도구 입력 모양을 바꾸면 스킬도 함께 고친다
