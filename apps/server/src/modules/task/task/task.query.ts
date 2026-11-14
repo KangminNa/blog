@@ -108,7 +108,15 @@ export class TaskQuery extends BaseQuery {
     const row = await this.row(tasks, { space_id: actor.spaceId, id: taskId });
     if (!row) throw new NotFound('작업을 찾을 수 없어요');
     Task.restore(row).assertHeldBy(actor.id, new Date());
-    return new LeasedWork(row.id, row.kind, Task.shownPayload(row.kind, row.payload));
+    const payload = Task.shownPayload(row.kind, row.payload);
+    return new LeasedWork(
+      row.id,
+      row.kind,
+      payload,
+      row.target_kind,
+      row.target_id,
+      row.base_version,
+    );
   }
 
   /** 이 러너가 임대를 쥔 작업. 진행 중이 아니거나 · 다른 러너의 것이거나 · 임대가 끝났으면 RuleViolation */

@@ -14,7 +14,7 @@ import { SigninTerminal } from './signin-terminal';
 //   ownLogins    러너가 스스로 가진 로그인 (환경 변수의 Claude 토큰)
 //   browser      서버 브라우저에 붙어 있는가: 서버 러너(연결 값 파일)이고 CAIRN_BROWSER_URL이 있을 때만.
 //                내 컴퓨터 러너의 브라우저는 탭 읽기에만 쓴다 (평소 쓰는 계정에 가까워 AI에게 맡기지 않는다).
-//                브라우저 작업이 도는 동안은 알리지 않는다 (withoutBrowser: 한 번에 하나)
+//                사이트 일(대상이 있는 브라우저 작업)이 도는 동안은 알리지 않는다 (withoutBrowser: 한 번에 하나, 둘러보기는 여럿)
 //   runnerBuild  러너의 빌드 (이미지의 CAIRN_RUNNER_BUILD, 내 컴퓨터는 git 커밋): 어느 단락을 넣는지(Job.prompt)의 판이라 실행 기록에 남는다.
 //                지시문의 글은 러너 스킬 cairn-runner의 틀이고 그 판은 서버가 따로 남긴다
 //   cliVersions  도구마다 CLI 버전 (--version). 실행 기록에 남는다
@@ -97,7 +97,7 @@ export class RunnerAbility {
     }
   }
 
-  /** 브라우저 작업을 받지 않는 같은 능력 (브라우저 작업이 이미 도는 동안 빌릴 때) */
+  /** 브라우저 작업을 받지 않는 같은 능력 (사이트 일이 이미 도는 동안 빌릴 때) */
   withoutBrowser(): RunnerAbility {
     return new RunnerAbility(
       this.tools,

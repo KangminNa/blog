@@ -4,6 +4,7 @@ import { type FormEvent, useId, useRef, useState } from 'react';
 import { SCOPE_LABELS } from '../../_lib/types';
 import {
   actionLabel,
+  LOGIN_SITE,
   MERGE_PULL,
   PUBLISH_POST,
   PUBLISH_SITE,
@@ -18,7 +19,9 @@ import { RunnerField } from './RunnerField';
 /** 에이전트에게 줄 수 있는 권한. run은 러너의 것이라 없다 (서버의 Agent.SCOPES와 맞춘다) */
 const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write', 'browse', 'code', 'make'];
 /** 고를 수 있는 결재 동작: 승인 뒤 실행하는 모듈이 있는 것만. 없으면 작업이 끝나지 않는다. 한도 변경은 서버만 올린다 */
-const ACTIONS = [PUBLISH_POST, PUBLISH_SITE, MERGE_PULL];
+const ACTIONS = [PUBLISH_POST, PUBLISH_SITE, LOGIN_SITE, MERGE_PULL];
+/** 브라우저 사용을 켜면 함께 켜는 결재 동작: 러너가 이 에이전트의 이름으로 클릭 · 로그인 결재를 올린다 */
+const BROWSE_ACTIONS = [PUBLISH_SITE, LOGIN_SITE];
 
 function toggled(list: readonly string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -249,7 +252,14 @@ export function AgentForm({
             <input
               type="checkbox"
               checked={scopes.includes(s)}
-              onChange={() => change(() => setScopes(toggled(scopes, s)))}
+              onChange={() =>
+                change(() => {
+                  const next = toggled(scopes, s);
+                  setScopes(next);
+                  if (s === 'browse' && next.includes(s))
+                    setActions([...new Set([...actions, ...BROWSE_ACTIONS])]);
+                })
+              }
             />
             {SCOPE_LABELS[s]}
           </label>

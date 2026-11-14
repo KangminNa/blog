@@ -16,10 +16,24 @@
   "CommandLineFlagSecurityWarningsEnabled": false,
   "URLBlocklist": [
     "file://*",
-    "chrome://policy"
+    "chrome://policy",
+    "localhost",
+    "127.0.0.1",
+    "[::1]",
+    "0.0.0.0",
+    "169.254.169.254",
+    "metadata.google.internal",
+    "cairn-server",
+    "server",
+    "browser",
+    "db",
+    "web",
+    "worker",
+    "runner"
   ],
   "ExtensionInstallBlocklist": [
     "*"
   ],
-  "DefaultCookiesSetting": 1
+  "DefaultCookiesSetting": 1,
+  "WebRtcIPHandling": "disable_non_proxied_udp"
 }

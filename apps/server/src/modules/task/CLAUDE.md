@@ -51,7 +51,7 @@
 - 러너: runners (러너 기기마다 한 줄, 처음 닿을 때 생긴다)
 
 ## 공개 API (`index.ts`)
-`TaskModule`, `TaskTools`(mcp 모듈이 모아서 연다), `TaskQuery`(`isLive`: mcp 입구가 호출마다 작업 토큰이 살아 있는지 묻는다). 기능 패키지에게는 platform의 `Leases`에 `TaskQuery.leasedWork`를 등록해 "이 러너가 지금 쥔 작업"(id · 종류 · 보인 입력)을 알려 준다 (`work.leased`, code-github)
+`TaskModule`, `TaskTools`(mcp 모듈이 모아서 연다), `TaskQuery`(`isLive`: mcp 입구가 호출마다 작업 토큰이 살아 있는지 묻는다). 기능 패키지에게는 platform의 `Leases`에 `TaskQuery.leasedWork`를 등록해 "이 러너가 지금 쥔 작업"(id · 종류 · 보인 입력 · 대상)을 알려 준다 (`work.leased`, code-github · browser-tabs의 사이트 · 클릭)
 
 ## 내보내는 이벤트
 | 이벤트 | 내용 |
@@ -63,7 +63,7 @@
 | `task.goal_run.changed` | `goalRunId, goalId, status, round`. 실행의 상태 · 회차가 바뀔 때마다 (화면이 다시 읽는다. 받는 모듈은 없다) |
 | `task.approval.requested` · `granted` · `rejected` · `revision_requested` · `cancelled` | `approvalId, taskId, agentId, action, targetKind, targetId, targetVersion, decidedBy, note, chatId`(대화의 결재면 그 대화, 2차 2단계) |
 
-`task.approval.granted`를 받은 모듈이 동작을 실행한다. 받는 모듈이 `CoreWorkers.expect`도 적는다 (지금은 blog의 `blog.post.publish`). 실행하는 모듈이 없는 동작은 승인해도 작업이 끝나지 않는다. 기능 패키지의 동작도 같다: `browser.site.publish`는 `browser-tabs`가 받아 "주인이 직접 발행함"을 결과로 남긴다 (패키지가 꺼져 있으면 끝나지 않으니 작업을 취소한다).
+`task.approval.granted`를 받은 모듈이 동작을 실행한다. 받는 모듈이 `CoreWorkers.expect`도 적는다 (지금은 blog의 `blog.post.publish`). 실행하는 모듈이 없는 동작은 승인해도 작업이 끝나지 않는다. 기능 패키지의 동작도 같다: `browser.site.publish`(대상 `browser_click`)는 `browser-tabs`가 받아 붙잡은 러너가 같은 버튼인지 보고 누른 뒤 결과를 남긴다. `browser.site.login`(대상 `browser_site`)은 "로그인했어요"(수정 요청)로 작업을 다시 대기열로 돌리는 결재라 승인은 실패로 끝난다 (패키지가 꺼져 있으면 끝나지 않으니 작업을 취소한다). 두 결재는 AI가 아니라 러너가 작업 토큰으로 올린다.
 변경 신호(SSE)만 있고 이벤트가 아닌 것: `task.event.added` (실행 기록이 쌓임, id는 작업), `task.usage.changed` (구독 사용률이 옴, id는 도구).
 
 ## 알리는 것 (`TaskNotices`, 7단계)
@@ -100,7 +100,7 @@ platform
 - 위임: `waiting`에는 늘 기다리는 것(`wait_reason`: approval · subtasks)이 있다 (DB CHECK). 결재 승인 · 고쳐 달라는 말은 결재를 기다리는 작업에만, 깨우기는 하위 작업을 기다리는 작업에만. 받는 쪽 · 종류 · 한도는 `Task`가 막고 LLM에게 맡기지 않는다
 - 한도 올리기 결재는 서버만 올린다. 승인은 같은 트랜잭션에서 한도를 두 배로 하고 에이전트를 다시 움직인다
 - 쉬기(`Agent.holds`)는 저장하지 않고 그때마다 계산한다. 5시간 토큰이나 구독 사용률에 닿으면 새 일만 안 빌려주고, 달리는 작업은 끝까지 간다. 결재도 `paused`도 없다: `report_progress`가 `paused: true`를 돌려주면 러너가 작업을 돌려주므로 쉬기에는 쓰지 않는다
-- 일의 종류마다 필요한 권한은 `Task.SCOPES`에 적는다 (`tidy_session` → `tidy`, `browse` → `browse`, 스킬은 `Task.SKILLS`: `browse` → `cairn-browse`). `browse`는 `read_all` · `write`와 한 에이전트에 함께 두지 않는다 (`Agent` 규칙 + DB CHECK. `write`도 임시 글 · 소재를 연다). `lockNext`가 SQL에서 거르므로 빌렸다가 돌려주지 않고, 맡을 에이전트가 없는 일은 대기열에 남아 뒤의 일을 막지 않는다
+- 일의 종류마다 필요한 권한은 `Task.SCOPES`에 적는다 (`tidy_session` → `tidy`, `browse` → `browse`, 스킬은 `Task.SKILLS`: `browse` → `cairn-browse`). `browse`는 `read_all` · `write`와 한 에이전트에 함께 두지 않는다 (`Agent` 규칙 + DB CHECK. `write`도 임시 글 · 소재를 연다). `browse`도 위임된다 (2차 3단계, `DELEGABLE`): 대상 `browser_site`면 사이트 일, 없으면 둘러보기. 맡기는 에이전트도 `read_all` · `write`가 없어야 한다 (`DelegationPolicy`: 지시문이 브라우저 담당의 재료라 비공개가 바깥 사이트로 갈 수 있다). 받는 쪽 · 종류 · 권한 · 맡기는 쪽의 판단은 `DelegationPolicy` 한 곳이다. `lockNext`가 SQL에서 거르므로 빌렸다가 돌려주지 않고, 맡을 에이전트가 없는 일은 대기열에 남아 뒤의 일을 막지 않는다
 - 코드 작업(`code` → 권한 `code`, docs/코드작업.md)은 셸이 있는 코드 러너 칸에서만 돈다 (`Task.SANDBOXED`). 칸인지는 러너가 알리는 값이 아니라 기기의 권한 `sandbox`로 정한다 (`Actor.inSandbox`: 내 컴퓨터 러너가 칸이라고 말해도 받지 못하게). 칸은 `SANDBOXED`만, 다른 러너는 `SANDBOXED`가 아닌 일만 받는다 (`lockNext`). `code`는 `read_all` · `write`와 한 에이전트에 함께 두지 않는다 (`Agent` 규칙 + DB CHECK `agents_code_not_private`). 스킬은 `cairn-code`. 위임(`DELEGABLE`에 `code`)은 code 작업에서만: 하위 작업은 위 작업의 저장소 · 명령을 물려받고 `paths`만 위 작업의 경로 안으로 좁힌다. 형제(아직 안 끝난 것 포함)끼리 경로가 겹치면 거절 (`CodeScope`)
 - 만들기 작업(`make` → 권한 `make`, 결과물 2차)도 칸에서만 돈다 (`SANDBOXED`). `make`도 `read_all` · `write`와 함께 두지 않는다 (규칙 + DB CHECK `agents_make_not_private`). 스킬은 `cairn-make`. 위임도 된다 (2026-11-14, 결과물 팀): 팀장이 바로 아래 make 팀원에게 `delegate_task`(kind make)로 맡기면 재료 없이 지시만 간다 (`payload.make`를 물려주지 않는다: 주인이 고른 비공개가 AI가 쓴 지시를 따라 칸으로 흘러가지 않게). 페이지 주문(`payload.page`)도 위임에는 없다. 하위 작업이 끝나 깨어난 위 작업에는 그 작업의 결과물(`OutputQuery.madeBy`)이 `subtask_results[].outputs`로 실린다.
   결과를 페이지로 내보내는 주문은 `payload.page`(`PageOrder`, 만들기 일에만): `done`으로 끝낼 때 그 실행의 결과물에 `index.html`이 없으면 작업을 실패로 끝내고, 있으면 `task.page.built`를 남긴다. 페이지가 무엇인지는 blog가 안다 (task는 파일 목록만 싣는다).

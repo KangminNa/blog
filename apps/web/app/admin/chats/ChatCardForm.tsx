@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { actionLabel, DELIVER_LABELS } from '../../_task/labels';
 import { OutputOpen } from '../../_task/parts';
@@ -68,7 +69,14 @@ export function ChatCardForm({
                 </small>
               </span>
             </label>
-            {item.kind === 'output' && <OutputOpen id={item.id} name={item.label} />}
+            {item.kind === 'output' ? (
+              <OutputOpen id={item.id} name={item.label} />
+            ) : (
+              // 대상의 실제 내용(글 · 클릭의 페이지 · 버튼 · 화면 · PR)은 결재 화면이 대상 모듈에서 읽어 보인다
+              <Link className="ghost" href={`/admin/approvals/${item.id}`}>
+                자세히
+              </Link>
+            )}
           </li>
         ))}
       </ul>

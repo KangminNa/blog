@@ -1,3 +1,5 @@
+import { ApprovedClick, BrowseJob } from './browse-job';
+import type { HeldButton } from './browser-page';
 import { Job } from './job';
 import type { Json } from './json';
 import type { McpClient } from './mcp-client';
@@ -17,7 +19,7 @@ export class SigninReply {
   }
 }
 
-// 러너가 쓰는 MCP 도구 (코어 여덟 개 + 기능 패키지 code-github 둘). 모양의 원본은 docs/API설계.md 4장이다.
+// 러너가 쓰는 MCP 도구 (코어 + 기능 패키지 code-github · browser-tabs). 모양의 원본은 docs/API설계.md 4장이다.
 export class CairnServer {
   constructor(private readonly mcp: McpClient) {}
 
@@ -215,6 +217,83 @@ export class CairnServer {
       note: approval.note,
     });
     return body.text('approval_id');
+  }
+
+  /** browser-tabs: 빌린 browse 작업이 어디서 도는지 (사이트 · 둘러보기). 패키지가 꺼져 있거나 사이트가 없으면 ToolRefused */
+  async browserJob(taskId: string, stop?: AbortSignal): Promise<BrowseJob> {
+    return BrowseJob.from(await this.mcp.call('browser_job', { task_id: taskId }, 0, stop));
+  }
+
+  /** browser-tabs: AI가 단계마다 찍은 화면 하나 (작업마다 30장, 넘으면 ToolRefused) */
+  async saveShot(
+    taskId: string,
+    shot: { url: string; title: string; image: string },
+  ): Promise<void> {
+    await this.mcp.call('browser_shot_save', { task_id: taskId, ...shot });
+  }
+
+  /** browser-tabs: 로그인 화면을 만났다. 로그인 결재의 대상(사이트와 판)을 돌려준다 */
+  async loginNeeded(
+    taskId: string,
+    page: { url: string; title: string; image: string | null },
+  ): Promise<{ siteId: string; siteVersion: number }> {
+    const body = await this.mcp.call('browser_login_needed', {
+      task_id: taskId,
+      page_url: page.url,
+      page_title: page.title,
+      ...(page.image ? { image: page.image } : {}),
+    });
+    return { siteId: body.text('site_id'), siteVersion: body.number('site_version') };
+  }
+
+  /** browser-tabs: 다시 찾은 마지막 버튼을 붙잡는다. 클릭 결재의 대상(클릭과 판)을 돌려준다 */
+  async holdClick(
+    taskId: string,
+    held: HeldButton,
+    note: string | null,
+  ): Promise<{ clickId: string; version: number }> {
+    const body = await this.mcp.call('browser_click_hold', {
+      task_id: taskId,
+      tab_id: held.tab.id,
+      page_url: held.pageUrl,
+      page_title: held.tab.title.slice(0, 300),
+      role: held.button.role,
+      name: held.button.name,
+      nth: held.button.nth,
+      box: held.box,
+      fingerprint: held.fingerprint,
+      ...(note ? { note } : {}),
+      image: held.image,
+    });
+    return { clickId: body.text('click_id'), version: body.number('version') };
+  }
+
+  /** browser-tabs: 이 러너가 누를 승인된 클릭 하나 (없으면 null). 패키지가 꺼져 있으면 ToolRefused */
+  async nextClick(stop: AbortSignal): Promise<ApprovedClick | null> {
+    const body = await this.mcp.call('browser_click_next', {}, 0, stop);
+    return body.field('click') ? ApprovedClick.from(body.child('click')) : null;
+  }
+
+  /** browser-tabs: 누른 결과(clicked) 또는 누르지 않은 까닭(changed)과 그때의 화면 */
+  async saveClick(
+    click: ApprovedClick,
+    result: {
+      outcome: string;
+      reason: string | null;
+      afterUrl: string | null;
+      image: string | null;
+    },
+  ): Promise<void> {
+    await this.mcp.call('browser_click_save', {
+      id: click.id,
+      version: click.version,
+      outcome: result.outcome,
+      ...(result.reason ? { reason: result.reason.slice(0, 500) } : {}),
+      ...(result.afterUrl && /^https?:\/\//i.test(result.afterUrl)
+        ? { after_url: result.afterUrl.slice(0, 2000) }
+        : {}),
+      ...(result.image ? { image: result.image } : {}),
+    });
   }
 
   /** 읽어 달라는 브라우저 탭 주소들 (browser-tabs 패키지). 패키지가 꺼져 있으면 도구가 없어 ToolRefused */

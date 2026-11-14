@@ -56,7 +56,7 @@ describe('에이전트 팀 템플릿', () => {
       ['contest', 'briefing', 'planning', 'output', 'data', 'blog', 'code'],
     );
     const contest = teams[0] as { needs: string[]; members: Json[] };
-    assert.deepEqual(contest.needs, ['code-runner']);
+    assert.deepEqual(contest.needs, ['code-runner', 'browser']);
     assert.deepEqual(
       contest.members.map((m) => [m.name, m.reportsTo]),
       [
@@ -65,25 +65,36 @@ describe('에이전트 팀 템플릿', () => {
         ['대회 분석가', 'lead'],
         ['대회 검토자', 'lead'],
         ['대회 제작자', 'lead'],
+        ['대회 브라우저 담당', 'lead'],
       ],
     );
     for (const team of teams)
       for (const m of team.members as Json[]) assert.ok(String(m.role).length > 20, String(m.name));
   });
 
-  test('대회 팀: 한 번에 다섯, 모두 팀장 아래 (제작자도: 만들기를 위임받는다). 같은 requestId는 처음 만든 팀', async () => {
+  test('대회 팀: 한 번에 여섯, 모두 팀장 아래 (제작자 · 브라우저 담당도: 위임받는다). 같은 requestId는 처음 만든 팀', async () => {
     const requestId = randomUUID();
     const first = ok(
       await api.request('POST', '/api/agent-teams', owner, { requestId, team: 'contest' }),
       201,
     ).agents as Json[];
-    assert.equal(first.length, 5);
+    assert.equal(first.length, 6);
     const lead = first[0] as Json;
     assert.deepEqual([lead.name, lead.reportsTo, lead.tool], ['대회 팀장', null, 'claude']);
     for (const m of first.slice(1)) assert.equal(m.reportsTo, lead.id, String(m.name));
     const maker = first[4] as Json;
     assert.deepEqual([maker.name, maker.scopes], ['대회 제작자', ['make']]);
     assert.deepEqual(lead.scopes, ['read_public'], '조사하는 에이전트는 공개 읽기만');
+    const browser = first[5] as Json;
+    assert.deepEqual(
+      [browser.name, browser.scopes, browser.approvalActions],
+      [
+        '대회 브라우저 담당',
+        ['read_public', 'browse'],
+        ['browser.site.publish', 'browser.site.login'],
+      ],
+      '브라우저 담당: 비공개 없이, 클릭 · 로그인 결재는 러너가 이 이름으로 올린다',
+    );
 
     const count = async () =>
       ((ok(await api.get('/api/agents', owner)).agents as Json[]) ?? []).length;

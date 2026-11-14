@@ -1,8 +1,8 @@
 import { lookup } from 'node:dns/promises';
 import { BaseGateway } from '../../../apps/server/src/plugin-api';
 
-// 서버 브라우저의 화면을 콘솔로 중계하는 길 (CDP, 2026-11-14). neko의 영상(WebRTC · UDP 52000) 없이 HTTPS만으로 보고 누른다.
-// 브라우저 컨테이너 안의 중계(socat 9223 → Chrome 127.0.0.1:9222)는 서버와 브라우저만 붙는 망(browser)에서만 닿는다
+// 서버 브라우저의 화면을 콘솔로 중계하는 길 (CDP, 2026-11-14). 영상 없이 HTTPS만으로 보고 누르고, 사이트 세션을 지운다.
+// 브라우저 컨테이너 안의 중계(cdp-relay.py 9223 → Chrome 127.0.0.1:9222)는 서버와 브라우저만 붙는 망(browser)에서만 닿는다
 // (docker-compose.browser.yml). Chrome은 Host가 이름이면 거절해서, 이름을 IP로 풀어 그 주소로 붙는다.
 // 부를 때마다 탭 하나에 붙었다가 닫는다: 탭에 AI의 Playwright가 붙어 있어도 함께 붙을 수 있다.
 // 입력한 글자(로그인의 비밀번호일 수 있다) · 주소 · 화면은 어디에도 남기지 않는다.
@@ -51,6 +51,9 @@ export class BrowserScreenGateway extends BaseGateway {
   /** 콘솔에 보여 줄 탭 수 */
   private static readonly TABS_MAX = 20;
   private static readonly JPEG_QUALITY = 60;
+  /** 세션 지우기에서 지우는 저장소 (쿠키는 따로: 그 호스트로 가는 것만) */
+  private static readonly STORAGE_TYPES =
+    'local_storage,indexeddb,websql,cache_storage,service_workers,file_systems,shared_storage';
 
   protected readonly name = '서버 브라우저';
   protected override readonly timeoutMs = 8_000;
@@ -109,6 +112,52 @@ export class BrowserScreenGateway extends BaseGateway {
       if (!tabs.some((t) => t.id === tab)) throw new Error('닫힌 탭이에요');
       await this.session(base, tab, signal, (send) => BrowserScreenGateway.act(send, action));
     });
+  }
+
+  /**
+   * 사이트 세션 지우기: 그 출처들의 호스트로 가는 쿠키(Network.deleteCookies)와 출처의 저장소(localStorage · IndexedDB …)만 지운다.
+   * 쿠키만 지우면 토큰을 저장소에 두는 사이트는 로그인이 남는다. 다른 사이트의 로그인은 그대로다.
+   * 로그인된 프로필(기본 컨텍스트)에서 하려고 빈 탭을 새로 열어 쓰고 닫는다 (/json/list의 탭은 둘러보기 컨텍스트일 수 있다).
+   * 지운 쿠키 수를 돌려준다
+   */
+  clearSite(origins: readonly string[]): Promise<number> {
+    const hosts = origins.map((o) => new URL(o).hostname);
+    return this.call(async (signal) => {
+      const base = await this.base();
+      const res = await fetch(`http://${base}/json/new?about:blank`, { method: 'PUT', signal });
+      const blank = res.ok ? ((await res.json()) as { id?: unknown }) : {};
+      if (typeof blank.id !== 'string' || !BrowserScreenGateway.TAB_ID.test(blank.id))
+        throw new Error(`빈 탭을 열지 못했어요 (${res.status})`);
+      const tab = blank.id;
+      try {
+        return await this.session(base, tab, signal, async (send) => {
+          const all = (await send('Network.getAllCookies')).cookies as {
+            name: string;
+            domain: string;
+            path: string;
+          }[];
+          const mine = all.filter((c) =>
+            hosts.some((h) => BrowserScreenGateway.sentTo(c.domain, h)),
+          );
+          for (const c of mine)
+            await send('Network.deleteCookies', { name: c.name, domain: c.domain, path: c.path });
+          for (const origin of origins)
+            await send('Storage.clearDataForOrigin', {
+              origin,
+              storageTypes: BrowserScreenGateway.STORAGE_TYPES,
+            });
+          return mine.length;
+        });
+      } finally {
+        await fetch(`http://${base}/json/close/${tab}`).catch(() => undefined);
+      }
+    });
+  }
+
+  /** 쿠키의 도메인이 이 호스트로 가는가 (.example.com은 a.example.com에도) */
+  private static sentTo(domain: string, host: string): boolean {
+    const d = domain.replace(/^\./, '').toLowerCase();
+    return host === d || host.endsWith(`.${d}`);
   }
 
   private static async act(send: Send, action: ScreenAction): Promise<void> {

@@ -54,7 +54,7 @@ export class SavedView {
   }
 }
 
-/** 사이트 하나 (콘솔) */
+/** 사이트 하나 (콘솔). 로그인 필요 표시는 러너가 로그인 화면을 만난 때 */
 export class SiteView {
   constructor(private readonly row: Readonly<SiteRow>) {}
 
@@ -67,6 +67,7 @@ export class SiteView {
       origins: r.origins,
       version: r.version,
       updatedAt: r.updated_at.toISOString(),
+      loginNeededAt: r.login_needed_at?.toISOString() ?? null,
     };
   }
 }
@@ -89,10 +90,12 @@ export class AskedView {
   }
 }
 
-/** 주인 확인 통과 (Caddy forward_auth) */
-export class ViewerView {
+/** 사이트 세션을 지웠다: 지운 쿠키 수 */
+export class ClearedView {
+  constructor(private readonly cleared: number) {}
+
   toJSON() {
-    return { ok: true };
+    return { cleared: this.cleared };
   }
 }
 
@@ -113,7 +116,7 @@ export class ControlledView {
   }
 }
 
-/** 발행 결재를 마무리했는가 (이 패키지의 동작이 아니면 false) */
+/** 이벤트를 이 패키지가 다뤘는가 (이 패키지의 동작이 아니면 false) */
 export class ConfirmedView {
   constructor(private readonly confirmed: boolean) {}
 

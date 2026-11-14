@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import type { Actor } from '../base/actor';
 
-/** 러너가 지금 임대를 쥔 일 하나: id · 종류 · 입력. 기능 패키지가 러너의 도구 호출을 그 일에 묶을 때 쓴다 */
+/** 러너가 지금 임대를 쥔 일 하나: id · 종류 · 입력 · 대상. 기능 패키지가 러너의 도구 호출을 그 일에 묶을 때 쓴다 */
 export class LeasedWork {
   constructor(
     readonly id: string,
     readonly kind: string,
     readonly payload: unknown,
+    /** 일의 대상 (플러그인 API 0.4): 종류 · id · 판. 대상이 없는 일은 모두 null */
+    readonly targetKind: string | null = null,
+    readonly targetId: string | null = null,
+    readonly targetVersion: number | null = null,
   ) {}
 }
 

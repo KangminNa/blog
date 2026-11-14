@@ -107,10 +107,11 @@ export class JobRun {
         if (ending) return await this.conclude(ending);
       }
       const prompts = PromptPack.choose(this.job.promptPackage, this.config.skillsDir, this.log);
-      workspace = await this.tool.open(this.job, stage?.workspaceRoom ?? null);
+      // 단계가 더한 것(브라우저 작업이 도는 곳)이 AI CLI의 설정(mcp.json)에 실린다
+      const job = stage?.aiJob(prompts) ?? this.job;
+      workspace = await this.tool.open(job, stage?.workspaceRoom ?? null);
       await workspace.handOver(this.job.sharedFolders(this.config.folders));
-      const { skill } = this.job;
-      const shipped = this.job.skillPackage;
+      const { skill, skillPackage: shipped } = this.job;
       if (shipped) this.log.info(`스킬 ${shipped.name}: ${shipped.label}`);
       else if (skill && JobWorkspace.skillText(skill, this.config.skillsDir) === null)
         this.log.info(`스킬 ${skill}이 없어 지시만으로 해요`);
@@ -203,7 +204,7 @@ export class JobRun {
     let finished = ending;
     if (stage !== null) {
       finished = await this.during((signal) =>
-        stage.finish(stream.finalText, signal, this.note, this.redactor),
+        stage.finish(stream.finalText, signal, this.note, this.redactor, workspace.workDir),
       );
       // 단계 뒤에 남은 기록(검사 · 올림)을 보내고, 그사이 취소됐는지 한 번 더 본다
       const after = await this.flushForSubmit();

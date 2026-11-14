@@ -11,6 +11,8 @@
 //   [fake:stray]        허락하지 않은 MCP 서버가 붙은 것처럼 보인다
 //   [fake:edit=<경로>]  작업 폴더의 그 경로에 파일을 쓴다 (코드 작업. 여러 번 쓸 수 있다)
 //   [fake:make]         만들기 작업: "# 재료"의 파일 폴더와 위키(get_wiki)를 읽어 결과물 폴더에 발표.pptx를 둔다
+//   [fake:browse]       브라우저 작업의 AI처럼: playwright 설정의 CDP 주소로 지시문의 시작 주소를 새 탭으로 열고, 로그인 화면이면
+//                       browser-stop.json에 login을, 아니면 제목 칸을 채우고 단계 화면 하나를 --output-dir에 두고 final_click을 쓴다
 //   [fake:split=<경로>,<경로>…] 코드 작업의 팀장처럼: "내 팀"의 첫 팀원에게 경로마다 code 하위 작업을 맡기고 끝난다
 //                       (하위 작업은 그 경로 아래 x.ts를 고친다). 결과를 받아 깨어난 실행은 맡기지 않고 끝낸다
 // 연결 확인(MCP 설정 없음)은 ok라고 답한다. 토큰에 wrong이 들어 있으면 로그인 실패처럼 끝난다
@@ -305,6 +307,56 @@ if (has('approval')) {
     process.stderr.write(`결재를 올리지 못했어요: ${JSON.stringify(body)}\n`);
     process.exit(4);
   }
+}
+
+if (has('browse')) await browse();
+
+/** 탭 하나에서 식 하나를 돌린다 (Playwright MCP 대신 CDP로 직접) */
+async function evaluate(socket, expression) {
+  const ws = new WebSocket(socket);
+  await new Promise((done) => ws.addEventListener('open', done, { once: true }));
+  const reply = await new Promise((done) => {
+    ws.addEventListener('message', (e) => done(JSON.parse(String(e.data))), { once: true });
+    ws.send(
+      JSON.stringify({
+        id: 1,
+        method: 'Runtime.evaluate',
+        params: { expression, returnByValue: true },
+      }),
+    );
+  });
+  ws.close();
+  return reply.result?.result?.value;
+}
+
+async function browse() {
+  const args = mcpServers.playwright?.args ?? [];
+  const endpoint = args[args.indexOf('--cdp-endpoint') + 1];
+  const steps = args[args.indexOf('--output-dir') + 1];
+  const start = /^시작 주소: (\S+)$/m.exec(prompt)?.[1];
+  if (!endpoint || !steps || !start) {
+    process.stderr.write('브라우저 설정이나 시작 주소가 없어요\n');
+    process.exit(6);
+  }
+  const res = await fetch(`${endpoint}/json/new?${start}`, { method: 'PUT' });
+  const tab = await res.json();
+  for (let i = 0; i < 50; i++) {
+    if ((await evaluate(tab.webSocketDebuggerUrl, 'document.readyState')) === 'complete') break;
+    await new Promise((done) => setTimeout(done, 100));
+  }
+  const page = await evaluate(tab.webSocketDebuggerUrl, 'location.href');
+  const title = await evaluate(tab.webSocketDebuggerUrl, 'document.title');
+  const stop = (body) =>
+    writeFileSync(join(process.cwd(), 'browser-stop.json'), JSON.stringify(body));
+  if (String(title).includes('로그인')) return stop({ stop: 'login', page_url: page });
+  await evaluate(tab.webSocketDebuggerUrl, "document.querySelector('#title').value = '시험 글'");
+  writeFileSync(join(steps, 'page-1.jpeg'), Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]));
+  stop({
+    stop: 'final_click',
+    page_url: page,
+    button: { role: 'button', name: '게시', nth: 0 },
+    note: '제목을 채웠어요',
+  });
 }
 
 if (has('stubborn')) process.on('SIGTERM', () => {});

@@ -1,18 +1,20 @@
 import { type FormEvent, type MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
+import type { Call } from './browser-types';
+import { ScreenStatus } from './ScreenStatus';
 
-// 서버 브라우저 화면 (2026-11-14): 영상(neko · UDP) 없이 HTTPS로 화면 그림을 받고, 클릭 · 글자 · 키를 보낸다.
+// 서버 브라우저 화면 (2026-11-14): 영상 없이 HTTPS로 화면 그림을 받고, 클릭 · 글자 · 키를 보낸다.
 // 열려 있고 이 탭이 보일 때만 1초마다 새로 그린다 (그림 하나는 수십 KB). 동작을 보내면 곧 다시 그린다.
+// 지금 상태를 한 줄로 보인다: 보는 중 · 멈춤(이 창이 가려짐) · 꺼짐(이유). 꺼져 있으면 10초마다만 다시 묻는다.
 // 그림을 누르면 그 자리를 클릭하고, 그다음 키보드로 치는 글자가 서버 브라우저로 간다 (보이지 않는 입력 칸이 받는다).
 //   한글은 조합이 끝난 글자만 보내고, 붙여 넣기도 같은 길로 간다. 친 글자는 보내자마자 지워 이 화면에 남지 않는다 (비밀번호).
 //   보내기는 차례대로 한다: 빠르게 쳐도 순서가 섞이지 않는다.
 
-type Reply = { ok: true; data: unknown } | { ok: false; message: string };
-type Call = (method: string, path: string, body?: object) => Promise<Reply>;
 type Tab = { id: string; title: string; url: string };
 type Shot = { tabs: Tab[]; tab: string; image: string; width: number; height: number };
 
-/** 새로 그리는 간격 */
+/** 새로 그리는 간격. 서버 브라우저에 닿지 않으면 길게 */
 const EVERY_MS = 1000;
+const OFF_MS = 10_000;
 /** 동작을 보낸 뒤 다시 그리기까지 (연달아 칠 때 한 번만) */
 const AFTER_MS = 250;
 /** 누른 자리 동그라미가 보이는 시간 */
@@ -37,6 +39,8 @@ export function Screen({ call }: { call: Call }) {
   const [open, setOpen] = useState(false);
   const [shot, setShot] = useState<Shot | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // 이 창이 가려져 있는가 (그동안은 그리지 않는다)
+  const [hidden, setHidden] = useState(false);
   const [url, setUrl] = useState('');
   // 키보드가 서버 브라우저로 가는 중인가
   const [typing, setTyping] = useState(false);
@@ -55,12 +59,13 @@ export function Screen({ call }: { call: Call }) {
     const reply = await call('GET', path);
     if (!reply.ok) {
       setProblem(reply.message);
-      return;
+      return false;
     }
     const next = reply.data as Shot;
     tab.current = next.tab;
     setShot(next);
     setProblem(null);
+    return true;
   }, [call]);
 
   useEffect(() => {
@@ -68,8 +73,9 @@ export function Screen({ call }: { call: Call }) {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const loop = async () => {
-      if (!document.hidden) await draw();
-      if (!stopped) timer = setTimeout(loop, EVERY_MS);
+      setHidden(document.hidden);
+      const reached = document.hidden ? true : await draw();
+      if (!stopped) timer = setTimeout(loop, reached ? EVERY_MS : OFF_MS);
     };
     void loop();
     return () => {
@@ -171,9 +177,10 @@ export function Screen({ call }: { call: Call }) {
       <b>화면</b>
       <p className="note">
         화면을 누르면 그 자리를 클릭하고, 이어서 키보드로 치면 서버 브라우저에 들어가요 (한글 · 붙여
-        넣기 · Enter · Tab 포함). 휠로 스크롤해요. 사이트 로그인과 마지막 발행은 여기서 직접 해요
+        넣기 · Enter · Tab 포함). 휠로 스크롤해요. 사이트 로그인과, 결재된 클릭이 바뀌어 누르지 못한
+        것은 여기서 직접 해요
       </p>
-      {open && problem && <p className="error">{problem}</p>}
+      {open && <ScreenStatus problem={problem} hidden={hidden} retry={() => void draw()} />}
       {open && shot && (
         <>
           <div className="row">

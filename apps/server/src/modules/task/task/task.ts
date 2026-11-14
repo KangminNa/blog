@@ -14,6 +14,7 @@ import { AiSigninRelayView, AiTestView } from '../ai/ai-login.view';
 import type { Goal } from '../goal/goal';
 import type { OutputRow, TaskEventRow, TaskNew, TaskRow, TaskRunNew } from '../task.tables';
 import { CodeScope } from './code-scope';
+import { DelegationPolicy } from './delegation.policy';
 import {
   DelegatedView,
   type JobSkillView,
@@ -85,6 +86,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
    * 위임할 수 있는 일의 종류. 받는 에이전트의 권한으로 할 수 있어야 한다 (SCOPES).
    * code는 code 작업에서만: 하위 작업은 위 작업의 저장소를 물려받고 경로만 좁힌다 (CodeScope)
    * make는 재료 없이 지시만 (2026-11-14): 주인이 고른 재료(파일 · 위키)는 물려주지 않는다 (payload.make 없음)
+   * browse는 대상(browser_site)이 있으면 그 사이트, 없으면 둘러보기. 맡기는 쪽도 비공개를 읽지 못해야 한다 (DelegationPolicy)
    */
   static readonly DELEGABLE: readonly string[] = [
     Task.GENERAL,
@@ -92,6 +94,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     'tidy_session',
     Task.CODE,
     Task.MAKE,
+    Task.BROWSE,
   ];
   /** 위임 한도: 깊이(주인이 맡긴 작업이 0), 작업 하나가 위임하는 횟수, 한 번에, 작업 하나에 */
   static readonly DEPTH_MAX = 3;
@@ -462,7 +465,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   }
 
   /**
-   * 하위 작업 하나를 만든다. 받는 쪽은 manager의 바로 아래 팀원이어야 하고, 그 에이전트의 권한으로 할 수 있는 종류여야 한다.
+   * 하위 작업 하나를 만든다. 받는 쪽은 manager의 바로 아래 팀원이어야 하고, 그 에이전트의 권한으로 할 수 있는 종류여야 한다 (DelegationPolicy).
    * 하위 작업은 이 작업의 목표와 우선순위를 물려받고, 담당은 worker로 정해진다.
    * code는 code 작업에서만 맡긴다: 이 작업의 저장소 · 명령을 물려받고 경로(paths)는 이 작업의 경로 안으로 좁힌다
    */
@@ -475,12 +478,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     now: Date,
   ): Task {
     const { kind } = fields;
-    if (worker === null || !manager.manages(worker))
-      throw new Forbidden(Actor.AGENT, '바로 아래 팀원에게만 맡길 수 있어요');
-    if (!Task.DELEGABLE.includes(kind))
-      throw new RuleViolation(`맡길 수 있는 일은 ${Task.DELEGABLE.join(' · ')}예요: ${kind}`);
-    if (!Task.delegableWith(worker.scopes).includes(kind))
-      throw new RuleViolation(`${worker.name}의 권한으로는 할 수 없는 일이에요: ${kind}`);
+    DelegationPolicy.assert(manager, worker, kind, Task.DELEGABLE, Task.SCOPES[kind] ?? []);
     const r = this.row;
     return Task.open(
       r.space_id,
