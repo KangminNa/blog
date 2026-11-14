@@ -12,6 +12,12 @@ export type ChatTurnRow = Pick<
 // 메시지마다 AI를 새로 띄우므로 길어질수록 느리고 토큰이 든다.
 // biome-ignore lint/complexity/noStaticOnlyClass: 상태 없는 판단 한 곳. Chat과 ChatRepository가 함께 쓴다
 export class ChatHistory {
+  /** 글의 첫 줄을 max자까지 (대화 제목 · 회차 작업의 제목). 비었으면 "대화" */
+  static firstLine(text: string, max: number): string {
+    const line = text.trim().split('\n')[0]?.trim() ?? '';
+    return (line || '대화').slice(0, max);
+  }
+
   /** 실을 앞 회차 수 */
   static readonly TURNS = 20;
   /** 메시지 · 답 하나의 길이 */

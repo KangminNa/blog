@@ -40,6 +40,15 @@ export class ChatRoute {
     throw new RuleViolation(`없는 상대예요: ${want}. 고를 수 있는 상대: ${names}`);
   }
 
+  /** 대화 상대: 관리자 바로 아래, 멈추지 않은 에이전트 (지운 에이전트는 불러올 때 이미 없다) */
+  static assertPartner(agent: Agent): void {
+    if (!agent.topLevel)
+      throw new RuleViolation(
+        `관리자 바로 아래 에이전트와만 대화해요: ${agent.name}은(는) 팀원이에요`,
+      );
+    if (agent.paused) throw new RuleViolation(`멈춘 에이전트예요: ${agent.name} (재개한 뒤에)`);
+  }
+
   /** 글로 한 답이 고를 것 하나를 가리키는가: 번호("1", "1번") 또는 이름 그대로. 아니면 null */
   static chosen(text: string, choices: readonly Agent[]): Agent | null {
     const said = text.trim().replace(/\s+/g, '').replace(/번$/, '').toLowerCase();

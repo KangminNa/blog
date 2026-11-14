@@ -22,6 +22,8 @@ export class ChatUpdates {
   static readonly APPENDED = 'appended';
   static readonly REPLY = 'reply';
   static readonly REVIEW = 'review';
+  /** 회차의 최종 답 (알림이 된다) */
+  static readonly FINAL = 'final';
   /** 맡을 에이전트를 묻는 질문 (고를 에이전트 choices와 함께, 2차 1-5) */
   static readonly QUESTION = 'question';
   /** 에이전트가 대화를 맡았다 (agent_id, 글은 고른 까닭이나 이름) */
@@ -51,7 +53,7 @@ export class ChatUpdates {
       if (chat?.reply) return { kind: ChatUpdates.REPLY, text: said || '-' };
       if (chat?.review) return { kind: ChatUpdates.REVIEW, text: said || '-' };
       const path = `/admin/chats/${place.chat_id}`;
-      return { kind: 'final', text: `${ChatUpdates.cut(said || '-', 1700)}\n\n${path}` };
+      return { kind: ChatUpdates.FINAL, text: `${ChatUpdates.cut(said || '-', 1700)}\n\n${path}` };
     }
     if (place.status === Task.FAILED) {
       if (!root) return { kind: 'member_failed', text: `${place.title} — ${error || '-'}` };

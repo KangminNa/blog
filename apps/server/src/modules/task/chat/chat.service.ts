@@ -292,7 +292,7 @@ export class ChatService extends BaseService {
   ): Promise<Chat> {
     const chats = new ChatRepository(tx);
     const previous = await chats.previousTurns(chat, chat.spaceId);
-    if (chat.alreadySent(previous, requestId)) return chat;
+    if (ChatHistory.sentAs(previous.at(-1), requestId)) return chat;
     const once = new Idempotency(tx, actor.id ?? chat.spaceId, requestId, ChatService.APPEND);
     if (await once.previous()) return chat;
     if (version !== undefined) chat.assertVersion(version);

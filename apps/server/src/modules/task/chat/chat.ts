@@ -25,6 +25,10 @@ import { ChatUpdates } from './chat-update.policy';
 export class Chat extends TableEntity<ChatRow, ChatNew> {
   /** 화면이 대화 목록 · 대화를 다시 읽는다 (받는 모듈은 없다) */
   static readonly CHANGED = 'task.chat.changed';
+  /** 맡을 에이전트를 물었다 · 맡았다 · 회차의 답이 왔다: 알림 (TaskNotices, 2차 1-5) */
+  static readonly ASKED = 'task.chat.asked';
+  static readonly ROUTED = 'task.chat.routed';
+  static readonly ANSWERED = 'task.chat.answered';
   static readonly TITLE_MAX = 80;
   static readonly MESSAGE_MAX = 8000;
   static readonly GOAL_MAX = 300;
@@ -58,7 +62,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
         space_id: spaceId,
         agent_id: null,
         pending: text,
-        title: Chat.firstLine(text, Chat.TITLE_MAX),
+        title: ChatHistory.firstLine(text, Chat.TITLE_MAX),
         turns: 0,
         request_id: requestId,
         device_id: deviceId,
@@ -118,11 +122,6 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
       throw new NotFound('대화를 찾을 수 없어요');
   }
 
-  /** 같은 requestId로 이미 보낸 회차가 마지막에 있는가 (응답을 놓쳐 다시 보낸 것). 그러면 보내지 않는다 */
-  alreadySent(previous: readonly ChatTurnRow[], requestId: string): boolean {
-    return ChatHistory.sentAs(previous.at(-1), requestId);
-  }
-
   /**
    * 메시지 하나 → 상대에게 맡기는 작업 하나 (다음 회차). previous는 앞 회차 작업들 (오래된 것부터).
    * 앞 회차가 끝나지 않았으면 Conflict: 채팅처럼 한 번에 하나씩 주고받는다 (답을 보고 다음 말을 한다).
@@ -140,7 +139,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     fix = false,
   ): Task {
     if (agent.id !== this.row.agent_id) throw new RuleViolation('이 대화의 상대가 아니에요');
-    Chat.assertPartner(agent);
+    ChatRoute.assertPartner(agent);
     if (ChatHistory.waiting(previous.at(-1)))
       throw new Conflict('답을 기다리는 중이에요. 답이 오거나 취소한 뒤에 보내요');
     const text = message.trim();
@@ -155,7 +154,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
       {
         kind: Task.GENERAL,
         agent_id: agent.id,
-        title: `대화 · ${Chat.firstLine(text, Chat.TASK_TITLE)}`,
+        title: `대화 · ${ChatHistory.firstLine(text, Chat.TASK_TITLE)}`,
         instruction: text,
         payload: {
           chat: {
@@ -191,7 +190,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
       {
         kind: Task.GENERAL,
         agent_id: reviewer.id,
-        title: `검토 · ${Chat.firstLine(this.row.title, Chat.TASK_TITLE)}`,
+        title: `검토 · ${ChatHistory.firstLine(this.row.title, Chat.TASK_TITLE)}`,
         instruction,
         payload: { chat: { chatId: this.id, turn: this.row.turns, review: true } },
       },
@@ -215,7 +214,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     deviceId: string | null = null,
   ): Task | null {
     if (agent.id !== this.row.agent_id) throw new RuleViolation('이 대화의 상대가 아니에요');
-    Chat.assertPartner(agent);
+    ChatRoute.assertPartner(agent);
     if (appended >= ChatUpdates.APPEND_MAX)
       throw new RuleViolation(`덧붙인 말은 회차마다 ${ChatUpdates.APPEND_MAX}개까지예요`);
     const text = message.trim();
@@ -232,7 +231,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
       {
         kind: Task.GENERAL,
         agent_id: agent.id,
-        title: `대화 · ${Chat.firstLine(text, Chat.TASK_TITLE)}`,
+        title: `대화 · ${ChatHistory.firstLine(text, Chat.TASK_TITLE)}`,
         instruction: text,
         payload: {
           chat: {
@@ -262,11 +261,12 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
   ): Task {
     const message = this.row.pending;
     if (this.row.agent_id !== null || message === null) throw new Conflict('이미 맡은 대화예요');
-    Chat.assertPartner(agent);
+    ChatRoute.assertPartner(agent);
     this.put('agent_id', agent.id);
     this.put('pending', null);
     if (deliver && !this.row.deliver) this.put('deliver', deliver);
     this.note(ChatUpdates.ROUTED, reason || agent.name, routeTaskId, agent.id, now);
+    this.announce(Chat.ROUTED, { agent: agent.name });
     return this.send(agent, this.row.request_id, message, [], now, this.row.device_id);
   }
 
@@ -279,7 +279,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
       `${ChatRequest.route(this.id)}${BaseEntity.newId()}`,
       {
         kind: Task.ROUTE,
-        title: `배정 · ${Chat.firstLine(this.row.title, Chat.TASK_TITLE)}`,
+        title: `배정 · ${ChatHistory.firstLine(this.row.title, Chat.TASK_TITLE)}`,
         instruction,
         payload: { tool, route: { chatId: this.id } },
         priority: Chat.ROUTE_PRIORITY,
@@ -291,8 +291,15 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
   /** 관리자에게 묻는다: 어느 에이전트에게 맡길지 (choices에서 고른다). routeTaskId: 이 질문을 낸 배정 일 */
   ask(question: string, choices: readonly Agent[], now: Date, routeTaskId: string | null = null) {
     this.assertPending();
-    const ids = choices.map((a) => a.id) as string[];
-    this.note(ChatUpdates.QUESTION, question, routeTaskId, null, now, ids);
+    this.note(
+      ChatUpdates.QUESTION,
+      question,
+      routeTaskId,
+      null,
+      now,
+      choices.map((a) => a.id),
+    );
+    this.announce(Chat.ASKED, { question });
     this.touch(now);
   }
 
@@ -300,11 +307,15 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
   answer(text: string, answered: number, now: Date): void {
     this.assertPending();
     if (answered >= ChatRoute.ANSWER_MAX)
-      throw new RuleViolation(
-        `맡기 전의 답은 ${ChatRoute.ANSWER_MAX}개까지예요. 고를 것에서 골라요`,
-      );
+      throw new RuleViolation(`맡기 전의 답은 ${ChatRoute.ANSWER_MAX}개까지예요`);
     this.note(ChatUpdates.APPENDED, text, null, null, now);
     this.touch(now);
+  }
+
+  /** 끝난 작업의 소식 (ChatUpdateService). 회차의 최종 답이면 알림 이벤트도 (답은 앞부분만) */
+  settled(kind: string, text: string, taskId: string, agentId: string | null, now: Date): void {
+    this.note(kind, text, taskId, agentId, now);
+    if (kind === ChatUpdates.FINAL) this.announce(Chat.ANSWERED, { text: text.slice(0, 300) });
   }
 
   /** 소식 한 줄을 남긴다 (끝난 작업 · post_update · 덧붙인 말). 저장할 때 함께 쌓인다 */
@@ -314,7 +325,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     taskId: string | null,
     agentId: string | null,
     now: Date,
-    choices: string[] | null = null,
+    choices: readonly string[] | null = null,
   ): void {
     this.added.push({
       id: BaseEntity.newId(),
@@ -324,7 +335,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
       text: ChatUpdates.text(text),
       task_id: taskId,
       agent_id: agentId,
-      choices,
+      choices: choices ? [...choices] : null,
       created_at: now,
     });
   }
@@ -347,15 +358,6 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     return new ChatView(this.row);
   }
 
-  /** 대화 상대: 관리자 바로 아래, 멈추지 않은 에이전트 (지운 에이전트는 불러올 때 이미 없다) */
-  private static assertPartner(agent: Agent): void {
-    if (!agent.topLevel)
-      throw new RuleViolation(
-        `관리자 바로 아래 에이전트와만 대화해요: ${agent.name}은(는) 팀원이에요`,
-      );
-    if (agent.paused) throw new RuleViolation(`멈춘 에이전트예요: ${agent.name} (재개한 뒤에)`);
-  }
-
   private assertPending(): void {
     if (this.row.agent_id !== null) throw new Conflict('이미 맡은 대화예요');
   }
@@ -365,17 +367,17 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     this.changed();
   }
 
-  private static firstLine(text: string, max: number): string {
-    const line = text.trim().split('\n')[0]?.trim() ?? '';
-    return (line || '대화').slice(0, max);
+  private announce(name: string, data: Readonly<Record<string, unknown>>): void {
+    this.record(
+      new DomainEvent(name, 1, this.row.space_id, {
+        chatId: this.id,
+        title: this.row.title,
+        ...data,
+      }),
+    );
   }
 
   private changed(): void {
-    this.record(
-      new DomainEvent(Chat.CHANGED, 1, this.row.space_id, {
-        chatId: this.id,
-        turns: this.row.turns,
-      }),
-    );
+    this.announce(Chat.CHANGED, { turns: this.row.turns });
   }
 }

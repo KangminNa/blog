@@ -27,7 +27,7 @@ export class ChatUpdateService extends BaseService {
       const said = place ? ChatUpdates.settled(place) : null;
       if (!place || !said || (await chats.hasUpdate(taskId, said.kind))) return;
       const chat = await chats.load(place.space_id, place.chat_id);
-      chat.note(said.kind, said.text, taskId, place.agent_id, now);
+      chat.settled(said.kind, said.text, taskId, place.agent_id, now);
       await chats.save(chat);
     });
   }

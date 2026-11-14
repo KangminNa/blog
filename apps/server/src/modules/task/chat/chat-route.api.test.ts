@@ -51,6 +51,8 @@ const agent = async (name: string, role: string, more: Json = {}) =>
     201,
   );
 const detail = async (id: string) => ok(await api.get(`/api/chats/${id}`, owner));
+const notices = async (): Promise<Json[]> =>
+  ok(await api.get('/api/notifications', owner)).notifications as Json[];
 const open = async (message: string) =>
   ok(await api.request('POST', '/api/chats', owner, { requestId: randomUUID(), message }), 201);
 const answer = (chat: Json, message: string, choice?: string) =>
@@ -154,6 +156,15 @@ describe('배정', () => {
     assert.deepEqual([routed?.text, routed?.agent], ['블로그 글이에요', blog.name]);
     const turn = await leased(mark, 'general');
     assert.equal(turn.task.payload.chat.chatId, chat.id);
+
+    // 회차의 답이 오면 알림 (알림 센터 + 웹 푸시, 2차 1-5)
+    await submit(turn, '초안을 썼어요');
+    await drain();
+    const answered = (await notices()).find(
+      (n) => n.kind === 'task.chat.answered' && n.link === `/admin/chats/${chat.id}`,
+    );
+    assert.equal(answered?.title, `답이 왔어요 · 산책 글 써서 올려 줘 ${mark}`);
+    assert.match(answered?.body ?? '', /^초안을 썼어요/);
   });
 
   test('애매하면 묻는다: 고를 것과 함께. 글로 한 답은 다시 배정하고 첫 회차에 덧붙인 말로, 고르면 맡는다', async () => {
@@ -167,6 +178,15 @@ describe('배정', () => {
     await drain();
     let got = await detail(chat.id);
     assert.equal(got.state, 'asking');
+    const asked = () =>
+      notices().then((all) =>
+        all.find((n) => n.kind === 'task.chat.asked' && n.link === `/admin/chats/${chat.id}`),
+      );
+    assert.deepEqual(
+      [(await asked())?.body, (await asked())?.read],
+      ['글로 할까요, 조사로 할까요?', false],
+      '질문은 알림으로 (웹 푸시까지)',
+    );
     assert.equal(got.question.text, '글로 할까요, 조사로 할까요?');
     assert.deepEqual(
       got.question.choices.map((c: Json) => [c.id, c.name, c.role]),
@@ -199,6 +219,13 @@ describe('배정', () => {
     });
     assert.equal(visitor.status, 403);
     ok(await answer(got.chat, research.name, research.id), 201);
+    await drain();
+    assert.ok(
+      (await notices())
+        .filter((n) => n.kind === 'task.chat.asked' && n.link === `/admin/chats/${chat.id}`)
+        .every((n) => n.read),
+      '맡으면 질문 알림은 읽음으로',
+    );
     got = await detail(chat.id);
     assert.deepEqual([got.chat.agentId, got.chat.turns, got.question], [research.id, 1, null]);
     const turn = await leased(mark, 'general');
