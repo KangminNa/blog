@@ -2,6 +2,7 @@
 // 여기서 내보내는 것을 바꾸면 플러그인 API 버전(CAIRN_PLUGIN_API)과 docs/객체설계.md 12장을 함께 고친다.
 // 0.2 (2026-11-08): 기능 패키지 — 동작(Read · Command)과 일하는 자리(Work: 자기 스키마의 조건 규칙), 오류
 // 0.3 (2026-11-10): work.leased(id) — 러너가 부른 도구를 그 러너가 임대를 쥔 일(LeasedWork)에 묶는다 (code-github)
+// 0.4 (2026-11-14): LeasedWork의 대상(targetKind · targetId · targetVersion) — 작업이 가리키는 패키지의 줄 (browser-tabs의 사이트 · 클릭)
 export {
   ActionResult,
   Actor,
