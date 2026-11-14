@@ -118,6 +118,7 @@ function ChatItem({ chat, on, onPick }: { chat: ChatSummary; on: boolean; onPick
       <div className="item-main">
         <b>{chat.agentName}</b>
         <small className="clamp">
+          {chat.deviceId ? '기기에서 · ' : ''}
           {chat.title} · {when(chat.updatedAt)}
         </small>
       </div>

@@ -8,7 +8,8 @@ import { SCOPE_LABELS } from '../../_lib/types';
 import { useAction } from '../../_lib/use-action';
 import { ConnectGuide } from './ConnectGuide';
 
-const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write', 'run'];
+/** 켤 수 있는 권한. delegate: 이 기기의 AI 도구가 서버 팀에 일을 맡기고 답을 받는다 (MCP ask_agent, 결재는 콘솔에서만) */
+const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write', 'run', 'delegate'];
 /** 코드 러너 칸 기기만 가진 권한 (서버의 Actor.SANDBOX). 주인이 주거나 뺄 수 없다 */
 const SANDBOX = 'sandbox';
 /** 권한 바꾸기 · 마지막 로그인에는 변경 신호가 없다. 첫 기기가 붙기를 기다리는 동안에도 이 간격으로 읽는다 */

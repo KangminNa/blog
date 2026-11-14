@@ -22,6 +22,11 @@ export abstract class Actor {
    * 러너가 알리는 값이 아니라 이 권한으로 판단한다: 내 컴퓨터 러너가 칸이라고 말해도 셸 있는 일을 받지 못하게
    */
   static readonly SANDBOX = 'sandbox';
+  /**
+   * 기기: 서버 팀(관리자 바로 아래 에이전트)에게 일을 맡기고 답을 받는다 (MCP ask_agent · agent_reply).
+   * 관리자가 기기 메뉴에서 켠다. 그 기기가 연 대화만 이어 쓰고 읽는다. 결재는 하지 못한다
+   */
+  static readonly DELEGATE = 'delegate';
   /** 작업 토큰을 가진 에이전트만의 자격 (request_approval). 기기에 줄 수 있는 권한이 아니다 */
   static readonly AGENT = 'agent';
 

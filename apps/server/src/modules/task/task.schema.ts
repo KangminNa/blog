@@ -79,6 +79,7 @@ export const chats = taskSchema.table('chats', {
   version: integer('version').notNull(),
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
   updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
+  device_id: uuid('device_id'),
 });
 
 /** task.goal_rounds */

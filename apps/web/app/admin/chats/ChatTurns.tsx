@@ -29,7 +29,7 @@ export function ChatTurns({
         <li key={t.taskId} className="chat-turn">
           <div className="bubble mine">
             <span className="bubble-meta">
-              {me} · {clock(t.createdAt)}
+              {t.fromDevice ? '기기의 AI 도구' : me} · {clock(t.createdAt)}
             </span>
             <p className="text">{t.message}</p>
           </div>

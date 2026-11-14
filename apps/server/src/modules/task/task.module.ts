@@ -16,6 +16,7 @@ import { ApprovalResultHandler } from './approval/approval-result.handler';
 import { ChatController } from './chat/chat.api';
 import { ChatQuery } from './chat/chat.query';
 import { ChatService } from './chat/chat.service';
+import { AgentReplyTool, AskAgentTool } from './chat/chat.tool';
 import { GoalController } from './goal/goal.api';
 import { GoalQuery } from './goal/goal.query';
 import { GoalService } from './goal/goal.service';
@@ -112,6 +113,8 @@ import { WebPageGateway } from './web/web-page.gateway';
     GoalRunService,
     ChatQuery,
     ChatService,
+    AskAgentTool,
+    AgentReplyTool,
     GoalRunHandler,
     ReportRoundTool,
     // 주소 읽기 (read_url): 서버가 AI 대신 연다. 목줄은 WebReach

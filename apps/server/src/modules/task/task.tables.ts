@@ -79,6 +79,7 @@ export interface ChatRow {
   version: number;
   created_at: Date;
   updated_at: Date;
+  device_id: string | null;
 }
 export type ChatNew = Partial<ChatRow> & Pick<ChatRow, 'id' | 'space_id' | 'agent_id' | 'title' | 'request_id'>;
 

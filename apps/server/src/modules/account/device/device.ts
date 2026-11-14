@@ -73,6 +73,7 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
     Actor.TIDY,
     Actor.WRITE,
     Actor.RUN,
+    Actor.DELEGATE,
   ];
 
   /** 러너의 도구 이름 (기기 목록에 보인다) */

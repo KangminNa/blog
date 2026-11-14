@@ -26,7 +26,8 @@ export class WebQuery extends BaseQuery {
 
   /**
    * 주인이 쓴 지시: 위임된 일이면 맨 위 일(주인이 맡긴 일)의 제목과 지시. 하위 일의 지시는 AI가 썼다.
-   * 맨 위 일이 목표 실행의 회차 작업이면 실행의 지시: 회차 작업의 지시에는 앞 회차의 보고(AI가 쓴 글)가 실린다
+   * 맨 위 일이 목표 실행의 회차 작업이면 실행의 지시: 회차 작업의 지시에는 앞 회차의 보고(AI가 쓴 글)가 실린다.
+   * 맨 위 일이 기기(MCP ask_agent)가 보낸 대화의 회차면 비어 있다: 관리자가 아니라 그 기기의 AI가 쓴 글일 수 있다
    */
   private async ownerText(spaceId: string, taskId: string): Promise<string> {
     const [root] = await this.sql<{ text: string }[]>`
@@ -38,7 +39,8 @@ export class WebQuery extends BaseQuery {
         JOIN up ON t.id = up.parent_id AND t.space_id = ${spaceId}
         WHERE up.step < 10
       )
-      SELECT CASE WHEN r.id IS NULL THEN up.title || E'\n' || up.instruction
+      SELECT CASE WHEN up.payload -> 'chat' ->> 'via' = 'device' THEN ''
+                  WHEN r.id IS NULL THEN up.title || E'\n' || up.instruction
                   ELSE r.title || E'\n' || r.instruction END AS text
       FROM up
       LEFT JOIN task.goal_runs r

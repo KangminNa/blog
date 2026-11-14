@@ -10,6 +10,7 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
   외부 로그인(`ExternalLoginQuery`·`ExternalLoginController`): 로그인 플러그인(`login:<이름>`)의 경로·확인값·쿠키, 계정 연결·끊기
 - `device/`: 기기(`Device` + `DeviceCredential`), OAuth 클라이언트(`OAuthClient`), 승인 코드(`AuthorizationCode`), 승인 요청 규칙(`AuthorizationPolicy`).
   `OAuthController`(`/.well-known/*`, `/oauth/*`: 표준 경로라 /api 아래가 아님), `DeviceController`(`api/connect` 승인 화면, `api/devices` 기기 화면)
+- 기기 권한 `delegate`(에이전트에게 맡기기, 2026-11-14): 관리자가 켠다. 그 기기의 AI 도구가 task의 MCP `ask_agent` · `agent_reply`로 서버 팀에 일을 맡긴다 (칸 기기는 받지 못한다: `devices_sandbox_only`)
 - 러너는 OAuth 없이 콘솔에서 만든다 (`POST api/devices/runner`, `Device.forRunner`). 권한은 `run` 하나, 토큰은 응답에 한 번
 - 서버 러너는 스스로 연결한다 (`POST api/devices/server-runner`, `Device.forServerRunner`): 서버 키에서 만든 연결 값(`ServerRunnerPolicy`)을 서버가 시작할 때 볼륨에 쓰고(`ServerRunnerGateway`, `CAIRN_RUNNER_PAIRING_FILE`), 러너가 그 값을 내밀면 토큰을 준다
 - 코드 러너 칸도 같은 길로 붙는다 (`POST api/devices/code-runner { secret, slot }`, `Device.forCodeRunner`, docs/코드작업.md). 연결 값은 서버 러너와 다르고(`codeSecret`, 파일 `CAIRN_CODE_PAIRING_FILE`, 0640: 칸의 러너는 root지만 남의 파일을 읽는 권한이 없어 node 그룹으로 읽는다) 칸마다 기기 하나("코드 러너 <칸>"). 권한은 `run` · `sandbox`로 정해져 있다

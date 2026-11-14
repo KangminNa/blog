@@ -1,4 +1,11 @@
-import { BaseEntity, Conflict, DomainEvent, RuleViolation, TableEntity } from '../../platform';
+import {
+  BaseEntity,
+  Conflict,
+  DomainEvent,
+  NotFound,
+  RuleViolation,
+  TableEntity,
+} from '../../platform';
 import type { Agent } from '../agent/agent';
 import { Task } from '../task/task';
 import type { ChatNew, ChatRow } from '../task.tables';
@@ -17,8 +24,15 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
   /** 회차 작업의 제목 (작업 메뉴에서 대화의 일인지 알아보게) */
   private static readonly TASK_TITLE = 60;
 
-  /** 새 대화. 첫 메시지는 send로 (만드는 트랜잭션에서 함께) */
-  static open(spaceId: string, requestId: string, agent: Agent, message: string, now: Date): Chat {
+  /** 새 대화. 첫 메시지는 send로 (만드는 트랜잭션에서 함께). deviceId: 기기(MCP ask_agent)가 연 대화면 그 기기 */
+  static open(
+    spaceId: string,
+    requestId: string,
+    agent: Agent,
+    message: string,
+    now: Date,
+    deviceId: string | null = null,
+  ): Chat {
     Chat.assertPartner(agent);
     return new Chat(
       {
@@ -28,6 +42,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
         title: Chat.firstLine(message, Chat.TITLE_MAX),
         turns: 0,
         request_id: requestId,
+        device_id: deviceId,
         created_at: now,
         updated_at: now,
       },
@@ -37,6 +52,24 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
 
   static restore(row: ChatRow): Chat {
     return new Chat(row);
+  }
+
+  /**
+   * 기기(MCP ask_agent)가 고른 상대: 이름이나 id로, 관리자 바로 아래 · 멈추지 않은 · 지우지 않은 에이전트 중에서.
+   * 하나뿐이면 고르지 않아도 된다. 못 고르면 고를 수 있는 이름을 알린다 (기기의 AI가 다시 부르게)
+   */
+  static partnerOf(agents: readonly Agent[], wanted: string | null): Agent {
+    const choices = agents.filter((a) => a.topLevel && !a.paused && !a.deleted);
+    const names =
+      choices.map((a) => a.name).join(', ') ||
+      '없음 (콘솔에서 관리자 바로 아래 에이전트를 만들어요)';
+    const want = wanted?.trim() ?? '';
+    const found = want ? choices.filter((a) => a.id === want || a.name === want) : choices;
+    const [only, ...more] = found;
+    if (only && more.length === 0) return only;
+    if (!want) throw new RuleViolation(`상대를 정해요 (agent): ${names}`);
+    if (only) throw new RuleViolation(`같은 이름이 여럿이에요: ${want} (id로 정해요)`);
+    throw new RuleViolation(`없는 상대예요: ${want}. 고를 수 있는 상대: ${names}`);
   }
 
   /** 회차 작업의 request_id */
@@ -60,14 +93,25 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     return this.row.turns;
   }
 
+  /**
+   * 보내는 쪽이 이 대화에 말할 수 있는가. 관리자(deviceId null)는 모든 대화에, 기기는 자기가 연 대화에만:
+   * 관리자의 대화를 이어 쓰면 앞 대화(비공개일 수 있다)가 그 기기의 회차에 실린다. 남의 대화는 없는 것처럼 (404)
+   */
+  assertSender(deviceId: string | null): void {
+    if (deviceId !== null && this.row.device_id !== deviceId)
+      throw new NotFound('대화를 찾을 수 없어요');
+  }
+
   /** 같은 requestId로 이미 보낸 회차가 마지막에 있는가 (응답을 놓쳐 다시 보낸 것). 그러면 보내지 않는다 */
   alreadySent(previous: readonly ChatTurnRow[], requestId: string): boolean {
     return ChatHistory.sentAs(previous.at(-1), requestId);
   }
 
   /**
-   * 관리자의 메시지 하나 → 상대에게 맡기는 작업 하나 (다음 회차). previous는 앞 회차 작업들 (오래된 것부터).
-   * 앞 회차가 끝나지 않았으면 Conflict: 채팅처럼 한 번에 하나씩 주고받는다 (답을 보고 다음 말을 한다)
+   * 메시지 하나 → 상대에게 맡기는 작업 하나 (다음 회차). previous는 앞 회차 작업들 (오래된 것부터).
+   * 앞 회차가 끝나지 않았으면 Conflict: 채팅처럼 한 번에 하나씩 주고받는다 (답을 보고 다음 말을 한다).
+   * 기기가 보낸 메시지(deviceId)는 관리자가 쓴 글이 아니라 그 기기의 AI가 쓴 글일 수 있다: payload에 via: device를 남겨
+   * read_url의 기준(관리자의 지시)에 넣지 않는다 (WebQuery.ownerText)
    */
   send(
     agent: Agent,
@@ -75,6 +119,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     message: string,
     previous: readonly ChatTurnRow[],
     now: Date,
+    deviceId: string | null = null,
   ): Task {
     if (agent.id !== this.row.agent_id) throw new RuleViolation('이 대화의 상대가 아니에요');
     Chat.assertPartner(agent);
@@ -94,7 +139,15 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
         agent_id: agent.id,
         title: `대화 · ${Chat.firstLine(text, Chat.TASK_TITLE)}`,
         instruction: text,
-        payload: { chat: { chatId: this.id, turn, requestId, history: ChatHistory.of(previous) } },
+        payload: {
+          chat: {
+            chatId: this.id,
+            turn,
+            requestId,
+            history: ChatHistory.of(previous),
+            ...(deviceId === null ? {} : { via: 'device', device: deviceId }),
+          },
+        },
       },
       now,
     );
