@@ -21,6 +21,7 @@ import { ApprovalRepository } from '../approval/approval.repository';
 import { GoalRepository } from '../goal/goal.repository';
 import { OutputQuery } from '../output/output.query';
 import { RunnerRepository } from '../runner/runner.repository';
+import { PromptTemplates } from '../skill/prompt-templates';
 import { RepoSkillGateway } from '../skill/repo-skill.gateway';
 import { SkillRepository } from '../skill/skill.repository';
 import { SkillPackage } from '../skill/skill-package';
@@ -28,6 +29,7 @@ import type { RunnerRow } from '../task.tables';
 import { PlanUsage } from '../usage/plan-usage';
 import { PlanUsageRepository } from '../usage/plan-usage.repository';
 import { CodeScope } from './code-scope';
+import type { JobView, ProgressView } from './job.view';
 import { LeasePolicy } from './lease.policy';
 import { RunRecord } from './run-record';
 import { Task } from './task';
@@ -40,7 +42,6 @@ import type {
   SubmitResultInput,
 } from './task.input';
 import { TaskRepository } from './task.repository';
-import type { JobView, ProgressView } from './task.view';
 
 // 작업 쓰기: 만들기와 취소(주인), 일 요청(이벤트), 빌리기·진행·끝내기·돌려주기(러너), 끝난 임대 되돌리기(일꾼),
 // 위임(에이전트가 작업 토큰으로)과 하위 작업이 끝났을 때 위 작업 깨우기(일꾼).
@@ -323,6 +324,9 @@ export class TaskService extends BaseService {
         sandbox,
       });
       const busy = [...running];
+      // 지시문 틀(cairn-runner)의 지금 판: 에이전트의 일마다 함께 보내고 실행 기록에 남긴다
+      const prompts =
+        picked.length > 0 ? await this.packageOf(tx, spaceId, PromptTemplates.SKILL) : null;
       for (const task of picked) {
         if (jobs.length >= req.limit) break;
         const scope = task.codeScope;
@@ -338,12 +342,14 @@ export class TaskService extends BaseService {
         if (agent) busy.push(agent.tool);
         if (scope) held.push(scope);
         task.lease(runnerId, agent?.id ?? null, now);
-        const skill = await this.skillOf(tx, task);
+        const skill = task.skill === null ? null : await this.packageOf(tx, spaceId, task.skill);
+        const prompt = agent ? prompts : null;
         const tool = agent?.tool ?? task.payloadTool;
         const cli = tool === null ? null : (req.cliVersions.get(tool) ?? null);
-        task.recordRun(runnerId, new RunRecord(agent ?? null, skill, req.runnerBuild, cli), now);
+        const record = new RunRecord(agent ?? null, skill, prompt, req.runnerBuild, cli);
+        task.recordRun(runnerId, record, now);
         await tasks.save(task);
-        jobs.push(await this.jobOf(actor, tx, task, agent, org, skill));
+        jobs.push(await this.jobOf(actor, tx, task, agent, org, skill, prompt));
       }
       return jobs;
     });
@@ -359,20 +365,22 @@ export class TaskService extends BaseService {
     agent: Agent | null,
     org: readonly Agent[],
     skill: SkillPackage | null,
+    prompt: SkillPackage | null,
   ): Promise<JobView> {
     const goals = task.goalId === null ? [] : await new GoalRepository(tx).chain(task.goalId);
     const children = await new TaskRepository(tx).children(task.id);
     const ids = children.map((c) => c.id);
     const made = await this.outputs.madeBy(actor, ids);
     const view = task.jobView(agent, this.box, goals, org, children, skill?.jobView() ?? null);
-    return view.withOutputs(made);
+    return view.withOutputs(made).withPrompt(prompt?.jobView() ?? null);
   }
 
-  /** 스킬의 지금 판: 주인이 콘솔에서 고친 판이 있으면 그것, 없으면 서버 이미지의 저장소 판 (러너는 이것으로 깐다) */
-  private async skillOf(tx: Sql, task: Task): Promise<SkillPackage | null> {
-    const name = task.skill;
-    if (name === null) return null;
-    const active = await new SkillRepository(tx).activeRevision(task.spaceId, name);
+  /**
+   * 러너 스킬의 지금 판: 주인이 콘솔에서 고친 판이 있으면 그것, 없으면 서버 이미지의 저장소 판.
+   * 일의 스킬(러너가 CLI에 깐다)과 지시문 틀(cairn-runner, 러너가 채운다)이 같은 길로 간다
+   */
+  private async packageOf(tx: Sql, spaceId: string, name: string): Promise<SkillPackage | null> {
+    const active = await new SkillRepository(tx).activeRevision(spaceId, name);
     return SkillPackage.pick(name, active, this.repoSkills.get(name));
   }
 

@@ -16,6 +16,7 @@ import { Job } from './job';
 import { Json } from './json';
 import { RunnerAbility } from './runner-ability';
 import { RunnerConfig } from './runner-config';
+import { REPO_PROMPTS } from './testing/repo-prompts';
 import { TestChromium } from './testing/test-chromium';
 
 // 브라우저 작업(browse): 사이트를 읽고, 그 일에만 Playwright MCP를 붙이고, 격리 검사가 그 일에만 playwright를 허락한다.
@@ -45,7 +46,7 @@ describe('브라우저 작업의 설정 (러너)', () => {
     assert.equal(job.isBrowse, true);
     assert.deepEqual(job.site?.origins, ['https://blog.example']);
     assert.match(
-      job.prompt(false),
+      job.prompt(REPO_PROMPTS, false),
       /# 사이트: 블로그[\s\S]*갈 수 있는 출처: https:\/\/blog\.example/,
     );
     assert.equal(

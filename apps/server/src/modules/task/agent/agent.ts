@@ -7,7 +7,7 @@ import {
   TableEntity,
 } from '../../platform';
 import type { Runner } from '../runner/runner';
-import { JobTeamMemberView } from '../task/task.view';
+import { JobTeamMemberView } from '../task/job.view';
 import type { AgentNew, AgentRevisionNew, AgentRow } from '../task.tables';
 import { AgentUsageView } from '../usage/usage.view';
 import { AgentSavedView } from './agent.view';

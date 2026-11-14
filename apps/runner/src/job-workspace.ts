@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { AgentUser } from './agent-user';
 import type { Job, SkillPackage } from './job';
+import type { PromptPack } from './prompt-pack';
 import type { SandboxRoom } from './sandbox-room';
 import type { SharedCopy, SharedFolders } from './shared-folders';
 
@@ -74,8 +75,8 @@ export class JobWorkspace {
   }
 
   /** 나눈 폴더를 복사해 두었으면 그 단락을 지시에 더한 일 */
-  withShared(job: Job): Job {
-    return this.shared ? job.withBrief(this.shared.part) : job;
+  withShared(job: Job, prompts: PromptPack): Job {
+    return this.shared ? job.withBrief(this.shared.part(prompts)) : job;
   }
 
   /** AI CLI를 돌릴 사용자. 코드 러너 칸이 아니면 러너와 같은 사용자 (null) */

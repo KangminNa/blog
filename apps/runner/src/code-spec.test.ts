@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { CodeSpec, CodeSpecProblem } from './code-spec';
+import { REPO_PROMPTS } from './testing/repo-prompts';
 
 // 코드 작업의 저장소 정보: 모양 검사, 고쳐도 되는 경로, AI에게 주는 단락.
 
@@ -125,7 +126,7 @@ describe('코드 작업의 저장소 정보', () => {
   });
 
   test('AI에게 주는 단락에는 경로 · 검사 명령 · 늘 막는 곳이 있다', () => {
-    const brief = spec().brief;
+    const brief = spec().brief(REPO_PROMPTS);
     assert.match(brief, /apps\/server\/src\/modules\/blog/);
     assert.match(brief, /pnpm test/);
     assert.match(brief, /\.github\/workflows/);

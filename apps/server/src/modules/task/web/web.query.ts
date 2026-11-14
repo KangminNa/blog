@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, AgentActor, BaseQuery, Database, Forbidden } from '../../platform';
+import { SkillQuery } from '../skill/skill.query';
 import type { ReadUrlInput } from './web.input';
 import { WebPageView } from './web.view';
 import { WebPageGateway } from './web-page.gateway';
@@ -12,6 +13,8 @@ export class WebQuery extends BaseQuery {
   constructor(
     db: Database,
     private readonly pages: WebPageGateway,
+    /** 답에 함께 싣는 알림의 글 (지시문 틀) */
+    private readonly skills: SkillQuery,
   ) {
     super(db);
   }
@@ -21,7 +24,8 @@ export class WebQuery extends BaseQuery {
     if (!(actor instanceof AgentActor) || !actor.spaceId) throw new Forbidden(Actor.AGENT);
     const reach = WebReach.of(actor, await this.ownerText(actor.spaceId, actor.taskId));
     const page = await this.pages.read(req.url, (url) => reach.assertAllowed(url));
-    return new WebPageView(page.url, page.title, page.text, page.truncated, page.contentType);
+    const note = (await this.skills.prompts(actor, actor.spaceId)).fill('read-url-note');
+    return new WebPageView(page.url, page.title, page.text, page.truncated, page.contentType, note);
   }
 
   /**

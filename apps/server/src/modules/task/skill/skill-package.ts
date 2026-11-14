@@ -1,4 +1,4 @@
-import { JobSkillView } from '../task/task.view';
+import { JobSkillView } from '../task/job.view';
 import type { SkillRevisionRow } from '../task.tables';
 import { SkillFiles } from './skill-files';
 

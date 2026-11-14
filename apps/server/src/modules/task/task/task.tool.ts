@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseTool } from '../../platform';
 import { PlanUsage } from '../usage/plan-usage';
+import { type JobStateView, NextJobsView, type ProgressView } from './job.view';
 import {
   NextJobsInput,
   ReleaseJobInput,
@@ -8,7 +9,6 @@ import {
   SubmitResultInput,
 } from './task.input';
 import { TaskService } from './task.service';
-import { type JobStateView, NextJobsView, type ProgressView } from './task.view';
 
 // 러너가 쓰는 MCP 도구 (run 권한). 러너는 일을 빌리고, AI CLI에게는 작업 토큰만 준다.
 // 입력 모양을 바꾸면 러너와 스킬을 함께 고친다. 깨지는 변경은 새 도구 이름으로 (API설계 2장).

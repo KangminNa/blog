@@ -18,6 +18,7 @@ import { JobWorkspace } from './job-workspace';
 import { Json } from './json';
 import { SandboxRoom } from './sandbox-room';
 import { SharedFolders } from './shared-folders';
+import { REPO_PROMPTS } from './testing/repo-prompts';
 
 let skillsDir: string;
 
@@ -133,7 +134,10 @@ describe('AI CLI 부르기', () => {
       readFileSync(join(shared.workDir, 'folders', 'notes', 'todo.md'), 'utf8'),
       '할 일',
     );
-    assert.match(shared.withShared(plain).prompt(false), /folders\/notes \(파일 1개\)/);
+    assert.match(
+      shared.withShared(plain, REPO_PROMPTS).prompt(REPO_PROMPTS, false),
+      /folders\/notes \(파일 1개\)/,
+    );
     await shared.remove();
     const folders = new SharedFolders([source]);
     const bound = Job.from(
@@ -148,7 +152,7 @@ describe('AI CLI 부르기', () => {
     const none = await JobWorkspace.open(null, null, null, '/nowhere');
     await none.handOver(null);
     assert.equal(existsSync(join(none.workDir, 'folders')), false);
-    assert.equal(none.withShared(plain), plain);
+    assert.equal(none.withShared(plain, REPO_PROMPTS), plain);
     await none.remove();
   });
 
@@ -195,7 +199,7 @@ describe('지시문', () => {
     );
 
   test('역할과 지시를 담는다. 작업 토큰은 담지 않는다', () => {
-    const prompt = job().prompt(false);
+    const prompt = job().prompt(REPO_PROMPTS, false);
     assert.ok(prompt.includes('글쓰기'));
     assert.ok(prompt.includes('블로그 글을 쓴다'));
     assert.ok(prompt.includes('세션으로 글을 써 주세요'));
@@ -208,22 +212,22 @@ describe('지시문', () => {
     const prompt = job({
       target: { kind: 'post', id: 'p1', version: 3 },
       revision_note: '더 짧게',
-    }).prompt(false);
+    }).prompt(REPO_PROMPTS, false);
     assert.ok(prompt.includes('post p1, 판 3'));
     assert.ok(prompt.includes('더 짧게'));
   });
 
   test('결과물 폴더를 알려 주면 그 폴더와 한도를 담는다', () => {
-    assert.equal(job().prompt(false).includes('결과물'), false);
-    const prompt = job().prompt(false, null, '/tmp/run/work/outputs');
+    assert.equal(job().prompt(REPO_PROMPTS, false).includes('결과물'), false);
+    const prompt = job().prompt(REPO_PROMPTS, false, null, '/tmp/run/work/outputs');
     assert.match(prompt, /만들면 \/tmp\/run\/work\/outputs 바로 아래에 둡니다/);
     assert.match(prompt, /100MB, 200개까지/);
   });
 
   test('스킬은 넣어 둔 때만 말한다', () => {
     const skilled = job({ skill: 'cairn-write' });
-    assert.ok(skilled.prompt(true).includes('cairn-write'));
-    assert.equal(skilled.prompt(false).includes('cairn-write'), false);
+    assert.ok(skilled.prompt(REPO_PROMPTS, true).includes('cairn-write'));
+    assert.equal(skilled.prompt(REPO_PROMPTS, false).includes('cairn-write'), false);
   });
 
   test('목표 사슬, 내 팀과 위임하는 법, 하위 작업의 결과를 담는다', () => {
@@ -256,7 +260,7 @@ describe('지시문', () => {
         },
       ],
       rounds_left: 2,
-    }).prompt(false);
+    }).prompt(REPO_PROMPTS, false);
     assert.ok(prompt.includes('회사 › 이번 달 글 4편'));
     assert.ok(
       prompt.includes(
@@ -286,7 +290,7 @@ describe('지시문', () => {
         { agent_id: 'm2', name: '조사', role: '', status: 'active', kinds: ['general'] },
       ],
       rounds_left: 1,
-    }).prompt(false);
+    }).prompt(REPO_PROMPTS, false);
     assert.match(prompt, /내 폴더 \(agent_id: m1\).*정해진 컴퓨터에서 일함/);
     assert.doesNotMatch(prompt, /조사 \(agent_id: m2\).*정해진 컴퓨터/);
   });
@@ -303,23 +307,27 @@ describe('지시문', () => {
     const prompt = chat([
       { from: 'owner', text: '주말 계획 세워 줘' },
       { from: 'agent', text: '성수 카페 어때요' },
-    ]).prompt(false);
+    ]).prompt(REPO_PROMPTS, false);
     assert.ok(prompt.includes('# 이전 대화 (자료)'));
     assert.ok(prompt.includes('[관리자] 주말 계획 세워 줘\n[나] 성수 카페 어때요'));
     assert.ok(prompt.indexOf('# 할 일') < prompt.indexOf('# 이전 대화'));
     assert.ok(prompt.includes('# 대화로 답하는 법'));
-    const first = chat([]).prompt(false);
+    const first = chat([]).prompt(REPO_PROMPTS, false);
     assert.equal(first.includes('# 이전 대화'), false, '첫 회차에는 앞 대화가 없다');
     assert.ok(first.includes('# 대화로 답하는 법'));
-    assert.equal(job().prompt(false).includes('대화로 답하는 법'), false, '대화가 아닌 일');
+    assert.equal(
+      job().prompt(REPO_PROMPTS, false).includes('대화로 답하는 법'),
+      false,
+      '대화가 아닌 일',
+    );
   });
 
   test('팀이 없으면 위임을 말하지 않고, 횟수를 다 쓰면 직접 마무리한다', () => {
-    assert.equal(job().prompt(false).includes('delegate_task'), false);
+    assert.equal(job().prompt(REPO_PROMPTS, false).includes('delegate_task'), false);
     const spent = job({
       team: [{ agent_id: 'w1', name: '팀원', role: '', status: 'active', kinds: ['general'] }],
       rounds_left: 0,
-    }).prompt(false);
+    }).prompt(REPO_PROMPTS, false);
     assert.equal(spent.includes('delegate_task'), false);
     assert.ok(spent.includes('더 맡길 수 없습니다'));
   });

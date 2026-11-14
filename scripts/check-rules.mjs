@@ -8,6 +8,8 @@
 //   4. 파일 하나의 코드는 MAX_LINES줄까지 (빈 줄 · 주석 · 시험 · 생성 파일 제외). 넘는 파일은 예외 목록에 적힌 줄 수까지만
 //   5. 패턴 목록(객체설계 11장)이 본보기로 가리키는 파일이 실제로 있다
 //   6. AI가 읽는 글은 코드에 두지 않는다 (2차 1-0): MCP 도구(*.tool.ts)의 설명 · 칸 설명은 <모듈>.tools.ko.json에
+//   7. 지시문의 글도 코드에 두지 않는다 (2차 1-0): 러너와 task 모듈의 코드에 마크다운 제목('# …')으로 시작하는 글자를 쓰지 않는다.
+//      글은 러너 스킬 cairn-runner의 틀(skills/cairn-runner/references/prompts.md)에
 //
 // 예외 목록(scripts/ratchet.json)은 줄어들기만 한다: 새 항목을 더하지 않고, 고친 파일은 목록에서 지운다.
 // 목록의 why에는 아직 남은 화면마다 까닭을 적어 둔다 (검사는 보지 않는다).
@@ -181,6 +183,23 @@ for (const file of toolFiles) {
     problems.push(
       `${at(file)}: 도구 설명은 코드에 두지 않아요. 모듈의 <모듈>.tools.ko.json에 적어요 (서버가 칸 이름으로 얹는다)`,
     );
+}
+
+// 지시문의 글은 러너 스킬 cairn-runner의 틀에 둔다 (러너는 PromptPack, 서버는 PromptTemplates로 채운다).
+// 코드에 남기 쉬운 단락 제목('# 할 일' · '## 지시')을 본다: 글자 안의 줄 첫머리에 # 하나~셋과 빈칸
+const promptCode = [
+  ...walk(join(root, 'apps/runner/src')),
+  ...walk(join(root, 'apps/server/src/modules/task')),
+].filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !at(f).includes('/testing/'));
+for (const file of promptCode) {
+  const lines = readFileSync(file, 'utf8').split('\n');
+  lines.forEach((line, i) => {
+    if (/^\s*\/\//.test(line) || /^\s*\*/.test(line)) return;
+    if (/(['"`]|\\n)#{1,3} /.test(line))
+      problems.push(
+        `${at(file)}:${i + 1}: 지시문의 글은 코드에 두지 않아요. skills/cairn-runner/references/prompts.md의 틀에 적어요`,
+      );
+  });
 }
 
 if (update) {

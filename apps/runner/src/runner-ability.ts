@@ -14,7 +14,8 @@ import { SigninTerminal } from './signin-terminal';
 //   ownLogins    러너가 스스로 가진 로그인 (환경 변수의 Claude 토큰)
 //   browser      서버 브라우저에 붙어 있는가: 서버 러너(연결 값 파일)이고 CAIRN_BROWSER_URL이 있을 때만.
 //                내 컴퓨터 러너의 브라우저는 탭 읽기에만 쓴다 (평소 쓰는 계정에 가까워 AI에게 맡기지 않는다)
-//   runnerBuild  러너의 빌드 (이미지의 CAIRN_RUNNER_BUILD, 내 컴퓨터는 git 커밋): 지시문 틀(Job.prompt)의 판이라 실행 기록에 남는다
+//   runnerBuild  러너의 빌드 (이미지의 CAIRN_RUNNER_BUILD, 내 컴퓨터는 git 커밋): 어느 단락을 넣는지(Job.prompt)의 판이라 실행 기록에 남는다.
+//                지시문의 글은 러너 스킬 cairn-runner의 틀이고 그 판은 서버가 따로 남긴다
 //   cliVersions  도구마다 CLI 버전 (--version). 실행 기록에 남는다
 //   slot         코드 러너 칸의 번호 (CAIRN_RUNNER_SLOT). 칸은 코드 작업만 받는다. next_jobs에는 싣지 않는다:
 //                칸인지는 서버가 기기의 권한(sandbox)으로 정한다 (러너가 말한 값을 믿지 않게)

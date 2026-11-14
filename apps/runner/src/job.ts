@@ -1,5 +1,6 @@
 import { ChatTurn } from './chat-turn';
 import type { Json } from './json';
+import type { PromptPack } from './prompt-pack';
 import { TeamMember } from './team-member';
 
 /** 일의 대상 (글 등) */
@@ -13,11 +14,8 @@ export class JobTarget {
 
 /** 맡긴 하위 작업 하나의 결과. 하위 작업이 모두 끝나 깨어난 일에만 온다 */
 export class SubtaskResult {
-  private static readonly STATUS: Readonly<Record<string, string>> = {
-    done: '완료',
-    failed: '실패',
-    cancelled: '취소',
-  };
+  /** 틀(subtask)이 이름을 아는 상태. 그 밖의 상태는 값 그대로 */
+  private static readonly KNOWN: readonly string[] = ['done', 'failed', 'cancelled'];
 
   constructor(
     readonly title: string,
@@ -40,11 +38,18 @@ export class SubtaskResult {
     );
   }
 
-  get line(): string {
-    const status = SubtaskResult.STATUS[this.status] ?? this.status;
-    const body = this.error ?? this.summary ?? '결과 글 없음';
-    const made = this.outputs.length > 0 ? `\n결과물: ${this.outputs.join(', ')}` : '';
-    return `## [${status}] ${this.title} (${this.agent || '담당 없음'})\n${body}${made}`;
+  /** 지시문의 한 덩이 (틀 subtask) */
+  line(prompts: PromptPack): string {
+    return prompts.fill('subtask', {
+      done: this.status === 'done',
+      failed: this.status === 'failed',
+      cancelled: this.status === 'cancelled',
+      other: SubtaskResult.KNOWN.includes(this.status) ? null : this.status,
+      title: this.title,
+      agent: this.agent,
+      body: this.error ?? this.summary,
+      outputs: this.outputs.join(', '),
+    });
   }
 }
 
@@ -73,15 +78,15 @@ export class BrowseSite {
     );
   }
 
-  /** 지시문의 한 단락 */
-  get part(): string {
-    return [
-      `# 사이트: ${this.name}`,
-      `사이트 id: ${this.id} · 판: ${this.version} (결재의 target_kind는 browser_site)`,
-      `시작 주소: ${this.startUrl}`,
-      `갈 수 있는 출처: ${this.origins.join(', ')}`,
-      '브라우저는 playwright MCP 도구로 움직입니다. 이 출처 밖으로는 가지 않습니다.',
-    ].join('\n');
+  /** 지시문의 한 단락 (틀 site) */
+  part(prompts: PromptPack): string {
+    return prompts.fill('site', {
+      name: this.name,
+      id: this.id,
+      version: this.version,
+      start: this.startUrl,
+      origins: this.origins.join(', '),
+    });
   }
 }
 
@@ -120,6 +125,12 @@ export class SkillPackage {
       raw.text('hash'),
       new Map(entries as [string, string][]),
     );
+  }
+
+  /** 로그에 남기는 판: 콘솔 판 N (해시 앞 7자) · 저장소 판 (해시 앞 7자) */
+  get label(): string {
+    const where = this.source === 'console' ? `콘솔 판 ${this.revision}` : '저장소 판';
+    return `${where} (${this.hash.slice(0, 7)})`;
   }
 
   /** SKILL.md (스킬 폴더를 읽지 못하는 CLI에게 지시문으로 준다) */
@@ -179,6 +190,8 @@ export class Job {
     readonly chat: ChatTurn | null = null,
     /** 이 러너에 묶인 에이전트의 일 (서버가 알린다). 이때만 이 러너가 나눈 폴더를 연다 (SharedFolders) */
     readonly bound = false,
+    /** 서버가 실어 보낸 지시문 틀(cairn-runner)의 지금 판. 옛 서버면 null (그때는 러너의 skills/) */
+    readonly promptPackage: SkillPackage | null = null,
   ) {}
 
   static from(raw: Json): Job {
@@ -218,6 +231,7 @@ export class Job {
       task.text('kind') === Job.MAKE && Boolean(task.child('payload').field('page')),
       ChatTurn.from(task.child('payload')),
       agent.flag('bound'),
+      raw.field('prompt_package') ? SkillPackage.from(raw.child('prompt_package')) : null,
     );
   }
 
@@ -248,6 +262,7 @@ export class Job {
       this.page,
       this.chat,
       this.bound,
+      this.promptPackage,
     );
   }
 
@@ -287,69 +302,51 @@ export class Job {
   }
 
   /**
-   * AI CLI에게 줄 글. skillReady: 스킬을 CLI의 스킬 폴더에 넣어 두었는가 (Claude).
+   * AI CLI에게 줄 글. 글은 지시문 틀(prompts, 러너 스킬 cairn-runner)에서 오고, 여기서는 어느 단락을 어떤 순서로 넣을지만 정한다.
+   * skillReady: 스킬을 CLI의 스킬 폴더에 넣어 두었는가 (Claude).
    * skillText: 스킬 폴더를 읽지 못하는 CLI(셸이 없는 Codex)에게 지시문으로 넣을 SKILL.md.
    * outputsDir: 사람에게 줄 파일을 둘 폴더 (일이 잘 끝나면 러너가 결과물로 올린다)
    */
   prompt(
+    prompts: PromptPack,
     skillReady: boolean,
     skillText: string | null = null,
     outputsDir: string | null = null,
   ): string {
     if (this.isAiTest) return this.instruction;
     const parts = [
-      `당신은 Cairn의 에이전트 "${this.agentName}"입니다.${this.agentRole ? `\n${this.agentRole}` : ''}`,
-      `# 할 일: ${this.title}\n${this.instruction}`,
+      prompts.fill('intro', { agent: this.agentName, role: this.agentRole }),
+      prompts.fill('task', { title: this.title, instruction: this.instruction }),
     ];
-    if (this.chat) parts.push(this.chat.part);
+    if (this.chat) parts.push(this.chat.part(prompts));
     if (this.target) {
       const { kind, id, version } = this.target;
-      const edition = version === null ? '' : `, 판 ${version}`;
-      parts.push(`# 대상\n${kind} ${id}${edition}`);
+      parts.push(
+        prompts.fill('target', { kind, id, version: version === null ? null : String(version) }),
+      );
     }
     if (this.goalChain.length > 0)
-      parts.push(`# 목표\n${this.goalChain.join(' › ')}\n이 일은 위 목표를 위한 것입니다.`);
-    if (this.revisionNote) parts.push(`# 주인이 고쳐 달라고 한 말\n${this.revisionNote}`);
+      parts.push(prompts.fill('goal', { chain: this.goalChain.join(' › ') }));
+    if (this.revisionNote) parts.push(prompts.fill('revision', { note: this.revisionNote }));
     if (this.subtaskResults.length > 0)
       parts.push(
-        [
-          '# 맡긴 하위 작업의 결과',
-          ...this.subtaskResults.map((r) => r.line),
-          '',
-          '결과를 모아 할 일을 마무리하고, 무엇을 했는지 짧게 보고하며 끝냅니다.',
-        ].join('\n'),
+        prompts.fill('subtasks', {
+          results: this.subtaskResults.map((r) => r.line(prompts)).join('\n'),
+        }),
       );
-    if (this.site) parts.push(this.site.part);
+    if (this.site) parts.push(this.site.part(prompts));
     if (this.brief) parts.push(this.brief);
-    if (this.team.length > 0) parts.push(this.teamPart());
-    if (this.skill && skillReady) parts.push(`# 스킬\n${this.skill} 스킬을 따릅니다.`);
+    if (this.team.length > 0)
+      parts.push(
+        prompts.fill('team', {
+          members: this.team.map((m) => m.line(prompts)).join('\n'),
+          rounds: this.roundsLeft,
+        }),
+      );
+    if (this.skill && skillReady) parts.push(prompts.fill('skill', { name: this.skill }));
     else if (this.skill && skillText)
-      parts.push(`# 스킬: ${this.skill}\n아래 스킬을 따릅니다.\n\n${skillText.trim()}`);
-    parts.push(
-      [
-        '# 일하는 법',
-        '- 서버의 데이터는 cairn MCP 도구로만 읽고 씁니다.',
-        '- 발행, 전송, 삭제는 직접 하지 않고 request_approval로 올린 뒤 바로 끝냅니다. 승인 뒤 실행은 서버가 합니다.',
-        ...(outputsDir
-          ? [
-              `- 사람에게 줄 파일(문서 · 슬라이드 · 표 · 그림 · 영상)을 만들면 ${outputsDir} 바로 아래에 둡니다. 일이 잘 끝나면 그 폴더의 파일만 결과물로 주인에게 갑니다 (하나 100MB, 200개까지. 폴더 · 숨김 파일은 빠집니다).`,
-            ]
-          : []),
-      ].join('\n'),
-    );
+      parts.push(prompts.fill('skill', { name: this.skill, text: skillText.trim() }));
+    parts.push(prompts.fill('work', { outputs: outputsDir }));
     return parts.join('\n\n');
-  }
-
-  /** 내 팀과 위임하는 법. 맡길지는 AI가 정하고, 받는 쪽 · 종류 · 한도는 서버가 막는다 */
-  private teamPart(): string {
-    const how =
-      this.roundsLeft > 0
-        ? [
-            '나눠 맡기는 편이 나을 때만 delegate_task로 한 번에 맡기고, 이 실행은 바로 끝냅니다.',
-            '팀원은 내가 쓴 지시와 목표만 보고 일하므로 지시에 필요한 것을 모두 적습니다.',
-            `하위 작업이 모두 끝나면 결과와 함께 이 일이 다시 옵니다. 남은 위임 횟수: ${this.roundsLeft}.`,
-          ]
-        : ['더 맡길 수 없습니다. 직접 마무리합니다.'];
-    return ['# 내 팀 (바로 아래)', ...this.team.map((m) => m.line), '', ...how].join('\n');
   }
 }

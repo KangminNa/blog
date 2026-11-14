@@ -257,6 +257,9 @@ export interface TaskRunRow {
   cli_version: string | null;
   model: string | null;
   started_at: Date;
+  prompt_source: string | null;
+  prompt_revision: number | null;
+  prompt_hash: string | null;
 }
 export type TaskRunNew = Partial<TaskRunRow> & Pick<TaskRunRow, 'id' | 'space_id' | 'task_id' | 'seq' | 'runner_id'>;
 

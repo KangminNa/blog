@@ -4,6 +4,7 @@ import { CodexCli } from './codex-cli';
 import type { Job } from './job';
 import type { JobWorkspace } from './job-workspace';
 import type { PlanWindow, RunEvent } from './progress';
+import type { PromptPack } from './prompt-pack';
 import type { RunnerConfig } from './runner-config';
 import type { SandboxRoom } from './sandbox-room';
 
@@ -36,7 +37,13 @@ export interface AiTool {
   readonly bin: string;
   /** 작업 자리를 만들고 이 도구의 설정을 쓴다. 코드 작업이면 코드 러너 칸의 자리 안에 */
   open(job: Job, room?: SandboxRoom | null): Promise<JobWorkspace>;
-  start(job: Job, workspace: JobWorkspace, onLine: (line: string) => void): AiProcess;
+  /** AI CLI를 띄운다. 지시문은 prompts(지시문 틀)로 채운다 */
+  start(
+    job: Job,
+    workspace: JobWorkspace,
+    prompts: PromptPack,
+    onLine: (line: string) => void,
+  ): AiProcess;
   stream(): AiStream;
   /** 실행하는 동안 CLI가 갱신한 자격. 바뀌지 않았으면 null */
   changedCredential(workspace: JobWorkspace): Promise<string | null>;

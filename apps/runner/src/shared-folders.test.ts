@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { ConfigProblem, RunnerConfig } from './runner-config';
 import { SharedFolders } from './shared-folders';
+import { REPO_PROMPTS } from './testing/repo-prompts';
 
 // 내 컴퓨터 러너가 나눠 주는 폴더: 설정 검사와 복사 규칙 (숨김 · .git · node_modules · 링크 빼기, 한도).
 
@@ -83,9 +84,12 @@ describe('나눠 주는 폴더 (CAIRN_RUNNER_FOLDERS)', () => {
     for (const skipped of ['.env', '.git', 'node_modules', 'link'])
       assert.equal(existsSync(join(into, 'project', skipped)), false, skipped);
     assert.equal(copy.cut, false);
-    assert.match(copy.part, /folders\/project \(파일 2개\)\n- folders\/docs \(파일 1개\)/);
-    assert.match(copy.part, /읽기만, 복사본/);
-    assert.doesNotMatch(copy.part, /일부만/);
+    assert.match(
+      copy.part(REPO_PROMPTS),
+      /folders\/project \(파일 2개\)\n- folders\/docs \(파일 1개\)/,
+    );
+    assert.match(copy.part(REPO_PROMPTS), /읽기만, 복사본/);
+    assert.doesNotMatch(copy.part(REPO_PROMPTS), /일부만/);
   });
 
   test('한도(파일 수 · 크기)에 닿으면 거기까지만 복사하고 단락에 알린다', async () => {
@@ -94,7 +98,7 @@ describe('나눠 주는 폴더 (CAIRN_RUNNER_FOLDERS)', () => {
       mkdtempSync(join(root, 'few-')),
     );
     assert.equal(few.cut, true);
-    assert.match(few.part, /일부만 복사했습니다/);
+    assert.match(few.part(REPO_PROMPTS), /일부만 복사했습니다/);
     const big = join(docs, 'big.bin');
     writeFileSync(big, Buffer.alloc(2048));
     const into = mkdtempSync(join(root, 'small-'));

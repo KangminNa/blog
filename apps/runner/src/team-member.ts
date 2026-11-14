@@ -1,4 +1,5 @@
 import type { Json } from './json';
+import type { PromptPack } from './prompt-pack';
 
 /** 일을 맡길 수 있는 바로 아래 팀원 한 명 (위임) */
 export class TeamMember {
@@ -23,13 +24,15 @@ export class TeamMember {
     );
   }
 
-  /** 지시문의 한 줄. 역할은 첫 줄만 */
-  get line(): string {
-    const role = this.role.split('\n')[0]?.trim();
-    const paused = this.status === 'paused' ? ' (중지됨: 맡겨도 재개될 때까지 기다림)' : '';
-    const bound = this.bound
-      ? ' · 정해진 컴퓨터에서 일함 (그 컴퓨터의 폴더를 읽는 일은 이 팀원에게)'
-      : '';
-    return `- ${this.name} (agent_id: ${this.agentId})${role ? `: ${role}` : ''} · 맡길 수 있는 일: ${this.kinds.join(', ')}${paused}${bound}`;
+  /** 지시문의 한 줄 (틀 member). 역할은 첫 줄만 */
+  line(prompts: PromptPack): string {
+    return prompts.fill('member', {
+      name: this.name,
+      id: this.agentId,
+      role: this.role.split('\n')[0]?.trim() ?? '',
+      kinds: this.kinds.join(', '),
+      paused: this.status === 'paused',
+      bound: this.bound,
+    });
   }
 }

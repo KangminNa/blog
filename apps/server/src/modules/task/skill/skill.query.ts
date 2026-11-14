@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { type Actor, BaseQuery, Database, NotFound } from '../../platform';
+import { type Actor, BaseQuery, Database, Forbidden, NotFound } from '../../platform';
 import type { SkillRevisionRow, SkillRow } from '../task.tables';
+import { PromptTemplates } from './prompt-templates';
 import { RepoSkillGateway } from './repo-skill.gateway';
 import { SkillDetailView, SkillListView, SkillRevisionView, SkillSummaryView } from './skill.view';
 import { SkillFiles } from './skill-files';
@@ -77,6 +78,22 @@ export class SkillQuery extends BaseQuery {
       row,
       consoleActive ? (row.active_hash as string) : repo.hash,
       consoleActive && row.active_based_on !== repo.hash,
+    );
+  }
+
+  /**
+   * AI에게 가는 지시문 틀의 지금 판 (cairn-runner: 콘솔 판, 그 판에 없는 틀은 저장소 판).
+   * 서버가 만드는 지시(목표 실행의 회차 지시 · read_url의 알림)가 쓴다. 지시문 글이라 누구든 자기 공간의 것을 읽는다 (일꾼은 공간을 받아서)
+   */
+  async prompts(actor: Actor, spaceId: string): Promise<PromptTemplates> {
+    if (actor.spaceId !== null && actor.spaceId !== spaceId) throw new Forbidden('space');
+    const [active] = await this.sql<SkillRevisionRow[]>`
+      SELECT r.* FROM task.skills s
+      JOIN task.skill_revisions r ON r.skill_id = s.id AND r.revision = s.active_revision
+      WHERE s.space_id = ${spaceId} AND s.name = ${PromptTemplates.SKILL}`;
+    return PromptTemplates.layered(
+      active ? SkillFiles.trusted(active.files as Record<string, string>) : null,
+      this.runnerSkill(PromptTemplates.SKILL),
     );
   }
 

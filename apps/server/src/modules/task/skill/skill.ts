@@ -1,5 +1,6 @@
 import { BaseEntity, NotFound, RuleViolation, TableEntity } from '../../platform';
 import type { SkillNew, SkillRevisionNew, SkillRow } from '../task.tables';
+import { PromptTemplates } from './prompt-templates';
 import { SkillSavedView } from './skill.view';
 import type { SkillFiles } from './skill-files';
 
@@ -41,10 +42,14 @@ export class Skill extends TableEntity<SkillRow, SkillNew> {
     return this.row.active_revision;
   }
 
-  /** 주인이 고친 새 판을 쌓고 바로 그 판을 쓴다. based_on은 그때 저장소 판의 해시 */
-  addRevision(files: SkillFiles, basedOn: string, note: string, now: Date): void {
+  /**
+   * 주인이 고친 새 판을 쌓고 바로 그 판을 쓴다. based_on은 그때 저장소 판(repo)의 해시.
+   * 지시문 틀(cairn-runner)은 저장소 판과 틀 이름 · 자리가 맞아야 한다: 러너와 서버가 이름으로 찾고 아는 자리만 채운다
+   */
+  addRevision(files: SkillFiles, repo: SkillFiles, note: string, now: Date): void {
     const text = note.trim();
     if (text.length > Skill.NOTE_MAX) throw new RuleViolation(`메모는 ${Skill.NOTE_MAX}자까지예요`);
+    if (this.row.name === PromptTemplates.SKILL) PromptTemplates.assertFits(files, repo);
     const revision = this.row.revisions + 1;
     this.put('revisions', revision);
     this.put('active_revision', revision);
@@ -55,7 +60,7 @@ export class Skill extends TableEntity<SkillRow, SkillNew> {
       revision,
       files: files.toRecord(),
       hash: files.hash,
-      based_on: basedOn,
+      based_on: repo.hash,
       note: text,
       created_at: now,
     };

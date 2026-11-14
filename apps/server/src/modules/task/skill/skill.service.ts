@@ -49,7 +49,7 @@ export class SkillService extends EntityService<Skill> {
         throw new Conflict('다른 곳에서 먼저 바뀌었어요. 새로 불러온 뒤 다시 해 주세요');
       found?.assertVersion(req.version);
       const skill = found ?? Skill.open(spaceId, req.name, now);
-      skill.addRevision(files, base.hash, req.note, now);
+      skill.addRevision(files, base, req.note, now);
       await skills.save(skill);
       await once.remember({ skillId: skill.id });
       return skill;

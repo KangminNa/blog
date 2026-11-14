@@ -9,8 +9,8 @@ import {
   RuleViolation,
   SecretBox,
 } from '../../platform';
+import type { SubtaskOutputRow } from '../task/job.view';
 import { TaskQuery } from '../task/task.query';
-import type { SubtaskOutputRow } from '../task/task.view';
 import { outputs } from '../task.schema';
 import type { OutputRow } from '../task.tables';
 import { DownloadTicket } from './download-ticket';

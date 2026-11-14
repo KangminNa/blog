@@ -4,6 +4,7 @@ import { BrowserMcp } from './browser-mcp';
 import { ClaudeStream } from './claude-stream';
 import type { Job } from './job';
 import { JobWorkspace } from './job-workspace';
+import type { PromptPack } from './prompt-pack';
 import type { SandboxRoom } from './sandbox-room';
 
 // Claude Code를 부르는 법. Codex가 들어올 때 공통 모양을 뽑는다 (객체설계 13장: 추상화는 둘째 구현이 생길 때).
@@ -183,13 +184,18 @@ export class ClaudeCli implements AiTool {
     };
   }
 
-  start(job: Job, workspace: JobWorkspace, onLine: (line: string) => void): AiProcess {
+  start(
+    job: Job,
+    workspace: JobWorkspace,
+    prompts: PromptPack,
+    onLine: (line: string) => void,
+  ): AiProcess {
     return new AiProcess(
       this.bin,
       this.args(workspace),
       workspace.workDir,
       this.env(workspace, process.env),
-      job.prompt(workspace.skillReady, null, workspace.outputsDir),
+      job.prompt(prompts, workspace.skillReady, null, workspace.outputsDir),
       onLine,
       workspace.user,
     );

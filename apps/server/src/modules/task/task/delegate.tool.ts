@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseTool } from '../../platform';
 import { CodeScope } from './code-scope';
+import type { DelegatedView } from './job.view';
 import { Task } from './task';
 import { DelegateTaskInput } from './task.input';
 import { TaskService } from './task.service';
-import type { DelegatedView } from './task.view';
 
 // MCP 도구 delegate_task: 에이전트가 바로 아래 팀에게 하위 작업을 맡긴다 (에이전트 조직, 객체설계 13장).
 // 작업 토큰으로만 부른다. 누가 어느 작업에서 맡기는지는 입력이 아니라 토큰에서 나온다.

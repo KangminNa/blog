@@ -10,6 +10,7 @@ import { OutputBatch } from './output-batch';
 import { OutputRejected, OutputUploader } from './output-uploader';
 import { ProgressState, RunEvent, RunResult } from './progress';
 import { ProgressReporter } from './progress-reporter';
+import { PromptPack } from './prompt-pack';
 import type { Redactor, RunLog } from './redactor';
 import type { RunnerConfig } from './runner-config';
 import type { SandboxStage } from './sandbox-stage';
@@ -105,17 +106,15 @@ export class JobRun {
         );
         if (ending) return await this.conclude(ending);
       }
+      const prompts = PromptPack.choose(this.job.promptPackage, this.config.skillsDir, this.log);
       workspace = await this.tool.open(this.job, stage?.workspaceRoom ?? null);
       await workspace.handOver(this.job.sharedFolders(this.config.folders));
       const { skill } = this.job;
       const shipped = this.job.skillPackage;
-      if (shipped)
-        this.log.info(
-          `스킬 ${shipped.name}: ${shipped.source === 'console' ? `콘솔 판 ${shipped.revision}` : '저장소 판'} (${shipped.hash.slice(0, 7)})`,
-        );
+      if (shipped) this.log.info(`스킬 ${shipped.name}: ${shipped.label}`);
       else if (skill && JobWorkspace.skillText(skill, this.config.skillsDir) === null)
         this.log.info(`스킬 ${skill}이 없어 지시만으로 해요`);
-      await this.supervise(workspace, this.tool);
+      await this.supervise(workspace, this.tool, prompts);
     } catch (error) {
       if (!(error instanceof CliUnavailable))
         await this.conclude(RunEnding.release(`러너 오류: ${(error as Error).message}`));
@@ -160,11 +159,12 @@ export class JobRun {
     return RunEnding.submit(error, RunResult.failed(error, this.redactor));
   }
 
-  private async supervise(workspace: JobWorkspace, tool: AiTool): Promise<void> {
+  /** place: 이 일의 작업 자리 */
+  private async supervise(place: JobWorkspace, tool: AiTool, prompts: PromptPack): Promise<void> {
     const stream = tool.stream();
     const wake = new AbortController();
-    const job = this.stage?.aiJob() ?? workspace.withShared(this.job);
-    const child = tool.start(job, workspace, (line) => {
+    const job = this.stage?.aiJob(prompts) ?? place.withShared(this.job, prompts);
+    const child = tool.start(job, place, prompts, (line) => {
       this.reporter.add(stream.read(line));
       this.reporter.notePlan(stream.takePlanUsage());
       this.reporter.noteModel(stream.model);
@@ -179,10 +179,10 @@ export class JobRun {
       await this.conclude(RunEnding.release(`AI CLI를 실행하지 못했어요: ${exit.spawnError}`));
       throw new CliUnavailable(`AI CLI를 실행하지 못했어요 (${tool.bin})`);
     }
-    await this.writeBack(tool, workspace);
+    await this.writeBack(tool, place);
     const ending = decided
       ? ((await this.flush()) ?? decided)
-      : ((await this.flushForSubmit()) ?? (await this.afterExit(exit, stream, child, workspace)));
+      : ((await this.flushForSubmit()) ?? (await this.afterExit(exit, stream, child, place)));
     await this.conclude(ending);
   }
 

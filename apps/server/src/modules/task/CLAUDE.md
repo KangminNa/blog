@@ -11,7 +11,7 @@
   기기(권한 `delegate`)도 MCP `ask_agent` · `agent_reply`(`chat.tool.ts`)로 대화한다: 자기가 연 대화(`chats.device_id`)만 (`Chat.assertSender`), 상대는 이름 · id로 (`Chat.partnerOf`). 기기의 메시지는 `payload.chat.via: device`로 남겨 `read_url`의 기준에서 뺀다 (`WebQuery.ownerText`). `agent_reply`는 신호를 기다리는 긴 폴링 (`ChatQuery.reply`, 트랜잭션 밖). 결재는 기기가 하지 못한다
 - `goal/`: 목표 (`Goal`). 회사 목표부터 이어지는 나무. 작업이 목표 하나에 이어진다. `api/goals`
 - `schedule/`: 스케줄 (`Schedule`, `SchedulePolicy`, 7단계에서 하트비트를 넓혀 합침). 정해진 시각에 지시대로 작업을 만든다. `api/schedules`, 일꾼의 `ScheduleJob`(1분마다)
-- `task/`: 작업 (`Task` + 실행 기록 `task_events`). `queued → running → waiting → running → done`, `failed`, `cancelled`.
+- `task/`: 작업 (`Task` + 실행 기록 `task_events`). 화면이 받는 모양은 `task.view.ts`, 러너 · 에이전트가 MCP로 받는 모양(`next_jobs` · `report_progress` · `delegate_task`)은 `job.view.ts`. `queued → running → waiting → running → done`, `failed`, `cancelled`.
   `api/tasks`, MCP `next_jobs` · `report_progress` · `submit_result` · `release_job`, 위임 `delegate_task`(작업 토큰)
 - `approval/`: 결재 (`Approval`). `pending → approved · rejected · revision_requested · cancelled`.
   `api/approvals`, MCP `request_approval`
@@ -22,8 +22,9 @@
   에이전트를 러너에 묶는다 (`agents.runner_id`, 2026-11-14): `Agent.edit(changes, runner)`가 칸 · code/make를 막고, 일을 빌릴 때 `Agent.runsOn(러너 id)`가 아닌 에이전트는 `ready`에서 뺀다 (자동 배정도). 일의 `agent.bound` · 팀원의 `bound`로 러너 · 팀장에게 알린다 (내 컴퓨터 러너는 묶인 일에만 나눈 폴더를 준다)
 - `output/`: 결과물 (`Output`, 이름 · 종류 · 형식 · 한도 `OutputPolicy`, 올리기 표 `UploadTicket`, 재료 내려받기 표 `DownloadTicket`). 러너가 MCP `begin_upload`로 표를 받아 `PUT api/outputs/upload`(머리글 `x-cairn-upload`)로 파일을 흘려 보낸다. 만들기 작업의 재료는 거꾸로 `begin_download` → `GET api/outputs/download`(머리글 `x-cairn-download`). `api/outputs`(주인만: 목록 · 내려받기 · 휴지통 · 올리기 `POST api/outputs/files`), 일꾼 `OutputPurgeJob`. 주인이 올린 파일은 작업 · 실행 없이(`task_id` · `run_id` 둘 다 null, DB CHECK) 결과물이 되어 만들기 일의 재료로 쓴다 (2026-11-13)
 - `goal-run/`: 목표 실행 (`GoalRun`, 회차 보고 `GoalRound`, 기획서 결정 2026-11-13). 주인이 목표 하나를 팀장 에이전트에게 맡기면 회차(작업 하나)가 저절로 이어 돌고, 주인은 중간 · 최종 결재문만 받는다. `api/goal-runs`(주인만: 목록 · 상세 · 시작 · 멈추기), MCP `report_round`(작업 토큰, 회차마다 한 번). 회차 작업이 끝나거나(`task.task.changed`) 결재가 정해지면(`task.approval.*`, 대상 `goal_run`) `GoalRunHandler`가 다음을 정한다
-- `web/`: 주소 읽기 (MCP `read_url`, 작업 토큰). 서버가 AI 대신 페이지를 열어 글자만 준다 (`WebQuery`). 목줄은 `WebReach`: 비공개를 볼 수 있는 일(전체 읽기 · 쓰기 · 코드 권한, 재료 읽기 허락)은 주인의 지시(위임된 일이면 맨 위 일, 맨 위가 목표 실행의 회차 작업이면 실행의 지시)에 적힌 사이트와 그 하위만, 아니면 공개 주소 어디든. 내부망 · 이 서버 · 메타데이터 주소는 이름을 풀어 본 뒤 그 주소로만 붙어 막는다 (`WebPageGateway`, 리다이렉트 3번까지 매번 다시). 2MB · 15초, 글이 아닌 형식은 거절. 받은 글은 자료라는 표시(`note`)와 함께
-- `skill/`: 러너 스킬의 콘솔 판 (`Skill`, 파일 규칙과 해시 `SkillFiles`, 쓸 판 고르기 `SkillPackage`, 저장소 판 읽기 `RepoSkillGateway`). `api/runner-skills`. `next_jobs`의 `skill_package`로 러너에게 간다
+- `web/`: 주소 읽기 (MCP `read_url`, 작업 토큰). 서버가 AI 대신 페이지를 열어 글자만 준다 (`WebQuery`). 목줄은 `WebReach`: 비공개를 볼 수 있는 일(전체 읽기 · 쓰기 · 코드 권한, 재료 읽기 허락)은 주인의 지시(위임된 일이면 맨 위 일, 맨 위가 목표 실행의 회차 작업이면 실행의 지시)에 적힌 사이트와 그 하위만, 아니면 공개 주소 어디든. 내부망 · 이 서버 · 메타데이터 주소는 이름을 풀어 본 뒤 그 주소로만 붙어 막는다 (`WebPageGateway`, 리다이렉트 3번까지 매번 다시). 2MB · 15초, 글이 아닌 형식은 거절. 받은 글은 자료라는 표시(`note`, 지시문 틀 `read-url-note`)와 함께
+- `skill/`: 러너 스킬의 콘솔 판 (`Skill`, 파일 규칙과 해시 `SkillFiles`, 쓸 판 고르기 `SkillPackage`, 저장소 판 읽기 `RepoSkillGateway`). `api/runner-skills`. `next_jobs`의 `skill_package`로 러너에게 간다.
+  지시문 틀 (`cairn-runner`, 2차 1-0 · 기획서 결정 2026-11-14): AI에게 가는 지시문의 글. 에이전트의 일마다 `prompt_package`로 지금 판을 보내고(러너가 채운다), 서버가 만드는 글(목표 실행의 회차 지시 `goal-round` · 앞 회차 보고 `goal-report`, `read_url`의 알림 `read-url-note`)은 `SkillQuery.prompts` → `PromptTemplates.fill`로 채운다 (콘솔 판에 없는 틀은 저장소 판에서). 콘솔 판은 저장소 판과 틀 이름 · 자리 · 여닫는 표시가 맞아야 쌓인다 (`PromptTemplates.assertFits`, `Skill.addRevision`). 실행 기록에 판(`prompt_source` · `prompt_revision` · `prompt_hash`)을 남긴다
 
 파일 구조 (객체설계 6장): `<이름>.ts` · `.view.ts` · `.input.ts` · `.service.ts` · `.query.ts` · `.api.ts` · `.tool.ts` · `.repository.ts`.
 엔티티는 `TableEntity`(platform)로 표 한 줄을 들고 바뀐 칸을 기억하고, Repository(`TableRepository`)는 그 칸만 저장한다. 칼럼을 아는 곳은 `task.tables.ts`, Entity의 `RULES`, Input의 `COLUMNS`, View의 `toJSON`이다.

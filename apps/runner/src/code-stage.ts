@@ -8,6 +8,7 @@ import type { Job } from './job';
 import { RunEnding } from './job-run';
 import { McpClient, ServerUnreachable, ToolRefused } from './mcp-client';
 import { RunEvent, RunResult } from './progress';
+import type { PromptPack } from './prompt-pack';
 import type { Redactor, RunLog } from './redactor';
 import type { RunnerConfig } from './runner-config';
 import { SandboxRoom } from './sandbox-room';
@@ -80,29 +81,26 @@ export class CodeStage implements SandboxStage {
   }
 
   /** AI에게 줄 일: 저장소 · 고칠 곳 · 검사 단락을 더한다 (이어서 고치는 일이면 다시 얹은 것과 충돌한 파일도) */
-  aiJob(): Job {
+  aiJob(prompts: PromptPack): Job {
     if (!this.spec) return this.job;
+    const brief = this.spec.brief(prompts);
     return this.job.withBrief(
-      this.previous === null ? this.spec.brief : `${this.spec.brief}\n\n${this.replayBrief()}`,
+      this.previous === null ? brief : `${brief}\n\n${this.replayBrief(prompts)}`,
     );
   }
 
-  /** 다시 얹은 앞 PR을 AI에게 알리는 단락 */
-  private replayBrief(): string {
+  /** 다시 얹은 앞 PR을 AI에게 알리는 단락 (틀 code-replay) */
+  private replayBrief(prompts: PromptPack): string {
     const { previous, spec, repo } = this;
     if (previous === null || spec === null || repo === null) return '';
-    const head = [
-      '# 이어서 고치기',
-      `앞서 올린 PR(${spec.branch})의 변경을 최신 ${spec.base}(${repo.baseSha.slice(0, 7)}) 위에 다시 얹어 두었어요.`,
-    ];
-    if (previous.conflicts.length === 0)
-      return [...head, '충돌은 없어요. 받은 말대로 이어서 고쳐 주세요.'].join('\n');
-    return [
-      ...head,
-      '아래 파일에 충돌 표시(<<<<<<< · ======= · >>>>>>>)가 남아 있어요. 기준의 바뀐 내용과 앞 변경을 모두 살려 먼저 풀어 주세요.',
-      '충돌 표시가 하나라도 남으면 올리지 않아요.',
-      ...CodeStage.list(previous.conflicts).map((f) => `- ${f}`),
-    ].join('\n');
+    const shown = previous.conflicts.slice(0, CodeStage.FILES_SHOWN);
+    return prompts.fill('code-replay', {
+      branch: spec.branch,
+      base: spec.base,
+      sha: repo.baseSha.slice(0, 7),
+      conflicts: shown.map((f) => `- ${f}`).join('\n'),
+      more: previous.conflicts.length - shown.length,
+    });
   }
 
   /** AI 전에. 끝낼 이유가 생기면 그 끝, 아니면 null */

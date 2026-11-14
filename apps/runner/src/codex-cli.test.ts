@@ -7,6 +7,7 @@ import { after, before, describe, test } from 'node:test';
 import { CodexCli } from './codex-cli';
 import { Job } from './job';
 import { Json } from './json';
+import { REPO_PROMPTS } from './testing/repo-prompts';
 
 // Codex 어댑터: 작업마다 만드는 CODEX_HOME, 셸을 끈 설정, 넘기는 환경, 갱신된 자격 찾기.
 
@@ -121,7 +122,7 @@ describe('Codex 설정', () => {
   });
 
   test('스킬은 셸 없이 읽을 수 없어 지시문에 넣는다', () => {
-    const prompt = job().prompt(false, '초안은 blog_save_draft로 저장한다.');
+    const prompt = job().prompt(REPO_PROMPTS, false, '초안은 blog_save_draft로 저장한다.');
     assert.match(prompt, /# 스킬: cairn-write/);
     assert.match(prompt, /blog_save_draft로 저장한다/);
   });

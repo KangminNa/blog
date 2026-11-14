@@ -14,9 +14,6 @@ import { AiSigninRelayView, AiTestView } from '../ai/ai-login.view';
 import type { Goal } from '../goal/goal';
 import type { OutputRow, TaskEventRow, TaskNew, TaskRow, TaskRunNew } from '../task.tables';
 import { CodeScope } from './code-scope';
-import { MakeMaterials } from './make-materials';
-import { PageOrder } from './page-order';
-import type { RunRecord } from './run-record';
 import {
   DelegatedView,
   type JobSkillView,
@@ -24,8 +21,11 @@ import {
   JobSubtaskResultView,
   JobView,
   ProgressView,
-  TaskView,
-} from './task.view';
+} from './job.view';
+import { MakeMaterials } from './make-materials';
+import { PageOrder } from './page-order';
+import type { RunRecord } from './run-record';
+import { TaskView } from './task.view';
 
 // 작업 하나. 러너가 임대로 빌려 가고, 에이전트가 결재를 올리고, 결재 뒤 실행 결과로 끝난다.
 //   queued → running → waiting → running → done, 그리고 failed · cancelled

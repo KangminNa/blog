@@ -1,6 +1,7 @@
 import type { Job } from './job';
 import type { RunEnding } from './job-run';
 import type { RunEvent } from './progress';
+import type { PromptPack } from './prompt-pack';
 import type { Redactor } from './redactor';
 import type { SandboxRoom } from './sandbox-room';
 
@@ -17,8 +18,8 @@ export interface SandboxStage {
   readonly awaitsApproval: boolean;
   /** 올린 결과물이 하나도 없으면 실패인가 (만들기 작업) */
   readonly needsOutputs: boolean;
-  /** AI에게 줄 일: 이 단계가 아는 단락(저장소 · 재료)을 더한다 */
-  aiJob(): Job;
+  /** AI에게 줄 일: 이 단계가 아는 단락(저장소 · 재료)을 지시문 틀로 채워 더한다 */
+  aiJob(prompts: PromptPack): Job;
   /** AI 전에. 끝낼 이유가 생기면 그 끝, 아니면 null */
   prepare(
     signal: AbortSignal,

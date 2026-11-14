@@ -5,6 +5,7 @@ import { Job } from './job';
 import { Json } from './json';
 import { AccessDenied, ServerUnreachable, ToolRefused } from './mcp-client';
 import { Redactor } from './redactor';
+import { REPO_PROMPTS } from './testing/repo-prompts';
 
 const job = (kind: string, more: object = {}): Job =>
   Job.from(
@@ -105,7 +106,7 @@ describe('연결 확인 일', () => {
     assert.equal(aiTest.isAiTest, true);
     assert.equal(aiTest.tool, 'claude');
     assert.equal(aiTest.runToken, null);
-    assert.equal(aiTest.prompt(false), 'ok라고만 답하세요.');
+    assert.equal(aiTest.prompt(REPO_PROMPTS, false), 'ok라고만 답하세요.');
   });
 
   test('보통 일의 모양은 그대로다', () => {

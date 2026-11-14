@@ -1,4 +1,5 @@
 import { BaseEntity, type ColumnRules, RuleViolation, TableEntity } from '../../platform';
+import type { PromptTemplates } from '../skill/prompt-templates';
 import type { GoalRoundNew, GoalRoundRow } from '../task.tables';
 import { GoalRoundView } from './goal-run.view';
 
@@ -86,19 +87,17 @@ export class GoalRound extends TableEntity<GoalRoundRow, GoalRoundNew> {
     );
   }
 
-  /** 다음 회차의 지시에 싣는 앞 회차 보고 */
-  brief(): string {
+  /** 다음 회차의 지시에 싣는 앞 회차 보고 (지시문 틀 goal-report) */
+  brief(prompts: PromptTemplates): string {
     const r = this.row;
-    const list = (items: readonly string[]) => items.map((i) => `- ${i}`).join('\n') || '- 없음';
-    return [
-      `## 앞 회차(${r.round}회차) 보고`,
-      r.summary,
-      '### 한 일',
-      list(r.completed),
-      '### 남은 일',
-      list(r.remaining),
-      ...(r.next_plan ? ['### 다음 계획', r.next_plan] : []),
-    ].join('\n');
+    const list = (items: readonly string[]) => items.map((i) => `- ${i}`).join('\n');
+    return prompts.fill('goal-report', {
+      round: r.round,
+      summary: r.summary,
+      completed: list(r.completed),
+      remaining: list(r.remaining),
+      plan: r.next_plan,
+    });
   }
 
   view(): GoalRoundView {

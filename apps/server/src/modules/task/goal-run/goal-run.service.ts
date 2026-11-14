@@ -3,6 +3,7 @@ import {
   Actor,
   AgentActor,
   BaseService,
+  Database,
   Forbidden,
   RuleViolation,
   type Sql,
@@ -12,6 +13,7 @@ import { AgentRepository } from '../agent/agent.repository';
 import { Approval } from '../approval/approval';
 import { ApprovalRepository } from '../approval/approval.repository';
 import { GoalRepository } from '../goal/goal.repository';
+import { SkillQuery } from '../skill/skill.query';
 import { TaskRepository } from '../task/task.repository';
 import { GoalRound } from './goal-round';
 import { GoalRun } from './goal-run';
@@ -25,11 +27,20 @@ import { GoalRoundRepository, GoalRunRepository } from './goal-run.repository';
 // 잠그는 순서: 작업 → 작업의 결재 → 실행 → 실행의 결재 (모듈 규칙의 작업 → 결재 사이에 실행을 둔다).
 @Injectable()
 export class GoalRunService extends BaseService {
+  constructor(
+    db: Database,
+    /** 회차 지시의 글 (지시문 틀). 트랜잭션 전에 읽는다 */
+    private readonly skills: SkillQuery,
+  ) {
+    super(db);
+  }
+
   /** 주인이 시작한다: 실행과 첫 회차 작업. 같은 requestId는 처음 만든 실행 */
   async start(actor: Actor, req: CreateGoalRunInput): Promise<GoalRun> {
     actor.assertOwner();
     const spaceId = actor.requireSpace();
     const now = new Date();
+    const prompts = await this.skills.prompts(actor, spaceId);
     return this.transaction(async (tx) => {
       const runs = new GoalRunRepository(tx);
       const before = await runs.findByRequest(spaceId, req.requestId);
@@ -38,7 +49,7 @@ export class GoalRunService extends BaseService {
       const lead = await new AgentRepository(tx).load(spaceId, req.agentId);
       const run = GoalRun.open(spaceId, req.requestId, goal, lead, req.fields, now);
       await runs.save(run);
-      await new TaskRepository(tx).insertOnce(run.firstRound(now));
+      await new TaskRepository(tx).insertOnce(run.firstRound(prompts, now));
       return run;
     });
   }
@@ -72,6 +83,7 @@ export class GoalRunService extends BaseService {
   async settleRound(actor: Actor, spaceId: string, taskId: string): Promise<void> {
     if (!(actor instanceof SystemActor)) throw new Forbidden('system');
     const now = new Date();
+    const prompts = await this.skills.prompts(actor, spaceId);
     await this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
       const task = await tasks.load(spaceId, taskId);
@@ -86,7 +98,7 @@ export class GoalRunService extends BaseService {
       const previous = await rounds.findRound(runId, round - 1);
       const approval = run.closeRound(task, report, previous, now);
       if (approval) await new ApprovalRepository(tx).save(approval);
-      else await tasks.insertOnce(run.nextRound(report, null, now));
+      else await tasks.insertOnce(run.nextRound(prompts, report, null, now));
       await runs.save(run);
     });
   }
@@ -95,6 +107,7 @@ export class GoalRunService extends BaseService {
   async decided(actor: Actor, spaceId: string, approvalId: string): Promise<void> {
     if (!(actor instanceof SystemActor)) throw new Forbidden('system');
     const now = new Date();
+    const prompts = await this.skills.prompts(actor, spaceId);
     await this.transaction(async (tx) => {
       const approval = await new ApprovalRepository(tx).findIn(spaceId, approvalId);
       if (approval === null || approval.targetKind !== Approval.GOAL_RUN) return;
@@ -105,7 +118,7 @@ export class GoalRunService extends BaseService {
         return;
       }
       const previous = await new GoalRoundRepository(tx).findRound(run.id, run.round);
-      await new TaskRepository(tx).insertOnce(run.nextRound(previous, approval.note, now));
+      await new TaskRepository(tx).insertOnce(run.nextRound(prompts, previous, approval.note, now));
       await runs.save(run);
     });
   }

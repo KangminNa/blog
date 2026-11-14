@@ -6,6 +6,7 @@ import { BrowserMcp } from './browser-mcp';
 import { CodexStream } from './codex-stream';
 import type { Job } from './job';
 import { JobWorkspace } from './job-workspace';
+import type { PromptPack } from './prompt-pack';
 import type { SandboxRoom } from './sandbox-room';
 
 // Codex CLI를 부르는 법: 공식 `codex exec --json`을 ChatGPT 구독 로그인(auth.json)으로 그대로 띄운다.
@@ -75,8 +76,8 @@ export class CodexCli implements AiTool {
     const sandbox = shell
       ? ['sandbox_mode = "danger-full-access"']
       : ['sandbox_mode = "workspace-write"'];
+    // 러너가 작업마다 만드는 설정이고 작업이 끝나면 지운다 (파일 안에는 주석을 쓰지 않는다: 러너 코드에 # 글을 두지 않는 규칙)
     const lines = [
-      '# Cairn 러너가 작업마다 만든 설정. 작업이 끝나면 지운다',
       'cli_auth_credentials_store = "file"',
       'approval_policy = "never"',
       ...sandbox,
@@ -157,7 +158,12 @@ export class CodexCli implements AiTool {
     };
   }
 
-  start(job: Job, workspace: JobWorkspace, onLine: (line: string) => void): AiProcess {
+  start(
+    job: Job,
+    workspace: JobWorkspace,
+    prompts: PromptPack,
+    onLine: (line: string) => void,
+  ): AiProcess {
     // 서버가 실어 보낸 판이 먼저, 옛 서버면 디스크의 skills/
     const skill =
       job.skillPackage?.skillMd ??
@@ -167,7 +173,7 @@ export class CodexCli implements AiTool {
       this.args(workspace),
       workspace.workDir,
       this.env(job, workspace, process.env),
-      job.prompt(false, skill, workspace.outputsDir),
+      job.prompt(prompts, false, skill, workspace.outputsDir),
       onLine,
       workspace.user,
     );

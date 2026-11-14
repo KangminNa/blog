@@ -1,3 +1,5 @@
+import type { PromptPack } from './prompt-pack';
+
 /** payload.code가 틀림. AI를 띄우지 않고 실패로 끝낸다 */
 export class CodeSpecProblem extends Error {}
 
@@ -87,31 +89,16 @@ export class CodeSpec {
     return files.filter((file) => !this.allows(file));
   }
 
-  /** AI에게 주는 단락. 주소에는 자격이 없다 */
-  get brief(): string {
-    const where = this.paths.includes(CodeSpec.WHOLE)
-      ? ['- 저장소 전체']
-      : this.paths.map((p) => `- ${p}`);
-    const lines = [
-      '# 저장소',
-      `${this.repoUrl} (기준 브랜치 ${this.base}). 작업 폴더가 이 저장소의 사본이고 셸을 쓸 수 있습니다.`,
-      '',
-      '# 고칠 수 있는 곳',
-      ...where,
-      `이 밖이나 ${CodeSpec.ALWAYS_BLOCKED.join(', ')}를 고치면 아무것도 올라가지 않습니다.`,
-    ];
-    if (this.checks.length > 0)
-      lines.push(
-        '',
-        '# 검사 명령',
-        ...this.checks.map((c) => `- ${c}`),
-        '끝내기 전에 돌려 봅니다. 끝나면 러너가 한 번 더 돌려 결과에 적습니다.',
-      );
-    lines.push(
-      '',
-      '커밋 · push · 원격 설정은 하지 않습니다. 끝나면 러너가 바뀐 것을 하나로 묶어 올립니다.',
-    );
-    return lines.join('\n');
+  /** AI에게 주는 단락 (틀 code). 주소에는 자격이 없다 */
+  brief(prompts: PromptPack): string {
+    return prompts.fill('code', {
+      repo: this.repoUrl,
+      base: this.base,
+      whole: this.paths.includes(CodeSpec.WHOLE),
+      paths: this.paths.map((p) => `- ${p}`).join('\n'),
+      blocked: CodeSpec.ALWAYS_BLOCKED.join(', '),
+      checks: this.checks.map((c) => `- ${c}`).join('\n'),
+    });
   }
 
   private static object(raw: unknown, name: string): Readonly<Record<string, unknown>> {

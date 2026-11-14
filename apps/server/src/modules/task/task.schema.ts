@@ -246,6 +246,9 @@ export const taskRuns = taskSchema.table('task_runs', {
   cli_version: text('cli_version'),
   model: text('model'),
   started_at: timestamp('started_at', { withTimezone: true }).notNull(),
+  prompt_source: text('prompt_source'),
+  prompt_revision: integer('prompt_revision'),
+  prompt_hash: text('prompt_hash'),
 });
 
 /** task.tasks */

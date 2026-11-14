@@ -72,7 +72,14 @@ describe('콘솔 판', () => {
   test('목록은 저장소의 러너 스킬뿐이다 (사람의 AI 도구용 스킬은 없다)', async () => {
     const { skills } = ok(await api.get('/api/runner-skills', owner)) as { skills: Json[] };
     const names = skills.map((s) => s.name);
-    for (const name of ['cairn-write', 'cairn-tidy', 'cairn-browse', 'cairn-code', 'cairn-make'])
+    for (const name of [
+      'cairn-write',
+      'cairn-tidy',
+      'cairn-browse',
+      'cairn-code',
+      'cairn-make',
+      'cairn-runner',
+    ])
       assert.ok(names.includes(name), name);
     assert.equal(names.includes('cairn-save'), false);
     const write = skills.find((s) => s.name === 'cairn-write') as Json;
@@ -276,6 +283,71 @@ describe('러너에게 실어 보내기 · 실행 기록', () => {
       /바꿀 수 없어요/,
     );
     await assert.rejects(db.sql`DELETE FROM task.task_runs WHERE task_id = ${String(taskId)}`);
+  });
+
+  test('지시문 틀(cairn-runner)도 일마다 실려 가고 실행 기록에 남는다. 콘솔 판은 저장소 판과 틀 이름 · 자리가 맞아야 한다', async () => {
+    const repoJob = await lease();
+    const repoPrompt = repoJob.prompt_package as Json;
+    assert.equal(repoPrompt.name, 'cairn-runner');
+    assert.equal(repoPrompt.source, 'repo');
+    const prompts = String((repoPrompt.files as Json)['references/prompts.md']);
+    assert.match(prompts, /<!-- intro -->/);
+    const [repoRun] = await runsOf((repoJob.task as Json).id);
+    assert.deepEqual(repoRun?.prompt, { source: 'repo', revision: null, hash: repoPrompt.hash });
+
+    const files = ((await detail('cairn-runner')).repo as { files: Json }).files;
+    const withPrompts = (text: string): Json => ({ ...files, 'references/prompts.md': text });
+    for (const [label, text, said] of [
+      [
+        '틀 이름을 바꿈',
+        prompts.replace('<!-- intro -->', '<!-- hello -->'),
+        /틀이 빠졌어요: intro/,
+      ],
+      [
+        '없는 자리',
+        prompts.replace('# 할 일: {{title}}', '# 할 일: {{title}} {{secret}}'),
+        /task 틀에 없는 자리예요/,
+      ],
+      [
+        '닫지 않은 구역',
+        prompts.replace('{{/role}}', ''),
+        /intro 틀의 \{\{#role\}\}가 닫히지 않았어요/,
+      ],
+      ['없는 틀', `${prompts}\n<!-- extra -->\n더`, /저장소 판에 없는 틀이에요: extra/],
+    ] as const) {
+      const res = await save('cairn-runner', withPrompts(text), 0);
+      assert.equal(res.status, 422, `${label}: ${res.text}`);
+      assert.match(res.text, said, label);
+    }
+
+    const saved = ok(
+      await save(
+        'cairn-runner',
+        withPrompts(prompts.replace('# 할 일: {{title}}', '# 맡은 일: {{title}}')),
+        0,
+      ),
+      201,
+    );
+    const consoleJob = await lease();
+    const consolePrompt = consoleJob.prompt_package as Json;
+    assert.equal(consolePrompt.source, 'console');
+    assert.equal(consolePrompt.revision, 1);
+    assert.match(
+      String((consolePrompt.files as Json)['references/prompts.md']),
+      /# 맡은 일: \{\{title\}\}/,
+    );
+    const [consoleRun] = await runsOf((consoleJob.task as Json).id);
+    assert.deepEqual(consoleRun?.prompt, {
+      source: 'console',
+      revision: 1,
+      hash: consolePrompt.hash,
+    });
+    ok(
+      await api.request('PUT', '/api/runner-skills/cairn-runner/active', owner, {
+        revision: null,
+        version: saved.version,
+      }),
+    );
   });
 
   test('에이전트 설정이 바뀌면 설정 판이 오르고, 멈춤 · 다시 시작은 판을 올리지 않는다', async () => {
