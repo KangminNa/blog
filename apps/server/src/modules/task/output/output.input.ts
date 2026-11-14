@@ -72,11 +72,15 @@ export class ListOutputsInput extends BaseRequest {
   }
 }
 
-/** GET api/outputs/:id/file: inline=1이면 미리 보기 (열어도 되는 형식만) */
+/**
+ * GET api/outputs/:id/file: inline=1이면 미리 보기 (열어도 되는 형식만).
+ * view=1이면 가장 알맞게 열기: HTML은 격리해서 열고, 그림 · PDF · 영상은 미리 보기, 나머지는 내려받기
+ */
 export class OutputFileInput extends BaseRequest {
   private constructor(
     readonly id: string,
     readonly inline: boolean,
+    readonly view: boolean,
   ) {
     super();
   }
@@ -85,7 +89,7 @@ export class OutputFileInput extends BaseRequest {
     const query = (raw ?? {}) as Record<string, unknown>;
     return BaseRequest.read(
       { ...query, id },
-      (f) => new OutputFileInput(f.uuid('id'), query.inline === '1'),
+      (f) => new OutputFileInput(f.uuid('id'), query.inline === '1', query.view === '1'),
     );
   }
 }

@@ -7,6 +7,7 @@ import { useAction } from '../../_lib/use-action';
 import { useLiveValue } from '../../_lib/use-live';
 import { bytes, INLINE_MIMES, OUTPUT_KINDS, TEXT_MIMES, when } from '../../_task/labels';
 import { readPages } from '../../_task/live';
+import { isHtmlOutput, OutputOpen } from '../../_task/parts';
 import type { Output, OutputPage, OutputSaved, OutputUsage, Task } from '../../_task/types';
 import { type MakeBody, MakeForm } from './MakeForm';
 
@@ -184,6 +185,7 @@ export function OutputPanel({ taskId }: { taskId: string | null }) {
                     미리 보기
                   </button>
                 )}
+                {isHtmlOutput(o.name) && <OutputOpen id={o.id} name={o.name} />}
                 <a className="ghost" href={fileUrl(o)} download={o.name}>
                   내려받기
                 </a>

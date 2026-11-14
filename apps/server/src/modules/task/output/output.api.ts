@@ -55,7 +55,7 @@ export class OutputController {
   ): Promise<StreamableFile> {
     const file = await this.query.file(actor, OutputFileInput.from(id, query));
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Security-Policy', OutputFile.CSP);
+    res.setHeader('Content-Security-Policy', file.csp);
     return new StreamableFile(file.stream, {
       type: file.mime,
       disposition: file.disposition,

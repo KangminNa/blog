@@ -22,8 +22,15 @@ describe('OutputPolicy', () => {
     assert.match(OutputPolicy.mimeOf('deck.pptx', FileSniff.ZIP), /presentationml/);
     assert.equal(OutputPolicy.mimeOf('a.zip', FileSniff.ZIP), FileSniff.ZIP);
     assert.equal(OutputPolicy.kindOf('표.CSV', null), 'sheet');
-    assert.equal(OutputPolicy.kindOf('page.html', null), 'other');
-    assert.equal(OutputPolicy.mimeOf('page.html', null), OutputPolicy.OCTET);
+    assert.equal(
+      OutputPolicy.kindOf('page.html', null),
+      'document',
+      'HTML은 발표 · 표 · 문서의 기본 형식',
+    );
+    assert.equal(OutputPolicy.mimeOf('page.html', null), 'text/html');
+    assert.equal(OutputPolicy.kindOf('data.bin', null), 'other');
+    assert.equal(OutputPolicy.mimeOf('data.bin', null), OutputPolicy.OCTET);
+    assert.ok(OutputPolicy.canView('발표.HTML') && !OutputPolicy.canView('메모.md'));
     assert.equal(OutputPolicy.kindOf('fake.png', null), 'other', '그림인지는 내용으로만');
   });
 

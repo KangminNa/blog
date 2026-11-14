@@ -16,7 +16,7 @@ import {
   when,
 } from '../../_task/labels';
 import { useAgents, usePendingApprovals } from '../../_task/live';
-import { TaskPill } from '../../_task/parts';
+import { OutputOpen, TaskPill } from '../../_task/parts';
 import type { Task, TaskDetail, TaskEvent, TaskOutput, TaskRun } from '../../_task/types';
 
 /** 서버가 상세에 보내는 실행 기록의 최대 개수 (TaskQuery.EVENTS) */
@@ -264,9 +264,7 @@ function Outputs({ taskId, outputs }: { taskId: string; outputs: readonly TaskOu
                 {OUTPUT_KINDS[o.kind] ?? o.kind} · {bytes(o.sizeBytes)} · {o.runSeq}회
               </small>
             </div>
-            <a className="ghost" href={`/api/outputs/${o.id}/file`} download={o.name}>
-              내려받기
-            </a>
+            <OutputOpen id={o.id} name={o.name} />
           </li>
         ))}
       </ul>

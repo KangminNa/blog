@@ -79,9 +79,10 @@ function Evidence({ url, outputId }: { url?: string; outputId?: string }) {
         {url}
       </a>
     );
+  // 결과물은 서버가 알맞게 연다 (view=1: HTML은 격리해서 새 탭에, 나머지는 내려받기)
   if (outputId)
     return (
-      <a href={`/api/outputs/${outputId}/file`} download>
+      <a href={`/api/outputs/${outputId}/file?view=1`} target="_blank" rel="noopener">
         결과물 {outputId.slice(0, 8)}
       </a>
     );

@@ -8,7 +8,7 @@ export const WORK_TEAMS: readonly AgentTeamRow[] = [
     key: 'output',
     title: '결과물 제작 팀',
     description:
-      '요청 하나로 보고서 · 발표 자료 · 표/차트 · 웹 페이지를 만든다. 결과물 팀장이 내용을 정리해 형식별 제작자에게 나눠 맡기고, 나온 파일을 모아 보고한다',
+      '요청 하나로 보고서 · 발표 자료 · 표/차트 · 웹 페이지를 모두 HTML로 만든다(콘솔에서 바로 열기). 결과물 팀장이 내용을 정리해 형식별 제작자에게 나눠 맡기고, 나온 파일을 모아 보고한다',
     needs: ['code-runner'],
     members: [
       {
@@ -45,7 +45,7 @@ export const WORK_TEAMS: readonly AgentTeamRow[] = [
         approval_actions: [],
         role: [
           '결과물 팀의 문서 제작자 (만들기 작업, 코드 러너 칸).',
-          '- 보고서 · 기획서를 .docx(필요하면 .pdf도)로 만든다. 제목 → 요약 → 본문 → 출처 순서, 표는 문서 안의 표로.',
+          '- 보고서 · 기획서를 HTML 문서 하나로 만든다 (인쇄하면 A4 PDF). 제목 → 요약 → 본문 → 출처 순서. .docx는 지시에 워드라고 적혀 있을 때만.',
         ].join('\n'),
       },
       {
@@ -56,7 +56,7 @@ export const WORK_TEAMS: readonly AgentTeamRow[] = [
         approval_actions: [],
         role: [
           '결과물 팀의 슬라이드 제작자 (만들기 작업, 코드 러너 칸).',
-          '- 발표 자료를 .pptx로 만든다. 한 장에 한 메시지, 제목은 결론으로. 그림으로 그려 글자가 넘치지 않는지 확인한다.',
+          '- 발표 자료를 HTML 슬라이드 하나로 만든다 (키보드로 넘기고, 인쇄하면 16:9 PDF). 한 장에 한 메시지, 제목은 결론으로. .pptx는 지시에 파워포인트라고 적혀 있을 때만.',
         ].join('\n'),
       },
       {
@@ -67,7 +67,7 @@ export const WORK_TEAMS: readonly AgentTeamRow[] = [
         approval_actions: [],
         role: [
           '결과물 팀의 표 · 차트 제작자 (만들기 작업, 코드 러너 칸).',
-          '- 지시의 데이터로 .xlsx 표와 차트 그림(.png)을 만든다. 단위 · 기준일 · 출처를 표 아래에 적는다.',
+          '- 지시의 데이터로 HTML 표(정렬 · 합계 · 막대 차트)를 만들고 같은 데이터를 .csv로도 둔다. 단위 · 기준일 · 출처를 표 위에 적는다. .xlsx는 지시에 엑셀 파일이라고 적혀 있을 때만.',
         ].join('\n'),
       },
       {
@@ -78,7 +78,7 @@ export const WORK_TEAMS: readonly AgentTeamRow[] = [
         approval_actions: [],
         role: [
           '결과물 팀의 웹 페이지 제작자 (만들기 작업, 코드 러너 칸).',
-          '- 한 페이지 소개 · 결과 페이지를 index.html 하나(필요한 그림은 옆에)로 만든다. 바깥 스크립트 없이, 휴대폰에서도 보이게.',
+          '- 한 페이지 소개 · 결과 페이지를 HTML 파일 하나로 만든다 (그림은 SVG나 안에 넣어서). 바깥 스크립트 없이, 휴대폰에서도 보이게.',
         ].join('\n'),
       },
     ],
@@ -110,7 +110,7 @@ export const WORK_TEAMS: readonly AgentTeamRow[] = [
         approval_actions: [],
         role: [
           '데이터 분석 팀의 데이터 분석가 (만들기 작업, 코드 러너 칸에서 돈다).',
-          '- 붙인 파일(엑셀 · CSV)을 읽어 정리 → 계산 → 차트 → 요약 보고서(문서나 웹 페이지)로 만든다.',
+          '- 붙인 파일(엑셀 · CSV)을 읽어 정리 → 계산 → 요약 보고서를 HTML로 만든다: 표는 HTML 표(정렬 · 차트, .csv도 함께), 해석은 HTML 문서.',
           '- 빈 값 · 이상한 값을 어떻게 다뤘는지 적고, 결론은 숫자와 함께 쓴다. 파일에 없는 숫자는 만들지 않는다.',
         ].join('\n'),
       },

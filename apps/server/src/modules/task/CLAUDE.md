@@ -114,7 +114,7 @@ platform
 
 - 결과물은 AI가 직접 올리지 않는다: 러너가 일이 끝난 뒤(done) 정해진 폴더의 파일만 올린다. 표는 임대를 쥔 이번 실행만 받고(`TaskQuery.heldRun`), 그 실행 · 이름 · 크기 · sha256에 묶여 10분이다. 본문은 표로만 받는다: AI 토큰은 /mcp에서만 통하고 JSON 한도(512KB)로는 파일을 못 받는다
 - 결과물 받기: 트랜잭션 밖에서 파일을 흘려 저장(`BlobStore.saveStream`, 크기 · 해시가 표와 다르면 아무것도 남기지 않음) → 짧은 트랜잭션에서 공간 잠금(`lockSpace`) 뒤 한도(실행 200개 · 1GB, 공간 `CAIRN_OUTPUTS_MAX_GB`, 디스크 여유 `CAIRN_DISK_RESERVE_GB`)를 다시 세고 줄 하나. 같은 실행 · 같은 이름은 한 줄(내용이 다르면 409)
-- 결과물 내려받기는 늘 attachment + sandbox CSP. 미리 보기(inline)는 앞부분으로 알아본 그림 · PDF · 영상만: 이름으로 정한 형식(HTML · SVG · 글자)은 우리 주소에서 열지 않는다
+- 결과물 내려받기는 늘 attachment + sandbox CSP. 미리 보기(inline)는 앞부분으로 알아본 그림 · PDF · 영상만: 이름으로 정한 형식(HTML · SVG · 글자)은 우리 주소에서 열지 않는다 HTML(이름이 `.html`)만 예외로 `view=1`일 때 격리해서 연다 (`OutputFile.VIEW_CSP`: AI가 만든 페이지와 같은 sandbox, `allow-same-origin` 없음 → 다른 출처라 로그인 쿠키 · API에 닿지 못한다). 발표 · 표 · 문서를 HTML로 내므로 (cairn-make, 2026-11-14)
 - 결과물이 가리키는 파일은 `BlobStore.registerUse`로 등록해 둔다 (`OutputQuery.usedBlobs`). 휴지통(30일)을 지나 줄을 지우면 파일은 아무도 쓰지 않을 때 platform이 지운다
 
 ## 하지 말 것

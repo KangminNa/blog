@@ -24,14 +24,31 @@ import { DownloadTicketView, OutputPageView, OutputUsageView, OutputView } from 
  */
 export class OutputFile {
   static readonly CSP = "sandbox; default-src 'none'; img-src 'self'; media-src 'self'";
+  /**
+   * 격리해서 여는 HTML: AI가 만든 페이지(blog의 PageSiteAnswer.CSP)와 같다. 스크립트는 돌지만 다른 출처로 취급되어
+   * 로그인 쿠키 · 서버 API에 닿지 못한다. 틀 안에 넣는 것은 이 사이트만
+   */
+  static readonly VIEW_CSP =
+    "sandbox allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads; frame-ancestors 'self'";
+  private static readonly HTML = 'text/html; charset=utf-8';
 
   constructor(
     private readonly name: string,
-    readonly mime: string,
+    private readonly stored: string,
     readonly size: number,
     readonly stream: Readable,
     private readonly inline: boolean,
+    /** 격리해서 여는 HTML */
+    private readonly isolated = false,
   ) {}
+
+  get mime(): string {
+    return this.isolated ? OutputFile.HTML : this.stored;
+  }
+
+  get csp(): string {
+    return this.isolated ? OutputFile.VIEW_CSP : OutputFile.CSP;
+  }
 
   /** Content-Disposition. 한글 이름은 RFC 5987(filename*)로, 옛 브라우저용 이름은 ASCII만 */
   get disposition(): string {
@@ -89,13 +106,10 @@ export class OutputQuery extends BaseQuery {
     if (!row) throw new NotFound('결과물을 찾을 수 없어요');
     if (req.inline && !OutputPolicy.canInline(row.mime))
       throw new RuleViolation('미리 볼 수 없는 형식이에요. 내려받아 주세요');
-    return new OutputFile(
-      row.name,
-      row.mime,
-      row.size_bytes,
-      await this.blobs.open(row.blob_hash),
-      req.inline,
-    );
+    const isolated = req.view && OutputPolicy.canView(row.name);
+    const inline = req.inline || isolated || (req.view && OutputPolicy.canInline(row.mime));
+    const stream = await this.blobs.open(row.blob_hash);
+    return new OutputFile(row.name, row.mime, row.size_bytes, stream, inline, isolated);
   }
 
   /** 넘긴 id 중 이 공간에 있고 휴지통에 없는 결과물 (만들기 작업을 맡길 때 재료를 확인한다) */

@@ -61,3 +61,22 @@ export function AgentUsage({ agent }: { agent: Agent }) {
     </div>
   );
 }
+
+/** HTML 결과물인가 (서버의 OutputPolicy.canView와 같다: 이름으로) */
+export const isHtmlOutput = (name: string) => /\.html?$/i.test(name);
+
+/**
+ * 결과물 하나를 여는 링크. HTML은 새 탭에서 격리해 연다(서버의 view=1, AI가 만든 페이지와 같은 격리),
+ * 나머지는 내려받기
+ */
+export function OutputOpen({ id, name }: { id: string; name: string }) {
+  return isHtmlOutput(name) ? (
+    <a className="ghost" href={`/api/outputs/${id}/file?view=1`} target="_blank" rel="noopener">
+      열기
+    </a>
+  ) : (
+    <a className="ghost" href={`/api/outputs/${id}/file`} download={name}>
+      내려받기
+    </a>
+  );
+}

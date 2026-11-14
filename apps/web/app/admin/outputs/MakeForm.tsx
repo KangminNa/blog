@@ -114,8 +114,8 @@ export function MakeForm({
         </button>
       </div>
       <p className="note">
-        코드 러너 칸에서 AI가 PPT · 문서 · 영상을 만들어 결과물로 올려요. 고른 재료는 칸 안의 AI가
-        읽어요
+        코드 러너 칸에서 AI가 발표 · 표 · 문서를 HTML로 만들어 결과물로 올려요 (바로 열기).
+        파워포인트 · 엑셀 파일이 필요하면 지시에 적어요. 고른 재료는 칸 안의 AI가 읽어요
       </p>
       <div className="field">
         <label htmlFor={`${id}-text`}>{revising ? '고칠 점' : '만들 것'}</label>

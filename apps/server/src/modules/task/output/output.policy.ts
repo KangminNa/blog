@@ -38,6 +38,8 @@ export class OutputPolicy {
   };
   /** 확장자 → [종류, 형식]. 앞부분에 표시가 없거나 zip인 것 (docx · pptx · xlsx는 zip이다) */
   private static readonly BY_EXTENSION: Readonly<Record<string, readonly [string, string]>> = {
+    html: ['document', 'text/html'],
+    htm: ['document', 'text/html'],
     md: ['document', 'text/markdown'],
     txt: ['document', 'text/plain'],
     docx: ['document', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
@@ -100,6 +102,15 @@ export class OutputPolicy {
     return (
       OutputPolicy.BY_EXTENSION[OutputPolicy.extension(name)]?.[1] ?? sniffed ?? OutputPolicy.OCTET
     );
+  }
+
+  /**
+   * 격리해서 열 수 있는 HTML인가 (이름으로, 2026-11-14). 발표 · 표 · 문서를 HTML로 내므로 콘솔에서 바로 연다.
+   * 연 HTML은 AI가 만든 페이지처럼 다른 출처로 취급된다 (OutputFile.VIEW_CSP): 로그인 · 서버 API에 닿지 못한다
+   */
+  static canView(name: string): boolean {
+    const ext = OutputPolicy.extension(name);
+    return ext === 'html' || ext === 'htm';
   }
 
   /** 미리 보기(inline)를 열어도 되는 형식인가. 앞부분으로 알아본 그림 · PDF · 영상만 */

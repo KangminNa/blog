@@ -281,6 +281,51 @@ describe('주인이 결과물을 본다', () => {
     assert.equal(refused.status, 422);
   });
 
+  test('view=1: HTML은 페이지처럼 격리해서 열고(스크립트는 돌지만 다른 출처), 그림은 미리 보기, 나머지는 내려받기', async () => {
+    // 다른 작업에 올린다: 아래 시험들이 이 작업의 결과물 수를 센다
+    const page = await upload(
+      await leased(),
+      '발표.html',
+      Buffer.from('<!doctype html><h1>발표</h1>'),
+    );
+    assert.deepEqual([page.kind, page.mime], ['document', 'text/html']);
+    const get = (id: unknown, query: string) =>
+      fetch(`${api.baseUrl}/api/outputs/${id}/file${query}`, { headers: { cookie: owner.header } });
+    const opened = await get(page.id, '?view=1');
+    assert.equal(opened.status, 200);
+    assert.equal(opened.headers.get('content-type'), 'text/html; charset=utf-8');
+    assert.match(String(opened.headers.get('content-disposition')), /^inline;/);
+    const csp = String(opened.headers.get('content-security-policy'));
+    assert.match(csp, /^sandbox allow-scripts /);
+    assert.doesNotMatch(
+      csp,
+      /allow-same-origin/,
+      '다른 출처로 취급: 로그인 쿠키 · API에 닿지 못한다',
+    );
+    assert.match(csp, /frame-ancestors 'self'/);
+    const saved = await get(page.id, '');
+    assert.match(
+      String(saved.headers.get('content-disposition')),
+      /^attachment;/,
+      'view 없이는 내려받기',
+    );
+    assert.match(
+      String(saved.headers.get('content-security-policy')),
+      /^sandbox; default-src 'none'/,
+    );
+    assert.match(
+      String((await get(image.id, '?view=1')).headers.get('content-disposition')),
+      /^inline;/,
+    );
+    const md = await get(note.id, '?view=1');
+    assert.match(
+      String(md.headers.get('content-disposition')),
+      /^attachment;/,
+      '이름이 .md면 HTML로 열지 않는다',
+    );
+    assert.equal((await fetch(`${api.baseUrl}/api/outputs/${page.id}/file?view=1`)).status, 403);
+  });
+
   test('방문자 · write 기기는 목록도 파일도 볼 수 없다', async () => {
     const visitor = await api.get('/api/outputs');
     assert.equal(visitor.status, 403);
