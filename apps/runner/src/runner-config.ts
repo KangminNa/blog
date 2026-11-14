@@ -14,6 +14,10 @@ export class RunnerConfig {
   private static readonly DEFAULT_SKILLS = resolve(__dirname, '../../../skills');
   private static readonly SLOT = /^[1-9][0-9]?$/;
   private static readonly DEFAULT_WORK_DIR = '/work';
+  /** 동시에 하는 일의 수 (CAIRN_RUNNER_CONCURRENCY). 서버의 next_jobs는 한 번에 10개까지 빌려 준다 */
+  private static readonly CONCURRENCY_MAX = 8;
+  /** 서버 러너(연결 값 파일로 스스로 붙는 러너)의 기본값. 내 컴퓨터 러너는 1 */
+  private static readonly SERVER_CONCURRENCY = 3;
 
   constructor(
     /** 끝 슬래시 없는 블로그 주소 */
@@ -44,6 +48,8 @@ export class RunnerConfig {
     readonly workDir: string = RunnerConfig.DEFAULT_WORK_DIR,
     /** 이 러너에 묶인 에이전트에게 나눠 줄 폴더 (CAIRN_RUNNER_FOLDERS, 내 컴퓨터 러너만). 없으면 null */
     readonly folders: SharedFolders | null = null,
+    /** 동시에 하는 일의 수 (CAIRN_RUNNER_CONCURRENCY). 코드 러너 칸은 늘 1 */
+    readonly concurrency = 1,
   ) {}
 
   /** uid: 이 프로세스의 사용자 (시험이 바꿔 끼운다) */
@@ -60,19 +66,21 @@ export class RunnerConfig {
     if (missing.length > 0)
       throw new ConfigProblem(`러너 설정이 빠졌어요: ${missing.join(', ')} (.env.example 참고)`);
     const slot = RunnerConfig.slotOf(env, token);
+    const paired = token ? null : pairingFile;
     return new RunnerConfig(
       RunnerConfig.address(env.CAIRN_RUNNER_URL ?? ''),
       token,
       env.CLAUDE_CODE_OAUTH_TOKEN?.trim() || null,
       env.CAIRN_RUNNER_CLI?.trim() || RunnerConfig.DEFAULT_CLI,
       env.CAIRN_SKILLS_DIR?.trim() || RunnerConfig.DEFAULT_SKILLS,
-      token ? null : pairingFile,
+      paired,
       env.CAIRN_RUNNER_CODEX_CLI?.trim() || RunnerConfig.DEFAULT_CODEX_CLI,
       env.CAIRN_BROWSER_URL?.trim() ? RunnerConfig.browser(env.CAIRN_BROWSER_URL) : null,
       slot,
       slot === null ? null : RunnerConfig.agentOf(env, uid),
       RunnerConfig.workDirOf(env),
       RunnerConfig.foldersOf(env),
+      slot === null ? RunnerConfig.concurrencyOf(env, paired !== null) : 1,
     );
   }
 
@@ -91,6 +99,7 @@ export class RunnerConfig {
       this.agentUser,
       this.workDir,
       this.folders,
+      this.concurrency,
     );
   }
 
@@ -178,6 +187,24 @@ export class RunnerConfig {
     if (agent.uid === 0 || agent.gid === 0)
       throw new ConfigProblem('CAIRN_AGENT_USER는 root가 아닌 사용자여야 해요');
     return agent;
+  }
+
+  /**
+   * 동시에 하는 일의 수: 1~8. 서버 러너는 기본 3, 내 컴퓨터 러너는 기본 1 (구독 사용량이 그만큼 빨리 찬다).
+   * 코드 러너 칸은 부르지 않는다 (칸 하나에 일 하나)
+   */
+  private static concurrencyOf(
+    env: Readonly<Record<string, string | undefined>>,
+    serverRunner: boolean,
+  ): number {
+    const raw = env.CAIRN_RUNNER_CONCURRENCY?.trim() ?? '';
+    if (!raw) return serverRunner ? RunnerConfig.SERVER_CONCURRENCY : 1;
+    const value = Number(raw);
+    if (!/^[0-9]+$/.test(raw) || value < 1 || value > RunnerConfig.CONCURRENCY_MAX)
+      throw new ConfigProblem(
+        `CAIRN_RUNNER_CONCURRENCY는 1~${RunnerConfig.CONCURRENCY_MAX}예요: ${raw}`,
+      );
+    return value;
   }
 
   private static workDirOf(env: Readonly<Record<string, string | undefined>>): string {

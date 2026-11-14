@@ -157,6 +157,7 @@ services:
     environment:
       CAIRN_RUNNER_URL: http://cairn-server:4000
       CAIRN_RUNNER_PAIRING_FILE: /run/cairn-runner/pairing
+      CAIRN_RUNNER_CONCURRENCY: ${CAIRN_RUNNER_CONCURRENCY:-3}   # 동시에 하는 일 (1~8). 일마다 AI CLI 하나
       CAIRN_RUNNER_TOKEN: ${CAIRN_RUNNER_TOKEN:-}   # 넣으면 연결 값 대신 이 토큰을 쓴다 (예전 방식)
     volumes:
       - runner-pairing:/run/cairn-runner:ro

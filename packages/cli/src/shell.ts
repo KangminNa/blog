@@ -18,7 +18,7 @@ export class ShellResult {
   }
 }
 
-// 다른 프로그램(claude) 실행. 테스트에서는 하위 클래스로 바꾼다.
+// 다른 프로그램(claude, 브라우저) 실행. 테스트에서는 하위 클래스로 바꾼다.
 export class Shell {
   /** 출력을 받아 오는 실행 */
   run(command: string, args: readonly string[]): Promise<ShellResult> {
@@ -37,6 +37,24 @@ export class Shell {
       });
       child.on('error', (error) => done(new ShellResult(127, '', error.message)));
       child.on('close', (code) => done(new ShellResult(code ?? 1, stdout, stderr)));
+    });
+  }
+
+  /** 기본 브라우저로 주소를 연다. 열지 못해도 실패하지 않는다 (화면에 찍은 주소를 사람이 연다) */
+  async openBrowser(url: string): Promise<void> {
+    const [command, args]: [string, string[]] =
+      process.platform === 'darwin'
+        ? ['open', [url]]
+        : process.platform === 'win32'
+          ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
+          : ['xdg-open', [url]];
+    await new Promise<void>((done) => {
+      const child = spawn(command, args, { stdio: 'ignore', detached: true });
+      child.on('error', () => done());
+      child.on('spawn', () => {
+        child.unref();
+        done();
+      });
     });
   }
 

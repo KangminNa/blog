@@ -156,6 +156,7 @@ export class DeviceService extends EntityService<Device> {
       req.name,
       req.clientName,
       new Date(),
+      req.scopes,
     );
     await this.transaction(async (tx) => {
       const clients = new OAuthClientRepository(tx);

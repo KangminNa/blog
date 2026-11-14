@@ -1658,6 +1658,33 @@ describe('러너를 멈춘다', () => {
     });
   }
 
+  test('동시에 2개면 두 일이 함께 돌고, 멈추면 AI CLI를 모두 끄고 둘 다 돌려준다', async () => {
+    const agent = await newAgent();
+    const runner = RunnerProcess.start(api.baseUrl, { CAIRN_RUNNER_CONCURRENCY: '2' });
+    await runner.logged('동시에 하는 일: 2개까지');
+    const spies = [new Spy(), new Spy()];
+    const created: Json[] = [];
+    for (const spy of spies) created.push(await newTask(agent, `${spy.mark} [fake:hang]`));
+    const seen = await Promise.all(spies.map((spy) => spy.seen()));
+    for (const task of created) await taskIn(task.id, 'running');
+    assert.deepEqual(
+      seen.map((s) => alive(s.pid)),
+      [true, true],
+      '두 AI CLI가 같은 때에 살아 있다',
+    );
+    assert.notEqual(seen[0]?.cwd, seen[1]?.cwd, '일마다 자리가 따로');
+
+    assert.equal(await runner.stop('SIGTERM'), 0);
+
+    for (const s of seen) await gone(s.pid);
+    for (const task of created) {
+      const back = await getTask(task.id);
+      assert.equal(back.status, 'queued');
+      assert.ok(events(back).some((e) => e.body === '돌려줌: 러너가 멈춰요'));
+    }
+    for (const s of seen) assert.equal(existsSync(String(s.cwd)), false);
+  });
+
   test('일을 기다리다 멈추면 그사이 온 일을 돌려준다', async () => {
     const agent = await newAgent();
     const runner = RunnerProcess.start(api.baseUrl);

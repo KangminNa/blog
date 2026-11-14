@@ -112,8 +112,35 @@ describe('할 수 있는 것을 알리고 빌린다', () => {
     assert.deepEqual(asked?.tools, ['claude']);
     assert.deepEqual(asked?.own_logins, []);
     assert.equal(asked?.wait_seconds, 25);
+    assert.equal(asked?.limit, 1, '내 컴퓨터 러너는 하나씩');
     assert.equal(count('ai_login'), 0, '로그인이 있는지는 서버가 본다');
     assert.ok(logLines().some((line) => line.includes('일할 수 있는 AI: claude')));
+  });
+
+  test('빈 자리만큼 빌린다: 동시에 3개면 limit 3으로 묻는다', async () => {
+    const loop = new Runner(
+      new RunnerConfig(
+        url,
+        'device-token',
+        null,
+        process.execPath,
+        '/없는',
+        null,
+        '/없는/codex',
+        null,
+        null,
+        null,
+        '/work',
+        null,
+        3,
+      ),
+    );
+    const running = loop.run();
+    await until('일을 물음', () => count('next_jobs') >= 1);
+    loop.stop();
+    await running;
+    assert.equal(calls.find((c) => c.tool === 'next_jobs')?.args.limit, 3);
+    assert.ok(logLines().some((line) => line.includes('동시에 하는 일: 3개까지')));
   });
 
   test('환경 변수에 토큰이 있으면 이 컴퓨터의 로그인으로 알린다', async () => {

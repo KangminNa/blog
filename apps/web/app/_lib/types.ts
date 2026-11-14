@@ -17,4 +17,5 @@ export const SCOPE_LABELS: Record<string, string> = {
   run: '작업 실행',
   delegate: '에이전트에게 맡기기',
   sandbox: '코드 러너 칸',
+  news: '소식 읽기',
 };

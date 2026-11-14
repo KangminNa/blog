@@ -95,7 +95,9 @@ pnpm cairn connect https://내블로그주소               # Claude Code
 pnpm cairn connect https://내블로그주소 --tool codex  # Codex
 ```
 
-스킬(`cairn-save`, `cairn-recall`)과 검토자를 AI 도구에 넣고, MCP 서버를 등록하고, 브라우저에서 로그인해 이 기기를 연결합니다. 그 도구의 명령줄(`claude` 또는 `codex`)이 필요하고, 한 컴퓨터는 블로그 하나에 연결합니다. `--review-with codex`처럼 다른 회사 모델을 교차 검토자로 고를 수 있습니다.
+스킬(`cairn-save`, `cairn-recall`, `cairn-team`)과 검토자를 AI 도구에 넣고, MCP 서버를 등록하고, 브라우저에서 로그인해 이 기기를 연결합니다. 그 도구의 명령줄(`claude` 또는 `codex`)이 필요하고, 한 컴퓨터는 블로그 하나에 연결합니다. `--review-with codex`처럼 다른 회사 모델을 교차 검토자로 고를 수 있습니다.
+
+Claude Code는 팀 소식도 받습니다: 브라우저에서 "소식 읽기"만 가진 소식 기기(`<컴퓨터 이름> · 소식`)를 한 번 더 승인하면, 말을 걸 때마다 서버 팀의 새 소식이 대화에 덧붙고(훅) 아래 상태 줄에 `Cairn · 진행 2 · 소식 3`이 보입니다. 열쇠는 `~/.cairn/credentials.json`(나만 읽기), 스크립트는 `~/.cairn/bin`에 둡니다. 쓰고 있던 훅은 그대로 두고, 상태 줄이 이미 있으면 덮지 않고 붙이는 법을 알려 줍니다. 상태는 `pnpm cairn status`로 봅니다.
 
 **Claude 앱 · ChatGPT**는 콘솔 → 기기에서 "ChatGPT·Claude 앱 연결 허용"을 켜고, 앱의 커넥터 설정에 `https://내블로그주소/mcp`를 넣은 뒤 블로그에서 승인하고, 같은 화면의 `cairn-save.zip`을 앱의 스킬에 올립니다. 앱은 그 회사 서버에서 들어오므로 **인터넷에서 열리는 https 주소**가 필요합니다. 집 안 서버라면 Cloudflare Tunnel이나 `tailscale funnel`처럼 밖으로 여는 터널을 씁니다. 앱에서는 대화 원문 대조와 다른 맥락의 검토를 할 수 없어 미리보기에 "독립 검토 아님"이 붙습니다.
 
@@ -103,8 +105,8 @@ pnpm cairn connect https://내블로그주소 --tool codex  # Codex
 
 정리, 초안, 작업은 러너가 합니다. 콘솔의 기기 메뉴 → 러너 추가로 토큰을 받고, 에이전트 메뉴에서 에이전트를 하나 만듭니다.
 
-- **서버에서**: 러너는 서버와 함께 뜨고 스스로 연결합니다. 콘솔의 AI 메뉴에서 "브라우저로 로그인"(Claude · Codex 구독)을 누르면 러너가 로그인 명령을 대신 열고, 로그인 페이지에서 받은 코드를 붙여 넣으면 일합니다. 에이전트마다 AI 도구(Claude Code · Codex)를 고릅니다. 서버에 브라우저가 없어도 됩니다 (`claude setup-token`으로 만든 토큰을 직접 넣어도 됩니다).
-- **내 컴퓨터에서**: `cp apps/runner/.env.example apps/runner/.env`로 값을 채우고 `pnpm runner start`.
+- **서버에서**: 러너는 서버와 함께 뜨고 스스로 연결합니다. 콘솔의 AI 메뉴에서 "브라우저로 로그인"(Claude · Codex 구독)을 누르면 러너가 로그인 명령을 대신 열고, 로그인 페이지에서 받은 코드를 붙여 넣으면 일합니다. 에이전트마다 AI 도구(Claude Code · Codex)를 고릅니다. 서버에 브라우저가 없어도 됩니다 (`claude setup-token`으로 만든 토큰을 직접 넣어도 됩니다). 서버 러너는 일을 3개까지 함께 합니다 (`.env`의 `CAIRN_RUNNER_CONCURRENCY`, 1~8). 늘리면 구독 사용량이 그만큼 빨리 찹니다.
+- **내 컴퓨터에서**: `cp apps/runner/.env.example apps/runner/.env`로 값을 채우고 `pnpm runner start`. 기본은 한 번에 일 하나입니다.
 
 **6. 브라우저 에이전트 (선택)**
 

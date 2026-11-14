@@ -80,14 +80,14 @@ export class DeviceQuery extends BaseQuery {
     return this.policy.redirectFor(siteUrl, client, req, hostedApps);
   }
 
-  /** 승인 화면 (로그인한 주인만) */
+  /** 승인 화면 (로그인한 주인만). 권한은 앱이 요청한 것(소식), 없으면 새 기기의 기본 권한 */
   consent(actor: Actor, req: ConsentInput): ConsentView {
     actor.assertOwner();
     return new ConsentView(
       req.clientName,
       new URL(req.redirectUri).host,
       req.name,
-      Device.DEFAULT_SCOPES,
+      req.scopes ?? Device.DEFAULT_SCOPES,
       OAuthClient.appOf(req.redirectUri),
     );
   }

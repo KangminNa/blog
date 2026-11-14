@@ -10,8 +10,8 @@ import { ConnectGuide } from './ConnectGuide';
 
 /** 켤 수 있는 권한. delegate: 이 기기의 AI 도구가 서버 팀에 일을 맡기고 답을 받는다 (MCP ask_agent, 결재는 콘솔에서만) */
 const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write', 'run', 'delegate'];
-/** 코드 러너 칸 기기만 가진 권한 (서버의 Actor.SANDBOX). 주인이 주거나 뺄 수 없다 */
-const SANDBOX = 'sandbox';
+/** 정해진 권한: 코드 러너 칸(sandbox) · 소식 기기(news). 관리자가 주거나 뺄 수 없다 (서버가 거절한다) */
+const FIXED: Record<string, string> = { sandbox: '칸 기기', news: '소식 기기' };
 /** 권한 바꾸기 · 마지막 로그인에는 변경 신호가 없다. 첫 기기가 붙기를 기다리는 동안에도 이 간격으로 읽는다 */
 const REREAD_MS = 4000;
 
@@ -141,10 +141,10 @@ export function DevicesPanel({
                 연결 해제
               </button>
             </div>
-            {d.scopes.includes(SANDBOX) ? (
-              // 코드 러너 칸: 권한이 정해져 있어 서버가 바꾸기를 거절한다
+            {fixedOf(d) ? (
               <p className="label-mono">
-                {d.scopes.map((s) => SCOPE_LABELS[s] ?? s).join(' · ')} (칸 기기는 바꿀 수 없음)
+                {d.scopes.map((s) => SCOPE_LABELS[s] ?? s).join(' · ')} ({fixedOf(d)}는 바꿀 수
+                없음)
               </p>
             ) : (
               <fieldset className="row" style={{ border: 0, margin: 0, padding: 0 }}>
@@ -217,4 +217,10 @@ function AddRunner({
       </button>
     </form>
   );
+}
+
+/** 권한이 정해진 기기의 이름 (칸 기기 · 소식 기기). 바꿀 수 있으면 null */
+function fixedOf(device: Device): string | null {
+  const scope = device.scopes.find((s) => FIXED[s]);
+  return scope ? (FIXED[scope] ?? null) : null;
 }

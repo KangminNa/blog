@@ -39,6 +39,11 @@ export abstract class AiTool {
   /** 연결 상태를 명령으로 확인할 수 있는가. 못 하면 마지막에 도구 안에서 확인하라고 안내한다 */
   abstract readonly confirmsConnection: boolean;
 
+  /** 훅 · 상태 줄을 거는 사용자 설정 파일. 없는 도구는 null (소식 단계를 건너뛴다) */
+  get settingsFile(): string | null {
+    return null;
+  }
+
   /** 로그인 명령의 인자 (브라우저로 블로그 승인 화면을 연다) */
   protected readonly loginArgs: readonly string[] = ['mcp', 'login', AiTool.SERVER];
   /** 찾은 실행 파일과 그 버전 (처음 쓸 때 찾는다. 못 찾으면 null) */

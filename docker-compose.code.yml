@@ -39,7 +39,7 @@ x-code-runner: &code-runner
 
 x-code-runner-env: &code-runner-env
   CAIRN_RUNNER_URL: http://cairn-server:4000
-  CAIRN_RUNNER_PAIRING_FILE: /run/cairn-code/pairing
+  CAIRN_RUNNER_PAIRING_FILE: /run/cairn-code/pairing   # 칸 하나에 일 하나 (CAIRN_RUNNER_CONCURRENCY를 보지 않는다)
   HTTPS_PROXY: http://egress:3128   # git · npm · AI CLI는 프록시로만 나간다
   HTTP_PROXY: http://egress:3128    # 평문 HTTP는 프록시가 거절한다 (405)
   NO_PROXY: cairn-server            # 러너 · AI CLI가 MCP로 서버에 닿을 때는 바로

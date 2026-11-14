@@ -9,6 +9,7 @@ import { CairnMark } from '../_ui/CairnMark';
 
 // 기기 연결 승인 카드. 연결하면 AI 도구가 기다리는 주소로 돌아가고, 도구가 토큰을 받아 붙는다.
 // ChatGPT·Claude 앱의 연결이면 남이 만든 링크로 그 사람의 앱에 블로그를 내주지 않게 한 번 더 알린다.
+// 권한은 서버가 정한 그대로 보인다: 보통은 새 기기의 기본 권한, 앱이 요청했으면 그 권한(cairn connect의 소식 기기: 소식 읽기).
 export function ConsentCard({
   request,
   consent,
@@ -50,8 +51,7 @@ export function ConsentCard({
             <>
               <h1>{consent.clientName}를 연결할까요?</h1>
               <p>
-                연결하면 아래 권한 안에서 세션을 올리고 읽을 수 있어요. 돌아갈 곳:{' '}
-                <code>{consent.redirectHost}</code>
+                아래 권한으로만 연결해요. 돌아갈 곳: <code>{consent.redirectHost}</code>
               </p>
               {consent.app && (
                 <p className="warn" role="alert">

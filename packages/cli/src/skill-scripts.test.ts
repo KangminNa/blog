@@ -290,3 +290,75 @@ describe('context.mjs: 시작 값과 작업 폴더', () => {
     assert.ok(existsSync(other));
   });
 });
+
+// cairn-team의 보내기 전 검사 (skills/cairn-team/scripts/before-send.mjs). cairn connect가 넣은 모양 그대로
+// 두 스킬(cairn-team · cairn-save)을 한 스킬 폴더에 두고, git 원격이 있는 임시 저장소에서 돌린다.
+describe('before-send.mjs: 보내기 전 비밀값 검사 (cairn-team)', () => {
+  const SKILLS = join(__dirname, '../../../skills');
+  let installed: string;
+  let repo: string;
+
+  before(() => {
+    installed = mkdtempSync(join(home, 'skills-'));
+    for (const [skill, file] of [
+      ['cairn-team', 'before-send.mjs'],
+      ['cairn-save', 'secrets.mjs'],
+    ] as const) {
+      mkdirSync(join(installed, skill, 'scripts'), { recursive: true });
+      writeFileSync(
+        join(installed, skill, 'scripts', file),
+        readFileSync(join(SKILLS, skill, 'scripts', file), 'utf8'),
+      );
+    }
+    writeFileSync(
+      join(installed, 'cairn-team', '.cairn.json'),
+      JSON.stringify({ site: 'https://blog.example.com' }),
+    );
+    repo = mkdtempSync(join(home, 'repo-'));
+    execFileSync('git', ['init', '-q', repo]);
+    execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', 'https://u@GitHub.com/Me/App.git']);
+  });
+
+  function send(message: string): ScriptRun {
+    try {
+      const script = join(installed, 'cairn-team', 'scripts', 'before-send.mjs');
+      const out = execFileSync('node', [script], {
+        cwd: repo,
+        input: message,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      return new ScriptRun(0, out);
+    } catch (error) {
+      const e = error as { status: number; stdout: string };
+      return new ScriptRun(e.status, e.stdout ?? '');
+    }
+  }
+
+  test('비밀값이 없으면 통과하고, 지금 저장소의 프로젝트와 블로그 주소를 알린다', () => {
+    const result = send('## 목표\n가격 비교표\n\n## 배경\nhttps://example.com/rules');
+    assert.equal(result.code, 0);
+    assert.deepEqual(result.json(), {
+      ok: true,
+      found: [],
+      project: 'github.com/me/app',
+      site: 'https://blog.example.com',
+    });
+  });
+
+  test('토큰 · 키 · 비밀번호가 있으면 종류와 수만 알리고(값은 찍지 않는다) 0이 아닌 코드로 끝난다', () => {
+    const token = `ghp_${'b'.repeat(36)}`;
+    const result = send(
+      `토큰 ${token}\n또 ${token}\npassword=hunter2abc1\nsk-ant-${'x'.repeat(30)}`,
+    );
+    assert.equal(result.code, 1);
+    assert.equal(result.json().ok, false);
+    assert.deepEqual(result.json().found, [
+      { kind: 'GitHub 토큰', count: 2 },
+      { kind: 'Anthropic API 키', count: 1 },
+      { kind: '비밀번호·키 값', count: 1 },
+    ]);
+    assert.equal(result.stdout.includes(token), false);
+    assert.equal(result.stdout.includes('hunter2abc1'), false);
+  });
+});

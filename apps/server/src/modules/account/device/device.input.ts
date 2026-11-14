@@ -48,6 +48,8 @@ export class AuthorizeInput extends BaseRequest {
     readonly codeChallenge: string | null,
     readonly codeChallengeMethod: string | null,
     readonly state: string | null,
+    /** 요청한 권한 (빈칸으로 나눈 이름들). 앱이 요청할 수 있는 것은 news뿐이다 (AuthorizationPolicy.scopesOf) */
+    readonly scope: string | null,
   ) {
     super();
   }
@@ -64,6 +66,7 @@ export class AuthorizeInput extends BaseRequest {
             f.optionalText('code_challenge', 200),
             f.optionalText('code_challenge_method', 20),
             f.optionalText('state', 1000),
+            f.optionalText('scope', 1000),
           ),
       ),
     );
@@ -148,6 +151,8 @@ export class ConsentInput extends BaseRequest {
     readonly name: string,
     /** 인가 서버 주소. 돌려보낼 때 iss로 붙인다 (RFC 9207, 다른 서버의 응답과 섞이지 않게) */
     readonly issuer: string,
+    /** 앱이 요청해 승인 화면이 보일 권한 (news). 없으면 null: 새 기기는 기본 권한 */
+    readonly scopes: readonly string[] | null,
   ) {
     super();
   }
@@ -160,10 +165,11 @@ export class ConsentInput extends BaseRequest {
     codeChallenge: string,
     state: string | null,
     issuer: string,
+    scopes: readonly string[] | null,
   ): string {
     return box.pack(
       ConsentInput.PURPOSE,
-      JSON.stringify({ clientId, clientName, redirectUri, codeChallenge, state, issuer }),
+      JSON.stringify({ clientId, clientName, redirectUri, codeChallenge, state, issuer, scopes }),
       ConsentInput.SECONDS,
     );
   }
@@ -173,15 +179,16 @@ export class ConsentInput extends BaseRequest {
     return BaseRequest.read(raw, (f) => {
       const opened = box.unpack(ConsentInput.PURPOSE, f.text('request', 4000));
       if (!opened) f.reject('request', '승인 요청이 만료됐어요. AI 도구에서 다시 연결해 주세요');
-      const v = (opened ? JSON.parse(opened) : {}) as Record<string, string | null>;
+      const v = (opened ? JSON.parse(opened) : {}) as Record<string, unknown>;
       return new ConsentInput(
         String(v.clientId ?? ''),
         String(v.clientName ?? ''),
         String(v.redirectUri ?? ''),
         String(v.codeChallenge ?? ''),
-        v.state ?? null,
+        typeof v.state === 'string' ? v.state : null,
         f.optionalText('name', 60) ?? String(v.clientName ?? ''),
         String(v.issuer ?? ''),
+        Array.isArray(v.scopes) ? v.scopes.map(String) : null,
       );
     });
   }
