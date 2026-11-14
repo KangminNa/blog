@@ -21,13 +21,14 @@ export class SigninReply {
 export class CairnServer {
   constructor(private readonly mcp: McpClient) {}
 
-  /** 일을 하나 빌린다. 없으면 waitSeconds까지 기다린다. 서버는 이 러너가 할 수 있는 일만 준다 */
+  /** 일을 limit개까지 빌린다. 없으면 waitSeconds까지 기다린다. 서버는 이 러너가 할 수 있는 일만 준다 */
   async nextJobs(
     waitSeconds: number,
+    limit: number,
     stop: AbortSignal,
     ability: RunnerAbility,
   ): Promise<readonly Job[]> {
-    const args = { wait_seconds: waitSeconds, limit: 1, ...ability.toArgs() };
+    const args = { wait_seconds: waitSeconds, limit, ...ability.toArgs() };
     const body = await this.mcp.call('next_jobs', args, waitSeconds * 1000, stop);
     return body.list('jobs').map((job) => Job.from(job));
   }

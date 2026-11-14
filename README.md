@@ -103,8 +103,8 @@ pnpm cairn connect https://내블로그주소 --tool codex  # Codex
 
 정리, 초안, 작업은 러너가 합니다. 콘솔의 기기 메뉴 → 러너 추가로 토큰을 받고, 에이전트 메뉴에서 에이전트를 하나 만듭니다.
 
-- **서버에서**: 러너는 서버와 함께 뜨고 스스로 연결합니다. 콘솔의 AI 메뉴에서 "브라우저로 로그인"(Claude · Codex 구독)을 누르면 러너가 로그인 명령을 대신 열고, 로그인 페이지에서 받은 코드를 붙여 넣으면 일합니다. 에이전트마다 AI 도구(Claude Code · Codex)를 고릅니다. 서버에 브라우저가 없어도 됩니다 (`claude setup-token`으로 만든 토큰을 직접 넣어도 됩니다).
-- **내 컴퓨터에서**: `cp apps/runner/.env.example apps/runner/.env`로 값을 채우고 `pnpm runner start`.
+- **서버에서**: 러너는 서버와 함께 뜨고 스스로 연결합니다. 콘솔의 AI 메뉴에서 "브라우저로 로그인"(Claude · Codex 구독)을 누르면 러너가 로그인 명령을 대신 열고, 로그인 페이지에서 받은 코드를 붙여 넣으면 일합니다. 에이전트마다 AI 도구(Claude Code · Codex)를 고릅니다. 서버에 브라우저가 없어도 됩니다 (`claude setup-token`으로 만든 토큰을 직접 넣어도 됩니다). 서버 러너는 일을 3개까지 함께 합니다 (`.env`의 `CAIRN_RUNNER_CONCURRENCY`, 1~8). 늘리면 구독 사용량이 그만큼 빨리 찹니다.
+- **내 컴퓨터에서**: `cp apps/runner/.env.example apps/runner/.env`로 값을 채우고 `pnpm runner start`. 기본은 한 번에 일 하나입니다.
 
 **6. 브라우저 에이전트 (선택)**
 

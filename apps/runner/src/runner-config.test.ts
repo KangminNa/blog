@@ -87,6 +87,30 @@ describe('러너 설정', () => {
     assert.equal(both.pairingFile, null, '사람이 넣은 토큰이 먼저');
   });
 
+  test('동시에 하는 일: 서버 러너는 3, 내 컴퓨터 러너는 1이 기본. 1~8만 받고, 코드 러너 칸은 늘 1', () => {
+    const { CAIRN_RUNNER_TOKEN: _token, ...rest } = env;
+    const server = { ...rest, CAIRN_RUNNER_PAIRING_FILE: '/run/cairn/pairing' };
+    assert.equal(RunnerConfig.fromEnv(env).concurrency, 1);
+    assert.equal(RunnerConfig.fromEnv(server).concurrency, 3);
+    assert.equal(RunnerConfig.fromEnv(server).withToken('got').concurrency, 3);
+    assert.equal(RunnerConfig.fromEnv({ ...env, CAIRN_RUNNER_CONCURRENCY: ' 8 ' }).concurrency, 8);
+    assert.equal(RunnerConfig.fromEnv({ ...server, CAIRN_RUNNER_CONCURRENCY: '1' }).concurrency, 1);
+    for (const bad of ['0', '9', '2.5', '-1', 'two'])
+      assert.throws(
+        () => RunnerConfig.fromEnv({ ...env, CAIRN_RUNNER_CONCURRENCY: bad }),
+        (error: Error) => error instanceof ConfigProblem && /1~8/.test(error.message),
+      );
+    const slot = RunnerConfig.fromEnv({
+      ...rest,
+      CAIRN_RUNNER_PAIRING_FILE: '/run/cairn-code/pairing',
+      CAIRN_RUNNER_SLOT: '1',
+      CAIRN_SANDBOX: '1',
+      CAIRN_AGENT_USER: 'self',
+      CAIRN_RUNNER_CONCURRENCY: '4',
+    });
+    assert.equal(slot.concurrency, 1, '칸 하나에 일 하나');
+  });
+
   test('코드 러너 칸은 코드 러너 이미지에서 연결 값 파일로만 시작한다', () => {
     const { CAIRN_RUNNER_TOKEN: _token, ...rest } = env;
     const slotEnv = {

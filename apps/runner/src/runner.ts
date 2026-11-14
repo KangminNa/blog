@@ -5,6 +5,7 @@ import { BrowserTabs } from './browser-tabs';
 import { CairnServer } from './cairn-server';
 import { CodeStage } from './code-stage';
 import type { Job } from './job';
+import { JobPool } from './job-pool';
 import { CliUnavailable, JobRun } from './job-run';
 import { MakeStage } from './make-stage';
 import { AccessDenied, McpClient, ToolRefused } from './mcp-client';
@@ -23,7 +24,8 @@ export class RunnerHalted extends Error {}
 /** 서버가 기기 토큰을 거절함 (끊겼거나 바뀜). 서버 러너는 연결 값으로 다시 받고, 그 밖의 러너는 멈춘다 */
 export class TokenRejected extends RunnerHalted {}
 
-// 러너의 고리: 일을 하나 빌리고, 끝까지 처리하고, 다시 빌린다. 한 번에 일 하나.
+// 러너의 고리: 빈 자리만큼 일을 빌리고(next_jobs의 limit), 일마다 따로 끝까지 처리하고, 자리가 비면 다시 빌린다.
+// 동시에 하는 일의 수는 CAIRN_RUNNER_CONCURRENCY (서버 러너 기본 3, 내 컴퓨터 러너 1, 코드 러너 칸은 늘 1. JobPool).
 // 서버에 닿지 못하면 간격을 늘려 다시 묻는다. 들어오는 포트 없이 나가는 요청만 쓴다 (객체설계 13장 임대 큐).
 // 이 러너가 할 수 있는 것(가진 AI CLI, 웹 로그인, 스스로 가진 로그인)을 next_jobs로 알리면 서버가 할 수 있는 일만 준다:
 // 로그인이 없는 도구의 일은 빌렸다 돌려주지 않고 대기열에 남는다. 웹 로그인은 토큰 없이 돈다 (SigninRun).
@@ -46,6 +48,13 @@ export class Runner {
   private readonly stopper = new AbortController();
   private readonly pollCutter = new AbortController();
   private polling = false;
+  /** 사람이 고쳐야 해서 멈춘 까닭 (일이나 일 빌리기에서). 도는 일을 모두 돌려준 뒤 run()이 던진다 */
+  private halt: RunnerHalted | null = null;
+  /**
+   * 새 일을 빌리지 않고 쉬는 동안. 돌려준 일은 바로 다시 빌려지므로 쉬지 않으면 빌리고 돌려주기를 되풀이한다.
+   * 일마다 겹치면 가장 늦은 때까지
+   */
+  private hold: Promise<void> = Promise.resolve();
   private readonly backoff = new Backoff(Runner.BACKOFF_FIRST_MS, Runner.BACKOFF_MAX_MS);
   /** next_jobs가 되는 동안에도 늘어나야 해서 backoff와 따로 센다 */
   private readonly loginWait = new Backoff(Runner.LOGIN_WAIT_FIRST_MS, Runner.LOGIN_WAIT_MAX_MS);
@@ -72,7 +81,7 @@ export class Runner {
 
   /**
    * 멈추라고 알린다. 돌던 AI CLI를 끄고 일을 돌려준 뒤 run()이 끝난다.
-   * 기다리는 next_jobs는 끊지 않는다: 끊겨도 서버는 시간이 다 될 때까지 찾다가 없는 러너에게 일을 빌려 주고,
+   * 도는 일이 여럿이면 모두 끄고 돌려준다. 기다리는 next_jobs는 끊지 않는다: 끊겨도 서버는 시간이 다 될 때까지 찾다가 없는 러너에게 일을 빌려 주고,
    * 그 일은 임대가 끝날 때까지 15분을 묶인다. 끝까지 받으면 일이 와도 돌려줄 수 있다. 두 번째 stop()은 바로 끊는다.
    */
   stop(): void {
@@ -91,6 +100,8 @@ export class Runner {
     const swept = await SigninRun.sweep();
     if (swept > 0) this.log.info(`지난번에 남은 로그인 폴더 ${swept}개를 지웠어요`);
     this.log.info(this.ability.line);
+    if (this.config.concurrency > 1)
+      this.log.info(`동시에 하는 일: ${this.config.concurrency}개까지`);
     const agent = this.config.agentUser;
     if (this.ability.sandbox && agent) {
       if (agent.isSelf)
@@ -124,31 +135,71 @@ export class Runner {
     }
     if (tabFailure instanceof AccessDenied) throw new TokenRejected(tabFailure.message);
     if (tabFailure) throw new RunnerHalted((tabFailure as Error).message);
+    if (this.halt) throw this.halt;
     this.log.info('러너를 멈췄어요');
   }
 
-  /** 일을 빌려 처리하기를 stop까지 되풀이한다 */
+  /** 빈 자리만큼 일을 빌려 처리하기를 stop까지 되풀이하고, 도는 일이 모두 끝나기(돌려주기)를 기다린다 */
   private async loop(stop: AbortSignal): Promise<void> {
-    while (!stop.aborted) {
-      try {
-        this.polling = true;
-        const jobs = await this.server.nextJobs(
-          Runner.WAIT_SECONDS,
-          this.pollCutter.signal,
-          this.ability,
-        );
-        this.polling = false;
-        this.backoff.reset();
-        for (const job of jobs) await this.perform(job);
-      } catch (error) {
-        this.polling = false;
+    const pool = new JobPool(this.config.concurrency);
+    try {
+      while (!stop.aborted) {
+        await pool.vacancy(stop);
+        await this.hold;
         if (stop.aborted) break;
-        if (error instanceof AccessDenied) throw new TokenRejected(error.message);
-        if (Runner.fatal(error)) throw new RunnerHalted((error as Error).message);
-        this.log.info(`다시 시도해요: ${(error as Error).message}`);
-        await this.backoff.wait(stop);
+        await this.lease(pool);
       }
+    } finally {
+      await pool.drain();
     }
+  }
+
+  /** 빈 자리만큼 빌린다. 브라우저 작업이 도는 동안은 브라우저를 알리지 않는다 (JobPool) */
+  private async lease(pool: JobPool): Promise<void> {
+    try {
+      this.polling = true;
+      const jobs = await this.server.nextJobs(
+        Runner.WAIT_SECONDS,
+        pool.free,
+        this.pollCutter.signal,
+        pool.browserBusy ? this.ability.withoutBrowser() : this.ability,
+      );
+      this.backoff.reset();
+      for (const job of jobs)
+        pool.add(
+          this.perform(job).catch((error: unknown) => this.failed(error)),
+          job.isBrowse,
+        );
+    } catch (error) {
+      this.failed(error);
+    } finally {
+      this.polling = false;
+    }
+  }
+
+  /**
+   * 일이나 일 빌리기의 실패. 사람이 고쳐야 하는 것(토큰 · 권한 · CLI)이면 러너를 멈춘다: 도는 일을 모두 돌려준 뒤 run()이 던진다.
+   * 아니면 남기고 쉬었다가 다시 빌린다. 멈추는 중의 실패는 무시한다
+   */
+  private failed(error: unknown): void {
+    if (this.stopper.signal.aborted) return;
+    if (Runner.fatal(error)) {
+      const message = (error as Error).message;
+      this.halt =
+        error instanceof AccessDenied ? new TokenRejected(message) : new RunnerHalted(message);
+      this.stopper.abort();
+      this.pollCutter.abort();
+      return;
+    }
+    this.log.info(`다시 시도해요: ${(error as Error).message}`);
+    this.pauseLeasing(this.backoff);
+  }
+
+  /** 새 일 빌리기를 backoff만큼 쉰다 (돌던 다른 일은 그대로 간다) */
+  private pauseLeasing(backoff: Backoff): void {
+    const before = this.hold;
+    const wait = backoff.wait(this.stopper.signal);
+    this.hold = Promise.all([before, wait]).then(() => {});
   }
 
   private async perform(job: Job): Promise<void> {
@@ -184,7 +235,7 @@ export class Runner {
       if (!(await BrowserMcp.reachable(this.config.browserUrl))) {
         this.log.info(`${job.taskId}: 브라우저에 닿지 못해 돌려줘요`);
         await this.server.release(job.taskId, '브라우저에 닿지 못해요. 다시 뜨면 이어서 해요');
-        return this.browserWait.wait(this.stopper.signal);
+        return this.pauseLeasing(this.browserWait);
       }
       this.browserWait.reset();
     }
@@ -199,9 +250,9 @@ export class Runner {
       this.stopper.signal,
       stage,
     ).perform();
-    if (login.token === null) await this.loginWait.wait(this.stopper.signal);
+    if (login.token === null) this.pauseLeasing(this.loginWait);
     else this.loginWait.reset();
-    if (stage?.unreachable) await this.repoWait.wait(this.stopper.signal);
+    if (stage?.unreachable) this.pauseLeasing(this.repoWait);
     else if (stage) this.repoWait.reset();
   }
 
