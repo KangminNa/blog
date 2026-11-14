@@ -1,8 +1,8 @@
 {
   "name": "browser-tabs",
-  "version": "0.3.0",
-  "cairn": ">=0.2",
-  "description": "서버 브라우저(로그인된 프로필)로 하는 일: 주소를 탭으로 읽고, 사이트에서 AI 에이전트가 일하고, 콘솔에서 화면을 보고 누른다 (발행은 관리자가 직접)",
+  "version": "0.4.0",
+  "cairn": ">=0.4",
+  "description": "서버 브라우저로 하는 일: 주소를 탭으로 읽고, 등록한 사이트(로그인된 프로필)나 둘러보기(새 빈 창)에서 AI 에이전트가 일하고, 마지막 버튼은 결재 뒤 러너가 같은 버튼인지 확인하고 누른다. 콘솔에서 화면을 보고 누르고 사이트 세션을 지운다",
   "schema": "browser_tabs",
   "server": "server/plugin.ts",
   "api": {
@@ -13,7 +13,13 @@
     "PATCH /sites/:id": "updateSite",
     "DELETE /sites/:id": "deleteSite",
     "POST /sites/:id/tasks": "requestBrowse",
-    "GET /viewer": "viewer",
+    "POST /sites/:id/clear-session": "clearSession",
+    "POST /explore": "requestExplore",
+    "GET /clicks": "listClicks",
+    "GET /clicks/:id": "click",
+    "POST /clicks/:id/manual": "manualClick",
+    "GET /shots": "listShots",
+    "GET /shots/:id": "shot",
     "GET /screen": "screen",
     "POST /screen/control": "screenControl"
   },
@@ -52,6 +58,217 @@
         },
         "required": ["id"]
       }
+    },
+    "browser_sites": {
+      "operation": "agentSites",
+      "description": "관리자가 등록한 사이트 목록 (로그인된 서버 브라우저로 일할 곳). 브라우저 담당에게 사이트 일을 맡길 때 delegate_task에 kind: browse, target_kind: browser_site, target_id: id, target_version: version으로 적는다. 대상 없이 kind: browse로 맡기면 둘러보기다 (로그인 없는 새 창, 공개 사이트만). login_needed면 관리자가 콘솔에서 다시 로그인해야 한다.",
+      "input": {
+        "properties": {}
+      }
+    },
+    "browser_job": {
+      "operation": "job",
+      "description": "러너가 빌린 browse 작업이 어디서 도는지 받는다: mode(site · explore), 사이트 값(시작 주소 · 허용 출처), 로그인이 필요한지, 고쳐 달라로 다시 온 일이면 앞에서 붙잡은 페이지. 그 작업의 임대를 쥔 러너만.",
+      "input": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "빌린 browse 작업 id"
+          }
+        },
+        "required": ["task_id"]
+      }
+    },
+    "browser_shot_save": {
+      "operation": "saveShot",
+      "description": "AI가 단계마다 찍은 화면 하나를 작업에 남긴다 (작업마다 30장, 30일). 그 작업의 임대를 쥔 러너만. 러너가 일이 끝난 뒤 올린다.",
+      "input": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "빌린 browse 작업 id"
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "찍은 페이지 주소"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "image": {
+            "type": "string",
+            "maxLength": 409604,
+            "description": "화면 그림 (JPEG · PNG, base64, 300KB까지)"
+          }
+        },
+        "required": ["task_id", "image"]
+      }
+    },
+    "browser_login_needed": {
+      "operation": "loginNeeded",
+      "description": "사이트 일이 로그인 화면을 만났다고 남긴다 (사이트의 로그인 필요 표시와 그 화면). 받은 site_id · site_version으로 request_approval(browser.site.login, target_kind browser_site)을 올린다. 그 작업의 임대를 쥔 러너만.",
+      "input": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "빌린 browse 작업 id"
+          },
+          "page_url": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "로그인 화면의 주소"
+          },
+          "page_title": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "image": {
+            "type": "string",
+            "maxLength": 409604,
+            "description": "화면 그림 (JPEG · PNG, base64, 300KB까지)"
+          }
+        },
+        "required": ["task_id", "page_url"]
+      }
+    },
+    "browser_click_hold": {
+      "operation": "holdClick",
+      "description": "AI가 멈춘 마지막 버튼을 러너가 다시 찾아 붙잡는다: 탭 · 주소 · 역할 · 이름 · 순번 · 자리 · 지문(sha256)과 멈춘 화면. 페이지는 사이트의 허용 출처 안이어야 한다. 받은 click_id · version으로 request_approval(browser.site.publish, target_kind browser_click)을 올린다. 그 작업의 임대를 쥔 러너만.",
+      "input": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "빌린 browse 작업 id"
+          },
+          "tab_id": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "CDP 탭 id"
+          },
+          "page_url": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "버튼이 있는 페이지 주소"
+          },
+          "page_title": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "버튼의 접근성 역할 (button · link …)"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "버튼의 접근성 이름"
+          },
+          "nth": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 50,
+            "description": "같은 역할 · 이름 가운데 몇 번째인지 (0부터)"
+          },
+          "box": {
+            "type": "object",
+            "description": "버튼의 자리 (보이는 화면 기준 CSS 픽셀)",
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": ["x", "y", "width", "height"]
+          },
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "주소 · 역할 · 이름 · 순번 · 태그 · type · form action · method · 글자의 sha256"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "AI가 남긴 말 (무엇을 채웠는지)"
+          },
+          "image": {
+            "type": "string",
+            "maxLength": 409604,
+            "description": "화면 그림 (JPEG · PNG, base64, 300KB까지)"
+          }
+        },
+        "required": [
+          "task_id",
+          "tab_id",
+          "page_url",
+          "role",
+          "name",
+          "nth",
+          "box",
+          "fingerprint",
+          "image"
+        ]
+      }
+    },
+    "browser_click_next": {
+      "operation": "nextClick",
+      "description": "이 러너가 붙잡았고 결재가 승인된 클릭 하나를 누르는 중(clicking)으로 가져온다. 없으면 click: null. 누르는 중으로 2분이 지난 것은 다시 누르지 않고 unknown으로 닫는다.",
+      "input": {
+        "properties": {}
+      }
+    },
+    "browser_click_save": {
+      "operation": "saveClick",
+      "description": "가져간 클릭의 결과를 남긴다: clicked(같은 페이지 · 같은 버튼이라 눌렀다, 누른 뒤 화면) 또는 changed(달라서 누르지 않았다, 이유와 그때의 화면). 결과로 작업이 끝난다.",
+      "input": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "browser_click_next의 click.id"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "outcome": {
+            "type": "string",
+            "enum": ["clicked", "changed"]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "누르지 않은 까닭 (changed)"
+          },
+          "after_url": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "누른 뒤의 주소"
+          },
+          "image": {
+            "type": "string",
+            "maxLength": 409604,
+            "description": "화면 그림 (JPEG · PNG, base64, 300KB까지)"
+          }
+        },
+        "required": ["id", "version", "outcome"]
+      }
     }
   },
   "menu": {
@@ -65,8 +282,19 @@
     "api",
     "tool:browser_tab_pending",
     "tool:browser_tab_save",
+    "tool:browser_sites",
+    "tool:browser_job",
+    "tool:browser_shot_save",
+    "tool:browser_login_needed",
+    "tool:browser_click_hold",
+    "tool:browser_click_next",
+    "tool:browser_click_save",
     "menu",
     "task:request",
-    "event:task.approval.granted"
+    "event:task.approval.granted",
+    "event:task.approval.revision_requested",
+    "event:task.approval.rejected",
+    "event:task.approval.cancelled",
+    "event:task.task.changed"
   ]
 }

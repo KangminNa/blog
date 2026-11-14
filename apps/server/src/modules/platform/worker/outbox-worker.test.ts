@@ -107,6 +107,8 @@ describe('일꾼', () => {
       new CoreWorkers(),
     );
     await db.sql`DELETE FROM platform.outbox WHERE space_id = ${SPACE}`;
+    // 앞 시험 파일들이 남긴 이벤트가 한 번에 꺼내는 수(BATCH)를 채우면 이 시험의 줄이 이번 바퀴에 오지 않는다
+    await db.sql`UPDATE platform.outbox SET processed_at = now() WHERE processed_at IS NULL`;
     await db.sql`
       INSERT INTO platform.outbox (space_id, topic, payload) VALUES
         (${SPACE}, 'vault.testprobe.saved', '{"v":1,"id":"a"}'),
