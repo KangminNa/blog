@@ -1,0 +1,153 @@
+/* 팝업. 화이트 · 블랙 단색: 강조색 없이 채움 · 테두리 · 굵기로 구분한다. 색 · 간격은 여기 토큰에만 */
+:root {
+  --bg: #ffffff;
+  --fg: #000000;
+  --muted: #555555;
+  --soft: #f2f2f2;
+  --line: #000000;
+  --gap: 12px;
+  --radius: 6px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 320px;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    13px / 1.5 system-ui,
+    sans-serif;
+}
+
+main {
+  display: grid;
+  gap: var(--gap);
+  padding: var(--gap);
+}
+
+h1 {
+  margin: 0;
+  font-size: 16px;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+/* hidden이 붙은 것은 브라우저 기본대로 숨긴다 */
+form:not([hidden]),
+#connected:not([hidden]) {
+  display: grid;
+  gap: var(--gap);
+}
+
+.panel {
+  margin: 0;
+  padding: var(--gap);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+fieldset.panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--gap);
+}
+
+legend {
+  padding: 0 4px;
+  font-weight: 700;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+}
+
+.input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  resize: vertical;
+}
+
+.cta,
+.ghost,
+.link {
+  font: inherit;
+  cursor: pointer;
+}
+
+.cta {
+  padding: 6px 12px;
+  border: 1px solid var(--fg);
+  border-radius: var(--radius);
+  background: var(--fg);
+  color: var(--bg);
+  font-weight: 700;
+}
+
+.ghost {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.ghost:hover {
+  background: var(--soft);
+}
+
+.link {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  text-decoration: underline;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+#ask {
+  margin-top: var(--gap);
+}
+
+.inbox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+.inbox p {
+  margin: 0;
+  font-weight: 700;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.note:empty {
+  display: none;
+}
+
+.error {
+  color: var(--fg);
+  font-weight: 700;
+}

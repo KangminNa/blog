@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cairn</title>
+    <link rel="stylesheet" href="popup.css" />
+    <script type="module" src="popup.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Cairn</h1>
+        <p id="state" class="note">확인하는 중</p>
+      </header>
+
+      <form id="connect" hidden>
+        <label class="field">
+          <span>블로그 주소</span>
+          <input id="site" class="input" placeholder="blog.example.com" autocomplete="url" required />
+        </label>
+        <button class="cta" type="submit">연결</button>
+      </form>
+
+      <div id="connected" hidden>
+        <fieldset id="sites" class="panel">
+          <legend>대화 모으기</legend>
+          <label><input type="checkbox" name="chatgpt-web" /> ChatGPT</label>
+          <label><input type="checkbox" name="claude-web" /> Claude</label>
+          <label><input type="checkbox" name="gemini-web" /> Gemini</label>
+        </fieldset>
+
+        <section class="panel">
+          <h2>이 페이지</h2>
+          <button id="keep" class="ghost" type="button">이 페이지 보관</button>
+          <form id="ask">
+            <textarea
+              id="words"
+              class="input"
+              rows="3"
+              maxlength="6000"
+              placeholder="이 페이지로 맡길 일"
+              aria-label="맡길 일"
+              required
+            ></textarea>
+            <button class="cta" type="submit">맡기기</button>
+          </form>
+        </section>
+
+        <section class="panel inbox">
+          <p id="count">결재 · 질문 확인하는 중</p>
+          <button id="console" class="ghost" type="button">콘솔 열기</button>
+        </section>
+
+        <button id="disconnect" class="link" type="button">연결 해제</button>
+      </div>
+
+      <p id="result" class="note" role="status"></p>
+    </main>
+  </body>
+</html>

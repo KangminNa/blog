@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Cairn",
+  "version": "0.1.0",
+  "description": "웹 AI 대화를 Cairn에 모으고, 보는 페이지를 보관하거나 맡겨요",
+  "minimum_chrome_version": "116",
+  "background": { "service_worker": "src/background.js", "type": "module" },
+  "action": { "default_title": "Cairn", "default_popup": "src/popup/popup.html" },
+  "permissions": ["storage", "identity", "alarms", "activeTab", "scripting"],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://*.localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["src/capture/watch.js", "src/capture/chatgpt.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["src/capture/watch.js", "src/capture/claude.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["src/capture/watch.js", "src/capture/gemini.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
