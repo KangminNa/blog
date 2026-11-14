@@ -11,13 +11,14 @@ export type AgentTeamMemberRow = Pick<AgentRow, 'name' | 'role' | 'scopes' | 'ap
 
 /**
  * 팀 템플릿 하나 (AgentTeams). needs: 이 팀이 다 돌려면 필요한 것.
- * code-runner: 만들기 · 코드 작업이 도는 코드 러너 칸, code-github: 저장소를 잇는 플러그인
+ * code-runner: 만들기 · 코드 작업이 도는 코드 러너 칸, code-github: 저장소를 잇는 플러그인,
+ * browser: 서버 브라우저(docker-compose.browser.yml)와 browser-tabs 플러그인
  */
 export type AgentTeamRow = {
   key: string;
   title: string;
   description: string;
-  needs: readonly ('code-runner' | 'code-github')[];
+  needs: readonly ('code-runner' | 'code-github' | 'browser')[];
   members: readonly AgentTeamMemberRow[];
 };
 
