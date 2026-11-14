@@ -1,3 +1,4 @@
+import { ChatTurn } from './chat-turn';
 import type { Json } from './json';
 
 /** 일의 대상 (글 등) */
@@ -201,6 +202,8 @@ export class Job {
     readonly makePayload: unknown = null,
     /** 결과를 페이지로 내보내는 만들기 작업인가 (payload.page). 문(index.html)을 만들어야 하고 웹 검색을 쓴다 */
     readonly page = false,
+    /** 대화의 회차 (payload.chat): 앞 대화와 답하는 법. 그 밖의 일은 null */
+    readonly chat: ChatTurn | null = null,
   ) {}
 
   static from(raw: Json): Job {
@@ -238,6 +241,7 @@ export class Job {
       raw.field('skill_package') ? SkillPackage.from(raw.child('skill_package')) : null,
       task.text('kind') === Job.MAKE ? (task.child('payload').field('make') ?? null) : null,
       task.text('kind') === Job.MAKE && Boolean(task.child('payload').field('page')),
+      ChatTurn.from(task.child('payload')),
     );
   }
 
@@ -266,6 +270,7 @@ export class Job {
       this.skillPackage,
       this.makePayload,
       this.page,
+      this.chat,
     );
   }
 
@@ -314,6 +319,7 @@ export class Job {
       `당신은 Cairn의 에이전트 "${this.agentName}"입니다.${this.agentRole ? `\n${this.agentRole}` : ''}`,
       `# 할 일: ${this.title}\n${this.instruction}`,
     ];
+    if (this.chat) parts.push(this.chat.part);
     if (this.target) {
       const { kind, id, version } = this.target;
       const edition = version === null ? '' : `, 판 ${version}`;

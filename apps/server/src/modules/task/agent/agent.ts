@@ -182,6 +182,11 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     return this.row.monthly_limit;
   }
 
+  /** 관리자 바로 아래 (보고 대상이 없다). 대화 상대가 될 수 있다 */
+  get topLevel(): boolean {
+    return this.row.reports_to === null;
+  }
+
   get paused(): boolean {
     return this.row.status === Agent.PAUSED;
   }

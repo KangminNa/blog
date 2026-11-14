@@ -1125,6 +1125,86 @@ textarea.input {
   align-self: flex-start;
 }
 
+/* 대화 목록은 좁게: 이름과 첫 줄만 */
+.split.chat-split {
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+}
+
+/* 대화: 말풍선. 관리자는 오른쪽에 채움, 상대는 왼쪽에 테두리. 입력 칸은 아래에 붙는다 */
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(720px, 92%);
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.bubble.mine {
+  align-self: flex-end;
+  background: var(--raised);
+  border-color: var(--raised);
+}
+
+.bubble.theirs {
+  align-self: flex-start;
+}
+
+.bubble-meta {
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.bubble .prose {
+  font-size: 15px;
+}
+
+.bubble .prose h1,
+.bubble .prose h2,
+.bubble .prose h3 {
+  font-size: 1.05em;
+}
+
+.chat-compose {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+
+.chat-compose-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.chat-compose-row textarea {
+  flex: 1;
+  min-height: 48px;
+  max-height: 240px;
+  resize: vertical;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -1664,7 +1744,8 @@ a.chip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .split {
+  .split,
+  .split.chat-split {
     grid-template-columns: minmax(0, 1fr);
   }
 

@@ -9,6 +9,7 @@ const ICONS: Record<string, ReactNode> = {
       <path d="m5.2 8 2 2 3.6-4" />
     </>
   ),
+  chat: <path d="M2.5 3.5h11v7.5H7.2L4.4 13.5V11H2.5z" />,
   scroll: <path d="M4 2.5h8v11H4zM6 5.5h4M6 8h4M6 10.5h2.5" />,
   code: <path d="M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5M9 3 7 13" />,
   box: <path d="M2.5 5 8 2.5 13.5 5v6.5L8 14l-5.5-2.5zM2.5 5 8 7.5 13.5 5M8 7.5V14" />,
@@ -104,6 +105,7 @@ export const MENU = [
   {
     label: '운영',
     items: [
+      { href: '/admin/chats', name: '대화', icon: 'chat' },
       { href: '/admin/tasks', name: '작업', icon: 'task' },
       { href: '/admin/outputs', name: '결과물', icon: 'box' },
       { href: APPROVALS_HREF, name: '결재', icon: 'stamp' },

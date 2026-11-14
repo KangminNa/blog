@@ -13,6 +13,9 @@ import { ApprovalQuery } from './approval/approval.query';
 import { ApprovalService } from './approval/approval.service';
 import { RequestApprovalTool } from './approval/approval.tool';
 import { ApprovalResultHandler } from './approval/approval-result.handler';
+import { ChatController } from './chat/chat.api';
+import { ChatQuery } from './chat/chat.query';
+import { ChatService } from './chat/chat.service';
 import { GoalController } from './goal/goal.api';
 import { GoalQuery } from './goal/goal.query';
 import { GoalService } from './goal/goal.service';
@@ -107,6 +110,8 @@ import { WebPageGateway } from './web/web-page.gateway';
     // 목표 실행: 회차 루프와 결재 (GoalRunHandler가 회차 끝 · 결재를 받는다)
     GoalRunQuery,
     GoalRunService,
+    ChatQuery,
+    ChatService,
     GoalRunHandler,
     ReportRoundTool,
     // 주소 읽기 (read_url): 서버가 AI 대신 연다. 목줄은 WebReach
@@ -129,6 +134,7 @@ import { WebPageGateway } from './web/web-page.gateway';
     SkillController,
     OutputController,
     GoalRunController,
+    ChatController,
   ],
   exports: [TaskTools, TaskQuery],
 })

@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { useRef, useState } from 'react';
-import { POST_STATUS_LABELS } from '../../_blog/labels';
-import type { EditablePost } from '../../_blog/types';
-import { api } from '../../_lib/client-api';
-import { useAction } from '../../_lib/use-action';
-import { useLiveValue } from '../../_lib/use-live';
+import type { EditablePost } from '../_blog/types';
+import { api } from '../_lib/client-api';
+import { useAction } from '../_lib/use-action';
+import { useLiveValue } from '../_lib/use-live';
+import { Stamps } from './ApprovalStamps';
+import { GoalRunTarget, LimitTarget, OtherTarget, PostTarget, PullTarget } from './ApprovalTargets';
 import {
   APPROVE_LABELS,
   actionLabel,
@@ -16,14 +17,11 @@ import {
   PUBLISH_SITE,
   RAISE_LIMIT,
   TASK_STATUS,
-  tokens,
   when,
-} from '../../_task/labels';
-import { APPROVAL_TOPICS, useAgents } from '../../_task/live';
-import { ApprovalPill } from '../../_task/parts';
-import type { Agent, Approval, TaskDetail } from '../../_task/types';
-import { Stamps } from './ApprovalStamps';
-import { GoalRunTarget, OtherTarget, PullTarget } from './ApprovalTargets';
+} from './labels';
+import { APPROVAL_TOPICS, useAgents } from './live';
+import { ApprovalPill } from './parts';
+import type { Agent, Approval, TaskDetail } from './types';
 
 const DONE_NOTES: Record<string, string> = {
   approve: '승인됨',
@@ -175,74 +173,6 @@ function Loaded({
         />
       )}
     </article>
-  );
-}
-
-function PostTarget({
-  approval,
-  post,
-  status,
-  error,
-}: {
-  approval: Approval;
-  post: EditablePost | null;
-  status: number | null;
-  error: string | null;
-}) {
-  if (!post)
-    return status === 404 ? (
-      <p className="warn">대상 글 없음 ({approval.target.id})</p>
-    ) : error ? (
-      <p className="error">{error}</p>
-    ) : (
-      <p className="label-mono">글 읽는 중…</p>
-    );
-  const moved = post.version !== approval.target.version;
-  return (
-    <>
-      {moved && (
-        <p className="warn">
-          요청 뒤 바뀐 글 (요청 버전 {approval.target.version} · 지금 버전 {post.version})
-        </p>
-      )}
-      {post.deletedAt && <p className="warn">휴지통에 있는 글</p>}
-      <section className="preview" aria-label="실행 내용">
-        <b>실행 내용</b>
-        <p>
-          공개 범위: {POST_STATUS_LABELS[post.status]}에서 공개로.
-          {post.tags.length > 0 ? ` 태그: ${post.tags.join(', ')}.` : ''} 본문{' '}
-          {post.body.length.toLocaleString('ko-KR')}자.
-        </p>
-        <pre className="raw">{post.body}</pre>
-      </section>
-      <div>
-        <Link className="ghost" href={`/admin/posts/${post.id}`}>
-          편집기에서 열기
-        </Link>
-      </div>
-    </>
-  );
-}
-
-function LimitTarget({ approval, agent }: { approval: Approval; agent: Agent | null }) {
-  if (!agent) return <OtherTarget approval={approval} />;
-  const limit = agent.monthlyLimit;
-  return (
-    <section className="preview" aria-label="실행 내용">
-      <b>실행 내용</b>
-      <dl className="kv">
-        <dt>이번 달 사용량</dt>
-        <dd>{tokens(agent.usedThisMonth)} 토큰</dd>
-        <dt>월 한도</dt>
-        <dd>{limit === null ? '한도 없음' : `${tokens(limit)} 토큰`}</dd>
-      </dl>
-      {approval.status === 'pending' && (
-        <p>
-          승인하면 월 한도가 2배{limit === null ? '' : ` (${tokens(limit * 2)} 토큰)`}로 바뀌고
-          에이전트가 재개돼요
-        </p>
-      )}
-    </section>
   );
 }
 

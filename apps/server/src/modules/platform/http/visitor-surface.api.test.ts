@@ -48,6 +48,8 @@ const VISITOR_GET: Readonly<Record<string, number>> = {
   'GET /api/ai': 403,
   'GET /api/approvals': 403,
   'GET /api/approvals/:id': 403,
+  'GET /api/chats': 403,
+  'GET /api/chats/:id': 403,
   'GET /api/archive.zip': 403,
   'GET /api/auth/links': 403,
   'GET /api/basket/items': 403,

@@ -1,0 +1,112 @@
+'use client';
+
+import Link from 'next/link';
+import { useEffect, useRef } from 'react';
+import { useMe } from '../../_account/live';
+import { api } from '../../_lib/client-api';
+import { useAction } from '../../_lib/use-action';
+import { useLiveValue } from '../../_lib/use-live';
+import { CHAT_DETAIL_TOPICS } from '../../_task/live';
+import type { Chat, ChatDetail } from '../../_task/types';
+import { ChatForm } from './ChatForm';
+import { ChatTurns } from './ChatTurns';
+
+/** 답을 기다리는 회차의 상태 */
+const WAITING = ['queued', 'running', 'waiting'];
+
+// 대화 하나. 회차(메시지 + 답)를 오래된 것부터 그리고, 아래에서 다음 메시지를 보낸다.
+// 답을 기다리는 동안은 보내지 않는다 (서버도 409). 진행 기록 · 결재가 오면 신호로 다시 읽는다.
+export function ChatThreadPanel({ id }: { id: string }) {
+  // 대상(id)으로 거르지 않는다: 신호의 대상은 회차 작업 · 결재라 대화 id가 아니다
+  const detail = useLiveValue(
+    `chat:${id}`,
+    () => api<ChatDetail>('GET', `/api/chats/${id}`),
+    CHAT_DETAIL_TOPICS,
+  );
+  const me = useMe();
+  const sending = useAction();
+  const cancelling = useAction();
+  /** 응답을 못 받아 다시 보내도 메시지가 한 번만 가게 (보낸 뒤에만 바꾼다) */
+  const requestId = useRef('');
+  if (!requestId.current) requestId.current = crypto.randomUUID();
+  const bottom = useRef<HTMLDivElement>(null);
+  const d = detail.data;
+  const last = d?.turns.at(-1);
+
+  // 새 회차 · 답이 오면 맨 아래로
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 회차 수와 마지막 상태가 바뀔 때만
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ block: 'end' });
+  }, [d?.turns.length, last?.status]);
+
+  if (!d)
+    return detail.status === 404 ? (
+      <p className="rows-empty">찾을 수 없는 대화</p>
+    ) : detail.error ? (
+      <p className="error">{detail.error}</p>
+    ) : (
+      <p className="label-mono">불러오는 중…</p>
+    );
+
+  const { partner } = d;
+  const waiting = last !== undefined && WAITING.includes(last.status);
+  const blocked = partner.deleted
+    ? '삭제한 에이전트라 보낼 수 없어요 (복원하면 이어서)'
+    : !partner.topLevel
+      ? '팀원이 된 에이전트예요. 관리자 바로 아래 에이전트와만 대화해요'
+      : partner.paused
+        ? '멈춘 에이전트예요. 재개하면 보낼 수 있어요'
+        : waiting
+          ? '답을 기다리는 중. 멈추려면 취소'
+          : null;
+
+  async function send(body: { message: string }) {
+    const reply = await sending.run(
+      'send',
+      () =>
+        api<Chat>('POST', `/api/chats/${id}/messages`, {
+          requestId: requestId.current,
+          version: d?.chat.version,
+          ...body,
+        }),
+      { reload: detail.reload, conflict: '그사이 바뀐 대화예요. 최신 내용을 다시 읽었어요' },
+    );
+    if (reply?.ok) requestId.current = crypto.randomUUID();
+  }
+
+  const cancel = (taskId: string, version: number) =>
+    cancelling.run(taskId, () => api('POST', `/api/tasks/${taskId}/cancel`, { version }), {
+      done: '답을 멈췄어요',
+      reload: detail.reload,
+      conflict: '이미 바뀐 작업이에요. 최신 내용을 다시 읽었어요',
+    });
+
+  return (
+    <section className="panel chat" aria-label={`${partner.name}와 대화`}>
+      <div className="sec-title flat">
+        <h2>{partner.name}</h2>
+        <Link className="ghost split-back" href="/admin/chats">
+          대화 목록
+        </Link>
+      </div>
+      {detail.error && <p className="error">{detail.error}</p>}
+      <ChatTurns
+        turns={d.turns}
+        me={me.data?.name ?? '관리자'}
+        partner={partner.name}
+        busy={cancelling.busy}
+        onCancel={cancel}
+      />
+      {cancelling.problem && <p className="error">{cancelling.problem}</p>}
+      <ChatForm
+        key={d.chat.turns}
+        busy={sending.busy !== null}
+        problem={sending.problem}
+        blocked={blocked}
+        onSubmit={send}
+      />
+      {/* 입력 칸 아래: 여기로 내리면 입력 칸이 마지막 말풍선을 가리지 않는다 */}
+      <div ref={bottom} />
+    </section>
+  );
+}

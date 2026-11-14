@@ -67,6 +67,19 @@ export const approvals = taskSchema.table('approvals', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
 });
 
+/** task.chats */
+export const chats = taskSchema.table('chats', {
+  id: uuid('id').notNull(),
+  space_id: uuid('space_id').notNull(),
+  agent_id: uuid('agent_id').notNull(),
+  title: text('title').notNull(),
+  turns: integer('turns').notNull(),
+  request_id: text('request_id').notNull(),
+  version: integer('version').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
+});
+
 /** task.goal_rounds */
 export const goalRounds = taskSchema.table('goal_rounds', {
   id: uuid('id').notNull(),

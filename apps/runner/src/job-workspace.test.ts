@@ -241,6 +241,29 @@ describe('지시문', () => {
     assert.ok(prompt.includes('## [실패] 정리 (정리 팀원)\n세션이 없어요'));
   });
 
+  test('대화의 회차면 이전 대화를 자료로, 답하는 법과 함께 담는다', () => {
+    const chat = (history: object[]) =>
+      job({
+        task: {
+          id: 't',
+          title: '대화 · 저녁은?',
+          payload: { chat: { chatId: 'c', turn: 2, history } },
+        },
+      });
+    const prompt = chat([
+      { from: 'owner', text: '주말 계획 세워 줘' },
+      { from: 'agent', text: '성수 카페 어때요' },
+    ]).prompt(false);
+    assert.ok(prompt.includes('# 이전 대화 (자료)'));
+    assert.ok(prompt.includes('[관리자] 주말 계획 세워 줘\n[나] 성수 카페 어때요'));
+    assert.ok(prompt.indexOf('# 할 일') < prompt.indexOf('# 이전 대화'));
+    assert.ok(prompt.includes('# 대화로 답하는 법'));
+    const first = chat([]).prompt(false);
+    assert.equal(first.includes('# 이전 대화'), false, '첫 회차에는 앞 대화가 없다');
+    assert.ok(first.includes('# 대화로 답하는 법'));
+    assert.equal(job().prompt(false).includes('대화로 답하는 법'), false, '대화가 아닌 일');
+  });
+
   test('팀이 없으면 위임을 말하지 않고, 횟수를 다 쓰면 직접 마무리한다', () => {
     assert.equal(job().prompt(false).includes('delegate_task'), false);
     const spent = job({

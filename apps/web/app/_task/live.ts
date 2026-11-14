@@ -23,6 +23,10 @@ export const TASK_LOG_TOPICS = [...TASK_TOPICS, 'task.event.added'];
 export const APPROVAL_TOPICS = ['task.approval.*'];
 /** 목표 실행의 상태 · 회차가 바뀜 (회차 보고는 회차 작업이 끝날 때 함께 보인다) */
 export const GOAL_RUN_TOPICS = ['task.goal_run.changed'];
+/** 대화 목록: 보내면(task.chat.changed) · 회차 작업이 바뀌면 다시 읽는다 */
+export const CHAT_TOPICS = ['task.chat.changed', 'task.task.changed'];
+/** 대화 하나: 진행 기록(생각 중… 줄)과 결재까지 따라간다 */
+export const CHAT_DETAIL_TOPICS = [...CHAT_TOPICS, 'task.event.added', 'task.approval.*'];
 /** 실행 기록이 쌓이면 사용량이 바뀐다 */
 export const AGENT_TOPICS = ['task.agent.changed', 'task.event.added'];
 /** 구독 사용률이 오거나 실행 기록이 쌓이면 사용량이 바뀐다 */

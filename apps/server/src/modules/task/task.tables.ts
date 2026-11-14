@@ -67,6 +67,20 @@ export interface ApprovalRow {
 }
 export type ApprovalNew = Partial<ApprovalRow> & Pick<ApprovalRow, 'id' | 'space_id' | 'action' | 'target_kind' | 'target_id' | 'target_version'>;
 
+/** task.chats */
+export interface ChatRow {
+  id: string;
+  space_id: string;
+  agent_id: string;
+  title: string;
+  turns: number;
+  request_id: string;
+  version: number;
+  created_at: Date;
+  updated_at: Date;
+}
+export type ChatNew = Partial<ChatRow> & Pick<ChatRow, 'id' | 'space_id' | 'agent_id' | 'title' | 'request_id'>;
+
 /** task.goal_rounds */
 export interface GoalRoundRow {
   id: string;

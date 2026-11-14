@@ -1,12 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { api } from '../../_lib/client-api';
-import { useLiveValue } from '../../_lib/use-live';
-import { CHECKPOINTS, GOAL_COMPLETE, GOAL_RUN_STATUS, TARGET_LABELS } from '../../_task/labels';
-import { useGoalRun } from '../../_task/live';
-import { Criteria, RoundReport } from '../../_task/RoundReport';
-import type { Approval, CodePull } from '../../_task/types';
+import { POST_STATUS_LABELS } from '../_blog/labels';
+import type { EditablePost } from '../_blog/types';
+import { api } from '../_lib/client-api';
+import { useLiveValue } from '../_lib/use-live';
+import { CHECKPOINTS, GOAL_COMPLETE, GOAL_RUN_STATUS, TARGET_LABELS, tokens } from './labels';
+import { useGoalRun } from './live';
+import { Criteria, RoundReport } from './RoundReport';
+import type { Agent, Approval, CodePull } from './types';
 
 // 결재 화면의 "무엇을 결재하는지" 칸 가운데 글 · 한도가 아닌 것. 대상은 서버에서 읽는다 (에이전트의 메모가 아니라).
 
@@ -115,6 +117,74 @@ export function OtherTarget({ approval }: { approval: Approval }) {
         <dt>버전</dt>
         <dd>{version}</dd>
       </dl>
+    </section>
+  );
+}
+
+export function PostTarget({
+  approval,
+  post,
+  status,
+  error,
+}: {
+  approval: Approval;
+  post: EditablePost | null;
+  status: number | null;
+  error: string | null;
+}) {
+  if (!post)
+    return status === 404 ? (
+      <p className="warn">대상 글 없음 ({approval.target.id})</p>
+    ) : error ? (
+      <p className="error">{error}</p>
+    ) : (
+      <p className="label-mono">글 읽는 중…</p>
+    );
+  const moved = post.version !== approval.target.version;
+  return (
+    <>
+      {moved && (
+        <p className="warn">
+          요청 뒤 바뀐 글 (요청 버전 {approval.target.version} · 지금 버전 {post.version})
+        </p>
+      )}
+      {post.deletedAt && <p className="warn">휴지통에 있는 글</p>}
+      <section className="preview" aria-label="실행 내용">
+        <b>실행 내용</b>
+        <p>
+          공개 범위: {POST_STATUS_LABELS[post.status]}에서 공개로.
+          {post.tags.length > 0 ? ` 태그: ${post.tags.join(', ')}.` : ''} 본문{' '}
+          {post.body.length.toLocaleString('ko-KR')}자.
+        </p>
+        <pre className="raw">{post.body}</pre>
+      </section>
+      <div>
+        <Link className="ghost" href={`/admin/posts/${post.id}`}>
+          편집기에서 열기
+        </Link>
+      </div>
+    </>
+  );
+}
+
+export function LimitTarget({ approval, agent }: { approval: Approval; agent: Agent | null }) {
+  if (!agent) return <OtherTarget approval={approval} />;
+  const limit = agent.monthlyLimit;
+  return (
+    <section className="preview" aria-label="실행 내용">
+      <b>실행 내용</b>
+      <dl className="kv">
+        <dt>이번 달 사용량</dt>
+        <dd>{tokens(agent.usedThisMonth)} 토큰</dd>
+        <dt>월 한도</dt>
+        <dd>{limit === null ? '한도 없음' : `${tokens(limit)} 토큰`}</dd>
+      </dl>
+      {approval.status === 'pending' && (
+        <p>
+          승인하면 월 한도가 2배{limit === null ? '' : ` (${tokens(limit * 2)} 토큰)`}로 바뀌고
+          에이전트가 재개돼요
+        </p>
+      )}
     </section>
   );
 }

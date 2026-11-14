@@ -1,7 +1,7 @@
 'use client';
 
-import { useMe } from '../../_account/live';
-import type { Approval } from '../../_task/types';
+import { useMe } from '../_account/live';
+import type { Approval } from './types';
 
 const SEALS: Record<string, string> = {
   approved: '승인',

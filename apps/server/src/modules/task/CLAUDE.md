@@ -7,6 +7,7 @@
 - `agent/`: 에이전트 (`Agent`). 권한, 결재로 맡길 동작, 토큰 한도(한 달 · 5시간), 구독 사용률 멈춤값, 보고 대상(조직도). `api/agents`.
   삭제는 휴지통 (`deleted_at`, 2026-11-14): `Agent.delete`가 팀원을 지운 에이전트의 보고 대상으로 올리고, 팀째 삭제는 `Agent.teamUnder`(아래부터). 진행 중인 작업 · 스케줄 · 도는 목표 실행이 있으면 지우지 않는다 (`AgentQuery.blockers`). 지운 에이전트는 `AgentRepository.load` · `lock`에서 NotFound, `usage`(일 빌리기) · `manages`(위임) · `reportTo`에서 빠진다. 줄은 지우지 않는다 (실행 기록이 가리킨다)
   팀 템플릿 (`AgentTeams`, 데이터는 `research-teams.ts` · `work-teams.ts`): `api/agent-teams`로 팀 하나를 한 트랜잭션에서 만든다 (`AgentService.createTeam`, 조직도 전체를 잠그고 보고 대상이 앞인 순서로, requestId 하나). 구성원도 `Agent`의 규칙(권한 조합 · 조직도 깊이)을 그대로 지난다
+- `chat/`: 대화 (`Chat`, 이전 대화 `ChatHistory`, 기획서 결정 2026-11-14). 관리자와 바로 아래 에이전트(`Agent.topLevel`, 멈추지 않은)가 채팅처럼 주고받는다. 메시지 하나 = 그 에이전트에게 맡긴 `general` 작업 하나(회차, request_id `chat:<대화>:<회차>`). 대화 줄은 머리(상대 · 제목 · 회차 수)만 들고 메시지 · 답은 작업의 지시 · 결과다. 앞 회차가 끝나지 않았으면 보내지 않는다(409). 앞 대화(최근 20회차)는 `payload.chat.history`에 자료로 싣고 러너가 "이전 대화"로 그린다 (`apps/runner`의 `ChatTurn`). `read_url`의 기준은 그대로 이번 메시지(작업의 지시)뿐이다. `api/chats`(관리자만: 목록 · 상세 · 열기 · 보내기). 상세는 회차 아래(하위 작업 포함)의 결과물 · 기다리는 결재를 함께 싣는다
 - `goal/`: 목표 (`Goal`). 회사 목표부터 이어지는 나무. 작업이 목표 하나에 이어진다. `api/goals`
 - `schedule/`: 스케줄 (`Schedule`, `SchedulePolicy`, 7단계에서 하트비트를 넓혀 합침). 정해진 시각에 지시대로 작업을 만든다. `api/schedules`, 일꾼의 `ScheduleJob`(1분마다)
 - `task/`: 작업 (`Task` + 실행 기록 `task_events`). `queued → running → waiting → running → done`, `failed`, `cancelled`.
@@ -27,10 +28,11 @@
 도구 모양은 docs/API설계.md 4장이 원본이다. `report_progress`는 기록을 모아 받고, 러너가 쓰므로 바꾸면 `apps/runner`도 함께 고친다.
 
 ## 소유 데이터
-스키마 `task`: agents, agent_revisions(추가만), goals, schedules, tasks, task_events(추가만), task_runs(추가만, model만 한 번), approvals, plan_usage, ai_logins, runners, skills, skill_revisions(추가만), outputs, goal_runs, goal_rounds(추가만)
+스키마 `task`: agents, agent_revisions(추가만), chats, goals, schedules, tasks, task_events(추가만), task_runs(추가만, model만 한 번), approvals, plan_usage, ai_logins, runners, skills, skill_revisions(추가만), outputs, goal_runs, goal_rounds(추가만)
 
 ## 데이터 묶음
 - 에이전트: agents + agent_revisions (조직도는 `reports_to`, 설정 판은 `settings_revision`)
+- 대화: chats (회차는 tasks의 줄이라 작업 묶음에 저장한다)
 - 목표: goals
 - 스케줄: schedules (에이전트 하나에 여럿, 담당 없이 자동 배정도)
 - 작업: tasks + task_events + task_runs (빌려 줄 때마다 규칙 판 한 줄)
@@ -51,6 +53,7 @@
 | `task.task.changed` | `taskId, status, title`, 실패면 `error`(앞 300자). 상태가 바뀔 때마다 |
 | `task.agent.changed` | `agentId, status` |
 | `task.page.built` | `taskId, runId, pageId, title, note, files: [{ name, blobHash, mime, sizeBytes }]`. 결과를 페이지로 내보내는 만들기 작업(`payload.page`)이 `done`으로 끝날 때 한 번 (`PageOrder.built`). blog가 받아 페이지의 판을 만든다 |
+| `task.chat.changed` | `chatId, turns`. 대화를 열거나 메시지를 보낼 때마다 (화면이 다시 읽는다. 받는 모듈은 없다) |
 | `task.goal_run.changed` | `goalRunId, goalId, status, round`. 실행의 상태 · 회차가 바뀔 때마다 (화면이 다시 읽는다. 받는 모듈은 없다) |
 | `task.approval.requested` · `granted` · `rejected` · `revision_requested` · `cancelled` | `approvalId, taskId, agentId, action, targetKind, targetId, targetVersion, decidedBy, note` |
 

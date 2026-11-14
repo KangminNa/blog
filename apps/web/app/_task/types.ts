@@ -10,6 +10,7 @@ import type {
   ApprovalPageView,
   ApprovalView,
 } from '../../../server/src/modules/task/approval/approval.view';
+import type { ChatDetailView, ChatListView } from '../../../server/src/modules/task/chat/chat.view';
 import type { GoalListView, GoalView } from '../../../server/src/modules/task/goal/goal.view';
 import type {
   GoalRunDetailView,
@@ -82,3 +83,9 @@ export type AiTool = AiTools['tools'][number];
 export type AiTest = ReturnType<AiTestView['toJSON']>;
 /** code-github 패키지의 PR (결재 화면의 code.pr.merge 대상). 패키지의 view가 원본이다 */
 export type CodePull = ReturnType<PullView['toJSON']>;
+export type ChatList = ReturnType<ChatListView['toJSON']>;
+export type ChatSummary = ChatList['chats'][number];
+export type ChatDetail = ReturnType<ChatDetailView['toJSON']>;
+/** 대화 하나의 머리 (만들기 · 보내기의 응답도 이 모양) */
+export type Chat = ChatDetail['chat'];
+export type ChatTurn = ChatDetail['turns'][number];
