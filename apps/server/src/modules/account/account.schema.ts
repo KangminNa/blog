@@ -1,9 +1,8 @@
 // 자동으로 만든 파일이라 고치지 않는다. 마이그레이션 뒤 pnpm db:rows로 다시 만든다 (scripts/db-rows.mjs).
 // 조건 규칙(platform/base의 TableQuery)이 쓰는 Drizzle 표: 표 이름 · 칸 · 행 타입. 칸 이름은 DB 그대로다.
 // drizzle-orm을 직접 가져오는 곳은 이 생성 파일들과 platform/base뿐이다 (모듈 경계 검사).
-import { boolean, customType, inet, integer, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { inet, integer, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
-const byteaColumn = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
 const accountSchema = pgSchema('account');
 
 /** account.device_tokens */
@@ -24,11 +23,9 @@ export const devices = accountSchema.table('devices', {
   user_id: uuid('user_id'),
   name: text('name').notNull(),
   scopes: text('scopes').array().notNull(),
-  is_primary_tidy: boolean('is_primary_tidy').notNull(),
   meta: jsonb('meta').notNull(),
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
   last_seen_at: timestamp('last_seen_at', { withTimezone: true }),
-  last_ip: inet('last_ip'),
   revoked_at: timestamp('revoked_at', { withTimezone: true }),
   version: integer('version').notNull(),
 });
@@ -75,15 +72,6 @@ export const oauthTokens = accountSchema.table('oauth_tokens', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
 });
 
-/** account.secrets */
-export const secrets = accountSchema.table('secrets', {
-  space_id: uuid('space_id').notNull(),
-  key: text('key').notNull(),
-  ciphertext: byteaColumn('ciphertext').notNull(),
-  nonce: byteaColumn('nonce').notNull(),
-  updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
-});
-
 /** account.settings */
 export const settings = accountSchema.table('settings', {
   space_id: uuid('space_id').notNull(),
@@ -115,7 +103,6 @@ export const users = accountSchema.table('users', {
   id: uuid('id').notNull(),
   display_name: text('display_name'),
   avatar_url: text('avatar_url'),
-  email: text('email'),
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
   login: text('login').notNull(),
   password_hash: text('password_hash'),

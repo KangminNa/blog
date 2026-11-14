@@ -2,19 +2,6 @@
 // 표 하나에 인터페이스 하나. 칼럼 이름은 DB 그대로다.
 // <이름>New는 새 행에 꼭 적어야 하는 칸이고, 나머지는 DB가 채운다.
 
-/** vault.attachments */
-export interface AttachmentRow {
-  revision_id: string;
-  blob_hash: string;
-  name: string | null;
-  caption: string | null;
-  position: number;
-  visibility: string;
-  scan_status: string;
-  scan_flags: unknown | null;
-}
-export type AttachmentNew = Partial<AttachmentRow> & Pick<AttachmentRow, 'revision_id' | 'blob_hash'>;
-
 /** vault.categories */
 export interface CategoryRow {
   node_id: string;
@@ -59,7 +46,6 @@ export interface ChangeSetRow {
   actor_id: string | null;
   job_id: string | null;
   message: string;
-  base_graph_version: number | null;
   op_count: number;
   reverted_by: string | null;
   version: number;
@@ -86,26 +72,6 @@ export interface ChangeRow {
   undone_by: string | null;
 }
 export type ChangeNew = Partial<ChangeRow> & Pick<ChangeRow, 'id' | 'space_id' | 'batch_id' | 'actor_type' | 'domain' | 'entity' | 'entity_id' | 'op'>;
-
-/** vault.chunk_embeddings */
-export interface ChunkEmbeddingRow {
-  chunk_id: string;
-  model_id: number;
-  embedding: string;
-}
-export type ChunkEmbeddingNew = Partial<ChunkEmbeddingRow> & Pick<ChunkEmbeddingRow, 'chunk_id' | 'model_id' | 'embedding'>;
-
-/** vault.chunks */
-export interface ChunkRow {
-  id: string;
-  space_id: string;
-  session_id: string;
-  revision_id: string;
-  section: string;
-  chunk_no: number;
-  text: string;
-}
-export type ChunkNew = Partial<ChunkRow> & Pick<ChunkRow, 'id' | 'space_id' | 'session_id' | 'revision_id' | 'section' | 'chunk_no' | 'text'>;
 
 /** vault.edge_kinds */
 export interface EdgeKindRow {
@@ -135,33 +101,6 @@ export interface EdgeRow {
 }
 export type EdgeNew = Partial<EdgeRow> & Pick<EdgeRow, 'id' | 'space_id' | 'src' | 'dst' | 'kind' | 'origin'>;
 
-/** vault.edit_leases */
-export interface EditLeasRow {
-  target_kind: string;
-  target_id: string;
-  space_id: string;
-  holder: string;
-  base_revision_id: string | null;
-  base_version: number | null;
-  expires_at: Date;
-  created_at: Date;
-}
-export type EditLeasNew = Partial<EditLeasRow> & Pick<EditLeasRow, 'target_kind' | 'target_id' | 'space_id' | 'holder' | 'expires_at'>;
-
-/** vault.graph_snapshots */
-export interface GraphSnapshotRow {
-  id: number;
-  space_id: string;
-  view_id: string | null;
-  audience: string;
-  version: number;
-  blob_hash: string | null;
-  node_count: number;
-  edge_count: number;
-  built_at: Date;
-}
-export type GraphSnapshotNew = Partial<GraphSnapshotRow> & Pick<GraphSnapshotRow, 'id' | 'space_id' | 'audience' | 'version'>;
-
 /** vault.graph_views */
 export interface GraphViewRow {
   id: string;
@@ -179,10 +118,9 @@ export type GraphViewNew = Partial<GraphViewRow> & Pick<GraphViewRow, 'id' | 'sp
 /** vault.node_kinds */
 export interface NodeKindRow {
   name: string;
-  detail_table: string;
   description: string | null;
 }
-export type NodeKindNew = Partial<NodeKindRow> & Pick<NodeKindRow, 'name' | 'detail_table'>;
+export type NodeKindNew = Partial<NodeKindRow> & Pick<NodeKindRow, 'name'>;
 
 /** vault.node_layout */
 export interface NodeLayoutRow {
@@ -270,11 +208,9 @@ export interface SessionRow {
   project: string | null;
   visibility: string;
   head_revision_id: string | null;
-  held_revision_id: string | null;
   version: number;
   pinned_sections: readonly string[];
   head_title: string | null;
-  head_summary: string | null;
   head_text: string | null;
   revision_count: number;
   started_at: Date | null;

@@ -27,11 +27,11 @@
 글의 View는 보는 사람마다 둘이다: 비공개까지 보는 요청자는 `PostView` · `PostPageView` · `SavedPostView`, 아니면 `Public…`(wiki 연결 없음). 읽기는 `PostQuery`가, 쓰기 결과는 `Post.view(actor)`가 고른다.
 
 ## 소유 데이터
-스키마 `blog`: categories, series, posts, post_revisions, assets, post_wiki_refs, chunks, chunk_embeddings, stone_log, edit_leases, pages, page_revisions(추가만)
+스키마 `blog`: categories, series, posts, post_revisions, assets, post_wiki_refs, pages, page_revisions(추가만)
 스키마 `work`: baskets, basket_items
 
 ## 데이터 묶음
-- 글: posts + post_revisions + post_wiki_refs + edit_leases(글)
+- 글: posts + post_revisions + post_wiki_refs
 - 카테고리: categories
 - 사진: assets
 - 페이지: pages + page_revisions (파일은 platform.blobs를 값으로)

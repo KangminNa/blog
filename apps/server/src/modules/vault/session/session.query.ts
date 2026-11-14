@@ -46,15 +46,6 @@ export class SessionQuery extends BaseQuery {
     super(db);
   }
 
-  /** 넘긴 해시 중 세션 첨부가 가리키는 것 (platform의 BlobStore.sweep이 묻는다. 첨부는 판에 붙어 지워지지 않는다) */
-  async usedBlobs(actor: Actor, hashes: readonly string[]): Promise<readonly string[]> {
-    actor.assertOwnerOrSystem();
-    const rows = await this.sql`
-      SELECT DISTINCT blob_hash AS hash FROM vault.attachments
-       WHERE blob_hash = ANY(${hashes as string[]}::text[])`;
-    return rows.map((row) => String(row.hash));
-  }
-
   /**
    * 저장 전 검사 (AI 도구의 check_session). 아무것도 쓰지 않는다.
    * 노트 모양(제목, 칸 하나 이상)을 보고, 서버가 지울 비밀값을 알려 주고, 이번 저장에 쓸 request_id와 대화 id를 준다.

@@ -21,11 +21,9 @@ export interface DeviceRow {
   user_id: string | null;
   name: string;
   scopes: readonly string[];
-  is_primary_tidy: boolean;
   meta: unknown;
   created_at: Date;
   last_seen_at: Date | null;
-  last_ip: string | null;
   revoked_at: Date | null;
   version: number;
 }
@@ -77,16 +75,6 @@ export interface OauthTokenRow {
 }
 export type OauthTokenNew = Partial<OauthTokenRow> & Pick<OauthTokenRow, 'id' | 'device_id' | 'kind' | 'token_hash' | 'expires_at'>;
 
-/** account.secrets */
-export interface SecretRow {
-  space_id: string;
-  key: string;
-  ciphertext: Buffer;
-  nonce: Buffer;
-  updated_at: Date;
-}
-export type SecretNew = Partial<SecretRow> & Pick<SecretRow, 'space_id' | 'key' | 'ciphertext' | 'nonce'>;
-
 /** account.settings */
 export interface SettingRow {
   space_id: string;
@@ -121,7 +109,6 @@ export interface UserRow {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
-  email: string | null;
   created_at: Date;
   login: string;
   password_hash: string | null;

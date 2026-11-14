@@ -1,7 +1,7 @@
 // 자동으로 만든 파일이라 고치지 않는다. 마이그레이션 뒤 pnpm db:rows로 다시 만든다 (scripts/db-rows.mjs).
 // 조건 규칙(platform/base의 TableQuery)이 쓰는 Drizzle 표: 표 이름 · 칸 · 행 타입. 칸 이름은 DB 그대로다.
 // drizzle-orm을 직접 가져오는 곳은 이 생성 파일들과 platform/base뿐이다 (모듈 경계 검사).
-import { bigint, boolean, customType, integer, jsonb, pgSchema, smallint, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { bigint, boolean, customType, integer, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 const byteaColumn = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
 const platformSchema = pgSchema('platform');
@@ -13,18 +13,7 @@ export const blobs = platformSchema.table('blobs', {
   size_bytes: bigint('size_bytes', { mode: 'number' }).notNull(),
   width: integer('width'),
   height: integer('height'),
-  storage_backend: text('storage_backend').notNull(),
   storage_key: text('storage_key').notNull(),
-  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
-});
-
-/** platform.embedding_models */
-export const embeddingModels = platformSchema.table('embedding_models', {
-  id: smallint('id').notNull(),
-  name: text('name').notNull(),
-  dims: integer('dims').notNull(),
-  provider: text('provider').notNull(),
-  is_active: boolean('is_active').notNull(),
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
 });
 
@@ -64,8 +53,6 @@ export const notifications = platformSchema.table('notifications', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
   read_at: timestamp('read_at', { withTimezone: true }),
   push_sent_at: timestamp('push_sent_at', { withTimezone: true }),
-  email_sent_at: timestamp('email_sent_at', { withTimezone: true }),
-  digest_id: uuid('digest_id'),
 });
 
 /** platform.outbox */

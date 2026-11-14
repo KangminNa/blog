@@ -17,7 +17,7 @@ before(async () => {
   api = await ApiClient.start();
   await api.service(Database).sql`
     TRUNCATE account.web_sessions, account.login_links, account.space_members, account.users,
-             account.secrets, account.settings, account.spaces CASCADE`;
+             account.settings, account.spaces CASCADE`;
 });
 after(() => api.close());
 

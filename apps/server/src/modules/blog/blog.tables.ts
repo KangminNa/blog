@@ -24,38 +24,6 @@ export interface CategoryRow {
 }
 export type CategoryNew = Partial<CategoryRow> & Pick<CategoryRow, 'id' | 'space_id' | 'name' | 'slug'>;
 
-/** blog.chunk_embeddings */
-export interface ChunkEmbeddingRow {
-  chunk_id: string;
-  model_id: number;
-  embedding: string;
-}
-export type ChunkEmbeddingNew = Partial<ChunkEmbeddingRow> & Pick<ChunkEmbeddingRow, 'chunk_id' | 'model_id' | 'embedding'>;
-
-/** blog.chunks */
-export interface ChunkRow {
-  id: string;
-  space_id: string;
-  post_id: string;
-  revision_id: string;
-  chunk_no: number;
-  text: string;
-}
-export type ChunkNew = Partial<ChunkRow> & Pick<ChunkRow, 'id' | 'space_id' | 'post_id' | 'revision_id' | 'chunk_no' | 'text'>;
-
-/** blog.edit_leases */
-export interface EditLeasRow {
-  target_kind: string;
-  target_id: string;
-  space_id: string;
-  holder: string;
-  base_revision_id: string | null;
-  base_version: number | null;
-  expires_at: Date;
-  created_at: Date;
-}
-export type EditLeasNew = Partial<EditLeasRow> & Pick<EditLeasRow, 'target_kind' | 'target_id' | 'space_id' | 'holder' | 'expires_at'>;
-
 /** blog.page_revisions */
 export interface PageRevisionRow {
   id: string;
@@ -90,7 +58,6 @@ export interface PostRevisionRow {
   post_id: string;
   seq: number;
   body_md: string;
-  blocks: unknown | null;
   base_revision_id: string | null;
   request_id: string | null;
   actor_type: string;
@@ -113,7 +80,6 @@ export interface PostRow {
   id: string;
   space_id: string;
   slug: string;
-  lang: string;
   status: string;
   title: string | null;
   excerpt: string | null;
@@ -126,7 +92,6 @@ export interface PostRow {
   tags: readonly string[];
   cover_blob_hash: string | null;
   align: string;
-  stone_count: number;
   published_at: Date | null;
   updated_at: Date;
   deleted_at: Date | null;
@@ -146,14 +111,6 @@ export interface SeriesRow {
   created_at: Date;
 }
 export type SeriesNew = Partial<SeriesRow> & Pick<SeriesRow, 'id' | 'space_id' | 'name' | 'slug'>;
-
-/** blog.stone_log */
-export interface StoneLogRow {
-  created_at: Date;
-  post_id: string;
-  visitor_hash: string;
-}
-export type StoneLogNew = Partial<StoneLogRow> & Pick<StoneLogRow, 'post_id' | 'visitor_hash'>;
 
 /** work.basket_items */
 export interface BasketItemRow {

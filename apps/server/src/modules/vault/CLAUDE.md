@@ -37,18 +37,18 @@ AI 작업 세션과 그래프. 세션·wiki 저장(판 쌓기), 카테고리와 
 - wiki · 카테고리의 View는 보는 사람마다 둘이다: 비공개까지 보는 요청자는 `WikiPageView` · `WikiDetailView` · `CategoryListView`, 아니면 `Public…` (`WikiQuery` · `CategoryQuery`가 고른다)
 
 ## 소유 데이터
-스키마 `vault`: node_kinds, edge_kinds, nodes, sessions, session_revisions, attachments, categories, wikis, wiki_revisions, wiki_aliases,
-edges, project_rules, graph_views, node_layout, graph_snapshots, post_marks, chunks, chunk_embeddings,
-change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings, stale_wikis
+스키마 `vault`: node_kinds, edge_kinds, nodes, sessions, session_revisions, categories, wikis, wiki_revisions, wiki_aliases,
+edges, project_rules, graph_views, node_layout, post_marks,
+change_sets, change_ops, review_rules, changes, tidy_settings, stale_wikis
 
 ## 데이터 묶음
-- 세션: nodes(세션) + sessions + session_revisions + attachments + edit_leases(세션)
+- 세션: nodes(세션) + sessions + session_revisions
 - 카테고리: nodes(카테고리) + categories
 - wiki: nodes(wiki) + wikis + wiki_revisions + wiki_aliases
 - 연결선: edges(`material`·`link`·`replaces`·`similar`)
 - 변경 묶음: change_sets + change_ops (+ 실제로 바뀐 행 changes). 승인함은 검토를 기다리는 change_ops
 - 검토 규칙: review_rules
-- 그래프 보기: graph_views + node_layout + graph_snapshots
+- 그래프 보기: graph_views + node_layout
 - 글 자리 사본: post_marks (blog 이벤트를 받는 Handler와 복원만 쓴다)
 - 정리 설정: tidy_settings
 - 지울 만한 wiki 알림 기록: stale_wikis (wiki 점수)
@@ -78,7 +78,7 @@ change_sets, change_ops, review_rules, changes, edit_leases, tidy_settings, stal
 platform
 
 ## 지켜야 할 것
-- 파일을 가리키는 칸(`attachments` · `graph_snapshots`)은 `BlobStore.registerUse`로 등록해 둔다 (`SessionQuery` · `GraphQuery`의 `usedBlobs`). 새 칸을 만들면 함께 등록한다: 빠뜨리면 platform이 그 파일을 지운다
+- 지금 vault에는 파일을 가리키는 칸이 없다. 새로 만들면 `BlobStore.registerUse`로 등록한다: 빠뜨리면 platform이 그 파일을 지운다 (`blob-sweep.api.test`가 본다)
 - 판(session_revisions · wiki_revisions)은 추가만 한다. 트리거가 UPDATE·DELETE를 막는다
 - 그래프를 바꾸는 쓰기는 모두 `ChangeService`를 거쳐 변경 묶음으로 남긴다 (관리 화면 편집 포함). 이 Service만 여러 데이터 묶음의 Repository를 쓴다 (객체설계 4장 예외). `TidyService`가 세션 Repository로 부르는 `noteTidyRequested` 하나는 요청 기록이라 그래프를 바꾸지 않는다
 - AI 변경의 바로 합치기·검토·거부는 `ReviewPolicy` 한 곳에서만 판단한다. 규칙을 늘릴 때는 `ReviewRule` 하위 클래스 하나

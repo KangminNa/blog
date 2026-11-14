@@ -24,10 +24,10 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
 - 토큰 · 해시 · 비밀번호 해시는 어떤 View에도 없다. 원문은 만든 순간의 응답에만 실린다 (`DeviceSavedView`의 token, `TokenView`, 로그인 쿠키)
 
 ## 소유 데이터
-스키마 `account`: spaces, users, login_links, space_members, settings, secrets, devices, oauth_clients, oauth_codes, oauth_tokens, device_tokens, web_sessions
+스키마 `account`: spaces, users, login_links, space_members, settings, devices, oauth_clients, oauth_codes, oauth_tokens, device_tokens, web_sessions
 
 ## 데이터 묶음
-- 공간: spaces + settings + secrets (블로그 이름·소개, GitHub 앱, 사이트 주소, 앱 연결 허용 `connect.hosted_apps`)
+- 공간: spaces + settings (블로그 이름·소개, GitHub 앱, 사이트 주소, 앱 연결 허용 `connect.hosted_apps`)
 - 주인: users + space_members + web_sessions + login_links (주인은 공간마다 한 명, DB가 막는다)
 - 기기: devices + device_tokens + oauth_tokens + oauth_clients + oauth_codes (M1 B)
 
@@ -48,7 +48,7 @@ platform
 - 화면에는 "주인" 대신 표시 이름(`OwnerView.name`: 정한 이름, 없으면 아이디)을 쓴다. 이름을 모르는 곳(방문자에게 보이는 오류)은 "관리자". 표시 이름은 주인만 읽는다 (`api/auth/me`). 공개 정보(`SpaceView`)에 넣지 않는다
 - 사이트 로고는 그림만 (형식은 파일 앞부분으로 `FileSniff`, PNG · JPEG · WebP · GIF, 1MB. SVG는 스크립트를 담을 수 있어 받지 않는다). 파일은 트랜잭션 밖에서 `BlobStore.save`, 공간에는 해시만. 가리키는 칸은 `registerUse`로 등록한다 (`SpaceQuery.usedBlobs`). 보내기는 `nosniff` + sandbox CSP
 - 관리 일(기기 목록·권한·토큰·끊기, 승인 화면, 사이트 정보·앱 연결 허용, 연결된 로그인)은 `assertOwner()`로 막는다. `assertCan(WRITE)`는 write 기기도 통과한다. 기기 토큰은 `/mcp`에서만 요청자가 되지만(`ActorGuard`, 2026-11-06), 관리 일은 Service에서도 한 번 더 막는다 (두 겹). API 테스트에 write 기기 경우를 둔다 (`device.api.test.ts`)
-- 비밀값(GitHub client secret, SMTP 비밀번호 등)은 `secrets`에 암호화해서만 저장하고, 응답·로그에 내보내지 않는다
+- 비밀값(플러그인의 client secret 등)은 플러그인 설정에 서버 키로 잠가서만 저장하고(platform), 응답·로그에 내보내지 않는다
 - 토큰(로그인·기기)은 해시만 저장한다. 원문은 만든 순간의 응답(쿠키)에만
 - 주인은 공간마다 한 명 (DB 부분 유일 인덱스)
 - 비밀번호는 `PasswordHasher`로 바꾼 값만. 틀렸을 때는 아이디가 없어도 같은 문구·같은 시간 (아이디가 있는지 알 수 없게)

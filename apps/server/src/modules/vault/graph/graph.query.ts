@@ -35,15 +35,6 @@ export class GraphQuery extends BaseQuery {
   private static readonly HIDDEN_LENGTH = 16;
 
   /** 주인의 그래프 */
-  /** 넘긴 해시 중 그래프 스냅샷이 가리키는 것 (platform의 BlobStore.sweep이 묻는다) */
-  async usedBlobs(actor: Actor, hashes: readonly string[]): Promise<readonly string[]> {
-    actor.assertOwnerOrSystem();
-    const rows = await this.sql`
-      SELECT DISTINCT blob_hash AS hash FROM vault.graph_snapshots
-       WHERE blob_hash = ANY(${hashes as string[]}::text[])`;
-    return rows.map((row) => String(row.hash));
-  }
-
   async owner(actor: Actor): Promise<GraphView> {
     actor.assertOwner();
     return this.build(actor, true);

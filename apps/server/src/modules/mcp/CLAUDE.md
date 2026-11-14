@@ -1,7 +1,7 @@
 # mcp 모듈
 
 ## 하는 일
-AI 도구(Claude Code, Codex 등)가 들어오는 입구. MCP 프로토콜, 도구 등록, 읽기 기록.
+AI 도구(Claude Code, Codex 등)가 들어오는 입구. MCP 프로토콜, 도구 등록, 도구의 글.
 도구 자체(`*.tool.ts`)는 각 모듈에 있고, 여기서는 모아서 연다. 비즈니스 규칙을 두지 않는다.
 `McpController`(`/mcp`, 기기 토큰이나 살아 있는 작업의 작업 토큰이 없으면 401 + 인증 안내 주소. 작업 토큰은 호출마다 `TaskQuery.isLive`로 묻는다)와 `McpToolbox`(각 모듈의 도구 모음: 모듈별 목록 `vault-tools.ts` · `blog-tools.ts` · `task-tools.ts`를 모은다, 서버 안내문 `INSTRUCTIONS`: 저장 순서, 글은 `mcp.instructions.ko.json`).
 도구의 설명 · 칸 설명의 기본 글은 모듈의 설명서(`<모듈>.tools.ko.json`, 목록 클래스의 `texts`)를 `McpToolbox`가 합친 것(`ToolTexts`, `defaultText`)이고, 기능 패키지의 도구는 목록 파일의 글이다. 시작할 때 설명서가 코드와 맞는지 보고, 맞지 않으면 서버가 뜨지 않는다.
@@ -11,11 +11,10 @@ AI 도구(Claude Code, Codex 등)가 들어오는 입구. MCP 프로토콜, 도�
 통신은 platform/base의 `McpEndpoint`가 한다. 인증(OAuth)과 기기는 account 모듈.
 
 ## 소유 데이터
-스키마 `mcp`: mcp_reads, tool_texts, tool_text_revisions(추가만)
+스키마 `mcp`: tool_texts, tool_text_revisions(추가만)
 
 ## 데이터 묶음
 - 도구 설명: tool_texts + tool_text_revisions (공간 · 도구마다 한 줄, 지금 쓰는 판 `active_revision`, 비면 기본 글)
-- 읽기 기록은 쌓기만 한다 (묶음 없음)
 
 ## 공개 API (`index.ts`)
 없음. 다른 모듈이 mcp를 쓰지 않는다.

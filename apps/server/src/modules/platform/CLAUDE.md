@@ -2,11 +2,11 @@
 
 ## 하는 일
 모든 모듈이 쓰는 공통 기반. DB 연결, 기반 클래스, 오류, 요청자(Actor), 이벤트와 outbox, 변경 신호(`/api/stream`), 서버 상태 확인.
-파일 저장(blobs), 보관 형식(archive), 플러그인, 알림(콘솔 머리줄 · 알림 설정 · 브라우저 푸시). 나중에: 알림 이메일, 임베딩 모델 목록. AI 일거리는 task 모듈이 맡는다.
+파일 저장(blobs), 보관 형식(archive), 플러그인, 알림(콘솔 머리줄 · 알림 설정 · 브라우저 푸시). AI 일거리는 task 모듈이 맡는다.
 **비즈니스 규칙을 두지 않는다.** 세션·글 같은 단어가 여기 코드에 나오면 잘못 들어온 것이다.
 
 ## 소유 데이터
-스키마 `platform`: blobs, idempotency, notifications, notice_settings, push_subscriptions, embedding_models, outbox, plugins, plugin_settings
+스키마 `platform`: blobs, idempotency, notifications, notice_settings, push_subscriptions, outbox, plugins, plugin_settings
 DB 함수: `platform.uuid_v7()`, `platform.forbid_update_delete()` (모든 모듈의 테이블이 씀)
 
 ## 데이터 묶음

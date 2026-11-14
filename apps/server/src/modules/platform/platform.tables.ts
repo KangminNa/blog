@@ -9,22 +9,10 @@ export interface BlobRow {
   size_bytes: number;
   width: number | null;
   height: number | null;
-  storage_backend: string;
   storage_key: string;
   created_at: Date;
 }
 export type BlobNew = Partial<BlobRow> & Pick<BlobRow, 'hash' | 'mime' | 'size_bytes' | 'storage_key'>;
-
-/** platform.embedding_models */
-export interface EmbeddingModelRow {
-  id: number;
-  name: string;
-  dims: number;
-  provider: string;
-  is_active: boolean;
-  created_at: Date;
-}
-export type EmbeddingModelNew = Partial<EmbeddingModelRow> & Pick<EmbeddingModelRow, 'id' | 'name' | 'dims' | 'provider'>;
 
 /** platform.idempotency */
 export interface IdempotencyRow {
@@ -64,8 +52,6 @@ export interface NotificationRow {
   created_at: Date;
   read_at: Date | null;
   push_sent_at: Date | null;
-  email_sent_at: Date | null;
-  digest_id: string | null;
 }
 export type NotificationNew = Partial<NotificationRow> & Pick<NotificationRow, 'id' | 'space_id' | 'kind' | 'severity' | 'title'>;
 

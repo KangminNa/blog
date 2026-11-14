@@ -1,22 +1,9 @@
 // 자동으로 만든 파일이라 고치지 않는다. 마이그레이션 뒤 pnpm db:rows로 다시 만든다 (scripts/db-rows.mjs).
 // 조건 규칙(platform/base의 TableQuery)이 쓰는 Drizzle 표: 표 이름 · 칸 · 행 타입. 칸 이름은 DB 그대로다.
 // drizzle-orm을 직접 가져오는 곳은 이 생성 파일들과 platform/base뿐이다 (모듈 경계 검사).
-import { bigint, boolean, customType, integer, jsonb, pgSchema, real, smallint, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { bigint, boolean, integer, jsonb, pgSchema, real, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
-const vectorColumn = customType<{ data: string }>({ dataType: () => 'vector' });
 const vaultSchema = pgSchema('vault');
-
-/** vault.attachments */
-export const attachments = vaultSchema.table('attachments', {
-  revision_id: uuid('revision_id').notNull(),
-  blob_hash: text('blob_hash').notNull(),
-  name: text('name'),
-  caption: text('caption'),
-  position: integer('position').notNull(),
-  visibility: text('visibility').notNull(),
-  scan_status: text('scan_status').notNull(),
-  scan_flags: jsonb('scan_flags'),
-});
 
 /** vault.categories */
 export const categories = vaultSchema.table('categories', {
@@ -60,7 +47,6 @@ export const changeSets = vaultSchema.table('change_sets', {
   actor_id: uuid('actor_id'),
   job_id: uuid('job_id'),
   message: text('message').notNull(),
-  base_graph_version: bigint('base_graph_version', { mode: 'number' }),
   op_count: integer('op_count').notNull(),
   reverted_by: uuid('reverted_by'),
   version: integer('version').notNull(),
@@ -84,24 +70,6 @@ export const changes = vaultSchema.table('changes', {
   before: jsonb('before'),
   after: jsonb('after'),
   undone_by: uuid('undone_by'),
-});
-
-/** vault.chunk_embeddings */
-export const chunkEmbeddings = vaultSchema.table('chunk_embeddings', {
-  chunk_id: uuid('chunk_id').notNull(),
-  model_id: smallint('model_id').notNull(),
-  embedding: vectorColumn('embedding').notNull(),
-});
-
-/** vault.chunks */
-export const chunks = vaultSchema.table('chunks', {
-  id: uuid('id').notNull(),
-  space_id: uuid('space_id').notNull(),
-  session_id: uuid('session_id').notNull(),
-  revision_id: uuid('revision_id').notNull(),
-  section: text('section').notNull(),
-  chunk_no: integer('chunk_no').notNull(),
-  text: text('text').notNull(),
 });
 
 /** vault.edge_kinds */
@@ -130,31 +98,6 @@ export const edges = vaultSchema.table('edges', {
   deleted_by_type: text('deleted_by_type'),
 });
 
-/** vault.edit_leases */
-export const editLeases = vaultSchema.table('edit_leases', {
-  target_kind: text('target_kind').notNull(),
-  target_id: uuid('target_id').notNull(),
-  space_id: uuid('space_id').notNull(),
-  holder: text('holder').notNull(),
-  base_revision_id: uuid('base_revision_id'),
-  base_version: integer('base_version'),
-  expires_at: timestamp('expires_at', { withTimezone: true }).notNull(),
-  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
-});
-
-/** vault.graph_snapshots */
-export const graphSnapshots = vaultSchema.table('graph_snapshots', {
-  id: bigint('id', { mode: 'number' }).notNull(),
-  space_id: uuid('space_id').notNull(),
-  view_id: uuid('view_id'),
-  audience: text('audience').notNull(),
-  version: bigint('version', { mode: 'number' }).notNull(),
-  blob_hash: text('blob_hash'),
-  node_count: integer('node_count').notNull(),
-  edge_count: integer('edge_count').notNull(),
-  built_at: timestamp('built_at', { withTimezone: true }).notNull(),
-});
-
 /** vault.graph_views */
 export const graphViews = vaultSchema.table('graph_views', {
   id: uuid('id').notNull(),
@@ -171,7 +114,6 @@ export const graphViews = vaultSchema.table('graph_views', {
 /** vault.node_kinds */
 export const nodeKinds = vaultSchema.table('node_kinds', {
   name: text('name').notNull(),
-  detail_table: text('detail_table').notNull(),
   description: text('description'),
 });
 
@@ -255,11 +197,9 @@ export const sessions = vaultSchema.table('sessions', {
   project: text('project'),
   visibility: text('visibility').notNull(),
   head_revision_id: uuid('head_revision_id'),
-  held_revision_id: uuid('held_revision_id'),
   version: integer('version').notNull(),
   pinned_sections: text('pinned_sections').array().notNull(),
   head_title: text('head_title'),
-  head_summary: text('head_summary'),
   head_text: text('head_text'),
   revision_count: integer('revision_count').notNull(),
   started_at: timestamp('started_at', { withTimezone: true }),
