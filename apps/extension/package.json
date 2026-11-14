@@ -1,0 +1,11 @@
+{
+  "name": "@cairn/extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "브라우저 확장 (Chrome MV3). 웹 AI 대화를 세션으로 모으고, 보는 페이지를 보관하거나 맡기고, 기다리는 결재 수를 배지로 보여 준다",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\" \"e2e/*.e2e.js\""
+  }
+}

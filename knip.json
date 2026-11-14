@@ -15,6 +15,16 @@
       "ignoreDependencies": ["@playwright/mcp"]
     },
     "apps/egress": { "entry": ["src/**/*.test.ts"], "project": ["src/**/*.ts"] },
+    "apps/extension": {
+      "entry": [
+        "src/background.js",
+        "src/popup/popup.js",
+        "src/capture/*.js",
+        "test/*.test.js",
+        "e2e/*.e2e.js"
+      ],
+      "project": ["src/**/*.js", "test/**/*.js", "e2e/**/*.js"]
+    },
     "packages/cli": { "entry": ["src/**/*.test.ts"], "project": ["src/**/*.ts"] },
     "apps/web": {
       "entry": [
