@@ -41,10 +41,18 @@ export const PUBLISH_SITE = 'browser.site.publish';
 /** code-github 패키지의 PR 머지 결재 (주인이 GitHub에서 머지한 뒤 승인) */
 export const MERGE_PULL = 'code.pr.merge';
 
-/** 서버가 실행하지 않고 주인이 직접 하는 동작: 승인 버튼의 말이 바뀐다 */
-export const MANUAL_ACTIONS: Record<string, string> = {
+/** 목표 실행의 결재: 다음 회차로 갈지, 목표 실행을 완료로 닫을지 (서버의 Approval.GOAL_*) */
+export const GOAL_CONTINUE = 'task.goal.continue';
+export const GOAL_COMPLETE = 'task.goal.complete';
+/** 목표 실행 결재의 대상 종류 (서버의 Approval.GOAL_RUN) */
+export const GOAL_RUN = 'goal_run';
+
+/** 승인 버튼의 말이 다른 동작. 서버가 실행하지 않고 주인이 직접 하는 것과, 목표 실행의 다음 걸음 */
+export const APPROVE_LABELS: Record<string, string> = {
   [PUBLISH_SITE]: '직접 발행했어요',
   [MERGE_PULL]: '머지했어요',
+  [GOAL_CONTINUE]: '다음 회차로',
+  [GOAL_COMPLETE]: '완료로 닫기',
 };
 
 export const ACTION_LABELS: Record<string, string> = {
@@ -53,6 +61,8 @@ export const ACTION_LABELS: Record<string, string> = {
   [MERGE_PULL]: 'PR 머지',
   'sns.post.send': 'SNS 전송',
   [RAISE_LIMIT]: '한도 변경',
+  [GOAL_CONTINUE]: '목표 실행 중간 결재',
+  [GOAL_COMPLETE]: '목표 실행 최종 결재',
 };
 
 export function actionLabel(action: string): string {
@@ -64,6 +74,21 @@ export const TARGET_LABELS: Record<string, string> = {
   agent: '에이전트',
   browser_site: '사이트',
   pull_request: 'PR',
+  [GOAL_RUN]: '목표 실행',
+};
+
+export const GOAL_RUN_STATUS: Record<string, string> = {
+  running: '회차 진행 중',
+  waiting: '결재 대기',
+  done: '완료',
+  stopped: '멈춤',
+};
+
+/** 결재를 올리는 때 (서버의 GoalRun.CHECKPOINTS) */
+export const CHECKPOINTS: Record<string, string> = {
+  every: '회차마다',
+  milestone: '중요 단계마다',
+  final: '끝에만',
 };
 
 export const EVENT_KINDS: Record<string, string> = {

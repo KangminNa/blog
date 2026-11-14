@@ -8,20 +8,21 @@ import { api } from '../../_lib/client-api';
 import { useAction } from '../../_lib/use-action';
 import { useLiveValue } from '../../_lib/use-live';
 import {
+  APPROVE_LABELS,
   actionLabel,
-  MANUAL_ACTIONS,
+  GOAL_RUN,
   MERGE_PULL,
   PUBLISH_POST,
   PUBLISH_SITE,
   RAISE_LIMIT,
-  TARGET_LABELS,
   TASK_STATUS,
   tokens,
   when,
 } from '../../_task/labels';
 import { APPROVAL_TOPICS, useAgents } from '../../_task/live';
 import { ApprovalPill } from '../../_task/parts';
-import type { Agent, Approval, CodePull, TaskDetail } from '../../_task/types';
+import type { Agent, Approval, TaskDetail } from '../../_task/types';
+import { GoalRunTarget, OtherTarget, PullTarget } from './ApprovalTargets';
 
 const DONE_NOTES: Record<string, string> = {
   approve: '승인됨',
@@ -136,6 +137,8 @@ function Loaded({
         <LimitTarget approval={a} agent={limitAgent ?? null} />
       ) : a.action === MERGE_PULL ? (
         <PullTarget approval={a} />
+      ) : a.target.kind === GOAL_RUN ? (
+        <GoalRunTarget approval={a} />
       ) : (
         <OtherTarget approval={a} />
       )}
@@ -267,65 +270,6 @@ function LimitTarget({ approval, agent }: { approval: Approval; agent: Agent | n
   );
 }
 
-/** code.pr.merge: 패키지가 기록한 PR (에이전트의 메모가 아니라). 결재 뒤 PR이 바뀌었으면 알린다 */
-function PullTarget({ approval }: { approval: Approval }) {
-  const { id, version } = approval.target;
-  const { data: pull, error } = useLiveValue(
-    `pull:${id}`,
-    () => api<CodePull>('GET', `/api/p/code-github/pulls/${id}`),
-    [],
-  );
-
-  if (error) return <p className="error">{error}</p>;
-  if (!pull) return <p className="label-mono">PR 불러오는 중…</p>;
-  const failed = pull.checks.filter((c) => !c.ok);
-  return (
-    <section className="preview" aria-label="PR">
-      <b>
-        <a href={pull.url} target="_blank" rel="noreferrer">
-          {pull.repoName} #{pull.number}
-        </a>
-      </b>
-      {pull.version !== version && (
-        <p className="warn">
-          결재 뒤 PR이 바뀌었어요 (판 {version} → {pull.version}). 승인해도 머지로 남지 않아요
-        </p>
-      )}
-      <dl className="kv">
-        <dt>브랜치</dt>
-        <dd>{pull.branch}</dd>
-        <dt>커밋</dt>
-        <dd>{pull.headSha.slice(0, 7)}</dd>
-        <dt>검사</dt>
-        <dd>
-          {pull.checks.length === 0
-            ? '검사 명령 없음'
-            : failed.length === 0
-              ? `${pull.checks.length}개 통과`
-              : `실패: ${failed.map((c) => c.command).join(', ')}`}
-        </dd>
-      </dl>
-    </section>
-  );
-}
-
-function OtherTarget({ approval }: { approval: Approval }) {
-  const { kind, id, version } = approval.target;
-  return (
-    <section className="preview" aria-label="실행 내용">
-      <b>실행 내용</b>
-      <dl className="kv">
-        <dt>종류</dt>
-        <dd>{TARGET_LABELS[kind] ?? kind}</dd>
-        <dt>ID</dt>
-        <dd>{id}</dd>
-        <dt>버전</dt>
-        <dd>{version}</dd>
-      </dl>
-    </section>
-  );
-}
-
 function Decide({
   approval,
   canApprove,
@@ -406,7 +350,7 @@ function Decide({
           disabled={busy || !canApprove}
           onClick={() => decide('approve')}
         >
-          {MANUAL_ACTIONS[approval.action] ?? '승인'}
+          {APPROVE_LABELS[approval.action] ?? '승인'}
         </button>
         <button type="button" className="ghost" disabled={busy} onClick={() => decide('revise')}>
           수정 요청

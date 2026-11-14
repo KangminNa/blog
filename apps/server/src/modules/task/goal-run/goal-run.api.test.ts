@@ -249,6 +249,12 @@ describe('목표 실행', () => {
   test('report_round: 회차 작업만, 회차마다 한 번. 멈추면 도는 회차 작업도 취소', async () => {
     const run = await start();
     const job = await takeRound(String(run.id));
+    const script = await tool(job.run_token, 'report_round', {
+      summary: '근거',
+      done: false,
+      evidence: [{ url: 'javascript:alert(1)' }],
+    });
+    assert.equal(script.ok, false, '화면이 링크로 그리는 근거 주소는 http · https만');
     const first = await tool(job.run_token, 'report_round', { summary: '한 번', done: false });
     assert.ok(first.ok);
     const again = await tool(job.run_token, 'report_round', { summary: '두 번', done: false });

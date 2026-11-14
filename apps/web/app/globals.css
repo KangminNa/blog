@@ -1274,6 +1274,13 @@ a.chip {
   overflow-wrap: anywhere;
 }
 
+/* 목표 실행의 회차 보고: 한 일 · 남은 일 · 근거의 목록 */
+.bullets {
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+
 /* AI 메뉴의 웹 로그인: 단계마다 할 일 하나 */
 .stack {
   display: flex;

@@ -24,7 +24,7 @@
     "apps/web/app/_vault/GraphBoard.tsx": 342,
     "apps/web/app/_vault/graph-scene.ts": 701,
     "apps/web/app/admin/ai/AiPanel.tsx": 319,
-    "apps/web/app/admin/approvals/ApprovalDetail.tsx": 395,
+    "apps/web/app/admin/approvals/ApprovalDetail.tsx": 343,
     "apps/web/app/admin/posts/PostEditor.tsx": 534,
     "apps/web/app/admin/tasks/TaskDetailPanel.tsx": 332,
     "apps/web/app/admin/wiki/WikiPanel.tsx": 637,

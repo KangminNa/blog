@@ -13,7 +13,7 @@ export class ReportRoundTool extends BaseTool {
   readonly scope = Actor.AGENT;
   readonly readOnly = false;
   readonly description = [
-    '목표 실행의 회차 작업에서만 쓴다 (지시가 "# 목표 실행 N회차"로 시작하는 일). submit_result로 끝내기 전에 한 번 부른다.',
+    '목표 실행의 회차 작업에서만 쓴다 (지시가 "# 목표 실행 N회차"로 시작하는 일). 회차마다 한 번, 회차를 끝내기 전에 (하위 작업을 맡겼으면 결과가 모인 뒤) 부른다.',
     '요약, 한 일, 남은 일, 근거(읽은 주소 url · 만든 결과물 output_id와 한 줄 설명), 다음 계획을 적는다.',
     '완료 조건을 모두 채웠을 때만 done: true (주인이 최종 결재로 확인한다). 주인에게 보여야 할 중요한 단계면 milestone: true.',
   ].join(' ');

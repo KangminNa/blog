@@ -8,6 +8,8 @@ import type {
   AiTools,
   ApprovalPage,
   GoalList,
+  GoalRunDetail,
+  GoalRunList,
   ScheduleList,
   TaskPage,
   Usage,
@@ -19,6 +21,8 @@ export const TASK_TOPICS = ['task.task.changed'];
 /** 작업 줄의 마지막 기록까지 따라간다 */
 export const TASK_LOG_TOPICS = [...TASK_TOPICS, 'task.event.added'];
 export const APPROVAL_TOPICS = ['task.approval.*'];
+/** 목표 실행의 상태 · 회차가 바뀜 (회차 보고는 회차 작업이 끝날 때 함께 보인다) */
+export const GOAL_RUN_TOPICS = ['task.goal_run.changed'];
 /** 실행 기록이 쌓이면 사용량이 바뀐다 */
 export const AGENT_TOPICS = ['task.agent.changed', 'task.event.added'];
 /** 구독 사용률이 오거나 실행 기록이 쌓이면 사용량이 바뀐다 */
@@ -38,6 +42,25 @@ export function useAiTools() {
 /** 목표 나무. 목표마다 이어진 작업 수가 있어 작업이 바뀔 때도 다시 읽는다 */
 export function useGoals() {
   return useLiveValue('goals', () => api<GoalList>('GET', '/api/goals'), TASK_TOPICS);
+}
+
+/** 목표 실행 목록 (최근부터) */
+export function useGoalRuns() {
+  return useLiveValue(
+    'goal-runs',
+    () => api<GoalRunList>('GET', '/api/goal-runs'),
+    GOAL_RUN_TOPICS,
+  );
+}
+
+/** 목표 실행 하나와 회차 보고 전부 */
+export function useGoalRun(id: string) {
+  return useLiveValue(
+    `goal-run:${id}`,
+    () => api<GoalRunDetail>('GET', `/api/goal-runs/${id}`),
+    GOAL_RUN_TOPICS,
+    id,
+  );
 }
 
 export function useUsage() {

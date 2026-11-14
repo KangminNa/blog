@@ -16,7 +16,8 @@
   `api/ai`, MCP `ai_login` · `ai_login_refresh`(CLI가 갱신한 자격 되돌려 쓰기) · `ai_signin`(러너가 로그인 명령을 대신 돌린다), 받는 값의 모양은 `AiSigninPolicy`
 - `runner/`: 러너의 상태 (`Runner`). 마지막으로 닿은 때, 일 받기 켜기·끄기. `api/runners`. 기기 이름·종류는 account의 것이라 화면이 합친다
 - `output/`: 결과물 (`Output`, 이름 · 종류 · 형식 · 한도 `OutputPolicy`, 올리기 표 `UploadTicket`, 재료 내려받기 표 `DownloadTicket`). 러너가 MCP `begin_upload`로 표를 받아 `PUT api/outputs/upload`(머리글 `x-cairn-upload`)로 파일을 흘려 보낸다. 만들기 작업의 재료는 거꾸로 `begin_download` → `GET api/outputs/download`(머리글 `x-cairn-download`). `api/outputs`(주인만: 목록 · 내려받기 · 휴지통 · 올리기 `POST api/outputs/files`), 일꾼 `OutputPurgeJob`. 주인이 올린 파일은 작업 · 실행 없이(`task_id` · `run_id` 둘 다 null, DB CHECK) 결과물이 되어 만들기 일의 재료로 쓴다 (2026-11-13)
-- `web/`: 주소 읽기 (MCP `read_url`, 작업 토큰). 서버가 AI 대신 페이지를 열어 글자만 준다 (`WebQuery`). 목줄은 `WebReach`: 비공개를 볼 수 있는 일(전체 읽기 · 쓰기 · 코드 권한, 재료 읽기 허락)은 주인의 지시(위임된 일이면 맨 위 일)에 적힌 사이트와 그 하위만, 아니면 공개 주소 어디든. 내부망 · 이 서버 · 메타데이터 주소는 이름을 풀어 본 뒤 그 주소로만 붙어 막는다 (`WebPageGateway`, 리다이렉트 3번까지 매번 다시). 2MB · 15초, 글이 아닌 형식은 거절. 받은 글은 자료라는 표시(`note`)와 함께
+- `goal-run/`: 목표 실행 (`GoalRun`, 회차 보고 `GoalRound`, 기획서 결정 2026-11-13). 주인이 목표 하나를 팀장 에이전트에게 맡기면 회차(작업 하나)가 저절로 이어 돌고, 주인은 중간 · 최종 결재문만 받는다. `api/goal-runs`(주인만: 목록 · 상세 · 시작 · 멈추기), MCP `report_round`(작업 토큰, 회차마다 한 번). 회차 작업이 끝나거나(`task.task.changed`) 결재가 정해지면(`task.approval.*`, 대상 `goal_run`) `GoalRunHandler`가 다음을 정한다
+- `web/`: 주소 읽기 (MCP `read_url`, 작업 토큰). 서버가 AI 대신 페이지를 열어 글자만 준다 (`WebQuery`). 목줄은 `WebReach`: 비공개를 볼 수 있는 일(전체 읽기 · 쓰기 · 코드 권한, 재료 읽기 허락)은 주인의 지시(위임된 일이면 맨 위 일, 맨 위가 목표 실행의 회차 작업이면 실행의 지시)에 적힌 사이트와 그 하위만, 아니면 공개 주소 어디든. 내부망 · 이 서버 · 메타데이터 주소는 이름을 풀어 본 뒤 그 주소로만 붙어 막는다 (`WebPageGateway`, 리다이렉트 3번까지 매번 다시). 2MB · 15초, 글이 아닌 형식은 거절. 받은 글은 자료라는 표시(`note`)와 함께
 - `skill/`: 러너 스킬의 콘솔 판 (`Skill`, 파일 규칙과 해시 `SkillFiles`, 쓸 판 고르기 `SkillPackage`, 저장소 판 읽기 `RepoSkillGateway`). `api/runner-skills`. `next_jobs`의 `skill_package`로 러너에게 간다
 
 파일 구조 (객체설계 6장): `<이름>.ts` · `.view.ts` · `.input.ts` · `.service.ts` · `.query.ts` · `.api.ts` · `.tool.ts` · `.repository.ts`.
@@ -24,7 +25,7 @@
 도구 모양은 docs/API설계.md 4장이 원본이다. `report_progress`는 기록을 모아 받고, 러너가 쓰므로 바꾸면 `apps/runner`도 함께 고친다.
 
 ## 소유 데이터
-스키마 `task`: agents, agent_revisions(추가만), goals, schedules, tasks, task_events(추가만), task_runs(추가만, model만 한 번), approvals, plan_usage, ai_logins, runners, skills, skill_revisions(추가만), outputs
+스키마 `task`: agents, agent_revisions(추가만), goals, schedules, tasks, task_events(추가만), task_runs(추가만, model만 한 번), approvals, plan_usage, ai_logins, runners, skills, skill_revisions(추가만), outputs, goal_runs, goal_rounds(추가만)
 
 ## 데이터 묶음
 - 에이전트: agents + agent_revisions (조직도는 `reports_to`, 설정 판은 `settings_revision`)
@@ -33,6 +34,7 @@
 - 작업: tasks + task_events + task_runs (빌려 줄 때마다 규칙 판 한 줄)
 - 스킬: skills + skill_revisions
 - 결과물: outputs (파일은 platform.blobs를 값으로)
+- 목표 실행: goal_runs + goal_rounds (회차 작업은 tasks의 줄, 결재는 approvals의 줄이라 각자의 묶음에 저장한다)
 - 결재: approvals
 - 구독 사용률: plan_usage (창마다 마지막 값 하나. `window`는 Postgres 예약어라 열은 `period`, API는 `window`)
 - AI 로그인: ai_logins (공간과 도구마다 한 줄)
@@ -47,6 +49,7 @@
 | `task.task.changed` | `taskId, status, title`, 실패면 `error`(앞 300자). 상태가 바뀔 때마다 |
 | `task.agent.changed` | `agentId, status` |
 | `task.page.built` | `taskId, runId, pageId, title, note, files: [{ name, blobHash, mime, sizeBytes }]`. 결과를 페이지로 내보내는 만들기 작업(`payload.page`)이 `done`으로 끝날 때 한 번 (`PageOrder.built`). blog가 받아 페이지의 판을 만든다 |
+| `task.goal_run.changed` | `goalRunId, goalId, status, round`. 실행의 상태 · 회차가 바뀔 때마다 (화면이 다시 읽는다. 받는 모듈은 없다) |
 | `task.approval.requested` · `granted` · `rejected` · `revision_requested` · `cancelled` | `approvalId, taskId, agentId, action, targetKind, targetId, targetVersion, decidedBy, note` |
 
 `task.approval.granted`를 받은 모듈이 동작을 실행한다. 받는 모듈이 `CoreWorkers.expect`도 적는다 (지금은 blog의 `blog.post.publish`). 실행하는 모듈이 없는 동작은 승인해도 작업이 끝나지 않는다. 기능 패키지의 동작도 같다: `browser.site.publish`는 `browser-tabs`가 받아 "주인이 직접 발행함"을 결과로 남긴다 (패키지가 꺼져 있으면 끝나지 않으니 작업을 취소한다).
@@ -59,7 +62,8 @@
 - `task.schedule.skipped` 스케줄 한도 (기록만): 이벤트 없이 `ScheduleService`가 같은 트랜잭션에서 `Notices.post`로 (스케줄마다 한 줄)
 
 ## 받는 이벤트
-- `task.task.changed`(자기 이벤트): 끝난 하위 작업이면 형제가 모두 끝났는지 보고 위 작업을 깨운다 (`SubtaskSettledHandler`)
+- `task.task.changed`(자기 이벤트): 끝난 하위 작업이면 형제가 모두 끝났는지 보고 위 작업을 깨운다 (`SubtaskSettledHandler`). 끝난(완료 · 실패 · 취소) 회차 작업이면 목표 실행의 다음을 정한다 (`GoalRunHandler`)
+- `task.approval.*`(자기 이벤트): 대상이 `goal_run`인 결재가 정해지면 목표 실행을 잇거나 닫는다 (`GoalRunHandler`)
 - `task.task.requested`: 어느 모듈이든 일을 요청한다. 내용 `requestId, kind, title, instruction?, payload?, targetKind?, targetId?, baseVersion?, agentId?, priority?`. 같은 `requestId`는 작업 하나 (`TaskRequestedHandler`)
 - 실행 결과: 주제는 묻지 않는다. 어느 이벤트든 내용에 `approvalId`와 `outcome`(`done` · `failed`)을 실으면 결과다. 실패면 `error`에 이유 (`ApprovalResultHandler`, `*`로 받는다). 두 번 와도 같다
 
@@ -103,6 +107,9 @@ platform
 
 - 스킬 판 · 에이전트 설정 판 · 실행 기록은 추가만 한다. 스킬 되돌리기는 `active_revision`만 옮기고, 실행 기록은 비어 있는 `model`을 러너의 보고로 한 번 채우는 것 말고 바꾸지 않는다 (DB 트리거). 지시문 글은 실행 기록에 남기지 않는다
 - 콘솔에서 고치는 스킬은 러너 스킬(`cairn-where: runner`)만. 파일 규칙(경로 · 크기 · 앞부분)은 `SkillFiles`가 막고, 러너도 받은 묶음을 다시 거른다(`apps/runner`의 `SkillPackage`)
+
+- 목표 실행: 회차 작업은 `request_id`(`goal-run:<실행>:<회차>`)로 한 번만 만들고, 작업 쪽에 실행을 가리키는 칸을 두지 않는다 (`GoalRun.runIdOf` · `roundOf`가 읽는다). 회차 작업이 끝나면 `closeRound`가 정한다: 다 됐다는 보고 → 최종 결재(`task.goal.complete`), 결재 시점 · 회차 한도 · 진전 없음 · 보고 없음 · 실패 · 취소 → 중간 결재(`task.goal.continue`), 아니면 다음 회차. 완료는 늘 주인의 최종 승인으로만 (팀장의 "다 됐다"는 주장이다). 승인 · 고쳐 달라는 말은 다음 회차(한도면 한 회차 늘림, 50까지), 거절 · 취소는 멈춤. 기다리는 중이 아니면 결재 이벤트를 무시한다 (두 번 와도 같게). 잠그는 순서는 작업 → 그 작업의 결재 → 실행 → 실행의 결재. 멈추기는 도는 회차 작업과 그 하위 작업 · 결재를 함께 취소한다
+- 회차 보고는 AI가 쓴 글이다: 다음 회차의 지시에 실리지만 `read_url`의 기준(주인의 지시)에는 넣지 않는다 (`WebQuery.ownerText`가 실행의 지시를 읽는다). 근거의 주소는 http · https만 받는다 (화면이 링크로 그린다)
 
 - 결과물은 AI가 직접 올리지 않는다: 러너가 일이 끝난 뒤(done) 정해진 폴더의 파일만 올린다. 표는 임대를 쥔 이번 실행만 받고(`TaskQuery.heldRun`), 그 실행 · 이름 · 크기 · sha256에 묶여 10분이다. 본문은 표로만 받는다: AI 토큰은 /mcp에서만 통하고 JSON 한도(512KB)로는 파일을 못 받는다
 - 결과물 받기: 트랜잭션 밖에서 파일을 흘려 저장(`BlobStore.saveStream`, 크기 · 해시가 표와 다르면 아무것도 남기지 않음) → 짧은 트랜잭션에서 공간 잠금(`lockSpace`) 뒤 한도(실행 200개 · 1GB, 공간 `CAIRN_OUTPUTS_MAX_GB`, 디스크 여유 `CAIRN_DISK_RESERVE_GB`)를 다시 세고 줄 하나. 같은 실행 · 같은 이름은 한 줄(내용이 다르면 409)

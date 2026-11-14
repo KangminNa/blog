@@ -87,6 +87,9 @@ export class ReportRoundInput extends BaseRequest {
       const outputId = e.optionalText('output_id', 36);
       const note = e.optionalText('note', GoalRound.ITEM_MAX);
       if (!url && !outputId) e.reject('url', 'url이나 output_id 중 하나는 있어야 해요');
+      // 화면이 링크로 그린다: http · https만 (javascript: 같은 주소를 결재문에 싣지 않게)
+      if (url && !/^https?:\/\/[^\s]+$/i.test(url))
+        e.reject('url', 'http · https 주소만 적을 수 있어요');
       return {
         ...(url ? { url } : {}),
         ...(outputId ? { outputId } : {}),
