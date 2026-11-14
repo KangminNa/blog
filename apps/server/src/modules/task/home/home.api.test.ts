@@ -83,8 +83,11 @@ describe('홈', () => {
     );
 
     const [counts] = await db.sql<{ outputs: number; approvals: number }[]>`
-      SELECT (SELECT count(*)::int FROM task.outputs WHERE deleted_at IS NULL) AS outputs,
-        (SELECT count(*)::int FROM task.approvals WHERE status = 'pending') AS approvals`;
+      WITH space AS (SELECT space_id FROM task.agents WHERE id = ${lead.id})
+      SELECT (SELECT count(*)::int FROM task.outputs
+          WHERE deleted_at IS NULL AND space_id = (SELECT space_id FROM space)) AS outputs,
+        (SELECT count(*)::int FROM task.approvals WHERE status = 'pending' AND chat_id IS NULL
+          AND space_id = (SELECT space_id FROM space)) AS approvals`;
     assert.equal(home.outputs.length, Math.min(counts?.outputs ?? 0, 12));
     assert.equal(home.pendingApprovals, counts?.approvals);
   });

@@ -112,7 +112,14 @@ before(async () => {
     }),
   );
 });
-after(() => api.close());
+// 이 파일이 만든 결과물(시험의 해시)과 다른 도구 에이전트는 치운다: 같은 공간을 쓰는 뒤 파일(결과물 목록 · 사용량)이 보지 않게
+after(async () => {
+  await db.sql`DELETE FROM task.outputs WHERE blob_hash = ${'b'.repeat(64)}`;
+  await db.sql`
+    UPDATE task.agents SET deleted_at = now()
+    WHERE tool = 'codex' AND name LIKE '다른 도구 %' AND deleted_at IS NULL`;
+  await api.close();
+});
 
 beforeEach(async () => {
   await db.sql`
