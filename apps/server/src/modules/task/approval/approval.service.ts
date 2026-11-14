@@ -9,6 +9,9 @@ import {
   SystemActor,
 } from '../../platform';
 import { AgentRepository } from '../agent/agent.repository';
+import { ChatResult } from '../chat/chat-result.policy';
+import { OutputRepository } from '../output/output.repository';
+import type { Task } from '../task/task';
 import { TaskRepository } from '../task/task.repository';
 import { Approval } from './approval';
 import type {
@@ -40,7 +43,9 @@ export class ApprovalService extends BaseService {
       const tasks = new TaskRepository(tx);
       const task = await tasks.lock(spaceId, taskId);
       const agent = await new AgentRepository(tx).load(spaceId, agentId);
-      const approval = Approval.request(task, agent, req.fields, now);
+      // 대화의 일이면 결과 카드에 실린다 (2차 2단계): 사람에게 따로 알리지 않는다
+      const chatId = await tasks.chatOf(taskId);
+      const approval = Approval.request(task, agent, req.fields, now, chatId);
       await tasks.save(task);
       await approvals.save(approval);
       await once.remember({ approvalId: approval.id });
@@ -55,6 +60,9 @@ export class ApprovalService extends BaseService {
     if (!spaceId || !deciderId) throw new Forbidden('owner');
     const now = new Date();
     return this.transaction(async (tx) => {
+      const seen = await new ApprovalRepository(tx).load(spaceId, req.id);
+      if (seen.isCard) return this.decideCard(tx, spaceId, deciderId, req, now);
+      seen.assertOwnDecision();
       const { approval, tasks, task } = await this.lockWithTask(tx, spaceId, req.id);
       approval.assertVersion(req.version);
       approval.decide(req.decision, deciderId, req.note, now);
@@ -88,6 +96,57 @@ export class ApprovalService extends BaseService {
       task.concludeExecution(req.succeeded, req.error, now);
       await tasks.save(task);
     });
+  }
+
+  /**
+   * 결과 카드의 결정 (2차 2단계). 승인: 고른 결재는 승인(대상을 가진 모듈이 실행), 고르지 않은 결재는 반려,
+   * 고르지 않은 결과물은 휴지통으로. 반려: 결과물을 모두 휴지통으로. 수정 요청 · 반려 뒤의 일(회차 멈추기, 다음 회차)은
+   * 이벤트를 받은 ChatCardHandler가 한다. 잠그는 순서: 실린 결재의 작업 → 카드 → 실린 결재 → 결과물
+   */
+  private async decideCard(
+    tx: Sql,
+    spaceId: string,
+    deciderId: string,
+    req: DecideApprovalInput,
+    now: Date,
+  ): Promise<Approval> {
+    const approvals = new ApprovalRepository(tx);
+    const tasks = new TaskRepository(tx);
+    const seen = await approvals.inCard(req.id);
+    const held = new Map<string, Task>();
+    for (const id of [...new Set(seen.flatMap((a) => (a.taskId ? [a.taskId] : [])))].sort())
+      held.set(id, await tasks.lock(spaceId, id));
+    const card = await approvals.lock(spaceId, req.id);
+    card.assertVersion(req.version);
+    const actions: Approval[] = [];
+    for (const one of seen) actions.push(await approvals.lock(spaceId, one.id));
+    const outputs = new OutputRepository(tx);
+    const made = await outputs.lockInCard(card.id);
+    const picked = ChatResult.picked(req.picked, [
+      ...actions.map((a) => a.id),
+      ...made.map((o) => o.id),
+    ]);
+    card.decide(req.decision, deciderId, req.note, now);
+    await approvals.save(card);
+    if (card.status === Approval.REVISION_REQUESTED) return card;
+    const keep = card.approved;
+    for (const action of keep ? actions : []) {
+      if (action.status !== Approval.PENDING) continue;
+      if (picked.has(action.id)) action.approve(deciderId, null, now);
+      else action.reject(deciderId, null, now);
+      const task = action.taskId ? held.get(action.taskId) : undefined;
+      if (task) {
+        action.applyTo(task, now);
+        await tasks.save(task);
+      }
+      await approvals.save(action);
+    }
+    for (const output of made) {
+      if (keep && picked.has(output.id)) continue;
+      output.trash(now);
+      await outputs.save(output);
+    }
+    return card;
   }
 
   /** 잠그기 전에 어느 작업의 결재인지 읽고, 작업 → 결재 순서로 잠근다 */

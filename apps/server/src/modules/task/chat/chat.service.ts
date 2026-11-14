@@ -1,13 +1,24 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseService, Forbidden, Idempotency, type Sql } from '../../platform';
+import {
+  Actor,
+  BaseService,
+  Forbidden,
+  Idempotency,
+  type Sql,
+  SystemActor,
+  type VersionInput,
+} from '../../platform';
 import type { Agent } from '../agent/agent';
 import { AgentRepository } from '../agent/agent.repository';
+import { Approval } from '../approval/approval';
+import { ApprovalRepository } from '../approval/approval.repository';
 import { TaskRepository } from '../task/task.repository';
 import { Chat } from './chat';
 import type { AskAgentInput, CreateChatInput, SendChatInput } from './chat.input';
 import { ChatRepository } from './chat.repository';
 import { ChatHistory } from './chat-history.policy';
 import { ChatProject } from './chat-project.policy';
+import { ChatResult } from './chat-result.policy';
 import { ChatUpdates } from './chat-update.policy';
 
 // 대화 쓰기: 관리자(콘솔), 그리고 "에이전트에게 맡기기" 권한을 받은 기기(MCP ask_agent, 자기가 연 대화만). 대화와 회차 작업은 함께 바뀌어야 해서 같은 트랜잭션에서 쓴다 (목표 실행과 같은 이유).
@@ -41,6 +52,7 @@ export class ChatService extends BaseService {
         null,
         req.goal,
         project,
+        ChatResult.deliverOf(req.deliver),
       );
       const task = chat.send(agent, req.requestId, req.message, [], now);
       await chats.save(chat);
@@ -91,6 +103,7 @@ export class ChatService extends BaseService {
           deviceId,
           req.goal,
           project,
+          ChatResult.deliverOf(req.deliver),
         );
         const task = chat.send(agent, req.requestId, req.message, [], now, deviceId);
         await chats.save(chat);
@@ -102,6 +115,58 @@ export class ChatService extends BaseService {
       const agent = await agents.load(spaceId, chat.agentId);
       return this.talk(tx, actor, chat, agent, req.requestId, req.message, now, deviceId);
     });
+  }
+
+  /** 관리자가 대화를 멈춘다 (2차 2단계): 도는 일(회차 · 덧붙인 말의 답 · 검토와 그 아래)과 기다리는 결재 · 결과 카드를 모두 취소 */
+  async stop(actor: Actor, req: VersionInput): Promise<Chat> {
+    actor.assertOwner();
+    const spaceId = actor.requireSpace();
+    const now = new Date();
+    return this.transaction(async (tx) => {
+      const chat = await new ChatRepository(tx).lock(spaceId, req.id);
+      chat.assertVersion(req.version);
+      await this.cancelOpen(tx, spaceId, chat.id, now);
+      return chat;
+    });
+  }
+
+  /**
+   * 결과 카드를 수정 요청 · 반려한 뒤 (ChatCardHandler): 도는 일을 멈추고, 수정 요청이면 관리자의 메모를 다음 회차로 보낸다.
+   * 두 번 불려도 같다 (다음 회차는 카드의 id로 한 번만)
+   */
+  async closeByCard(actor: Actor, spaceId: string, cardId: string): Promise<void> {
+    if (!(actor instanceof SystemActor)) throw new Forbidden('system');
+    const now = new Date();
+    await this.transaction(async (tx) => {
+      const card = await new ApprovalRepository(tx).findIn(spaceId, cardId);
+      if (!card?.isCard) return;
+      const revise = card.status === Approval.REVISION_REQUESTED;
+      if (!revise && card.status !== Approval.REJECTED) return;
+      const chat = await new ChatRepository(tx).lock(spaceId, card.targetId);
+      await this.cancelOpen(tx, spaceId, chat.id, now);
+      if (!revise || !card.note) return;
+      const agent = await new AgentRepository(tx).load(spaceId, chat.agentId);
+      await this.talk(tx, actor, chat, agent, `card:${card.id}`, card.note, now, null);
+    });
+  }
+
+  /** 대화의 끝나지 않은 일 · 기다리는 결재 · 결과 카드를 취소한다 (잠그는 순서: 대화 → 작업(위 → 아래) → 결재) */
+  private async cancelOpen(tx: Sql, spaceId: string, chatId: string, now: Date): Promise<void> {
+    const tasks = new TaskRepository(tx);
+    const open = await tasks.lockOpenInChat(spaceId, chatId);
+    for (const task of open) {
+      task.cancel(now);
+      await tasks.save(task);
+    }
+    const approvals = new ApprovalRepository(tx);
+    const pending: (Approval | null)[] = [];
+    for (const task of open) pending.push(await approvals.lockPending(task.id));
+    pending.push(await approvals.lockOpenCard(chatId));
+    for (const approval of pending) {
+      if (!approval) continue;
+      approval.cancel();
+      await approvals.save(approval);
+    }
   }
 
   /**

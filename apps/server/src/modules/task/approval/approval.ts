@@ -8,6 +8,8 @@ import { ApprovalRequestedView, ApprovalView } from './approval.view';
 // 결재 하나. 위험한 동작을 대상·판 번호와 함께 저장만 하고, 주인이 승인한 뒤에 다른 모듈이 실행한다.
 //   pending → approved · rejected · revision_requested · cancelled
 // 상태는 아래 메서드로만 바꾼다. 결정은 한 번뿐이다.
+// 결과 결재 (2차 2단계): 대화의 일에서 올라온 결재는 도중에 따로 정하지 않고(chat_id) 결과 카드(동작 task.chat.result,
+// 대상 chat)에 실려(card_id) 카드에서 한꺼번에 정한다. 사람이 바로 해야 하는 동작(IMMEDIATE)은 싣지 않는다
 export class Approval extends TableEntity<ApprovalRow, ApprovalNew> {
   static readonly PENDING = 'pending';
   static readonly APPROVED = 'approved';
@@ -28,14 +30,23 @@ export class Approval extends TableEntity<ApprovalRow, ApprovalNew> {
   static readonly GOAL_CONTINUE = 'task.goal.continue';
   static readonly GOAL_COMPLETE = 'task.goal.complete';
   static readonly GOAL_RUN = 'goal_run';
+  /** 서버가 올리는 동작: 대화 한 회차의 결과 카드 (대상은 대화, 판은 회차) */
+  static readonly CARD = 'task.chat.result';
+  static readonly CHAT = 'chat';
+  /** 대화의 일이어도 카드에 싣지 않고 바로 알리는 동작: 사람이 해야 일이 이어진다 (한도 · 사이트 로그인) */
+  static readonly IMMEDIATE: readonly string[] = [Approval.RAISE_LIMIT, 'browser.site.login'];
   private static readonly NOTE_MAX = 4000;
 
-  /** 에이전트가 올린다. 작업은 결재를 기다린다. 요청자·작업은 작업 토큰에서 나온다 */
+  /**
+   * 에이전트가 올린다. 작업은 결재를 기다린다. 요청자·작업은 작업 토큰에서 나온다.
+   * chatId: 작업이 대화의 일이면 그 대화 (결과 카드에 실린다. IMMEDIATE 동작은 빼고)
+   */
   static request(
     task: Task,
     agent: Agent,
     fields: Pick<ApprovalRow, 'action' | 'target_kind' | 'target_id' | 'target_version' | 'note'>,
     now: Date,
+    chatId: string | null = null,
   ): Approval {
     const { action, note } = fields;
     agent.assertMayRequest(action);
@@ -46,6 +57,7 @@ export class Approval extends TableEntity<ApprovalRow, ApprovalNew> {
         task_id: task.id,
         agent_id: agent.id,
         note: Approval.cleanNote(note),
+        chat_id: Approval.IMMEDIATE.includes(action) ? null : chatId,
       },
       now,
     );
@@ -97,6 +109,31 @@ export class Approval extends TableEntity<ApprovalRow, ApprovalNew> {
     return approval;
   }
 
+  /** 대화 한 회차의 결과 카드 (서버가 올린다). 작업에 묶이지 않고, 실린 결재 · 결과물은 card_id로 가리킨다 */
+  static forChat(
+    spaceId: string,
+    chatId: string,
+    agentId: string,
+    turn: number,
+    now: Date,
+  ): Approval {
+    const card = Approval.pending(
+      {
+        space_id: spaceId,
+        task_id: null,
+        agent_id: agentId,
+        action: Approval.CARD,
+        target_kind: Approval.CHAT,
+        target_id: chatId,
+        target_version: turn,
+        note: null,
+      },
+      now,
+    );
+    card.announce('task.approval.requested');
+    return card;
+  }
+
   static restore(row: ApprovalRow): Approval {
     return new Approval(row);
   }
@@ -138,6 +175,37 @@ export class Approval extends TableEntity<ApprovalRow, ApprovalNew> {
   /** 주인이 정하며 남긴 말 (고쳐 달라면 고칠 내용) */
   get note(): string | null {
     return this.row.note;
+  }
+
+  get isCard(): boolean {
+    return this.row.action === Approval.CARD;
+  }
+
+  /** 대화의 일에서 올라와 결과 카드에서 정할 결재 */
+  get bundled(): boolean {
+    return this.row.chat_id !== null;
+  }
+
+  /** 이 결재를 카드에 싣는다 (기다리는 것만, 한 번만) */
+  bundleInto(card: Approval): void {
+    if (!this.bundled || !card.isCard) throw new RuleViolation('카드에 실을 결재가 아니에요');
+    this.assertPending();
+    if (this.row.card_id !== null) throw new RuleViolation('이미 카드에 실린 결재예요');
+    this.put('card_id', card.id);
+  }
+
+  /**
+   * 카드에 새 항목이 실렸다: 대상 판을 지금 회차로 적는다. 저장하면 version도 올라 앞서 본 카드로는 정하지 못한다
+   * (같은 회차여도 적는다: 판을 올리는 것이 목적이다)
+   */
+  grew(turn: number): void {
+    this.assertPending();
+    this.put('target_version', turn);
+  }
+
+  /** 하나씩 정해도 되는 결재인가 (카드에 실리는 결재는 카드에서) */
+  assertOwnDecision(): void {
+    if (this.bundled) throw new RuleViolation('대화의 결재예요. 결과 카드에서 정해요');
   }
 
   get approved(): boolean {
@@ -225,6 +293,7 @@ export class Approval extends TableEntity<ApprovalRow, ApprovalNew> {
         targetVersion: r.target_version,
         decidedBy: r.decided_by,
         note: r.note,
+        chatId: r.chat_id,
       }),
     );
   }

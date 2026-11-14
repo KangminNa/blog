@@ -219,6 +219,25 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     this.noteSettings(before);
   }
 
+  /** 검토자 짝 (2차 2단계): 이 에이전트가 끝낸 대화의 회차를 결재 전에 검토하는 에이전트 */
+  get reviewerId(): string | null {
+    return this.row.reviewer_id ?? null;
+  }
+
+  /**
+   * 검토자를 짝짓는다 (null이면 뺀다). 같은 AI가 만들고 검토하면 같은 곳에서 틀려 다른 AI 도구의 에이전트만.
+   * 자기 자신 · 지운 에이전트는 안 된다 (DB CHECK agents_reviewer_other)
+   */
+  pairReviewer(reviewer: Agent | null): void {
+    if (reviewer !== null) {
+      if (reviewer.id === this.id) throw new RuleViolation('자기 자신은 검토자가 될 수 없어요');
+      if (reviewer.deleted) throw new RuleViolation('지운 에이전트는 검토자가 될 수 없어요');
+      if (reviewer.tool === this.tool)
+        throw new RuleViolation('검토자는 다른 AI 도구를 쓰는 에이전트예요');
+    }
+    this.put('reviewer_id', reviewer?.id ?? null);
+  }
+
   /** 정해진 러너에 묶였는가 (그 러너만 일을 빌린다) */
   get bound(): boolean {
     return Boolean(this.row.runner_id);
@@ -370,29 +389,5 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
         status: this.row.status,
       }),
     );
-  }
-}
-
-/** 에이전트 하나의 지금 사용량. 쉬는지는 Agent가 정한다 */
-export class AgentUsage {
-  constructor(
-    readonly agent: Agent,
-    readonly fiveHourTokens: number,
-    readonly monthTokens: number,
-    /** 유효한 창 중 가장 높은 구독 사용률. 확인 전이면 null */
-    readonly planPercent: number | null,
-  ) {}
-
-  get holding(): boolean {
-    return this.agent.holds(this.fiveHourTokens, this.planPercent);
-  }
-
-  /** 새 일을 줄 수 있는가 */
-  get ready(): boolean {
-    return !this.agent.paused && !this.holding;
-  }
-
-  view(): AgentUsageView {
-    return this.agent.usageView(this.fiveHourTokens, this.monthTokens, this.holding);
   }
 }

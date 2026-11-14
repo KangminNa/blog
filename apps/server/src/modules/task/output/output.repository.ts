@@ -39,6 +39,26 @@ export class OutputRepository extends TableRepository<OutputRow, Output> {
     return [Number(row?.files ?? 0), Number(row?.bytes ?? 0)];
   }
 
+  /** 대화의 일(회차 · 덧붙인 말의 답 · 검토와 그 아래 작업)이 만든, 아직 카드에 실리지 않은 결과물 (휴지통 제외) */
+  async uncardedInChat(spaceId: string, chatId: string): Promise<readonly Output[]> {
+    const rows = await this.sql<OutputRow[]>`
+      WITH RECURSIVE tree AS (
+        SELECT id FROM task.tasks
+        WHERE space_id = ${spaceId} AND request_id LIKE ${`chat:${chatId}:%`}
+        UNION ALL
+        SELECT t.id FROM task.tasks t JOIN tree ON t.parent_id = tree.id
+      )
+      SELECT * FROM task.outputs
+      WHERE task_id IN (SELECT id FROM tree) AND card_id IS NULL AND deleted_at IS NULL
+      ORDER BY id FOR UPDATE`;
+    return rows.map((r) => this.toEntity(r));
+  }
+
+  /** 카드에 실린 결과물 (휴지통 제외), id 순서로 잠근다 */
+  lockInCard(cardId: string): Promise<readonly Output[]> {
+    return this.find({ card_id: cardId, deleted_at: null }, { order: ['id'], lock: true });
+  }
+
   /** 지금 지운다 (휴지통에서 바로 지우기) */
   async remove(output: Output): Promise<void> {
     await this.deleteRows(outputs, { id: output.id });

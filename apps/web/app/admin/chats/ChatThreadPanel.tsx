@@ -8,6 +8,7 @@ import { useAction } from '../../_lib/use-action';
 import { useLiveValue } from '../../_lib/use-live';
 import { CHAT_DETAIL_TOPICS } from '../../_task/live';
 import type { Chat, ChatDetail } from '../../_task/types';
+import { ChatCardForm } from './ChatCardForm';
 import { ChatForm } from './ChatForm';
 import { ChatSide } from './ChatSide';
 import { ChatTurns } from './ChatTurns';
@@ -17,6 +18,7 @@ const WAITING = ['queued', 'running', 'waiting'];
 
 // 대화 하나. 회차(메시지 + 답)를 오래된 것부터 그리고, 아래에서 다음 메시지를 보낸다. 옆 칸은 진행 · 팀 · 소식 · 결과물 (ChatSide).
 // 일하는 중에도 보낸다: 그 회차에 덧붙인 말이 되고 대표가 짧게 답한다 (2차 1-1). 진행 기록 · 소식 · 결재가 오면 신호로 다시 읽는다.
+// 결재는 결과 카드 하나로 정하고(2차 2단계), 멈추기는 도는 일 · 기다리는 결재 · 카드를 모두 취소한다.
 export function ChatThreadPanel({ id }: { id: string }) {
   // 대상(id)으로 거르지 않는다: 신호의 대상은 회차 작업 · 결재라 대화 id가 아니다
   const detail = useLiveValue(
@@ -27,6 +29,8 @@ export function ChatThreadPanel({ id }: { id: string }) {
   const me = useMe();
   const sending = useAction();
   const cancelling = useAction();
+  const deciding = useAction();
+  const stopping = useAction();
   /** 응답을 못 받아 다시 보내도 메시지가 한 번만 가게 (보낸 뒤에만 바꾼다) */
   const requestId = useRef('');
   if (!requestId.current) requestId.current = crypto.randomUUID();
@@ -80,6 +84,26 @@ export function ChatThreadPanel({ id }: { id: string }) {
     setSent((n) => n + 1);
   }
 
+  const decide = (body: { decision: string; note?: string; picked?: string[] }) =>
+    d.card &&
+    deciding.run(
+      'decide',
+      () =>
+        api('POST', `/api/approvals/${d.card?.id}/decide`, { version: d.card?.version, ...body }),
+      {
+        done: body.decision === 'approve' ? '고른 것만 남겼어요' : '정했어요',
+        reload: detail.reload,
+        conflict: '그사이 카드에 항목이 더해졌어요. 다시 골라요',
+      },
+    );
+
+  const stop = () =>
+    stopping.run('stop', () => api('POST', `/api/chats/${id}/stop`, { version: d.chat.version }), {
+      done: '멈췄어요',
+      reload: detail.reload,
+      conflict: '그사이 바뀐 대화예요. 최신 내용을 다시 읽었어요',
+    });
+
   const cancel = (taskId: string, version: number) =>
     cancelling.run(taskId, () => api('POST', `/api/tasks/${taskId}/cancel`, { version }), {
       done: '답을 멈췄어요',
@@ -95,11 +119,24 @@ export function ChatThreadPanel({ id }: { id: string }) {
             <h2>{d.chat.title}</h2>
             <small>{partner.name}</small>
           </div>
-          <Link className="ghost split-back" href="/admin/chats">
-            대화 목록
-          </Link>
+          <div className="row">
+            {(waiting || d.card) && (
+              <button
+                type="button"
+                className="ghost"
+                disabled={stopping.busy !== null}
+                onClick={stop}
+              >
+                {stopping.busy ? '멈추는 중' : '멈추기'}
+              </button>
+            )}
+            <Link className="ghost split-back" href="/admin/chats">
+              대화 목록
+            </Link>
+          </div>
         </div>
         {detail.error && <p className="error">{detail.error}</p>}
+        {stopping.problem && <p className="error">{stopping.problem}</p>}
         <ChatTurns
           turns={d.turns}
           me={me.data?.name ?? '관리자'}
@@ -108,6 +145,15 @@ export function ChatThreadPanel({ id }: { id: string }) {
           onCancel={cancel}
         />
         {cancelling.problem && <p className="error">{cancelling.problem}</p>}
+        {d.card && (
+          <ChatCardForm
+            key={`${d.card.id}:${d.card.version}`}
+            card={d.card}
+            busy={deciding.busy !== null}
+            problem={deciding.problem}
+            onDecide={decide}
+          />
+        )}
         <ChatForm
           key={sent}
           busy={sending.busy !== null}

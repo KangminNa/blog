@@ -2565,3 +2565,52 @@ a.chip {
     position: static;
   }
 }
+
+/* 결과 카드 (2차 2단계): 항목마다 고르는 칸, 검토 의견, 승인 · 수정 요청 · 반려 */
+.result-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-color: var(--fg);
+}
+
+.result-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.result-pick {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.result-pick span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.result-pick small {
+  color: var(--faint);
+}
+
+.result-review {
+  padding: 10px 12px;
+  border-left: 3px solid var(--fg);
+  background: var(--raised);
+}
+
+.result-review small {
+  color: var(--faint);
+}
+
+.result-actions {
+  flex-wrap: wrap;
+}

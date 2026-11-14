@@ -32,6 +32,7 @@ export interface AgentRow {
   deleted_at: Date | null;
   runner_id: string | null;
   lead: boolean;
+  reviewer_id: string | null;
 }
 export type AgentNew = Partial<AgentRow> & Pick<AgentRow, 'id' | 'space_id' | 'name' | 'tool'>;
 
@@ -66,6 +67,8 @@ export interface ApprovalRow {
   note: string | null;
   version: number;
   created_at: Date;
+  chat_id: string | null;
+  card_id: string | null;
 }
 export type ApprovalNew = Partial<ApprovalRow> & Pick<ApprovalRow, 'id' | 'space_id' | 'action' | 'target_kind' | 'target_id' | 'target_version'>;
 
@@ -98,6 +101,7 @@ export interface ChatRow {
   device_id: string | null;
   goal: string | null;
   project: string | null;
+  deliver: string | null;
 }
 export type ChatNew = Partial<ChatRow> & Pick<ChatRow, 'id' | 'space_id' | 'agent_id' | 'title' | 'request_id'>;
 
@@ -169,6 +173,7 @@ export interface OutputRow {
   updated_at: Date;
   deleted_at: Date | null;
   purge_after: Date | null;
+  card_id: string | null;
 }
 export type OutputNew = Partial<OutputRow> & Pick<OutputRow, 'id' | 'space_id' | 'name' | 'kind' | 'mime' | 'size_bytes' | 'blob_hash'>;
 

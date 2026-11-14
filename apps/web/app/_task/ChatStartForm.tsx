@@ -1,6 +1,7 @@
 'use client';
 
 import { type FormEvent, type KeyboardEvent, useId, useState } from 'react';
+import { DELIVER_LABELS } from './labels';
 import type { Agent } from './types';
 
 /** 메시지 · 목표의 길이 (서버 Chat.MESSAGE_MAX · GOAL_MAX) */
@@ -13,6 +14,8 @@ export type ChatStart = {
   agentId?: string;
   goal?: string;
   project?: string;
+  /** 받을 것 (비우면 대화 답). 정하면 결과 카드 전에 서버가 검사한다 */
+  deliver?: string;
 };
 
 // 새 대화의 입력 (홈 · 대화 메뉴). 입력 하나에 상대 · 프로젝트 · 목표를 곁들인다.
@@ -38,6 +41,7 @@ export function ChatStartForm({
   const [agentId, setAgentId] = useState(lead ? '' : (partners[0]?.id ?? ''));
   const [project, setProject] = useState('');
   const [goal, setGoal] = useState('');
+  const [deliver, setDeliver] = useState('');
   const empty = partners.length === 0;
 
   function send(e?: FormEvent) {
@@ -49,6 +53,7 @@ export function ChatStartForm({
       ...(agentId ? { agentId } : {}),
       ...(goal.trim() ? { goal: goal.trim() } : {}),
       ...(project.trim() ? { project: project.trim() } : {}),
+      ...(deliver ? { deliver } : {}),
     });
   }
 
@@ -100,6 +105,17 @@ export function ChatStartForm({
               <option key={p} value={p} />
             ))}
           </datalist>
+        </label>
+        <label className="start-pick">
+          <span>받을 것</span>
+          <select className="input" value={deliver} onChange={(e) => setDeliver(e.target.value)}>
+            <option value="">대화 답</option>
+            {Object.entries(DELIVER_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="start-pick grow">
           <span>목표</span>

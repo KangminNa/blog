@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { type Actor, CurrentActor } from '../../platform';
+import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { type Actor, CurrentActor, VersionInput } from '../../platform';
 import { ChatIdInput, CreateChatInput, SendChatInput } from './chat.input';
 import { ChatQuery } from './chat.query';
 import { ChatService } from './chat.service';
@@ -36,5 +36,16 @@ export class ChatController {
     @Body() body: unknown,
   ): Promise<ChatView> {
     return (await this.service.send(actor, SendChatInput.from(id, body))).view();
+  }
+
+  /** 멈추기 (2차 2단계): 도는 일 · 기다리는 결재 · 결과 카드를 모두 취소한다 */
+  @Post(':id/stop')
+  @HttpCode(200)
+  async stop(
+    @CurrentActor() actor: Actor,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<ChatView> {
+    return (await this.service.stop(actor, VersionInput.from(id, body))).view();
   }
 }

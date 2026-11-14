@@ -15,6 +15,8 @@ export class ApprovalQuery extends BaseQuery {
       approvals,
       {
         space_id: actor.requireSpace(),
+        // 대화의 일에서 올라온 결재는 결과 카드에서 정한다 (목록에는 카드가 보인다)
+        chat_id: null,
         status: Rule.maybe(req.status),
         id: Rule.maybe(req.cursor, Rule.before),
       },

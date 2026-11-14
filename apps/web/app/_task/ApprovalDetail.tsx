@@ -132,6 +132,12 @@ function Loaded({
         <PullTarget approval={a} />
       ) : a.target.kind === GOAL_RUN ? (
         <GoalRunTarget approval={a} />
+      ) : a.target.kind === 'chat' ? (
+        // 결과 카드 (2차 2단계): 항목 고르기는 대화에서. 여기서 승인하면 모두 고른 것과 같다
+        <p className="note">
+          대화의 결과 카드 ·{' '}
+          <Link href={`/admin/chats?chat=${a.target.id}`}>대화에서 항목 골라 정하기</Link>
+        </p>
       ) : (
         <OtherTarget approval={a} />
       )}

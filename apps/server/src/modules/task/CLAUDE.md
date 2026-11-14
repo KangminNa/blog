@@ -10,13 +10,14 @@
 - `chat/`: 대화 (`Chat`, 이전 대화 `ChatHistory`, 기획서 결정 2026-11-14). 관리자와 바로 아래 에이전트(`Agent.topLevel`, 멈추지 않은)가 채팅처럼 주고받는다. 메시지 하나 = 그 에이전트에게 맡긴 `general` 작업 하나(회차, request_id `chat:<대화>:<회차>`). 대화 줄은 머리(상대 · 제목 · 회차 수)만 들고 메시지 · 답은 작업의 지시 · 결과다. 앞 회차가 끝나지 않았으면 다음 회차가 아니라 덧붙인 말이 된다 (2차 1-1, `Chat.appendTo`): 소식 한 줄, 회차가 이미 돌고 있으면 대표가 짧게 답하는 작업 하나(`chat:<대화>:<회차>:reply:<k>`, `payload.chat.reply`). 회차는 그대로 두어 팀은 계속 일하고, 대기열의 회차는 빌릴 때 덧붙인 말을 받는다(`next_jobs`의 `chat_updates`). 앞 대화(최근 20회차)는 `payload.chat.history`에 자료로 싣고 러너가 "이전 대화"로 그린다 (`apps/runner`의 `ChatTurn`). `read_url`의 기준은 그대로 이번 메시지(작업의 지시)뿐이다. `api/chats`(관리자만: 목록 · 상세 · 열기 · 보내기). 상세는 회차 아래(하위 작업 포함)의 결과물 · 기다리는 결재, 상태판(`ChatUpdateQuery.ownerBoard`) · 최근 소식 · 팀(상대와 그 아래, 사람마다 이 회차에서 도는 작업)을 함께 싣는다. 응답 모양은 대화 · 소식 모두 `chat.view.ts` 한 파일이다 (view끼리 가져오지 못한다).
   기기(권한 `delegate`)도 MCP `ask_agent`(`chat.tool.ts`)로 대화한다: 자기가 연 대화(`chats.device_id`)만 (`Chat.assertSender`), 상대는 이름 · id로, 비우면 기본 대표(`agents.lead`, `Chat.partnerOf`), 새 대화의 목표 · 프로젝트(`ChatProject`가 git 주소를 맞춘다). 기기의 메시지는 `payload.chat.via: device`로 남겨 `read_url`의 기준에서 뺀다 (`WebQuery.ownerText`). 기다리지 않는다(`agent_reply`는 없앴다): 답과 소식은 `agent_updates`로 받는다. 결재는 기기가 하지 못한다
   소식 (`task.chat_updates`, 추가만, `ChatUpdates` 규칙): `Chat.note`로 쌓고 `ChatRepository.saveParts`가 넣으며 변경 신호 `task.chat.updated`를 보낸다. 끝난 작업 → 소식은 `ChatUpdateHandler`(`task.task.changed`) → `ChatUpdateService.noteSettled` (작업이 속한 대화는 위로 올라가 찾는다 `ChatRepository.placeOf`). MCP `agent_updates`(`delegate` 자기 대화 · `news` 모든 대화, 커서는 `tx < pg_snapshot_xmin`인 줄만, 없으면 `wait_seconds`까지 신호를 기다림, 대화마다 상태판) · `post_update`(작업 토큰, 대화의 일만, 작업마다 20개). 일을 빌려 줄 때 덧붙인 말 · 팀 소식을 싣는다 (`ChatUpdateQuery.forJob` → `JobChatView`)
+  결과 결재 (2차 2단계, `ChatResult` 판단 · `ChatResultService` · `ChatResultHandler`(`task.task.changed` · `task.approval.requested`) · `ChatCardHandler`(카드의 수정 요청 · 반려)): 대화의 일에서 올라온 결재는 `approvals.chat_id`(사람에게 따로 알리지 않고 하나씩 정하지 못함, 바로 알릴 동작 `Approval.IMMEDIATE`는 빼고). 대화의 일(회차 · 덧붙인 말의 답 · 검토와 그 아래)이 가라앉으면(대기 · 실행 중인 일이 없고 남은 일은 카드에 실릴 결재만 기다림, `ChatRepository.busy`) 다음 하나: 받을 것(`chats.deliver`)이 결과에 없으면 다시 맡김(`Chat.fix`, 지시문 틀 `result-check`, `payload.chat.fix`, 이어서 두 번까지) · 검토자 짝(`agents.reviewer_id`)이 있고 아직 검토하지 않았으면 검토(`Chat.review`, `chat:<대화>:<회차>:review`, 틀 `result-review`, 소식 `review`) · 실을 것이 있으면 결과 카드(`Approval.forChat`, 대화마다 기다리는 카드 하나, 새 항목은 그 카드에 더하고 판을 올림). 카드의 결정은 `ApprovalService.decide`(고른 결재 승인 · 나머지 반려 · 고르지 않은 결과물 휴지통), 수정 요청 · 반려 뒤에는 `ChatService.closeByCard`가 도는 일을 멈추고 수정 요청이면 메모를 다음 회차로. `api/chats/:id/stop`은 도는 일 · 기다리는 결재 · 카드를 모두 취소
 - `home/`: 홈 (`HomeQuery`, 읽기만, 2차 1-1). `api/home`(관리자만): 관리자 바로 아래 에이전트(기본 대표가 먼저, 아래 수 · 도는 작업 수), 대화의 상태판(`agent_updates`와 같은 `ChatUpdateQuery.ownerBoard`), 최근 결과물, 기다리는 결재 수
 - `goal/`: 목표 (`Goal`). 회사 목표부터 이어지는 나무. 작업이 목표 하나에 이어진다. `api/goals`
 - `schedule/`: 스케줄 (`Schedule`, `SchedulePolicy`, 7단계에서 하트비트를 넓혀 합침). 정해진 시각에 지시대로 작업을 만든다. `api/schedules`, 일꾼의 `ScheduleJob`(1분마다)
 - `task/`: 작업 (`Task` + 실행 기록 `task_events`). 화면이 받는 모양은 `task.view.ts`, 러너 · 에이전트가 MCP로 받는 모양(`next_jobs` · `report_progress` · `delegate_task`)은 `job.view.ts`. `queued → running → waiting → running → done`, `failed`, `cancelled`.
   `api/tasks`, MCP `next_jobs` · `report_progress` · `submit_result` · `release_job`, 위임 `delegate_task`(작업 토큰)
 - `approval/`: 결재 (`Approval`). `pending → approved · rejected · revision_requested · cancelled`.
-  `api/approvals`, MCP `request_approval`
+  `api/approvals`(목록은 대화의 결재(`chat_id`)를 빼고 결과 카드를 보인다), MCP `request_approval`. 결과 카드(`task.chat.result`)의 결정은 `picked`로 고른다 (2차 2단계)
 - `usage/`: 구독 사용률 (`PlanUsage`)과 사용량 읽기 (`UsageQuery`). `api/usage`. 쓰기는 `report_progress`의 `plan_usage`로만 들어온다
 - `ai/`: AI 도구의 로그인 (`AiLogin`, 도구는 claude · codex). 콘솔에 넣거나 웹 로그인으로 받은 자격을 서버 키로 잠가 두고 서버 러너에게 건넨다.
   `api/ai`, MCP `ai_login` · `ai_login_refresh`(CLI가 갱신한 자격 되돌려 쓰기) · `ai_signin`(러너가 로그인 명령을 대신 돌린다), 받는 값의 모양은 `AiSigninPolicy`
@@ -60,20 +61,21 @@
 | `task.page.built` | `taskId, runId, pageId, title, note, files: [{ name, blobHash, mime, sizeBytes }]`. 결과를 페이지로 내보내는 만들기 작업(`payload.page`)이 `done`으로 끝날 때 한 번 (`PageOrder.built`). blog가 받아 페이지의 판을 만든다 |
 | `task.chat.changed` | `chatId, turns`. 대화를 열거나 메시지를 보낼 때마다 (화면이 다시 읽는다. 받는 모듈은 없다) |
 | `task.goal_run.changed` | `goalRunId, goalId, status, round`. 실행의 상태 · 회차가 바뀔 때마다 (화면이 다시 읽는다. 받는 모듈은 없다) |
-| `task.approval.requested` · `granted` · `rejected` · `revision_requested` · `cancelled` | `approvalId, taskId, agentId, action, targetKind, targetId, targetVersion, decidedBy, note` |
+| `task.approval.requested` · `granted` · `rejected` · `revision_requested` · `cancelled` | `approvalId, taskId, agentId, action, targetKind, targetId, targetVersion, decidedBy, note, chatId`(대화의 결재면 그 대화, 2차 2단계) |
 
 `task.approval.granted`를 받은 모듈이 동작을 실행한다. 받는 모듈이 `CoreWorkers.expect`도 적는다 (지금은 blog의 `blog.post.publish`). 실행하는 모듈이 없는 동작은 승인해도 작업이 끝나지 않는다. 기능 패키지의 동작도 같다: `browser.site.publish`는 `browser-tabs`가 받아 "주인이 직접 발행함"을 결과로 남긴다 (패키지가 꺼져 있으면 끝나지 않으니 작업을 취소한다).
 변경 신호(SSE)만 있고 이벤트가 아닌 것: `task.event.added` (실행 기록이 쌓임, id는 작업), `task.usage.changed` (구독 사용률이 옴, id는 도구).
 
 ## 알리는 것 (`TaskNotices`, 7단계)
 `onModuleInit`에서 platform의 `NoticeCatalog`에 등록한다. 알림 글과 주소는 여기서 정하고, 어디로 · 언제 보낼지는 platform이 정한다.
-- `task.approval.requested` 결재 요청 (즉시): 결재가 올라오면. 결재가 끝나면(승인 · 거절 · 고쳐 달라 · 취소) 그 알림은 읽음 (`approval:<결재>`)
+- `task.approval.requested` 결재 요청 (즉시): 결재가 올라오면. 결재가 끝나면(승인 · 거절 · 고쳐 달라 · 취소) 그 알림은 읽음 (`approval:<결재>`). 대화의 결재(`chatId`)는 알리지 않고 결과 카드가 생길 때 한 번 ("결과를 골라 주세요", 대화로 가는 주소)
 - `task.task.failed` 작업 실패 (즉시): `task.task.changed`의 `failed`에서. 본문은 이벤트의 `error`
 - `task.schedule.skipped` 스케줄 한도 (기록만): 이벤트 없이 `ScheduleService`가 같은 트랜잭션에서 `Notices.post`로 (스케줄마다 한 줄)
 
 ## 받는 이벤트
 - `task.task.changed`(자기 이벤트): 끝난 하위 작업이면 형제가 모두 끝났는지 보고 위 작업을 깨운다 (`SubtaskSettledHandler`). 끝난(완료 · 실패 · 취소) 회차 작업이면 목표 실행의 다음을 정한다 (`GoalRunHandler`)
-- `task.approval.*`(자기 이벤트): 대상이 `goal_run`인 결재가 정해지면 목표 실행을 잇거나 닫는다 (`GoalRunHandler`)
+- `task.approval.*`(자기 이벤트): 대상이 `goal_run`인 결재가 정해지면 목표 실행을 잇거나 닫는다 (`GoalRunHandler`). 결과 카드가 수정 요청 · 반려되면 대화의 도는 일을 멈추고 수정 요청이면 다음 회차 (`ChatCardHandler`)
+- `task.task.changed` · `task.approval.requested`(자기 이벤트): 대화의 일이 가라앉았으면 다시 맡김 · 검토 · 결과 카드 (`ChatResultHandler`, 2차 2단계)
 - `task.task.requested`: 어느 모듈이든 일을 요청한다. 내용 `requestId, kind, title, instruction?, payload?, targetKind?, targetId?, baseVersion?, agentId?, priority?`. 같은 `requestId`는 작업 하나 (`TaskRequestedHandler`)
 - 실행 결과: 주제는 묻지 않는다. 어느 이벤트든 내용에 `approvalId`와 `outcome`(`done` · `failed`)을 실으면 결과다. 실패면 `error`에 이유 (`ApprovalResultHandler`, `*`로 받는다). 두 번 와도 같다
 

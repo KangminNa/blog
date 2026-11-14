@@ -231,7 +231,7 @@ describe('대화', () => {
     assert.equal((await send(after.chat, '돌아와')).status, 404);
   });
 
-  test('회차 아래에서 올린 결재 · 만든 결과물이 그 회차에 실린다', async () => {
+  test('회차 아래에서 만든 결과물은 그 회차에, 올린 결재는 결과 카드에 실린다 (2차 2단계)', async () => {
     const partner = await agent('발행', {
       scopes: ['read_public', 'write'],
       approvalActions: ['blog.post.publish'],
@@ -253,10 +253,15 @@ describe('대화', () => {
       VALUES (${run?.space_id}, ${job.task.id}, ${run?.id}, 'deck.html', 'document', 'text/html', 10, ${'a'.repeat(64)})`;
     const turn = (await detail(chat.id)).turns[0];
     assert.equal(turn.status, 'waiting');
-    assert.equal(turn.approvalIds.length, 1);
+    assert.equal(turn.approvalIds.length, 0, '대화의 결재는 회차가 아니라 결과 카드에서 정한다');
     assert.deepEqual(
       turn.outputs.map((o: Json) => o.name),
       ['deck.html'],
+    );
+    await drain();
+    assert.deepEqual(
+      (await detail(chat.id)).card.items.map((i: Json) => i.kind),
+      ['action', 'output'],
     );
   });
 

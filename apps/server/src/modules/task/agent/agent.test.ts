@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { RuleViolation } from '../../platform';
 import type { AgentRow } from '../task.tables';
-import { Agent, AgentUsage } from './agent';
+import { Agent } from './agent';
+import { AgentUsage } from './agent-usage';
 
 // 에이전트가 쉬는 규칙. DB 없이 돈다.
 

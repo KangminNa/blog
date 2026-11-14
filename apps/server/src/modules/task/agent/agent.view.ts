@@ -41,6 +41,8 @@ export class AgentSavedView {
       reportsTo: r.reports_to,
       /** 일을 맡을 러너 (task.runners의 id). null이면 아무 러너 */
       runnerId: r.runner_id ?? null,
+      /** 검토자 짝 (다른 AI 도구의 에이전트, 2차 2단계) */
+      reviewerId: r.reviewer_id ?? null,
       status: r.status,
       /** 기본 대표: 상대를 정하지 않고 맡기면 받는다 (공간에 하나) */
       lead: r.lead,

@@ -17,22 +17,33 @@ export class TaskNotices implements OnModuleInit {
     'task.approval.cancelled',
   ];
   private static readonly BODY_MAX = 300;
+  /** 결과 카드의 동작 (Approval.CARD. 알림 등록은 결재 엔티티를 가져오지 않는다) */
+  private static readonly CARD = 'task.chat.result';
 
   constructor(private readonly catalog: NoticeCatalog) {}
 
   onModuleInit(): void {
     this.catalog.define(
       new NoticeKind(TaskNotices.APPROVAL, '결재 요청', NoticeKind.IMMEDIATE)
-        .from(['task.approval.requested'], (e) => ({
-          title: '결재를 기다려요',
-          body: [e.data.note, e.data.action]
-            .filter((v) => typeof v === 'string' && v !== '')
-            .join(' · ')
-            .slice(0, TaskNotices.BODY_MAX),
-          link: '/admin/approvals',
-          group_key: `approval:${e.data.approvalId}`,
-          data: { approvalId: e.data.approvalId, taskId: e.data.taskId },
-        }))
+        // 대화의 일에서 올라온 결재(chatId)는 따로 알리지 않는다: 결과 카드(task.chat.result)가 생길 때 한 번 (2차 2단계)
+        .from(['task.approval.requested'], (e) =>
+          e.data.chatId
+            ? null
+            : {
+                title:
+                  e.data.action === TaskNotices.CARD ? '결과를 골라 주세요' : '결재를 기다려요',
+                body: [e.data.note, e.data.action]
+                  .filter((v) => typeof v === 'string' && v !== '')
+                  .join(' · ')
+                  .slice(0, TaskNotices.BODY_MAX),
+                link:
+                  e.data.action === TaskNotices.CARD
+                    ? `/admin/chats?chat=${e.data.targetId}`
+                    : '/admin/approvals',
+                group_key: `approval:${e.data.approvalId}`,
+                data: { approvalId: e.data.approvalId, taskId: e.data.taskId },
+              },
+        )
         .settledOn(TaskNotices.APPROVAL_ENDED, (e) => `approval:${e.data.approvalId}`),
     );
     this.catalog.define(

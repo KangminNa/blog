@@ -32,7 +32,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
 
   /**
    * 새 대화. 첫 메시지는 send로 (만드는 트랜잭션에서 함께). deviceId: 기기(MCP ask_agent)가 연 대화면 그 기기.
-   * goal: 목표 한 줄, project: 맞춘 git 주소 (ChatProject). 둘 다 열 때만 정한다
+   * goal: 목표 한 줄, project: 맞춘 git 주소 (ChatProject), deliver: 받을 것 (ChatResult.deliverOf). 열 때만 정한다
    */
   static open(
     spaceId: string,
@@ -43,6 +43,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     deviceId: string | null = null,
     goal: string | null = null,
     project: string | null = null,
+    deliver: string | null = null,
   ): Chat {
     Chat.assertPartner(agent);
     return new Chat(
@@ -56,6 +57,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
         device_id: deviceId,
         goal: goal?.trim() || null,
         project,
+        deliver,
         created_at: now,
         updated_at: now,
       },
@@ -110,6 +112,11 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     return [id, ...replies];
   }
 
+  /** 회차의 결과를 결재 전에 검토하는 작업의 request_id (검토자 짝, 2차 2단계) */
+  static reviewRequestId(chatId: string, turn: number): string {
+    return `${Chat.turnRequestId(chatId, turn)}:review`;
+  }
+
   /** from회차부터 to회차까지의 request_id (작업을 찾는 데 쓴다) */
   static turnRequestIds(chatId: string, from: number, to: number): string[] {
     const ids: string[] = [];
@@ -128,6 +135,15 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
 
   get turns(): number {
     return this.row.turns;
+  }
+
+  get goal(): string | null {
+    return this.row.goal;
+  }
+
+  /** 받을 것 (비우면 대화 답) */
+  get deliver(): string | null {
+    return this.row.deliver;
   }
 
   /**
@@ -157,6 +173,8 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     previous: readonly ChatTurnRow[],
     now: Date,
     deviceId: string | null = null,
+    /** 받을 것이 없어 서버가 다시 맡기는 회차 (payload.chat.fix) */
+    fix = false,
   ): Task {
     if (agent.id !== this.row.agent_id) throw new RuleViolation('이 대화의 상대가 아니에요');
     Chat.assertPartner(agent);
@@ -183,8 +201,36 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
             requestId,
             history: ChatHistory.of(previous),
             ...(deviceId === null ? {} : { via: 'device', device: deviceId }),
+            ...(fix ? { fix: true } : {}),
           },
         },
+      },
+      now,
+    );
+  }
+
+  /**
+   * 받을 것이 결과에 없어 같은 상대에게 다시 맡긴다 (서버가 연다, 2차 2단계). message는 지시문 틀 result-check로 채운 글이고
+   * 관리자의 글이 아니라서 payload.chat.fix로 표시한다 (화면이 "검사"로 보인다)
+   */
+  fix(agent: Agent, message: string, previous: readonly ChatTurnRow[], now: Date): Task {
+    return this.send(agent, `fix:${this.row.turns + 1}`, message, previous, now, null, true);
+  }
+
+  /**
+   * 회차의 결과를 결재 전에 검토자(다른 AI 도구의 에이전트)가 본다 (검토자 짝, 2차 2단계). 회차마다 하나 (request_id).
+   * instruction은 지시문 틀 result-review로 채운 글. 답은 소식(review)과 결과 카드에 실린다
+   */
+  review(reviewer: Agent, instruction: string, now: Date): Task {
+    return Task.open(
+      this.row.space_id,
+      Chat.reviewRequestId(this.id, this.row.turns),
+      {
+        kind: Task.GENERAL,
+        agent_id: reviewer.id,
+        title: `검토 · ${Chat.firstLine(this.row.title, Chat.TASK_TITLE)}`,
+        instruction,
+        payload: { chat: { chatId: this.id, turn: this.row.turns, review: true } },
       },
       now,
     );

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseQuery, ChangeStream, Database, Forbidden, RuleViolation } from '../../platform';
+import { Approval } from '../approval/approval';
 import { JobChatView } from '../task/job.view';
 import { Task } from '../task/task';
 import { Chat } from './chat';
@@ -134,6 +135,8 @@ export class ChatUpdateQuery extends BaseQuery {
     return await sql<ChatBoardRow[]>`
       SELECT c.*, a.name AS partner,
         CASE
+          WHEN EXISTS (SELECT 1 FROM task.approvals card WHERE card.action = ${Approval.CARD}
+            AND card.target_id = c.id AND card.status = ${Approval.PENDING}) THEN 'waiting_approval'
           WHEN last.status = ${Task.WAITING} AND last.wait_reason = ${Task.WAIT_APPROVAL} THEN 'waiting_approval'
           WHEN last.status = ANY(${ChatUpdateQuery.OPEN as string[]}::text[]) THEN 'working'
           WHEN last.status = ANY(${[Task.FAILED, Task.CANCELLED]}::text[]) THEN 'failed'

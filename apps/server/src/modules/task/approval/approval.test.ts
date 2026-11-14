@@ -96,6 +96,7 @@ describe('결재 상태', () => {
       targetVersion: 3,
       decidedBy: OWNER,
       note: '공개해 주세요',
+      chatId: null,
     });
   });
 

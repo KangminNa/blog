@@ -7,7 +7,8 @@ import type { ChatTurn } from '../../_task/types';
 
 // 대화의 회차들: 관리자의 말풍선(오른쪽)과 상대의 말풍선(왼쪽).
 // 상대의 답은 작업의 상태를 따라간다: 대기 → 생각 중(진행 기록) → 팀에게 맡김 · 결재 대기 → 답 · 실패 · 멈춤.
-// 기다리는 결재는 결재 화면과 같은 칸(내용 확인 · 승인 · 수정 요청 · 반려)을 말풍선 아래에 그대로 둔다.
+// 결과 카드에 싣지 않는 결재(바로 알리는 동작: 사이트 로그인 등)만 결재 화면과 같은 칸을 말풍선 아래에 둔다.
+// 대화의 다른 결재는 결과 카드에서 정한다 (2차 2단계, ChatCardForm).
 export function ChatTurns({
   turns,
   me,
@@ -29,7 +30,8 @@ export function ChatTurns({
         <li key={t.taskId} className="chat-turn">
           <div className="bubble mine">
             <span className="bubble-meta">
-              {t.fromDevice ? '기기의 AI 도구' : me} · {clock(t.createdAt)}
+              {t.fix ? '검사 · 받을 것이 없어 다시 맡김' : t.fromDevice ? '기기의 AI 도구' : me} ·{' '}
+              {clock(t.createdAt)}
             </span>
             <p className="text">{t.message}</p>
           </div>
@@ -90,7 +92,7 @@ function Reply({ turn: t }: { turn: ChatTurn }) {
     t.status === 'queued'
       ? '대기 중 · 러너가 가져가면 시작해요'
       : t.waitReason === 'approval'
-        ? '결재 대기 · 아래에서 정하면 이어서 해요'
+        ? '결재 대기 · 결과 카드에서 정하면 이어서 해요'
         : t.waitReason === 'subtasks'
           ? `팀에게 맡김 · 하위 작업 ${t.openSubtasks}개 기다리는 중`
           : '생각 중…';

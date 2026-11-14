@@ -57,10 +57,11 @@ export class HomeQuery extends BaseQuery {
       ORDER BY id DESC LIMIT ${HomeQuery.OUTPUTS}`;
   }
 
+  /** 기다리는 결재 수: 대화의 일에서 올라온 결재는 결과 카드 하나로 센다 */
   private async pending(spaceId: string): Promise<number> {
     const [row] = await this.sql<{ count: number }[]>`
       SELECT count(*)::int AS count FROM task.approvals
-      WHERE space_id = ${spaceId} AND status = ${Approval.PENDING}`;
+      WHERE space_id = ${spaceId} AND status = ${Approval.PENDING} AND chat_id IS NULL`;
     return row?.count ?? 0;
   }
 }

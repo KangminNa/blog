@@ -11,6 +11,8 @@ import {
 } from '../../_task/labels';
 import type { RunnerChoice } from '../../_task/live';
 import type { Agent } from '../../_task/types';
+import { LimitField } from './LimitField';
+import { ReviewerField } from './ReviewerField';
 import { RunnerField } from './RunnerField';
 
 /** 에이전트에게 줄 수 있는 권한. run은 러너의 것이라 없다 (서버의 Agent.SCOPES와 맞춘다) */
@@ -65,6 +67,8 @@ export type AgentBody = {
   planStopPercent: number | null;
   reportsTo: string | null;
   runnerId: string | null;
+  /** 검토자 짝 (편집에서만, 만들기는 서버가 보지 않는다) */
+  reviewerId?: string | null;
 };
 
 // 에이전트 추가·편집 폼: 칸의 상태와 보낼 본문만 가진다. 저장은 패널이 돌린다 (onSubmit). agent가 있으면 편집이다.
@@ -99,6 +103,7 @@ export function AgentForm({
   const [tool, setTool] = useState(agent?.tool ?? 'claude');
   const [reportsTo, setReportsTo] = useState(agent?.reportsTo ?? '');
   const [runnerId, setRunnerId] = useState(agent?.runnerId ?? '');
+  const [reviewerId, setReviewerId] = useState(agent?.reviewerId ?? '');
   const [scopes, setScopes] = useState<readonly string[]>(agent?.scopes ?? []);
   const sandboxed = scopes.includes('code') || scopes.includes('make');
   const [actions, setActions] = useState<readonly string[]>(agent?.approvalActions ?? []);
@@ -146,6 +151,7 @@ export function AgentForm({
         reportsTo: reportsTo || null,
         // 코드 · 만들기는 코드 러너 칸에서만 돌아 묶지 않는다 (서버도 막는다)
         runnerId: sandboxed ? null : runnerId || null,
+        ...(agent ? { reviewerId: reviewerId || null } : {}),
       },
       requestId.current,
     );
@@ -222,6 +228,16 @@ export function AgentForm({
         runners={runners}
         onChange={(value) => change(() => setRunnerId(value))}
       />
+      {agent && (
+        <ReviewerField
+          id={`${id}-reviewer`}
+          value={reviewerId}
+          tool={tool}
+          self={agent.id}
+          agents={agents}
+          onChange={(value) => change(() => setReviewerId(value))}
+        />
+      )}
       <fieldset className="checks">
         <legend>권한</legend>
         <small>
@@ -252,52 +268,30 @@ export function AgentForm({
           </label>
         ))}
       </fieldset>
-      <div className="field">
-        <label htmlFor={`${id}-limit`}>월 한도 (토큰)</label>
-        <input
-          id={`${id}-limit`}
-          className="input"
-          inputMode="numeric"
-          value={limit}
-          aria-invalid={problems.limit !== undefined}
-          aria-describedby={`${id}-limit-help`}
-          onChange={(e) => change(() => setLimit(e.target.value))}
-        />
-        <small id={`${id}-limit-help`}>비우면 한도 없음. 넘기면 자동 중지 후 결재 요청</small>
-        {problems.limit && <p className="error">{problems.limit}</p>}
-      </div>
-      <div className="field">
-        <label htmlFor={`${id}-five-hour`}>5시간 한도 (토큰)</label>
-        <input
-          id={`${id}-five-hour`}
-          className="input"
-          inputMode="numeric"
-          value={fiveHour}
-          aria-invalid={problems.fiveHour !== undefined}
-          aria-describedby={`${id}-five-hour-help`}
-          onChange={(e) => change(() => setFiveHour(e.target.value))}
-        />
-        <small id={`${id}-five-hour-help`}>
-          비우면 한도 없음. 닿으면 새 작업만 쉬고 시간이 지나면 다시 시작
-        </small>
-        {problems.fiveHour && <p className="error">{problems.fiveHour}</p>}
-      </div>
-      <div className="field">
-        <label htmlFor={`${id}-plan-stop`}>구독 사용률 N%에서 멈춤</label>
-        <input
-          id={`${id}-plan-stop`}
-          className="input"
-          inputMode="numeric"
-          value={planStop}
-          aria-invalid={problems.planStop !== undefined}
-          aria-describedby={`${id}-plan-stop-help`}
-          onChange={(e) => change(() => setPlanStop(e.target.value))}
-        />
-        <small id={`${id}-plan-stop-help`}>
-          1~100. 비우면 멈추지 않음. 닿으면 새 작업만 쉬고 초기화되면 다시 시작
-        </small>
-        {problems.planStop && <p className="error">{problems.planStop}</p>}
-      </div>
+      <LimitField
+        id={`${id}-limit`}
+        label="월 한도 (토큰)"
+        value={limit}
+        help="비우면 한도 없음. 넘기면 자동 중지 후 결재 요청"
+        problem={problems.limit}
+        onChange={(value) => change(() => setLimit(value))}
+      />
+      <LimitField
+        id={`${id}-five-hour`}
+        label="5시간 한도 (토큰)"
+        value={fiveHour}
+        help="비우면 한도 없음. 닿으면 새 작업만 쉬고 시간이 지나면 다시 시작"
+        problem={problems.fiveHour}
+        onChange={(value) => change(() => setFiveHour(value))}
+      />
+      <LimitField
+        id={`${id}-plan-stop`}
+        label="구독 사용률 N%에서 멈춤"
+        value={planStop}
+        help="1~100. 비우면 멈추지 않음. 닿으면 새 작업만 쉬고 초기화되면 다시 시작"
+        problem={problems.planStop}
+        onChange={(value) => change(() => setPlanStop(value))}
+      />
       {problem && <p className="error">{problem}</p>}
       <div className="row">
         <button type="submit" className="cta small" disabled={busy || !name.trim()}>

@@ -29,4 +29,25 @@ export class ApprovalRepository extends TableRepository<ApprovalRow, Approval> {
   async lockPending(taskId: string): Promise<Approval | null> {
     return this.findOne({ task_id: taskId, status: Approval.PENDING }, { lock: true });
   }
+
+  /** 대화의 기다리는 결과 카드 (대화마다 하나) */
+  lockOpenCard(chatId: string): Promise<Approval | null> {
+    return this.findOne(
+      { action: Approval.CARD, target_id: chatId, status: Approval.PENDING },
+      { lock: true },
+    );
+  }
+
+  /** 대화의 일에서 올라와 아직 카드에 실리지 않은 결재 (기다리는 것만, id 순서로 잠근다) */
+  lockUncarded(chatId: string): Promise<readonly Approval[]> {
+    return this.find(
+      { chat_id: chatId, status: Approval.PENDING, card_id: null },
+      { order: ['id'], lock: true },
+    );
+  }
+
+  /** 카드에 실린 기다리는 결재 (읽기만: 작업을 먼저 잠근 뒤 lock으로 다시 잠근다) */
+  inCard(cardId: string): Promise<readonly Approval[]> {
+    return this.find({ card_id: cardId, status: Approval.PENDING }, { order: ['id'] });
+  }
 }

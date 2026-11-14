@@ -10,7 +10,8 @@ export type ChatPlaceRow = Pick<
 
 // 대화의 소식 (task.chat_updates, 2차 1-1 · docs/API설계.md 4장 agent_updates). 무엇이 소식이 되는지 한 곳에서 정한다.
 //   팀원(하위 작업)이 끝남 · 실패 → member_done · member_failed, 회차가 끝남 · 실패 → final · failed,
-//   덧붙인 말에 대표가 답함 → reply, 에이전트가 post_update로 남김 → progress · decision · assumption, 덧붙인 말 → appended.
+//   덧붙인 말에 대표가 답함 → reply, 검토자 짝이 결과를 검토함 → review (2차 2단계),
+//   에이전트가 post_update로 남김 → progress · decision · assumption, 덧붙인 말 → appended.
 // 글은 AI가 쓴 결과 · 관리자의 말을 자르기만 한다 (설명 문장을 코드에서 덧붙이지 않는다). 취소는 소식이 아니다
 // biome-ignore lint/complexity/noStaticOnlyClass: 상태 없는 판단 한 곳. Chat · ChatRepository · Query가 함께 쓴다
 export class ChatUpdates {
@@ -19,6 +20,7 @@ export class ChatUpdates {
   static readonly TEXT_MAX = 2000;
   static readonly APPENDED = 'appended';
   static readonly REPLY = 'reply';
+  static readonly REVIEW = 'review';
   /** 에이전트가 post_update로 남기는 종류 (작업마다 POST_MAX개) */
   static readonly POSTED: readonly string[] = ['progress', 'decision', 'assumption'];
   static readonly POST_MAX = 20;
@@ -38,10 +40,11 @@ export class ChatUpdates {
     const said = typeof result.text === 'string' ? result.text.trim() : '';
     const error = typeof result.error === 'string' ? result.error : '';
     const root = place.id === place.root_id;
-    const reply = Boolean((place.payload as { chat?: { reply?: unknown } } | null)?.chat?.reply);
+    const chat = (place.payload as { chat?: { reply?: unknown; review?: unknown } } | null)?.chat;
     if (place.status === Task.DONE) {
       if (!root) return { kind: 'member_done', text: `${place.title} — ${said || '-'}` };
-      if (reply) return { kind: ChatUpdates.REPLY, text: said || '-' };
+      if (chat?.reply) return { kind: ChatUpdates.REPLY, text: said || '-' };
+      if (chat?.review) return { kind: ChatUpdates.REVIEW, text: said || '-' };
       const path = `/admin/chats/${place.chat_id}`;
       return { kind: 'final', text: `${ChatUpdates.cut(said || '-', 1700)}\n\n${path}` };
     }

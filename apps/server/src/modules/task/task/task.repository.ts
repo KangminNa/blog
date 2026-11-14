@@ -164,6 +164,41 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
   }
 
   /**
+   * 작업이 속한 대화: 위 작업을 따라 맨 위까지 올라가 그 작업의 payload.chat.chatId (대화의 일이 아니면 null).
+   * 결재가 결과 카드에 실릴지 정할 때 (2차 2단계)
+   */
+  async chatOf(taskId: string): Promise<string | null> {
+    const [row] = await this.sql<{ chat_id: string | null }[]>`
+      WITH RECURSIVE up AS (
+        SELECT id, parent_id, 0 AS step FROM task.tasks WHERE id = ${taskId}
+        UNION ALL
+        SELECT t.id, t.parent_id, up.step + 1 FROM task.tasks t JOIN up ON t.id = up.parent_id
+        WHERE up.step < 10
+      )
+      SELECT root.payload->'chat'->>'chatId' AS chat_id FROM task.tasks root
+      WHERE root.id = (SELECT id FROM up ORDER BY step DESC LIMIT 1)`;
+    return row?.chat_id ?? null;
+  }
+
+  /**
+   * 대화의 끝나지 않은 일(회차 · 덧붙인 말의 답 · 검토와 그 아래 전부)을 잠근다: 위 작업이 먼저 (멈추기 · 카드의 수정 요청 · 반려)
+   */
+  async lockOpenInChat(spaceId: string, chatId: string): Promise<readonly Task[]> {
+    const rows = await this.sql<TaskRow[]>`
+      WITH RECURSIVE tree AS (
+        SELECT id, 0 AS depth FROM task.tasks
+        WHERE space_id = ${spaceId} AND request_id LIKE ${`chat:${chatId}:%`}
+        UNION ALL
+        SELECT t.id, tree.depth + 1 FROM task.tasks t JOIN tree ON t.parent_id = tree.id
+      )
+      SELECT t.* FROM task.tasks t JOIN tree ON tree.id = t.id
+      WHERE t.status IN (${Task.QUEUED}, ${Task.RUNNING}, ${Task.WAITING})
+      ORDER BY tree.depth, t.id
+      FOR UPDATE OF t`;
+    return rows.map((r) => this.toEntity(r));
+  }
+
+  /**
    * 공간과 도구의 웹 로그인 자리를 트랜잭션이 끝날 때까지 잠근다. 동시에 두 번 눌러도 로그인 작업은 하나다
    * (아직 로그인 줄이 없을 수 있어 행 대신 advisory 잠금)
    */

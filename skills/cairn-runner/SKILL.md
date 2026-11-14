@@ -8,7 +8,7 @@ description: AI에게 가는 지시문의 틀. 러너가 일마다 채우고 서
 
 AI에게 가는 지시문의 글이다. 틀은 `references/prompts.md`에 있다.
 러너는 일마다 AI CLI(Claude Code · Codex)에게 줄 지시문을, 일의 내용에 맞는 틀만 골라 채우고 단락 사이를 빈 줄 하나로 잇는다.
-서버도 자기가 만드는 글(목표 실행의 회차 지시 `goal-round` · 앞 회차 보고 `goal-report`, read_url 답의 알림 `read-url-note`)을 여기서 채운다.
+서버도 자기가 만드는 글(목표 실행의 회차 지시 `goal-round` · 앞 회차 보고 `goal-report`, read_url 답의 알림 `read-url-note`, 결과 결재의 검사 실패 `result-check` · 검토 지시 `result-review`)을 여기서 채운다.
 어느 단락을 어떤 순서로 넣을지와 값은 코드가, 글은 모두 이 스킬이 정한다.
 
 ## 고칠 때

@@ -1,8 +1,10 @@
 import { ChangeSignal, TableRepository } from '../../platform';
+import { Task } from '../task/task';
 import { chats, chatUpdates } from '../task.schema';
 import type { ChatRow } from '../task.tables';
 import { Chat } from './chat';
 import { ChatHistory, type ChatTurnRow } from './chat-history.policy';
+import type { ChatTurnStateRow } from './chat-result.policy';
 import { type ChatPlaceRow, ChatUpdates } from './chat-update.policy';
 
 // task.chats ↔ Chat. 불러오기 · 잠그기 · 저장은 기반이 한다. 소식(task.chat_updates)은 saveParts로 함께 넣는다 (추가만).
@@ -62,6 +64,50 @@ export class ChatRepository extends TableRepository<ChatRow, Chat> {
       JOIN task.tasks root ON root.id = top.id
       WHERE t.id = ${taskId} AND root.payload->'chat'->>'chatId' IS NOT NULL`;
     return row ?? null;
+  }
+
+  /**
+   * 대화의 일이 아직 도는가 (결과 카드 전, 2차 2단계): 대화의 맨 위 작업들(회차 · 덧붙인 말의 답 · 검토)과 그 아래에서
+   * 대기 · 실행 중이거나, 카드에 싣지 않는 결재(바로 알리는 동작)를 기다리는 작업이 있으면 돈다.
+   * 하위 작업을 기다리는 작업은 세지 않는다 (그 하위 작업이 센다)
+   */
+  async busy(chat: Chat): Promise<boolean> {
+    const [row] = await this.sql<{ busy: boolean }[]>`
+      WITH RECURSIVE tree AS (
+        SELECT id FROM task.tasks
+        WHERE space_id = ${chat.spaceId} AND request_id LIKE ${`${Chat.turnRequestPrefix()}${chat.id}:%`}
+        UNION ALL
+        SELECT t.id FROM task.tasks t JOIN tree ON t.parent_id = tree.id
+      )
+      SELECT EXISTS (
+        SELECT 1 FROM task.tasks t WHERE t.id IN (SELECT id FROM tree)
+          AND (t.status IN (${Task.QUEUED}, ${Task.RUNNING})
+            OR (t.status = ${Task.WAITING} AND t.wait_reason = ${Task.WAIT_APPROVAL}
+              AND EXISTS (SELECT 1 FROM task.approvals a
+                WHERE a.task_id = t.id AND a.status = 'pending' AND a.chat_id IS NULL)))
+      ) AS busy`;
+    return Boolean(row?.busy);
+  }
+
+  /** 지금 회차의 맨 위 작업(상태 · 지시 · 결과)과 그 회차의 검토 작업 */
+  async turnState(chat: Chat): Promise<ChatTurnStateRow> {
+    const turn = Chat.turnRequestId(chat.id, chat.turns);
+    const [row] = await this.sql<ChatTurnStateRow[]>`
+      SELECT root.status, root.instruction, root.result,
+        review.status AS review_status, review.result AS review_result
+      FROM (SELECT 1) one
+      LEFT JOIN task.tasks root ON root.space_id = ${chat.spaceId} AND root.request_id = ${turn}
+      LEFT JOIN task.tasks review
+        ON review.space_id = ${chat.spaceId} AND review.request_id = ${Chat.reviewRequestId(chat.id, chat.turns)}`;
+    return (
+      row ?? {
+        status: null,
+        instruction: null,
+        result: null,
+        review_status: null,
+        review_result: null,
+      }
+    );
   }
 
   /** 쌓은 소식의 번호 (커서). 저장한 뒤에 읽는다 */

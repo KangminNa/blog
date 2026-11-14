@@ -79,6 +79,16 @@ export class Output extends TableEntity<OutputRow, OutputNew> {
       throw new Conflict(`이 실행이 이미 다른 내용으로 올린 이름이에요: ${this.row.name}`);
   }
 
+  get name(): string {
+    return this.row.name;
+  }
+
+  /** 결과 카드에 싣는다 (2차 2단계). 한 번 실린 결과물은 다음 카드에 다시 실리지 않는다 */
+  bundleInto(cardId: string): void {
+    if (this.row.card_id !== null) throw new RuleViolation('이미 카드에 실린 결과물이에요');
+    this.put('card_id', cardId);
+  }
+
   /** 휴지통으로. TRASH_DAYS 뒤 일꾼이 지운다. 이미 휴지통이면 그대로 */
   trash(now: Date): void {
     if (this.row.deleted_at !== null) return;

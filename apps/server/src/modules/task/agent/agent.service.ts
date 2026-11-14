@@ -146,8 +146,8 @@ export class AgentService extends EntityService<Agent> {
 
   /** 보고 대상을 바꾸지 않으면 그 에이전트만 잠근다. 러너는 같은 공간의 것만 (없으면 404) */
   async update(actor: Actor, req: UpdateAgentInput): Promise<Agent> {
-    const { reportsTo, runnerId } = req;
-    if (reportsTo === undefined && runnerId === undefined)
+    const { reportsTo, runnerId, reviewerId } = req;
+    if (reportsTo === undefined && runnerId === undefined && reviewerId === undefined)
       return this.changeAsOwner(actor, req, (agent) => agent.edit(req.changes));
     actor.assertOwner();
     const spaceId = actor.requireSpace();
@@ -162,6 +162,8 @@ export class AgentService extends EntityService<Agent> {
           ? await new RunnerRepository(tx).load(spaceId, runnerId)
           : runnerId;
       agent.edit(req.changes, runner);
+      if (reviewerId !== undefined)
+        agent.pairReviewer(reviewerId === null ? null : await agents.load(spaceId, reviewerId));
       await agents.save(agent);
       return agent;
     });

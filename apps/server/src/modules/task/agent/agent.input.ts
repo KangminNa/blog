@@ -31,6 +31,13 @@ function runnerOf(f: RequestFields, raw: unknown): string | null | undefined {
   return body.runnerId === null ? null : f.uuid('runnerId');
 }
 
+/** 검토자 짝: 칸이 없으면 그대로(undefined), null이면 뺀다 (2차 2단계) */
+function reviewerOf(f: RequestFields, raw: unknown): string | null | undefined {
+  const body = (raw ?? {}) as Record<string, unknown>;
+  if (!('reviewerId' in body)) return undefined;
+  return body.reviewerId === null ? null : f.uuid('reviewerId');
+}
+
 /** POST /api/agents. 같은 requestId는 처음 만든 에이전트를 돌려준다 */
 export class CreateAgentInput extends BaseRequest {
   private constructor(
@@ -120,7 +127,7 @@ export class DeleteAgentInput extends BaseRequest {
   }
 }
 
-/** PATCH /api/agents/:id. reportsTo에 null이면 주인에게 보고, runnerId에 null이면 아무 러너 */
+/** PATCH /api/agents/:id. reportsTo에 null이면 주인에게 보고, runnerId에 null이면 아무 러너, reviewerId에 null이면 검토자 없음 */
 export class UpdateAgentInput extends BaseRequest {
   private constructor(
     readonly id: string,
@@ -128,6 +135,7 @@ export class UpdateAgentInput extends BaseRequest {
     readonly changes: Partial<AgentRow>,
     readonly reportsTo: string | null | undefined,
     readonly runnerId: string | null | undefined,
+    readonly reviewerId: string | null | undefined,
   ) {
     super();
   }
@@ -143,6 +151,7 @@ export class UpdateAgentInput extends BaseRequest {
           f.columns(COLUMNS),
           reportsToOf(f, body),
           runnerOf(f, body),
+          reviewerOf(f, body),
         ),
     );
   }

@@ -62,6 +62,7 @@ export const ACTION_LABELS: Record<string, string> = {
   [RAISE_LIMIT]: '한도 변경',
   [GOAL_CONTINUE]: '목표 실행 중간 결재',
   [GOAL_COMPLETE]: '목표 실행 최종 결재',
+  'task.chat.result': '대화의 결과',
 };
 
 export function actionLabel(action: string): string {
@@ -74,6 +75,7 @@ export const TARGET_LABELS: Record<string, string> = {
   browser_site: '사이트',
   pull_request: 'PR',
   [GOAL_RUN]: '목표 실행',
+  chat: '대화',
 };
 
 export const GOAL_RUN_STATUS: Record<string, string> = {
@@ -267,4 +269,12 @@ export const NEWS_KINDS: Record<string, string> = {
   reply: '대표의 답',
   final: '최종 답',
   failed: '실패',
+};
+
+/** 대화의 받을 것 (chats.deliver). 비우면 대화 답 */
+export const DELIVER_LABELS: Record<string, string> = {
+  html: 'HTML 페이지',
+  blog: '블로그 글',
+  browser: '브라우저 동작',
+  code: '코드 (PR)',
 };

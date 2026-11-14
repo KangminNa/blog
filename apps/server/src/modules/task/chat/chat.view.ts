@@ -23,6 +23,8 @@ export type ChatPartnerRow = Pick<AgentRow, 'name' | 'status' | 'reports_to' | '
 export type ChatTurnTaskRow = TaskRow & { last_event: string | null; open_subtasks: number };
 /** 회차(맨 위 작업 root)와 그 아래에서 만든 결과물 */
 export type ChatOutputRow = Pick<OutputRow, 'id' | 'name' | 'kind'> & { root: string };
+/** 결과 카드에 실린 결과물 (2차 2단계) */
+export type ChatCardOutputRow = Pick<OutputRow, 'id' | 'name' | 'kind' | 'mime'>;
 /** 회차(맨 위 작업 root)와 그 아래에서 기다리는 결재 */
 export type ChatApprovalRow = Pick<ApprovalRow, 'id'> & { root: string };
 /** 소식 한 줄과 남긴 에이전트의 이름 */
@@ -55,6 +57,8 @@ export class ChatView {
       /** 목표 한 줄과 프로젝트(host/owner/repo). 새 대화를 열 때 정한다 */
       goal: r.goal ?? null,
       project: r.project ?? null,
+      /** 받을 것 (html · blog · browser · code). null이면 대화 답 */
+      deliver: r.deliver ?? null,
       version: r.version,
       createdAt: r.created_at.toISOString(),
       updatedAt: r.updated_at.toISOString(),
@@ -105,6 +109,8 @@ export class ChatTurnView {
       error: typeof result.error === 'string' ? result.error : null,
       progress: t.last_event,
       openSubtasks: t.open_subtasks,
+      /** 받을 것이 없어 서버가 다시 맡긴 회차 (메시지는 관리자의 글이 아니라 지시문 틀 result-check) */
+      fix: (t.payload as { chat?: { fix?: unknown } } | null)?.chat?.fix === true,
       outputs: this.outputs
         .filter((o) => o.root === t.id)
         .map((o) => ({ id: o.id, name: o.name, kind: o.kind })),
@@ -113,7 +119,59 @@ export class ChatTurnView {
   }
 }
 
-/** 대화 하나와 회차들 (오래된 것부터, 최근 ChatQuery.TURNS개), 상태판 · 최근 소식 · 팀 (2차 1-1) */
+/**
+ * 기다리는 결과 카드 (2차 2단계): 실린 결재(동작)와 결과물, 받을 것의 검사, 검토자 짝의 의견.
+ * 항목은 한 모양이다 (kind: action · output). 결정은 POST /api/approvals/:id/decide { version, decision, note?, picked? }
+ */
+export class ChatCardView {
+  constructor(
+    private readonly card: Readonly<ApprovalRow>,
+    private readonly actions: readonly ApprovalRow[],
+    private readonly outputs: readonly ChatCardOutputRow[],
+    private readonly deliver: string | null,
+    private readonly passed: boolean,
+    private readonly review: string | null,
+  ) {}
+
+  toJSON() {
+    const c = this.card;
+    return {
+      id: c.id,
+      version: c.version,
+      turn: c.target_version,
+      createdAt: c.created_at.toISOString(),
+      items: [
+        ...this.actions.map((a) => ({
+          kind: 'action',
+          id: a.id,
+          label: a.action,
+          action: a.action as string | null,
+          targetKind: a.target_kind as string | null,
+          targetId: a.target_id as string | null,
+          note: a.note,
+          mime: null as string | null,
+        })),
+        ...this.outputs.map((o) => ({
+          kind: 'output',
+          id: o.id,
+          label: o.name,
+          action: null as string | null,
+          targetKind: null as string | null,
+          targetId: null as string | null,
+          note: null as string | null,
+          mime: o.mime as string | null,
+        })),
+      ],
+      /** 받을 것과 검사 (받을 것을 정하지 않았으면 deliver null, passed true) */
+      deliver: this.deliver,
+      passed: this.passed,
+      /** 검토자 짝의 의견 (검토하지 않았으면 null) */
+      review: this.review,
+    };
+  }
+}
+
+/** 대화 하나와 회차들 (오래된 것부터, 최근 ChatQuery.TURNS개), 상태판 · 최근 소식 · 팀 (2차 1-1), 결과 카드 (2차 2단계) */
 export class ChatDetailView {
   constructor(
     private readonly chat: Readonly<ChatRow>,
@@ -122,6 +180,7 @@ export class ChatDetailView {
     private readonly board: Readonly<ChatBoardRow> | null,
     private readonly news: readonly ChatUpdateLine[],
     private readonly team: readonly ChatTeamRow[],
+    private readonly card: ChatCardView | null,
   ) {}
 
   toJSON() {
@@ -158,6 +217,8 @@ export class ChatDetailView {
         open: m.open,
         doing: m.doing,
       })),
+      /** 기다리는 결과 카드 (없으면 null) */
+      card: this.card?.toJSON() ?? null,
     };
   }
 }

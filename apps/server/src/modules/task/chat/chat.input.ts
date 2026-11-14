@@ -3,7 +3,7 @@ import { Chat } from './chat';
 
 // 대화 입력의 모양. 뜻(상대가 관리자 바로 아래인지, 덧붙인 말의 한도)은 Chat이 검사한다.
 
-/** POST /api/chats { requestId, agentId?, message, goal?, project? }. 대화와 첫 메시지를 함께. 같은 requestId는 처음 만든 대화 */
+/** POST /api/chats { requestId, agentId?, message, goal?, project?, deliver? }. 대화와 첫 메시지를 함께. 같은 requestId는 처음 만든 대화 */
 export class CreateChatInput extends BaseRequest {
   private constructor(
     readonly requestId: string,
@@ -13,6 +13,8 @@ export class CreateChatInput extends BaseRequest {
     readonly goal: string | null,
     /** git 주소 그대로 (ChatProject가 맞춘다) */
     readonly project: string | null,
+    /** 받을 것 (html · blog · browser · code, 비우면 대화 답. ChatResult.deliverOf가 본다) */
+    readonly deliver: string | null,
   ) {
     super();
   }
@@ -28,6 +30,7 @@ export class CreateChatInput extends BaseRequest {
           f.text('message', Chat.MESSAGE_MAX),
           f.optionalText('goal', Chat.GOAL_MAX),
           f.optionalText('project', 400),
+          f.optionalText('deliver', 20),
         ),
     );
   }
@@ -82,6 +85,7 @@ export class AskAgentInput extends BaseRequest {
     readonly goal: string | null,
     /** git 주소 그대로 (ChatProject가 맞춘다) */
     readonly project: string | null,
+    readonly deliver: string | null,
   ) {
     super();
   }
@@ -98,6 +102,7 @@ export class AskAgentInput extends BaseRequest {
           body.chat_id === undefined || body.chat_id === null ? null : f.uuid('chat_id'),
           f.optionalText('goal', Chat.GOAL_MAX),
           f.optionalText('project', 400),
+          f.optionalText('deliver', 20),
         ),
     );
   }

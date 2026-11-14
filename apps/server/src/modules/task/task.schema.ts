@@ -36,6 +36,7 @@ export const agents = taskSchema.table('agents', {
   deleted_at: timestamp('deleted_at', { withTimezone: true }),
   runner_id: uuid('runner_id'),
   lead: boolean('lead').notNull(),
+  reviewer_id: uuid('reviewer_id'),
 });
 
 /** task.ai_logins */
@@ -68,6 +69,8 @@ export const approvals = taskSchema.table('approvals', {
   note: text('note'),
   version: integer('version').notNull(),
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+  chat_id: uuid('chat_id'),
+  card_id: uuid('card_id'),
 });
 
 /** task.chat_updates */
@@ -98,6 +101,7 @@ export const chats = taskSchema.table('chats', {
   device_id: uuid('device_id'),
   goal: text('goal'),
   project: text('project'),
+  deliver: text('deliver'),
 });
 
 /** task.goal_rounds */
@@ -165,6 +169,7 @@ export const outputs = taskSchema.table('outputs', {
   updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
   deleted_at: timestamp('deleted_at', { withTimezone: true }),
   purge_after: timestamp('purge_after', { withTimezone: true }),
+  card_id: uuid('card_id'),
 });
 
 /** task.plan_usage */

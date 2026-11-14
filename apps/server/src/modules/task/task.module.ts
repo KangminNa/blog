@@ -17,6 +17,9 @@ import { ChatController } from './chat/chat.api';
 import { ChatQuery } from './chat/chat.query';
 import { ChatService } from './chat/chat.service';
 import { AskAgentTool } from './chat/chat.tool';
+import { ChatCardHandler } from './chat/chat-card.handler';
+import { ChatResultHandler } from './chat/chat-result.handler';
+import { ChatResultService } from './chat/chat-result.service';
 import { ChatUpdateHandler } from './chat/chat-update.handler';
 import { ChatUpdateQuery } from './chat/chat-update.query';
 import { ChatUpdateService } from './chat/chat-update.service';
@@ -125,6 +128,10 @@ import { WebPageGateway } from './web/web-page.gateway';
     ChatUpdateService,
     ChatUpdateQuery,
     ChatUpdateHandler,
+    // 결과 결재 (2차 2단계): 가라앉은 회차 → 검사 · 검토 · 결과 카드, 카드의 수정 요청 · 반려 → 멈추고 다음 회차
+    ChatResultService,
+    ChatResultHandler,
+    ChatCardHandler,
     AgentUpdatesTool,
     PostUpdateTool,
     GoalRunHandler,
@@ -175,6 +182,8 @@ export class TaskModule implements OnModuleInit {
     private readonly leaseChecks: Leases,
     private readonly tasks: TaskQuery,
     private readonly goalRuns: GoalRunHandler,
+    private readonly chatResults: ChatResultHandler,
+    private readonly chatCards: ChatCardHandler,
   ) {}
 
   onModuleInit(): void {
@@ -183,6 +192,8 @@ export class TaskModule implements OnModuleInit {
     this.workers.on(Task.CHANGED, this.chatUpdates);
     this.workers.on(Task.CHANGED, this.goalRuns);
     for (const topic of GoalRunHandler.DECIDED) this.workers.on(topic, this.goalRuns);
+    for (const topic of ChatResultHandler.TOPICS) this.workers.on(topic, this.chatResults);
+    for (const topic of ChatCardHandler.TOPICS) this.workers.on(topic, this.chatCards);
     this.workers.on('*', this.results);
     this.workers.every(this.leases, TaskModule.LEASE_CHECK_MS);
     this.workers.every(this.schedules, TaskModule.SCHEDULE_CHECK_MS);

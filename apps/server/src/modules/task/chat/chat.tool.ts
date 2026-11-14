@@ -29,6 +29,7 @@ export class AskAgentTool extends BaseTool {
       },
       goal: { type: 'string', maxLength: Chat.GOAL_MAX },
       project: { type: 'string', maxLength: 400 },
+      deliver: { type: 'string', enum: ['html', 'blog', 'browser', 'code'] },
     },
     required: ['request_id', 'message'],
   };

@@ -2,11 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { type Actor, BaseQuery, Database, NotFound } from '../../platform';
 import { Approval } from '../approval/approval';
 import { Task } from '../task/task';
-import type { ChatRow } from '../task.tables';
+import type { ApprovalRow, ChatRow, TaskRow } from '../task.tables';
 import { Chat } from './chat';
 import type { ChatIdInput } from './chat.input';
 import {
   type ChatApprovalRow,
+  type ChatCardOutputRow,
+  ChatCardView,
   ChatDetailView,
   type ChatListRow,
   ChatListView,
@@ -17,6 +19,7 @@ import {
   ChatTurnView,
   type ChatUpdateLine,
 } from './chat.view';
+import { ChatResult } from './chat-result.policy';
 import { ChatUpdateQuery } from './chat-update.query';
 
 // 대화 읽기 (관리자만). 회차는 작업이라 그 대화의 회차 request_id로 작업을 찾는다.
@@ -83,7 +86,33 @@ export class ChatQuery extends BaseQuery {
       board ?? null,
       await this.news(chat.id),
       await this.team(chat),
+      await this.card(chat),
     );
+  }
+
+  /** 기다리는 결과 카드: 실린 결재 · 결과물, 받을 것의 검사, 그 회차의 검토 (2차 2단계) */
+  private async card(chat: ChatRow): Promise<ChatCardView | null> {
+    const [card] = await this.sql<ApprovalRow[]>`
+      SELECT * FROM task.approvals
+      WHERE action = ${Approval.CARD} AND target_id = ${chat.id} AND status = ${Approval.PENDING}`;
+    if (!card) return null;
+    const actions = await this.sql<ApprovalRow[]>`
+      SELECT * FROM task.approvals
+      WHERE card_id = ${card.id} AND status = ${Approval.PENDING} ORDER BY id`;
+    const outputs = await this.sql<ChatCardOutputRow[]>`
+      SELECT id, name, kind, mime FROM task.outputs
+      WHERE card_id = ${card.id} AND deleted_at IS NULL ORDER BY id`;
+    const [review] = await this.sql<Pick<TaskRow, 'status' | 'result'>[]>`
+      SELECT status, result FROM task.tasks
+      WHERE space_id = ${chat.space_id}
+        AND request_id = ${Chat.reviewRequestId(chat.id, card.target_version)}`;
+    const missing = ChatResult.missing(
+      chat.deliver,
+      actions.map((a) => a.action),
+      outputs.map((o) => o.name),
+    );
+    const said = review?.status === Task.DONE ? ChatResult.textOf(review.result) : '';
+    return new ChatCardView(card, actions, outputs, chat.deliver, missing === null, said || null);
   }
 
   /** 이 대화의 최근 소식 (오래된 것부터) */
@@ -155,7 +184,7 @@ export class ChatQuery extends BaseQuery {
       ORDER BY o.id`;
   }
 
-  /** 회차마다 그 아래(하위 작업 포함)에서 기다리는 결재: 대화 안에서 바로 결정한다 */
+  /** 회차마다 그 아래(하위 작업 포함)에서 기다리는, 결과 카드에 싣지 않는 결재(바로 알리는 동작): 대화 안에서 바로 결정한다 */
   private approvals(roots: readonly string[]): Promise<ChatApprovalRow[]> {
     if (roots.length === 0) return Promise.resolve([]);
     return this.sql<ChatApprovalRow[]>`
@@ -165,6 +194,7 @@ export class ChatQuery extends BaseQuery {
         SELECT c.id, tree.root FROM task.tasks c JOIN tree ON c.parent_id = tree.id)
       SELECT tree.root, a.id FROM tree
       JOIN task.approvals a ON a.task_id = tree.id AND a.status = ${Approval.PENDING}
+        AND a.chat_id IS NULL
       ORDER BY a.id`;
   }
 

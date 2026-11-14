@@ -8,8 +8,8 @@ import {
   type Sql,
   type VersionInput,
 } from '../../platform';
-import type { AgentUsage } from '../agent/agent';
 import { AgentRepository } from '../agent/agent.repository';
+import type { AgentUsage } from '../agent/agent-usage';
 import { GoalRepository } from '../goal/goal.repository';
 import type { Task } from '../task/task';
 import { TaskRepository } from '../task/task.repository';
