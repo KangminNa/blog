@@ -84,7 +84,9 @@
 | 권한 | 도구 | 쓰는 쪽 | 단계 |
 |---|---|---|---|
 | `upload` | `check_session`, `save_session` | AI 도구 | 있음 |
-| `delegate` | `ask_agent { request_id, message, agent?, chat_id? }` → 대화(`id`, `turns`, `deviceId` …), `agent_reply { chat_id, wait_seconds? }` → `{ chatId, answered, consolePath, turn: 회차 \| null }` (회차는 `GET /api/chats/:id`의 `turns[]`와 같은 모양) | AI 도구 (관리자가 기기에 켠 권한. 서버 팀에 메시지를 보내고 답을 기다린다. 새 대화는 `agent`(관리자 바로 아래 에이전트의 이름 · id, 하나뿐이면 생략), 이어 보내기는 `chat_id`(이 기기가 연 대화만, 남의 대화는 `not_found`). 답을 기다리는 중이면 `conflict`. `agent_reply`는 답이 오거나 결재를 기다리게 되면 바로, 아니면 `wait_seconds`(0~25, 기본 20)까지 기다린다. 결재는 콘솔에서만) | 2026-11-14 |
+| `delegate` | `ask_agent { request_id, message, agent?, chat_id?, goal?, project? }` → 대화(`id`, `turns`, `deviceId`, `goal`, `project` …) | AI 도구 (관리자가 기기에 켠 권한. 서버 팀에 맡긴다, 2차 1-1). `agent` 생략 → 공간의 기본 대표 (없으면 `rule_violation` "기본 대표가 없어요" + 고를 수 있는 이름). `goal`(목표 한 줄, 300자) · `project`(git 주소, 서버가 `github.com/<owner>/<repo>` 모양으로 맞춘다)는 새 대화에만. 이어 보내기는 `chat_id`(이 기기가 연 대화만, 남의 대화는 `not_found`). 일하는 중인 대화에 보내면 409가 아니라 **덧붙인 말**이 된다 (회차마다 5개, 넘으면 `rule_violation`): 대표가 팀원을 기다리는 중이면 깨어나 짧게 답하고 다시 기다린다. 기다리지 않는다: 답 · 소식은 `agent_updates`로 받는다. 결재는 콘솔에서만 | 2차 1-1 |
+| `delegate` · `news` | `agent_updates { chat_id?, project?, after?, wait_seconds? }` → `{ news: [{ n, chat_id, kind, text, agent, task_id, created_at }], cursor, board: [{ chat_id, title, goal, project, partner, state, active, turns, updated_at }] }` | AI 도구 · 훅 · 상태 줄 (2차 1-1). `delegate`는 이 기기가 연 대화만, `news`는 공간의 모든 대화 (읽기만). `after`는 지난 답의 `cursor`(없으면 최근 20개부터), `news`는 `n` 오름차순 50개까지, `cursor`는 받은 마지막 `n`(없으면 `after` 그대로, 둘 다 없으면 지금 가장 큰 `n`). `wait_seconds`(0~25, 기본 0): 새 소식이 없으면 그만큼 기다린다. `kind`: `member_done`(팀원 끝남) · `member_failed`(팀원 실패) · `progress`(중간 보고) · `decision`(정한 것) · `assumption`(가정) · `appended`(덧붙인 말) · `final`(최종 답) · `failed`(대표의 회차 실패). `text`는 2,000자까지(최종 답은 앞부분 + 콘솔 주소). `board`는 대화마다 하나(최근 바뀐 순 20개): `state` `working` · `waiting_approval` · `done` · `failed`, `active`는 지금 도는 작업 수(회차 + 하위 작업). `project`로 거른다. 커서가 정수가 아니거나 음수 · 지금 가장 큰 `n`보다 크면 `rule_violation` | 2차 1-1 |
+| `news` | (`agent_updates`만) | 소식 기기 (2차 1-3, `cairn connect`가 만든다). 기기 권한 `news`는 다른 권한과 함께 두지 않는다. 앱은 OAuth 승인 요청에 `scope=news`를 실어 소식 기기를 만들고, 승인 화면은 요청한 권한을 보여 준다 | 2차 1-3 |
 | `run` | `next_jobs`, `report_progress`, `submit_result`, `release_job` | 러너 | 3 |
 | `run` | `begin_upload { task_id, name, size, sha256 }` → `{ upload_path, header, token, expires_at }` | 러너 (결과물 올리기 표) | 결과물 |
 | `run` | `begin_download { task_id, output_id }` → `{ download_path, header, token, expires_at, name, mime, size, sha256 }` | 러너 (만들기 작업의 재료 받기 표. 임대를 쥔 실행, 그 작업의 재료만. 재료가 아니면 forbidden, 휴지통이면 not_found) | 결과물 2차 |
@@ -94,6 +96,7 @@
 | 작업 토큰 | `request_approval` | 에이전트 | 3 |
 | 작업 토큰 | `read_url { url }` → `{ url, title, content_type, truncated, note, text }` | 에이전트 (서버가 대신 연다. 비공개를 볼 수 있는 일은 주인의 지시에 적힌 사이트만, 내부망 · 글이 아닌 형식은 거절. `WebReach` · `WebPageGateway`) | 2026-11-13 |
 | 작업 토큰 | `report_round { summary, done, completed?, remaining?, evidence?, next_plan?, milestone? }` → 보고 한 줄 | 목표 실행의 팀장 (회차 작업만, 회차마다 한 번) | 목표 실행 |
+| 작업 토큰 | `post_update { kind, text }` → `{ n }` | 대화에서 맡은 일(회차 작업)과 그 하위 작업의 에이전트 (2차 1-1). `kind`: `progress` · `decision` · `assumption`, `text` 2,000자. 작업마다 20개(넘으면 `rule_violation`). 대화의 소식이 된다. 대화 밖의 일이면 `rule_violation` | 2차 1-1 |
 | 작업 토큰 | `delegate_task` | 팀장 에이전트 | 조직 |
 | `write` | `blog_get_post`, `blog_save_draft`, `basket_get` | 에이전트 | 5 |
 | `read_*` | `search_sessions`, `get_session` | AI 도구, 에이전트 | 있음 |

@@ -27,6 +27,11 @@ export abstract class Actor {
    * 관리자가 기기 메뉴에서 켠다. 그 기기가 연 대화만 이어 쓰고 읽는다. 결재는 하지 못한다
    */
   static readonly DELEGATE = 'delegate';
+  /**
+   * 기기: 대화의 소식만 읽는다 (MCP agent_updates, 2차 1-3). 내 컴퓨터의 훅 · 상태 줄이 쓰는 소식 기기의 권한이고
+   * 다른 권한과 함께 두지 않는다 (보내기 · 결재 · 읽기 넓히기 없음)
+   */
+  static readonly NEWS = 'news';
   /** 작업 토큰을 가진 에이전트만의 자격 (request_approval). 기기에 줄 수 있는 권한이 아니다 */
   static readonly AGENT = 'agent';
 
