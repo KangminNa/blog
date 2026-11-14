@@ -5,6 +5,85 @@ import type { AgentTeamRow } from './agent.view';
 // 만들기(make) · 코드(code)는 전체 읽기 · 쓰기와 한 에이전트에 두지 않는다 (Agent 규칙).
 export const WORK_TEAMS: readonly AgentTeamRow[] = [
   {
+    key: 'output',
+    title: '결과물 제작 팀',
+    description:
+      '요청 하나로 보고서 · 발표 자료 · 표/차트 · 웹 페이지를 만든다. 결과물 팀장이 내용을 정리해 형식별 제작자에게 나눠 맡기고, 나온 파일을 모아 보고한다',
+    needs: ['code-runner'],
+    members: [
+      {
+        key: 'lead',
+        reports_to: null,
+        name: '결과물 팀장',
+        scopes: [Actor.READ_PUBLIC],
+        approval_actions: [],
+        role: [
+          '결과물 제작 팀의 팀장.',
+          '- 요청을 받으면 무엇을 어떤 형식으로 낼지 정한다: 목차 · 핵심 메시지 · 들어갈 숫자 · 출처.',
+          '- 근거가 모자라면 먼저 자료 정리에게 맡기고, 내용이 서면 형식별 제작자에게 kind: make로 나눠 맡긴다.',
+          '- 제작자는 재료 없이 지시만 받는다: 본문 · 표 데이터 · 출처를 지시에 빠짐없이 적는다.',
+          '- 하위 작업 결과의 결과물(output_id)을 모아 무엇이 나왔는지 정리한다. 목표 실행이면 report_round의 근거에 건다.',
+        ].join('\n'),
+      },
+      {
+        key: 'research',
+        reports_to: 'lead',
+        name: '자료 정리',
+        scopes: [Actor.READ_PUBLIC],
+        approval_actions: [],
+        role: [
+          '결과물 팀의 자료 정리.',
+          '- 결과물에 들어갈 사실 · 수치 · 인용을 웹 검색과 read_url로 찾아 출처 주소와 함께 표로 정리한다.',
+          '- 제작자에게 그대로 넘길 수 있게 항목 · 값 · 단위 · 기준일 · 출처로 쓴다.',
+        ].join('\n'),
+      },
+      {
+        key: 'doc',
+        reports_to: 'lead',
+        name: '문서 제작자',
+        scopes: [Actor.MAKE],
+        approval_actions: [],
+        role: [
+          '결과물 팀의 문서 제작자 (만들기 작업, 코드 러너 칸).',
+          '- 보고서 · 기획서를 .docx(필요하면 .pdf도)로 만든다. 제목 → 요약 → 본문 → 출처 순서, 표는 문서 안의 표로.',
+        ].join('\n'),
+      },
+      {
+        key: 'slides',
+        reports_to: 'lead',
+        name: '슬라이드 제작자',
+        scopes: [Actor.MAKE],
+        approval_actions: [],
+        role: [
+          '결과물 팀의 슬라이드 제작자 (만들기 작업, 코드 러너 칸).',
+          '- 발표 자료를 .pptx로 만든다. 한 장에 한 메시지, 제목은 결론으로. 그림으로 그려 글자가 넘치지 않는지 확인한다.',
+        ].join('\n'),
+      },
+      {
+        key: 'sheet',
+        reports_to: 'lead',
+        name: '표 · 차트 제작자',
+        scopes: [Actor.MAKE],
+        approval_actions: [],
+        role: [
+          '결과물 팀의 표 · 차트 제작자 (만들기 작업, 코드 러너 칸).',
+          '- 지시의 데이터로 .xlsx 표와 차트 그림(.png)을 만든다. 단위 · 기준일 · 출처를 표 아래에 적는다.',
+        ].join('\n'),
+      },
+      {
+        key: 'web',
+        reports_to: 'lead',
+        name: '웹 페이지 제작자',
+        scopes: [Actor.MAKE],
+        approval_actions: [],
+        role: [
+          '결과물 팀의 웹 페이지 제작자 (만들기 작업, 코드 러너 칸).',
+          '- 한 페이지 소개 · 결과 페이지를 index.html 하나(필요한 그림은 옆에)로 만든다. 바깥 스크립트 없이, 휴대폰에서도 보이게.',
+        ].join('\n'),
+      },
+    ],
+  },
+  {
     key: 'data',
     title: '데이터 분석 팀',
     description:

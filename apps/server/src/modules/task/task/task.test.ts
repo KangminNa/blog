@@ -479,7 +479,7 @@ describe('만들기 작업 (결과물 2차)', () => {
     assert.ok(Task.SANDBOXED.includes(Task.MAKE));
     assert.deepEqual(Task.SCOPES.make, ['make']);
     assert.equal(job(make({})).skill, 'cairn-make');
-    assert.ok(!Task.DELEGABLE.includes(Task.MAKE), '주인만 맡긴다');
+    assert.ok(Task.DELEGABLE.includes(Task.MAKE), '팀장도 맡긴다 (재료 없이 지시만)');
   });
 
   test('재료는 만들기 일에만, 모양이 틀리면 만들지 않는다', () => {

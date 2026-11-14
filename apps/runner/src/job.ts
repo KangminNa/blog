@@ -51,6 +51,8 @@ export class SubtaskResult {
     readonly status: string,
     readonly summary: string | null,
     readonly error: string | null,
+    /** 그 작업이 만든 결과물 (이름 · id). 보고(report_round)의 근거로 output_id를 건다 */
+    readonly outputs: readonly string[] = [],
   ) {}
 
   static from(raw: Json): SubtaskResult {
@@ -60,13 +62,15 @@ export class SubtaskResult {
       raw.text('status'),
       raw.optionalText('summary'),
       raw.optionalText('error'),
+      raw.list('outputs').map((o) => `${o.text('name')} (output_id: ${o.text('id')})`),
     );
   }
 
   get line(): string {
     const status = SubtaskResult.STATUS[this.status] ?? this.status;
     const body = this.error ?? this.summary ?? '결과 글 없음';
-    return `## [${status}] ${this.title} (${this.agent || '담당 없음'})\n${body}`;
+    const made = this.outputs.length > 0 ? `\n결과물: ${this.outputs.join(', ')}` : '';
+    return `## [${status}] ${this.title} (${this.agent || '담당 없음'})\n${body}${made}`;
   }
 }
 

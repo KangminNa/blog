@@ -22,6 +22,8 @@ export class DelegateTaskTool extends BaseTool {
     '하위 작업이 모두 끝나면 결과와 함께 이 일이 다시 온다. 결재는 누가 올리든 주인이 한다.',
     'code 일은 code 작업에서만 맡긴다: 하위 작업은 이 작업의 저장소를 물려받고, paths(이 작업의 고칠 수 있는 곳 안)만 정한다.',
     '하위 작업끼리 paths가 겹치면 거절된다 (겹치면 PR이 부딪친다).',
+    'make 일(파일 만들기: 문서 · 슬라이드 · 표 · 웹 페이지)은 재료 없이 지시만 간다: 들어갈 내용(본문 · 숫자 · 출처)을 지시에 빠짐없이 적는다.',
+    '끝난 하위 작업의 결과에는 그 작업이 만든 결과물(outputs: id · 이름)이 실려 온다. 보고(report_round)의 근거로 output_id를 건다.',
   ].join(' ');
   readonly inputSchema = {
     properties: {

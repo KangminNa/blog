@@ -53,7 +53,7 @@ describe('에이전트 팀 템플릿', () => {
     const { teams } = ok(await api.get('/api/agent-teams', owner)) as { teams: Json[] };
     assert.deepEqual(
       teams.map((t) => t.key),
-      ['contest', 'briefing', 'planning', 'data', 'blog', 'code'],
+      ['contest', 'briefing', 'planning', 'output', 'data', 'blog', 'code'],
     );
     const contest = teams[0] as { needs: string[]; members: Json[] };
     assert.deepEqual(contest.needs, ['code-runner']);
@@ -64,14 +64,14 @@ describe('에이전트 팀 템플릿', () => {
         ['대회 리서처', 'lead'],
         ['대회 분석가', 'lead'],
         ['대회 검토자', 'lead'],
-        ['대회 제작자', null],
+        ['대회 제작자', 'lead'],
       ],
     );
     for (const team of teams)
       for (const m of team.members as Json[]) assert.ok(String(m.role).length > 20, String(m.name));
   });
 
-  test('대회 팀: 한 번에 다섯, 팀장 아래 셋 · 제작자는 관리자 아래. 같은 requestId는 처음 만든 팀', async () => {
+  test('대회 팀: 한 번에 다섯, 모두 팀장 아래 (제작자도: 만들기를 위임받는다). 같은 requestId는 처음 만든 팀', async () => {
     const requestId = randomUUID();
     const first = ok(
       await api.request('POST', '/api/agent-teams', owner, { requestId, team: 'contest' }),
@@ -80,9 +80,9 @@ describe('에이전트 팀 템플릿', () => {
     assert.equal(first.length, 5);
     const lead = first[0] as Json;
     assert.deepEqual([lead.name, lead.reportsTo, lead.tool], ['대회 팀장', null, 'claude']);
-    for (const m of first.slice(1, 4)) assert.equal(m.reportsTo, lead.id, String(m.name));
+    for (const m of first.slice(1)) assert.equal(m.reportsTo, lead.id, String(m.name));
     const maker = first[4] as Json;
-    assert.deepEqual([maker.name, maker.reportsTo, maker.scopes], ['대회 제작자', null, ['make']]);
+    assert.deepEqual([maker.name, maker.scopes], ['대회 제작자', ['make']]);
     assert.deepEqual(lead.scopes, ['read_public'], '조사하는 에이전트는 공개 읽기만');
 
     const count = async () =>

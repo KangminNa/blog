@@ -84,12 +84,14 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   /**
    * 위임할 수 있는 일의 종류. 받는 에이전트의 권한으로 할 수 있어야 한다 (SCOPES).
    * code는 code 작업에서만: 하위 작업은 위 작업의 저장소를 물려받고 경로만 좁힌다 (CodeScope)
+   * make는 재료 없이 지시만 (2026-11-14): 주인이 고른 재료(파일 · 위키)는 물려주지 않는다 (payload.make 없음)
    */
   static readonly DELEGABLE: readonly string[] = [
     Task.GENERAL,
     'draft_post',
     'tidy_session',
     Task.CODE,
+    Task.MAKE,
   ];
   /** 위임 한도: 깊이(주인이 맡긴 작업이 0), 작업 하나가 위임하는 횟수, 한 번에, 작업 하나에 */
   static readonly DEPTH_MAX = 3;
@@ -113,7 +115,6 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   /** 실패 이벤트에 싣는 이유의 길이 (알림 본문) */
   private static readonly EVENT_ERROR_MAX = 300;
   /** 깨어난 위 작업에게 보내는 하위 작업 결과의 길이 */
-  private static readonly SUMMARY_MAX = 2000;
   private static readonly SKILLS: Readonly<Record<string, string>> = {
     draft_post: 'cairn-write',
     tidy_session: 'cairn-tidy',
@@ -703,7 +704,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   /** 하위 작업 하나의 결과. 러너는 결과를 { text }로 낸다 */
   private resultView(agentName: string | null): JobSubtaskResultView {
     const text = this.result?.text;
-    const summary = typeof text === 'string' ? text.slice(0, Task.SUMMARY_MAX) : null;
+    const summary = typeof text === 'string' ? text : null;
     return new JobSubtaskResultView(this.row, agentName, summary, this.failure);
   }
 

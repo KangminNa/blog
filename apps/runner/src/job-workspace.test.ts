@@ -208,7 +208,14 @@ describe('지시문', () => {
         },
       ],
       subtask_results: [
-        { title: '초안', agent: '글쓰기 팀원', status: 'done', summary: '썼어요', error: null },
+        {
+          title: '초안',
+          agent: '글쓰기 팀원',
+          status: 'done',
+          summary: '썼어요',
+          error: null,
+          outputs: [{ id: 'o1', name: '발표.pptx', kind: 'slides' }],
+        },
         {
           title: '정리',
           agent: '정리 팀원',
@@ -228,7 +235,9 @@ describe('지시문', () => {
     assert.equal(prompt.includes('둘째 줄'), false);
     assert.ok(prompt.includes('delegate_task'));
     assert.ok(prompt.includes('남은 위임 횟수: 2'));
-    assert.ok(prompt.includes('## [완료] 초안 (글쓰기 팀원)\n썼어요'));
+    assert.ok(
+      prompt.includes('## [완료] 초안 (글쓰기 팀원)\n썼어요\n결과물: 발표.pptx (output_id: o1)'),
+    );
     assert.ok(prompt.includes('## [실패] 정리 (정리 팀원)\n세션이 없어요'));
   });
 

@@ -1,7 +1,7 @@
 import type { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
 import {
-  type Actor,
+  Actor,
   BaseQuery,
   BlobStore,
   Database,
@@ -10,6 +10,7 @@ import {
   SecretBox,
 } from '../../platform';
 import { TaskQuery } from '../task/task.query';
+import type { SubtaskOutputRow } from '../task/task.view';
 import { outputs } from '../task.schema';
 import type { OutputRow } from '../task.tables';
 import { DownloadTicket } from './download-ticket';
@@ -98,6 +99,26 @@ export class OutputQuery extends BaseQuery {
   }
 
   /** 넘긴 id 중 이 공간에 있고 휴지통에 없는 결과물 (만들기 작업을 맡길 때 재료를 확인한다) */
+  /**
+   * 작업마다 만든 결과물 (휴지통 것은 빼고, 만든 순서). 하위 작업이 끝나 깨어난 위 작업에게 실어 보낸다:
+   * 러너는 결과물을 다 올린 뒤에 작업을 끝내서, 깨어날 때는 늘 다 있다
+   */
+  async madeBy(
+    actor: Actor,
+    taskIds: readonly string[],
+  ): Promise<ReadonlyMap<string, readonly SubtaskOutputRow[]>> {
+    actor.assertCan(Actor.RUN);
+    const made = new Map<string, SubtaskOutputRow[]>();
+    if (taskIds.length === 0) return made;
+    const rows = await this.sql<SubtaskOutputRow[]>`
+      SELECT id, task_id, name, kind FROM task.outputs
+      WHERE task_id = ANY(${taskIds as string[]}::uuid[]) AND deleted_at IS NULL
+      ORDER BY id`;
+    for (const row of rows)
+      made.set(String(row.task_id), [...(made.get(String(row.task_id)) ?? []), row]);
+    return made;
+  }
+
   async liveIds(actor: Actor, spaceId: string, ids: readonly string[]): Promise<string[]> {
     actor.assertOwnerOrSystem();
     const rows = await this.sql<Pick<OutputRow, 'id'>[]>`

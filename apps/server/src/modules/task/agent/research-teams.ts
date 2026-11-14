@@ -8,7 +8,7 @@ export const RESEARCH_TEAMS: readonly AgentTeamRow[] = [
     key: 'contest',
     title: '대회 조사 · 분석 팀',
     description:
-      '주제 · 링크 · 파일을 받아 조사하고 분석해, 결재를 받으며 결과물까지. "목표 달성까지 맡기기"의 팀장으로 대회 팀장을 고른다. 파일 분석 · 결과물은 대회 제작자(홈의 파일 붙이기)',
+      '주제 · 링크 · 파일을 받아 조사하고 분석해, 결재를 받으며 결과물(문서 · 슬라이드 · 페이지)까지. "목표 달성까지 맡기기"의 팀장으로 대회 팀장을 고른다. 올린 파일 분석은 홈의 파일 붙이기로 대회 제작자에게',
     needs: ['code-runner'],
     members: [
       {
@@ -20,6 +20,8 @@ export const RESEARCH_TEAMS: readonly AgentTeamRow[] = [
         role: [
           '대회 조사 · 분석 팀의 팀장.',
           '- 주제 · 링크 · 완료 조건을 읽고 할 일을 조사 · 분석 · 검토로 나눠 delegate_task로 바로 아래 팀(대회 리서처 · 대회 분석가 · 대회 검토자)에게 맡긴다. 한 번에 2~4개, 서로 겹치지 않게.',
+          '- 내용이 정리되면 대회 제작자에게 kind: make로 결과물(문서 · 슬라이드 · 웹 페이지)을 맡긴다. 제작자는 재료 없이 지시만 받으니 들어갈 내용 · 숫자 · 출처를 지시에 다 적는다.',
+          '- 하위 작업 결과의 결과물(output_id)은 report_round의 근거에 건다.',
           '- 결과가 모이면 결론 → 근거(출처 주소) → 남은 일 순서로 정리한다. 근거 없는 주장은 쓰지 않는다.',
           '- 목표 실행의 회차 작업이면 끝내기 전에 report_round로 보고한다. 완료 조건을 모두 채웠을 때만 done: true.',
           '- 링크는 read_url로 직접 확인한다. 발행 · 전송 · 삭제는 하지 않는다.',
@@ -69,13 +71,13 @@ export const RESEARCH_TEAMS: readonly AgentTeamRow[] = [
       },
       {
         key: 'maker',
-        reports_to: null,
+        reports_to: 'lead',
         name: '대회 제작자',
         scopes: [Actor.MAKE],
         approval_actions: [],
         role: [
           '대회 팀의 제작자 (만들기 작업, 코드 러너 칸에서 돈다).',
-          '- 관리자가 붙인 파일(엑셀 · CSV · PDF · 문서)을 열어 분석하고 결과를 문서 · 표 · 슬라이드 · 웹 페이지로 만든다.',
+          '- 대회 팀장이 맡긴 일은 지시에 적힌 내용으로, 관리자가 붙인 파일(엑셀 · CSV · PDF · 문서)은 열어 분석해서 문서 · 표 · 슬라이드 · 웹 페이지로 만든다.',
           '- 표와 숫자는 원본 파일에서 계산하고 계산 방법을 결과물에 짧게 남긴다. 재료에 없는 숫자는 만들지 않는다.',
           '- 발표용이면 한 장에 한 메시지, 제목은 결론으로. 출처와 데이터 기준일을 마지막에 적는다.',
         ].join('\n'),
@@ -132,7 +134,7 @@ export const RESEARCH_TEAMS: readonly AgentTeamRow[] = [
     key: 'planning',
     title: '서비스 기획 · 아이디어 팀',
     description:
-      '해커톤 · 아이디어톤용: 문제 → 사용자 → 아이디어 → 반론 → 한 장 기획, 발표 자료는 발표 자료 제작자',
+      '해커톤 · 아이디어톤용: 문제 → 사용자 → 아이디어 → 반론 → 한 장 기획 → 발표 자료(팀장이 발표 자료 제작자에게 맡긴다)',
     needs: ['code-runner'],
     members: [
       {
@@ -145,6 +147,7 @@ export const RESEARCH_TEAMS: readonly AgentTeamRow[] = [
           '서비스 기획 팀의 팀장.',
           '- 주제를 사용자 조사 · 아이디어 · 반론으로 나눠 delegate_task로 바로 아래 팀에게 맡긴다.',
           '- 결과를 한 장 기획으로 묶는다: 문제 · 대상 사용자 · 해결 · 차별점 · 만들 범위(MVP) · 성공 지표.',
+          '- 기획이 서면 발표 자료 제작자에게 kind: make로 슬라이드를 맡긴다 (기획 내용을 지시에 다 적는다).',
           '- 목표 실행의 회차 작업이면 끝내기 전에 report_round로 보고한다.',
         ].join('\n'),
       },
@@ -186,7 +189,7 @@ export const RESEARCH_TEAMS: readonly AgentTeamRow[] = [
       },
       {
         key: 'deck',
-        reports_to: null,
+        reports_to: 'lead',
         name: '발표 자료 제작자',
         scopes: [Actor.MAKE],
         approval_actions: [],

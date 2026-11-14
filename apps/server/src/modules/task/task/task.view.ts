@@ -7,6 +7,9 @@ import type {
   TaskRunRow,
 } from '../task.tables';
 
+/** 하위 작업이 만든 결과물 한 줄 (깨어난 위 작업에게 보인다) */
+export type SubtaskOutputRow = Pick<OutputRow, 'id' | 'task_id' | 'name' | 'kind'>;
+
 // 작업의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
 // 표의 칸 중 무엇을 내보내는지는 여기 한 곳에만 적는다.
 
@@ -197,14 +200,21 @@ export class JobTeamMemberView {
 
 /** next_jobs의 하위 작업 결과 하나. 깨어난 위 작업이 결과를 모을 때 */
 export class JobSubtaskResultView {
+  /** 위 작업에게 보이는 결과 글의 길이 */
+  private static readonly SUMMARY_MAX = 2000;
+
   constructor(
     private readonly row: Readonly<TaskRow>,
     /** 맡은 에이전트의 이름 */
     private readonly agent: string | null,
-    /** 러너가 낸 결과 글의 앞부분 */
+    /** 러너가 낸 결과 글 (앞부분만 내보낸다) */
     private readonly summary: string | null,
     private readonly error: string | null,
   ) {}
+
+  get taskId(): string {
+    return this.row.id;
+  }
 
   toJSON() {
     const r = this.row;
@@ -213,7 +223,7 @@ export class JobSubtaskResultView {
       title: r.title,
       agent: this.agent,
       status: r.status,
-      summary: this.summary,
+      summary: this.summary?.slice(0, JobSubtaskResultView.SUMMARY_MAX) ?? null,
       error: this.error,
     };
   }
@@ -266,6 +276,14 @@ export class JobView {
     private readonly skillPackage: JobSkillView | null = null,
   ) {}
 
+  /** 하위 작업마다 만든 결과물 (작업 id → 결과물). 깨어난 위 작업이 결재문의 근거(output_id)로 건다 */
+  private made: ReadonlyMap<string, readonly SubtaskOutputRow[]> = new Map();
+
+  withOutputs(made: ReadonlyMap<string, readonly SubtaskOutputRow[]>): this {
+    this.made = made;
+    return this;
+  }
+
   toJSON() {
     const r = this.row;
     const a = this.agent;
@@ -286,7 +304,14 @@ export class JobView {
       run_token: this.runToken,
       goal_chain: this.goalChain.map((title) => ({ title })),
       team: this.team.map((m) => m.toJSON()),
-      subtask_results: this.subtaskResults.map((s) => s.toJSON()),
+      subtask_results: this.subtaskResults.map((s) => ({
+        ...s.toJSON(),
+        outputs: (this.made.get(s.taskId) ?? []).map((o) => ({
+          id: o.id,
+          name: o.name,
+          kind: o.kind,
+        })),
+      })),
       rounds_left: this.roundsLeft,
     };
   }

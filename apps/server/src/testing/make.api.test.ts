@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { ServerRunnerPolicy } from '../modules/account';
+import { OutboxWorker } from '../modules/platform';
 import { ApiClient, type TestUser } from './api-client';
 
 // 만들기 작업 (결과물 2차): 주인이 고른 재료(결과물 · 위키)로 맡기고, 칸 러너가 재료 파일을 표로 받고,
@@ -319,5 +320,93 @@ describe('칸 러너가 재료를 받고 AI가 고른 위키만 읽는다', () =
     assert.equal(denied.ok, false);
     const search = await mcp(token, 'search_wikis', { query: '위키' });
     assert.equal(search.ok, false);
+  });
+});
+
+describe('만들기 위임 (결과물 팀)', () => {
+  test('팀장이 바로 아래 make 팀원에게 만들기를 맡긴다: 재료 없이 지시만, 칸이 빌리고, 끝나면 결과물이 팀장에게 간다', async () => {
+    const worker = api.service(OutboxWorker);
+    const member = async (name: string, scopes: string[], reportsTo: unknown = null) =>
+      ok(
+        await api.request('POST', '/api/agents', owner, {
+          requestId: randomUUID(),
+          name,
+          tool: 'claude',
+          scopes,
+          reportsTo,
+        }),
+        201,
+      );
+    const lead = await member('결과물 팀장', ['read_public']);
+    const slides = await member('슬라이드 제작자', ['make'], lead.id);
+    const reader = await member('자료 정리', ['read_public'], lead.id);
+    const parent = ok(
+      await api.request('POST', '/api/tasks', owner, {
+        requestId: randomUUID(),
+        agentId: lead.id,
+        instruction: `발표 자료 만들기 ${randomUUID()}`,
+      }),
+      201,
+    );
+    const job = await lease(runner, String(parent.id));
+    assert.ok(job);
+    const team = job.team as Json[];
+    assert.ok(
+      ((team.find((m) => m.agent_id === slides.id)?.kinds ?? []) as string[]).includes('make'),
+      'make 팀원에게 맡길 수 있는 일로 보인다',
+    );
+    const order = (to: unknown, requestId: string) => ({
+      subtasks: [
+        {
+          request_id: requestId,
+          to_agent_id: to,
+          title: '발표 슬라이드',
+          instruction: '세 장: 문제 · 해결 · 숫자',
+          kind: 'make',
+        },
+      ],
+    });
+    const refused = await mcp(String(job.run_token), 'delegate_task', order(reader.id, 'r1'));
+    assert.equal(refused.ok, false, 'make 권한이 없는 팀원에게는 못 맡긴다');
+    const sent = await mcp(String(job.run_token), 'delegate_task', order(slides.id, 'r2'));
+    assert.ok(sent.ok, JSON.stringify(sent.body));
+    const subId = String(((sent.body.subtasks as Json[])[0] as Json).task_id);
+    const sub = ok(await api.get(`/api/tasks/${subId}`, owner));
+    assert.deepEqual([sub.kind, (sub.payload as Json).make], ['make', undefined], '재료 없이');
+
+    assert.equal(await lease(runner, subId), null, '칸이 아닌 러너는 빌리지 못한다');
+    assert.ok(await lease(slot, subId), '칸이 빌린다');
+    const bytes = Buffer.from('# 문제\n# 해결\n# 숫자\n');
+    const ticket = await mcp(slot, 'begin_upload', {
+      task_id: subId,
+      name: '발표 개요.md',
+      size: bytes.length,
+      sha256: sha(bytes),
+    });
+    assert.ok(ticket.ok, JSON.stringify(ticket.body));
+    const put = await fetch(`${api.baseUrl}${ticket.body.upload_path}`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/octet-stream',
+        'x-cairn-upload': String(ticket.body.token),
+      },
+      body: bytes,
+    });
+    assert.equal(put.status, 200, await put.clone().text());
+    const output = (await put.json()) as Json;
+    const done = await mcp(slot, 'submit_result', {
+      task_id: subId,
+      request_id: randomUUID(),
+      status: 'done',
+      result: { text: '세 장 개요를 만들었어요' },
+    });
+    assert.ok(done.ok, JSON.stringify(done.body));
+    for (let i = 0; i < 100 && (await worker.tick()) > 0; i++);
+
+    const back = await lease(runner, String(parent.id));
+    assert.ok(back, '하위 작업이 끝나 팀장이 깨어난다');
+    const result = (back.subtask_results as Json[])[0] as Json;
+    assert.equal(result.summary, '세 장 개요를 만들었어요');
+    assert.deepEqual(result.outputs, [{ id: output.id, name: '발표 개요.md', kind: output.kind }]);
   });
 });

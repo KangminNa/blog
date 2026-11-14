@@ -91,7 +91,9 @@ export class TaskService extends BaseService {
       const accepting = await this.transaction((tx) =>
         new RunnerRepository(tx).seen(spaceId, runnerId, new Date()),
       );
-      const jobs = accepting ? await this.lease(spaceId, runnerId, actor.inSandbox(), req) : [];
+      const jobs = accepting
+        ? await this.lease(actor, spaceId, runnerId, actor.inSandbox(), req)
+        : [];
       const left = deadline - Date.now();
       if (jobs.length > 0 || left <= 0 || this.changes.closed) return jobs;
       await this.changes.wait(
@@ -282,6 +284,7 @@ export class TaskService extends BaseService {
   }
 
   private lease(
+    actor: Actor,
     spaceId: string,
     runnerId: string,
     sandbox: boolean,
@@ -307,6 +310,7 @@ export class TaskService extends BaseService {
       const ready = usage
         .filter((u) => u.ready && (workTools === null || workTools.includes(u.agent.tool)))
         .map((u) => u.agent);
+      const org = usage.map((u) => u.agent);
       const jobs: JobView[] = [];
       // 칸: 공간을 잠그고(두 칸이 동시에 겹치는 일을 받지 않게) 저장소를 쥔 code 작업과 겹치는 일은 건너뛴다.
       // 건너뛸 수 있으니 후보를 넉넉히 잠근다
@@ -342,22 +346,17 @@ export class TaskService extends BaseService {
         const cli = tool === null ? null : (req.cliVersions.get(tool) ?? null);
         task.recordRun(runnerId, new RunRecord(agent ?? null, skill, req.runnerBuild, cli), now);
         await tasks.save(task);
-        jobs.push(
-          await this.jobOf(
-            tx,
-            task,
-            agent,
-            usage.map((u) => u.agent),
-            skill,
-          ),
-        );
+        jobs.push(await this.jobOf(actor, tx, task, agent, org, skill));
       }
       return jobs;
     });
   }
 
-  /** 빌려 준 일 하나. 목표 사슬, 바로 아래 팀, 깨어난 일이면 하위 작업의 결과, 스킬의 지금 판을 함께 싣는다 */
+  /**
+   * 빌려 준 일 하나. 목표 사슬, 바로 아래 팀, 깨어난 일이면 하위 작업의 결과와 그 결과물, 스킬의 지금 판을 함께 싣는다
+   */
   private async jobOf(
+    actor: Actor,
     tx: Sql,
     task: Task,
     agent: Agent | null,
@@ -366,7 +365,10 @@ export class TaskService extends BaseService {
   ): Promise<JobView> {
     const goals = task.goalId === null ? [] : await new GoalRepository(tx).chain(task.goalId);
     const children = await new TaskRepository(tx).children(task.id);
-    return task.jobView(agent, this.box, goals, org, children, skill?.jobView() ?? null);
+    const ids = children.map((c) => c.id);
+    const made = await this.outputs.madeBy(actor, ids);
+    const view = task.jobView(agent, this.box, goals, org, children, skill?.jobView() ?? null);
+    return view.withOutputs(made);
   }
 
   /** 스킬의 지금 판: 주인이 콘솔에서 고친 판이 있으면 그것, 없으면 서버 이미지의 저장소 판 (러너는 이것으로 깐다) */
