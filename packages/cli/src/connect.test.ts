@@ -10,7 +10,7 @@ import { CairnSite, type SiteAddress } from './cairn-site';
 import { ClaudeCode } from './claude-code';
 import { Codex } from './codex';
 import { ConnectCommand } from './connect.command';
-import { NewsLogin } from './news-login';
+import { DeviceLogin } from './device-login';
 import { NewsSetup } from './news-setup';
 import { Shell, ShellResult } from './shell';
 import { SkillMarker, SkillPackage } from './skill';
@@ -345,19 +345,19 @@ describe('cairn connect · 소식 단계 (Claude Code)', () => {
     }
   }
   const fakeNews = (terminal: FakeTerminal) =>
-    new FakeNews(terminal, join(home, 'settings.json'), new NewsLogin(terminal, shell));
+    new FakeNews(terminal, join(home, 'settings.json'), new DeviceLogin(terminal, shell));
 
   test('연결을 확인한 뒤 소식 기기 · 훅 · 상태 줄을 건다. 사람이 없으면 기기 없이', async () => {
     const terminal = new FakeTerminal();
     const news = fakeNews(terminal);
-    await new ConnectCommand(terminal, claude(), [skill], null, news).run(origin);
+    await new ConnectCommand(terminal, claude(), [skill], null, [news]).run(origin);
     assert.deepEqual(news.runs, [['https://blog.example.com', true]]);
 
     shell = new FakeClaude();
     const pipe = new FakeTerminal();
     pipe.tty = false;
     const quiet = fakeNews(pipe);
-    await new ConnectCommand(pipe, claude(), [skill], null, quiet).run(origin);
+    await new ConnectCommand(pipe, claude(), [skill], null, [quiet]).run(origin);
     assert.deepEqual(quiet.runs, [['https://blog.example.com', false]]);
   });
 

@@ -14,7 +14,7 @@ export const SECRET_RULES = [
   ['Anthropic API 키', /\bsk-ant-[A-Za-z0-9_-]{20,}/g],
   ['OpenAI API 키', /\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}/g],
   ['Google API 키', /\bAIza[0-9A-Za-z_-]{35}\b/g],
-  ['Cairn 토큰', /\bcairn_(?:at|rt|dt)_[A-Za-z0-9_-]{20,}/g],
+  ['Cairn 토큰', /\bcairn_(?:at|rt|dt|run)_[A-Za-z0-9_-]{20,}/g],
   ['JWT', /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g],
   [
     '비밀번호·키 값',

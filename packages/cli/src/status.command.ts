@@ -1,16 +1,17 @@
 import { join } from 'node:path';
 import { AiTool } from './ai-tool';
-import type { NewsSetup } from './news-setup';
+import type { DeviceSetup } from './device-setup';
 import { SkillFolder, type SkillPackage } from './skill';
 import type { Terminal } from './terminal';
 
-// cairn status: 넣은 스킬의 버전과 올릴 곳·검토자·교차 검토, AI 도구에 등록된 cairn 서버와 상태, 소식 기기 · 훅 · 상태 줄.
+// cairn status: 넣은 스킬의 버전과 올릴 곳·검토자·교차 검토, AI 도구에 등록된 cairn 서버와 상태,
+// 소식 기기 · 훅 · 상태 줄, 세션 저장 기기 · 훅 · 마지막 저장 · 못 올린 세션.
 export class StatusCommand {
   constructor(
     private readonly terminal: Terminal,
     private readonly tool: AiTool,
     private readonly skills: readonly SkillPackage[],
-    private readonly news: NewsSetup | null = null,
+    private readonly devices: readonly DeviceSetup[] = [],
   ) {}
 
   async run(): Promise<void> {
@@ -43,6 +44,6 @@ export class StatusCommand {
         : `  MCP 서버 ${AiTool.SERVER}: 등록 안 됨`,
     );
     if (server && !server.connected) t.say(`  로그인: ${await this.tool.loginCommand()}`);
-    for (const line of this.news?.state().lines ?? []) t.say(line);
+    for (const device of this.devices) for (const line of device.state().lines) t.say(line);
   }
 }

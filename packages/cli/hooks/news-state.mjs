@@ -1,4 +1,5 @@
 // 소식의 자리: 지금 폴더의 프로젝트(git 주소), 프로젝트마다 어디까지 보였는지(커서), 상태 줄의 캐시.
+// 프로젝트(projectOf · remoteOf)는 세션 저장(cairn-collect.mjs)도 함께 쓴다.
 //
 //   ~/.cairn/news/<열쇠>.json         { site, project, cursor }   훅이 보인 마지막 소식의 n
 //   ~/.cairn/news/<열쇠>.status.json  { at, line }                상태 줄이 마지막으로 그린 줄 (20초 동안 다시 쓴다)
@@ -7,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { cairnHome, replaceFile } from './news-access.mjs';
+import { cairnHome, replaceFile } from './device-access.mjs';
 
 const GIT_MS = 500;
 /** 서버가 저장하고 거르는 프로젝트 모양 (ask_agent의 project와 같은 규칙) */

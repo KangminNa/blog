@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { AiTool } from './ai-tool';
 import { CairnSite, type SiteAddress } from './cairn-site';
-import type { NewsSetup } from './news-setup';
+import type { DeviceSetup } from './device-setup';
 import { SkillFolder, SkillMarker, type SkillPackage } from './skill';
 import { CliError, type Terminal } from './terminal';
 
@@ -10,7 +10,7 @@ import { CliError, type Terminal } from './terminal';
 export const REVIEWERS = ['claude', 'codex', 'gemini'] as const;
 
 // cairn connect <블로그 주소>: 블로그 확인 → AI 도구 찾기 → 스킬·검토자 넣기(이제 없는 스킬은 지우기) → MCP 등록 → 로그인 → 연결 확인
-// → (Claude Code) 소식 기기 · 훅 · 상태 줄 (NewsSetup).
+// → (Claude Code) 소식 기기 · 훅 · 상태 줄 (NewsSetup), 세션 저장 기기 · 훅 (CollectSetup).
 // 이미 된 단계는 건너뛰므로 여러 번 불러도 된다 (스킬을 새 버전으로 바꿀 때도 이것을 다시 부른다).
 export class ConnectCommand {
   constructor(
@@ -19,8 +19,8 @@ export class ConnectCommand {
     private readonly skills: readonly SkillPackage[],
     /** 교차 검토 명령줄 (--review-with). null이면 지난번 값을 그대로 둔다 */
     private readonly reviewWith: string | null = null,
-    /** 소식 단계 (훅을 걸 수 있는 도구만). null이면 건너뛴다 */
-    private readonly news: NewsSetup | null = null,
+    /** 기기 단계들 (훅을 걸 수 있는 도구만: 소식 · 세션 저장). 없으면 건너뛴다 */
+    private readonly devices: readonly DeviceSetup[] = [],
   ) {}
 
   async run(input: string): Promise<void> {
@@ -67,7 +67,7 @@ export class ConnectCommand {
         t.say(
           `또는 ${this.tool.label}에서 /mcp → ${AiTool.SERVER} → 로그인. 끝나면 cairn status로 확인해요`,
         );
-        await this.news?.run(at, false);
+        for (const device of this.devices) await device.run(at, false);
         return;
       }
       t.say(
@@ -87,7 +87,7 @@ export class ConnectCommand {
         );
       t.done('연결됨');
     } else t.done(`로그인 끝 · ${this.tool.label}에서 /mcp로 cairn이 연결됐는지 한 번 봐 주세요`);
-    await this.news?.run(at, t.interactive);
+    for (const device of this.devices) await device.run(at, t.interactive);
     t.say();
     t.say(`작업을 마치면 ${this.tool.label}에서 "이 세션 저장해" 또는 /cairn-save`);
   }
