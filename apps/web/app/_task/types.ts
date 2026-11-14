@@ -16,6 +16,7 @@ import type {
   GoalRunDetailView,
   GoalRunListView,
 } from '../../../server/src/modules/task/goal-run/goal-run.view';
+import type { HomeView } from '../../../server/src/modules/task/home/home.view';
 import type {
   OutputPageView,
   OutputSavedView,
@@ -89,3 +90,6 @@ export type ChatDetail = ReturnType<ChatDetailView['toJSON']>;
 /** 대화 하나의 머리 (만들기 · 보내기의 응답도 이 모양) */
 export type Chat = ChatDetail['chat'];
 export type ChatTurn = ChatDetail['turns'][number];
+/** 홈 (2차 1-1): 팀 · 대화의 상태판 · 최근 결과물 · 기다리는 결재 수 */
+export type Home = ReturnType<HomeView['toJSON']>;
+export type HomeChat = Home['chats'][number];

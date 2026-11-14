@@ -12,6 +12,7 @@ import type {
   GoalList,
   GoalRunDetail,
   GoalRunList,
+  Home,
   Runner,
   RunnerList,
   ScheduleList,
@@ -29,14 +30,28 @@ export const APPROVAL_TOPICS = ['task.approval.*'];
 export const GOAL_RUN_TOPICS = ['task.goal_run.changed'];
 /** 대화 목록: 보내면(task.chat.changed) · 회차 작업이 바뀌면 다시 읽는다 */
 export const CHAT_TOPICS = ['task.chat.changed', 'task.task.changed'];
-/** 대화 하나: 진행 기록(생각 중… 줄)과 결재까지 따라간다 */
-export const CHAT_DETAIL_TOPICS = [...CHAT_TOPICS, 'task.event.added', 'task.approval.*'];
+/** 대화의 소식이 쌓임 (변경 신호, agent_updates와 같은 것) */
+const CHAT_NEWS_TOPICS = ['task.chat.updated'];
+/** 대화 하나: 진행 기록(생각 중… 줄) · 소식 · 결재까지 따라간다 */
+export const CHAT_DETAIL_TOPICS = [
+  ...CHAT_TOPICS,
+  ...CHAT_NEWS_TOPICS,
+  'task.event.added',
+  'task.approval.*',
+];
+/** 홈: 대화 · 소식 · 결재 · 에이전트가 바뀌면 다시 읽는다 */
+const HOME_TOPICS = [...CHAT_TOPICS, ...CHAT_NEWS_TOPICS, 'task.approval.*', 'task.agent.changed'];
 /** 실행 기록이 쌓이면 사용량이 바뀐다 */
 export const AGENT_TOPICS = ['task.agent.changed', 'task.event.added'];
 /** 구독 사용률이 오거나 실행 기록이 쌓이면 사용량이 바뀐다 */
 export const USAGE_TOPICS = ['task.usage.changed', 'task.event.added'];
 /** 시간이 지나 창이 끝나는 일에는 신호가 없다. 쉬던 에이전트가 돌아온 것이 보이게 이 간격으로도 읽는다 */
 const USAGE_REREAD_MS = 60_000;
+
+/** 홈 (2차 1-1) */
+export function useHome() {
+  return useLiveValue('home', () => api<Home>('GET', '/api/home'), HOME_TOPICS);
+}
 
 export function useAgents() {
   return useLiveValue('agents', () => api<AgentList>('GET', '/api/agents'), AGENT_TOPICS);

@@ -6,17 +6,19 @@ import { useRef, useState } from 'react';
 import { api } from '../../_lib/client-api';
 import { useAction } from '../../_lib/use-action';
 import { useLiveValue } from '../../_lib/use-live';
+import { type ChatStart, ChatStartForm } from '../../_task/ChatStartForm';
 import { when } from '../../_task/labels';
 import { CHAT_TOPICS, useAgents } from '../../_task/live';
 import type { Chat, ChatList, ChatSummary } from '../../_task/types';
-import { ChatForm } from './ChatForm';
 import { ChatThreadPanel } from './ChatThreadPanel';
 
-/** 답을 기다리는 회차의 상태 */
+/** 일하는 중인 회차의 상태 */
 const WAITING = ['queued', 'running', 'waiting'];
+/** 프로젝트가 없는 대화의 묶음 이름 */
+const NO_PROJECT = '프로젝트 없음';
 
-// 대화: 왼쪽은 대화 목록(최근에 보낸 것부터), 오른쪽은 고른 대화 또는 새 대화.
-// 상대는 관리자 바로 아래 에이전트만 (팀원과는 그 팀장을 거쳐 이야기한다). 막는 것은 서버.
+// 대화: 왼쪽은 프로젝트별 대화 목록(최근에 보낸 것부터), 오른쪽은 고른 대화 또는 새 대화.
+// 상대는 관리자 바로 아래 에이전트만 (팀원과는 그 팀장을 거쳐 이야기한다), 비우면 기본 대표. 막는 것은 서버.
 export function ChatPanel({ chatId }: { chatId: string | null }) {
   const list = useLiveValue('chats', () => api<ChatList>('GET', '/api/chats'), CHAT_TOPICS);
   const agents = useAgents();
@@ -33,7 +35,10 @@ export function ChatPanel({ chatId }: { chatId: string | null }) {
     (a) => a.reportsTo === null && a.status !== 'paused',
   );
 
-  async function start(body: { message: string; agentId?: string }) {
+  const projects = [...new Set((chats ?? []).flatMap((c) => (c.project ? [c.project] : [])))];
+  const groups = groupOf(chats ?? []);
+
+  async function start(body: ChatStart) {
     const reply = await action.run(
       'start',
       () => api<Chat>('POST', '/api/chats', { requestId: requestId.current, ...body }),
@@ -58,17 +63,22 @@ export function ChatPanel({ chatId }: { chatId: string | null }) {
           ) : chats.length === 0 ? (
             <p className="rows-empty">대화 없음</p>
           ) : (
-            <ul className="list" aria-label="대화 목록">
-              {chats.map((c) => (
-                <li key={c.id}>
-                  <ChatItem
-                    chat={c}
-                    on={!writing && c.id === chatId}
-                    onPick={() => setFresh(false)}
-                  />
-                </li>
-              ))}
-            </ul>
+            groups.map(([project, rows]) => (
+              <section key={project} className="chat-group" aria-label={project}>
+                <h3 className="label-mono">{project}</h3>
+                <ul className="list">
+                  {rows.map((c) => (
+                    <li key={c.id}>
+                      <ChatItem
+                        chat={c}
+                        on={!writing && c.id === chatId}
+                        onPick={() => setFresh(false)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))
           )}
         </div>
         <div className="split-detail">
@@ -86,11 +96,11 @@ export function ChatPanel({ chatId }: { chatId: string | null }) {
                   <Link href="/admin/agents">에이전트 추가</Link>
                 </p>
               ) : (
-                <ChatForm
+                <ChatStartForm
                   partners={partners}
+                  projects={projects}
                   busy={action.busy !== null}
                   problem={action.problem}
-                  blocked={null}
                   onSubmit={start}
                 />
               )}
@@ -116,17 +126,27 @@ function ChatItem({ chat, on, onPick }: { chat: ChatSummary; on: boolean; onPick
       onClick={onPick}
     >
       <div className="item-main">
-        <b>{chat.agentName}</b>
+        <b className="clamp">{chat.title}</b>
         <small className="clamp">
           {chat.deviceId ? '기기에서 · ' : ''}
-          {chat.title} · {when(chat.updatedAt)}
+          {chat.agentName} · {when(chat.updatedAt)}
         </small>
       </div>
       {waiting && (
         <span className="pill">
-          {chat.lastWaitReason === 'approval' ? '결재 대기' : '답 기다림'}
+          {chat.lastWaitReason === 'approval' ? '결재 대기' : '일하는 중'}
         </span>
       )}
     </Link>
   );
+}
+
+/** 프로젝트별로 묶는다 (가장 최근에 바뀐 대화가 있는 묶음부터, 프로젝트 없음은 맨 뒤) */
+function groupOf(chats: readonly ChatSummary[]): [string, ChatSummary[]][] {
+  const groups = new Map<string, ChatSummary[]>();
+  for (const c of chats) {
+    const key = c.project ?? NO_PROJECT;
+    groups.set(key, [...(groups.get(key) ?? []), c]);
+  }
+  return [...groups].sort(([a], [b]) => Number(a === NO_PROJECT) - Number(b === NO_PROJECT));
 }

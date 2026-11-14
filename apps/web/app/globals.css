@@ -534,6 +534,8 @@ textarea.input {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  flex-shrink: 0;
+  white-space: nowrap;
   height: 40px;
   padding: 0 14px;
   border-radius: 6px;
@@ -2352,5 +2354,214 @@ a.chip {
 
   .dot.run {
     animation: none;
+  }
+}
+
+/* 홈 (2차 1-4): 인사 · 입력 하나 · 나에게 온 것 · 대화 · 결과물 · 팀 */
+.console-inner.home {
+  max-width: 880px;
+}
+
+.home-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 24px;
+}
+
+.home-head h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+/* 새 대화의 입력: 큰 칸 하나 + 곁들이는 칸들 (좁으면 줄을 바꾸고, 버튼은 줄바꿈하지 않는다) */
+.start-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+}
+
+.start-form textarea {
+  border: 0;
+  padding: 4px;
+  min-height: 72px;
+  resize: vertical;
+  font-size: 15px;
+}
+
+.start-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.start-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 1 200px;
+}
+
+.start-pick.grow {
+  flex: 1 1 220px;
+}
+
+.start-pick > span {
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.start-tools .cta {
+  margin-left: auto;
+}
+
+/* 결과물 카드 */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.card:hover {
+  background: var(--hover);
+}
+
+.card small {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* 대화 목록의 프로젝트 묶음 */
+.chat-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-group h3 {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* 대화의 머리: 제목과 상대 */
+.chat-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chat-head small {
+  color: var(--faint);
+  font-size: 13px;
+}
+
+/* 대화: 가운데 대화와 옆 칸 (진행 · 팀 · 소식 · 결과물). 좁으면 옆 칸이 아래로 */
+.chat-room {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+  gap: 16px;
+  align-items: start;
+}
+
+.chat-side {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  font-size: 13px;
+}
+
+.chat-side h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.chat-side .row {
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.side-line {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.side-line small {
+  color: var(--faint);
+  margin-right: 4px;
+}
+
+.side-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.side-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  overflow-wrap: anywhere;
+}
+
+.side-list small {
+  color: var(--faint);
+  width: 100%;
+}
+
+.side-list.news li {
+  flex-direction: column;
+  align-items: stretch;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+@media (max-width: 1040px) {
+  .chat-room {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chat-side {
+    position: static;
   }
 }

@@ -1,26 +1,33 @@
 import { BaseRequest } from '../../platform';
 import { Chat } from './chat';
 
-// 대화 입력의 모양. 뜻(상대가 관리자 바로 아래인지, 답을 기다리는 중인지)은 Chat이 검사한다.
+// 대화 입력의 모양. 뜻(상대가 관리자 바로 아래인지, 덧붙인 말의 한도)은 Chat이 검사한다.
 
-/** POST /api/chats { requestId, agentId, message }. 대화와 첫 메시지를 함께. 같은 requestId는 처음 만든 대화 */
+/** POST /api/chats { requestId, agentId?, message, goal?, project? }. 대화와 첫 메시지를 함께. 같은 requestId는 처음 만든 대화 */
 export class CreateChatInput extends BaseRequest {
   private constructor(
     readonly requestId: string,
-    readonly agentId: string,
+    /** 상대. 비우면 기본 대표 (Chat.partnerOf, ask_agent와 같다) */
+    readonly agentId: string | null,
     readonly message: string,
+    readonly goal: string | null,
+    /** git 주소 그대로 (ChatProject가 맞춘다) */
+    readonly project: string | null,
   ) {
     super();
   }
 
   static from(raw: unknown): CreateChatInput {
+    const body = (raw ?? {}) as Record<string, unknown>;
     return BaseRequest.read(
       raw,
       (f) =>
         new CreateChatInput(
           f.text('requestId', 200),
-          f.uuid('agentId'),
+          body.agentId === undefined || body.agentId === null ? null : f.uuid('agentId'),
           f.text('message', Chat.MESSAGE_MAX),
+          f.optionalText('goal', Chat.GOAL_MAX),
+          f.optionalText('project', 400),
         ),
     );
   }

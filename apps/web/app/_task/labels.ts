@@ -247,3 +247,24 @@ export function bytes(n: number): string {
   }
   return `${value >= 10 ? Math.round(value) : Math.round(value * 10) / 10}${units[unit]}`;
 }
+
+/** 대화의 상태 (상태판의 state: 마지막 회차로 정한다) */
+export const CHAT_STATE: Record<string, string> = {
+  working: '일하는 중',
+  waiting_approval: '결재 대기',
+  done: '끝남',
+  failed: '실패',
+};
+
+/** 대화의 소식 종류 (task.chat_updates.kind) */
+export const NEWS_KINDS: Record<string, string> = {
+  member_done: '팀원 끝남',
+  member_failed: '팀원 실패',
+  progress: '중간 보고',
+  decision: '정한 것',
+  assumption: '가정',
+  appended: '덧붙인 말',
+  reply: '대표의 답',
+  final: '최종 답',
+  failed: '실패',
+};

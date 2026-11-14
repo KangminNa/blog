@@ -259,6 +259,30 @@ describe('대화', () => {
       ['deck.html'],
     );
   });
+
+  test('상대를 비우면 기본 대표와 연다. 목표 · 프로젝트(git 주소를 맞춘다)와 함께, 주소가 아니면 422', async () => {
+    const lead = await agent('콘솔 대표');
+    ok(await api.request('POST', `/api/agents/${lead.id}/lead`, owner, { version: lead.version }));
+    const chat = ok(
+      await api.request('POST', '/api/chats', owner, {
+        requestId: randomUUID(),
+        message: '이번 주 글감 정리해 줘',
+        goal: '금요일까지 초안 셋',
+        project: 'https://github.com/Me/Blog.git',
+      }),
+      201,
+    );
+    assert.deepEqual(
+      [chat.agentId, chat.goal, chat.project],
+      [lead.id, '금요일까지 초안 셋', 'github.com/me/blog'],
+    );
+    const bad = await api.request('POST', '/api/chats', owner, {
+      requestId: randomUUID(),
+      message: '정리',
+      project: '그냥 글자',
+    });
+    assert.equal(bad.status, 422, bad.text);
+  });
 });
 
 describe('내 컴퓨터의 AI 도구가 서버 팀에 맡기기 (MCP ask_agent · agent_updates, 기기 권한 delegate)', () => {

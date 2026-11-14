@@ -17,7 +17,7 @@ import { ChatUpdates } from './chat-update.policy';
 export class ChatService extends BaseService {
   private static readonly APPEND = 'chat_append';
 
-  /** 새 대화와 첫 메시지. 같은 requestId는 처음 만든 대화 */
+  /** 새 대화와 첫 메시지 (상대를 비우면 기본 대표, 목표 · 프로젝트와 함께). 같은 requestId는 처음 만든 대화 */
   async create(actor: Actor, req: CreateChatInput): Promise<Chat> {
     actor.assertOwner();
     const spaceId = actor.requireSpace();
@@ -26,8 +26,22 @@ export class ChatService extends BaseService {
       const chats = new ChatRepository(tx);
       const before = await chats.findByRequest(spaceId, req.requestId);
       if (before) return before;
-      const agent = await new AgentRepository(tx).load(spaceId, req.agentId);
-      const chat = Chat.open(spaceId, req.requestId, agent, req.message, now);
+      const agents = new AgentRepository(tx);
+      const agent =
+        req.agentId === null
+          ? Chat.partnerOf(await agents.all(spaceId), null)
+          : await agents.load(spaceId, req.agentId);
+      const project = ChatProject.of(req.project);
+      const chat = Chat.open(
+        spaceId,
+        req.requestId,
+        agent,
+        req.message,
+        now,
+        null,
+        req.goal,
+        project,
+      );
       const task = chat.send(agent, req.requestId, req.message, [], now);
       await chats.save(chat);
       await new TaskRepository(tx).insertOnce(task);

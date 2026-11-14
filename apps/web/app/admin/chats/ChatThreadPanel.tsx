@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMe } from '../../_account/live';
 import { api } from '../../_lib/client-api';
 import { useAction } from '../../_lib/use-action';
@@ -9,13 +9,14 @@ import { useLiveValue } from '../../_lib/use-live';
 import { CHAT_DETAIL_TOPICS } from '../../_task/live';
 import type { Chat, ChatDetail } from '../../_task/types';
 import { ChatForm } from './ChatForm';
+import { ChatSide } from './ChatSide';
 import { ChatTurns } from './ChatTurns';
 
-/** 답을 기다리는 회차의 상태 */
+/** 일하는 중인 회차의 상태 */
 const WAITING = ['queued', 'running', 'waiting'];
 
-// 대화 하나. 회차(메시지 + 답)를 오래된 것부터 그리고, 아래에서 다음 메시지를 보낸다.
-// 답을 기다리는 동안은 보내지 않는다 (서버도 409). 진행 기록 · 결재가 오면 신호로 다시 읽는다.
+// 대화 하나. 회차(메시지 + 답)를 오래된 것부터 그리고, 아래에서 다음 메시지를 보낸다. 옆 칸은 진행 · 팀 · 소식 · 결과물 (ChatSide).
+// 일하는 중에도 보낸다: 그 회차에 덧붙인 말이 되고 대표가 짧게 답한다 (2차 1-1). 진행 기록 · 소식 · 결재가 오면 신호로 다시 읽는다.
 export function ChatThreadPanel({ id }: { id: string }) {
   // 대상(id)으로 거르지 않는다: 신호의 대상은 회차 작업 · 결재라 대화 id가 아니다
   const detail = useLiveValue(
@@ -29,6 +30,8 @@ export function ChatThreadPanel({ id }: { id: string }) {
   /** 응답을 못 받아 다시 보내도 메시지가 한 번만 가게 (보낸 뒤에만 바꾼다) */
   const requestId = useRef('');
   if (!requestId.current) requestId.current = crypto.randomUUID();
+  /** 보낸 횟수: 보내면 폼을 새로 만들어 칸을 비운다 (소식이 와도 쓰던 글은 그대로) */
+  const [sent, setSent] = useState(0);
   const bottom = useRef<HTMLDivElement>(null);
   const d = detail.data;
   const last = d?.turns.at(-1);
@@ -56,9 +59,10 @@ export function ChatThreadPanel({ id }: { id: string }) {
       ? '팀원이 된 에이전트예요. 관리자 바로 아래 에이전트와만 대화해요'
       : partner.paused
         ? '멈춘 에이전트예요. 재개하면 보낼 수 있어요'
-        : waiting
-          ? '답을 기다리는 중. 멈추려면 취소'
-          : null;
+        : null;
+  const hint = waiting
+    ? '일하는 중. 보내면 덧붙인 말이 되고 대표가 짧게 답해요 (회차마다 5개)'
+    : null;
 
   async function send(body: { message: string }) {
     const reply = await sending.run(
@@ -71,7 +75,9 @@ export function ChatThreadPanel({ id }: { id: string }) {
         }),
       { reload: detail.reload, conflict: '그사이 바뀐 대화예요. 최신 내용을 다시 읽었어요' },
     );
-    if (reply?.ok) requestId.current = crypto.randomUUID();
+    if (!reply?.ok) return;
+    requestId.current = crypto.randomUUID();
+    setSent((n) => n + 1);
   }
 
   const cancel = (taskId: string, version: number) =>
@@ -82,31 +88,38 @@ export function ChatThreadPanel({ id }: { id: string }) {
     });
 
   return (
-    <section className="panel chat" aria-label={`${partner.name}와 대화`}>
-      <div className="sec-title flat">
-        <h2>{partner.name}</h2>
-        <Link className="ghost split-back" href="/admin/chats">
-          대화 목록
-        </Link>
-      </div>
-      {detail.error && <p className="error">{detail.error}</p>}
-      <ChatTurns
-        turns={d.turns}
-        me={me.data?.name ?? '관리자'}
-        partner={partner.name}
-        busy={cancelling.busy}
-        onCancel={cancel}
-      />
-      {cancelling.problem && <p className="error">{cancelling.problem}</p>}
-      <ChatForm
-        key={d.chat.turns}
-        busy={sending.busy !== null}
-        problem={sending.problem}
-        blocked={blocked}
-        onSubmit={send}
-      />
-      {/* 입력 칸 아래: 여기로 내리면 입력 칸이 마지막 말풍선을 가리지 않는다 */}
-      <div ref={bottom} />
-    </section>
+    <div className="chat-room">
+      <section className="panel chat" aria-label={`${partner.name}와 대화`}>
+        <div className="sec-title flat">
+          <div className="chat-head">
+            <h2>{d.chat.title}</h2>
+            <small>{partner.name}</small>
+          </div>
+          <Link className="ghost split-back" href="/admin/chats">
+            대화 목록
+          </Link>
+        </div>
+        {detail.error && <p className="error">{detail.error}</p>}
+        <ChatTurns
+          turns={d.turns}
+          me={me.data?.name ?? '관리자'}
+          partner={partner.name}
+          busy={cancelling.busy}
+          onCancel={cancel}
+        />
+        {cancelling.problem && <p className="error">{cancelling.problem}</p>}
+        <ChatForm
+          key={sent}
+          busy={sending.busy !== null}
+          problem={sending.problem}
+          blocked={blocked}
+          hint={hint}
+          onSubmit={send}
+        />
+        {/* 입력 칸 아래: 여기로 내리면 입력 칸이 마지막 말풍선을 가리지 않는다 */}
+        <div ref={bottom} />
+      </section>
+      <ChatSide detail={d} />
+    </div>
   );
 }
