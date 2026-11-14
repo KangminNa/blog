@@ -81,7 +81,10 @@ describe('브라우저 작업의 설정 (러너)', () => {
     assert.match(explore, /# 둘러보기/);
     assert.doesNotMatch(explore, /# 사이트/);
     const job = siteJob(['https://blog.example']);
-    assert.match(job.prompt(REPO_PROMPTS, false), /# 할 일[\s\S]*# 사이트/);
+    const prompt = job.prompt(REPO_PROMPTS, false);
+    assert.match(prompt, /# 할 일[\s\S]*# 사이트/);
+    assert.match(prompt, /결재\(request_approval\)도 올리지 않습니다/, '결재는 러너가 올린다');
+    assert.doesNotMatch(prompt, /request_approval로 올린 뒤 바로 끝냅니다/);
   });
 
   test('브라우저 작업이고, 브라우저가 있고, 자리가 정해졌을 때만 Playwright MCP를 붙인다', () => {

@@ -315,7 +315,7 @@ export class Job {
     if (this.skill && skillReady) parts.push(prompts.fill('skill', { name: this.skill }));
     else if (this.skill && skillText)
       parts.push(prompts.fill('skill', { name: this.skill, text: skillText.trim() }));
-    parts.push(prompts.fill('work', { outputs: outputsDir }));
+    parts.push(prompts.fill('work', { outputs: outputsDir, browse: this.isBrowse }));
     return parts.join('\n\n');
   }
 }
