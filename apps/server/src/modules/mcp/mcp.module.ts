@@ -7,11 +7,14 @@ import { McpController } from './mcp.api';
 import { McpToolbox } from './mcp-toolbox';
 import { SkillController } from './skill.api';
 import { SkillQuery } from './skill.query';
+import { ToolTextController } from './tool-text/tool-text.api';
+import { ToolTextQuery } from './tool-text/tool-text.query';
+import { ToolTextService } from './tool-text/tool-text.service';
 
-// AI 도구의 입구. 비즈니스 규칙을 두지 않고, 각 모듈의 도구를 모아 연다. 앱에 올릴 스킬 묶음도 여기서 내준다.
+// AI 도구의 입구. 각 모듈의 도구를 모아 연다. 앱에 올릴 스킬 묶음, 도구의 글을 콘솔에서 고친 판(도구 설명)도 여기서.
 @Module({
   imports: [AccountModule, VaultModule, BlogModule, TaskModule],
-  providers: [McpToolbox, SkillQuery],
-  controllers: [McpController, SkillController],
+  providers: [McpToolbox, SkillQuery, ToolTextQuery, ToolTextService],
+  controllers: [McpController, SkillController, ToolTextController],
 })
 export class McpModule {}

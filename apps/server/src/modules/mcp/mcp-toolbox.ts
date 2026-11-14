@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { BlogTools } from '../blog';
-import { type BaseTool, PackageService, PackageTool, PluginRegistry, ToolTexts } from '../platform';
+import {
+  type BaseTool,
+  PackageService,
+  PackageTool,
+  PluginRegistry,
+  type ToolTextBody,
+  ToolTexts,
+} from '../platform';
 import { TaskTools } from '../task';
 import { VaultTools } from '../vault';
 
@@ -42,11 +49,19 @@ export class McpToolbox {
       );
   }
 
-  /** AI에게 보일 설명과 입력 모양. 기능 패키지의 도구는 목록 파일(cairn-plugin.json)의 글 그대로 */
-  describe(tool: BaseTool): { description: string; inputSchema: Record<string, unknown> } {
+  /**
+   * 도구의 기본 글: 코어 도구는 설명서, 기능 패키지의 도구는 목록 파일(cairn-plugin.json)의 글.
+   * 주인이 콘솔 "도구 설명"에서 쌓은 판이 그 위에 얹힌다 (ToolTextQuery.describe)
+   */
+  defaultText(tool: BaseTool): ToolTextBody {
     if (tool instanceof PackageTool)
-      return { description: tool.description, inputSchema: { ...tool.inputSchema } };
-    return this.texts.describe(tool);
+      return { description: tool.description, input: ToolTexts.read(tool.inputSchema) };
+    return this.texts.text(tool.name) ?? { description: '' };
+  }
+
+  /** 기능 패키지의 도구인가 (콘솔 목록에서 나눠 보인다) */
+  isPlugin(tool: BaseTool): boolean {
+    return tool instanceof PackageTool;
   }
 
   /** 코어 모듈의 도구와 지금 동작 중인 기능 패키지의 도구 */

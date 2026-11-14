@@ -13,3 +13,29 @@ export interface McpReadRow {
   result_count: number | null;
 }
 export type McpReadNew = Partial<McpReadRow> & Pick<McpReadRow, 'id' | 'space_id' | 'tool'>;
+
+/** mcp.tool_text_revisions */
+export interface ToolTextRevisionRow {
+  id: string;
+  tool_text_id: string;
+  revision: number;
+  description: string;
+  input: unknown;
+  based_on: string;
+  note: string;
+  created_at: Date;
+}
+export type ToolTextRevisionNew = Partial<ToolTextRevisionRow> & Pick<ToolTextRevisionRow, 'id' | 'tool_text_id' | 'revision' | 'description' | 'based_on'>;
+
+/** mcp.tool_texts */
+export interface ToolTextRow {
+  id: string;
+  space_id: string;
+  tool: string;
+  active_revision: number | null;
+  revisions: number;
+  version: number;
+  created_at: Date;
+  updated_at: Date;
+}
+export type ToolTextNew = Partial<ToolTextRow> & Pick<ToolTextRow, 'id' | 'space_id' | 'tool'>;

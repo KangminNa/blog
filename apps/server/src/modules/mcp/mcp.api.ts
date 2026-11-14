@@ -4,6 +4,7 @@ import { DeviceQuery } from '../account';
 import { type Actor, CurrentActor, McpEndpoint } from '../platform';
 import { TaskQuery } from '../task';
 import { McpToolbox } from './mcp-toolbox';
+import { ToolTextQuery } from './tool-text/tool-text.query';
 
 type McpRequest = IncomingMessage & { body?: unknown };
 
@@ -19,13 +20,14 @@ export class McpController {
     private readonly devices: DeviceQuery,
     private readonly tasks: TaskQuery,
     toolbox: McpToolbox,
+    texts: ToolTextQuery,
   ) {
     this.endpoint = new McpEndpoint(
       'cairn',
       '0.1.0',
       () => toolbox.toolsNow(),
       McpToolbox.INSTRUCTIONS,
-      (tool) => toolbox.describe(tool),
+      (actor, tools) => texts.describe(actor, tools),
     );
   }
 

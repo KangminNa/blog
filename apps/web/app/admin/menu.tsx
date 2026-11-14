@@ -11,6 +11,9 @@ const ICONS: Record<string, ReactNode> = {
   ),
   chat: <path d="M2.5 3.5h11v7.5H7.2L4.4 13.5V11H2.5z" />,
   scroll: <path d="M4 2.5h8v11H4zM6 5.5h4M6 8h4M6 10.5h2.5" />,
+  wrench: (
+    <path d="M10.6 2.6a3 3 0 0 0-3.8 3.9L2.6 10.7a1.2 1.2 0 0 0 1.7 1.7l4.2-4.2a3 3 0 0 0 3.9-3.8l-1.8 1.8-1.6-.4-.4-1.6z" />
+  ),
   code: <path d="M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5M9 3 7 13" />,
   box: <path d="M2.5 5 8 2.5 13.5 5v6.5L8 14l-5.5-2.5zM2.5 5 8 7.5 13.5 5M8 7.5V14" />,
   stamp: <path d="M6 2.5h4v3.2c0 1.2 2.8 1.6 2.8 4H3.2c0-2.4 2.8-2.8 2.8-4zM3 12.8h10" />,
@@ -113,6 +116,7 @@ export const MENU = [
       { href: '/admin/goals', name: '목표', icon: 'flag' },
       { href: '/admin/runners', name: '러너', icon: 'runner' },
       { href: '/admin/skills', name: '스킬', icon: 'scroll' },
+      { href: '/admin/tool-texts', name: '도구 설명', icon: 'wrench' },
       { href: '/admin/office', name: '오피스', icon: 'office' },
     ],
   },

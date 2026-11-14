@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { BaseTool, ToolText } from '../platform';
+import type { BaseTool, ToolTextBody } from '../platform';
 import { SubmitChangesTool } from './change/change.tool';
 import { NeighborsTool } from './graph/graph.tool';
 import {
@@ -16,7 +16,7 @@ import { GetWikiTool, SearchWikisTool } from './wiki/wiki.tool';
 export class VaultTools {
   readonly tools: readonly BaseTool[];
   /** 도구의 설명 · 칸 설명 (AI가 읽는 글). 코드가 아니라 설명서 파일이 기본이다 */
-  readonly texts: Readonly<Record<string, ToolText>> = texts;
+  readonly texts: Readonly<Record<string, ToolTextBody>> = texts;
 
   constructor(
     checkSession: CheckSessionTool,

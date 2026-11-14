@@ -141,10 +141,8 @@ describe('입구에서 busy로 바꾸기', () => {
       'test',
       () => [new SlowTool()],
       '',
-      () => ({
-        description: '시간 제한에 걸리는 도구',
-        inputSchema: {},
-      }),
+      async (_actor, tools) =>
+        tools.map(() => ({ description: '시간 제한에 걸리는 도구', inputSchema: {} })),
     );
     const actor = new DeviceActor(
       '00000000-0000-7000-8000-000000000001',

@@ -19,7 +19,7 @@ const templates = join(root, 'scripts/templates/bundle');
 const USAGE =
   '쓰는 법: pnpm new:bundle <모듈>/<묶음> [--menu <그룹>/<이름>] [--tool] [--plural <복수형>]';
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
-/** 비즈니스 데이터를 갖지 않는 모듈 (platform은 공통 기반, mcp는 입구) */
+/** 생성기로 묶음을 만들지 않는 모듈 (platform은 공통 기반, mcp는 입구: 도구 설명 묶음 하나뿐이고 손으로 만들었다) */
 const NO_BUNDLES = ['platform', 'mcp'];
 
 function fail(message) {

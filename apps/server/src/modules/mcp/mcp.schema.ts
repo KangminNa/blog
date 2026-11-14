@@ -15,3 +15,27 @@ export const mcpReads = mcpSchema.table('mcp_reads', {
   query: jsonb('query').notNull(),
   result_count: integer('result_count'),
 });
+
+/** mcp.tool_text_revisions */
+export const toolTextRevisions = mcpSchema.table('tool_text_revisions', {
+  id: uuid('id').notNull(),
+  tool_text_id: uuid('tool_text_id').notNull(),
+  revision: integer('revision').notNull(),
+  description: text('description').notNull(),
+  input: jsonb('input').notNull(),
+  based_on: text('based_on').notNull(),
+  note: text('note').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
+/** mcp.tool_texts */
+export const toolTexts = mcpSchema.table('tool_texts', {
+  id: uuid('id').notNull(),
+  space_id: uuid('space_id').notNull(),
+  tool: text('tool').notNull(),
+  active_revision: integer('active_revision'),
+  revisions: integer('revisions').notNull(),
+  version: integer('version').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
+});

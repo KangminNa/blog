@@ -79,4 +79,28 @@ describe('ToolTexts', () => {
   test('같은 도구가 두 설명서에 있으면 시작하지 않는다', () => {
     assert.throws(() => ToolTexts.of(full, full), /delegate이\(가\) 두 번/);
   });
+
+  test('기본 글 읽기 · 얹기 · 해시: 기능 패키지는 모양 안의 글이 기본이고, 고친 칸만 바뀐다', () => {
+    const said = ToolTexts.apply(tool, full.delegate);
+    assert.deepEqual(ToolTexts.read(said.inputSchema), full.delegate.input);
+    assert.equal(ToolTexts.types(tool.inputSchema)['subtasks[].to'], 'string');
+    const merged = ToolTexts.merge(full.delegate, {
+      description: '고침',
+      input: { title: '새 제목' },
+    });
+    assert.equal(merged.description, '고침');
+    assert.equal(merged.input?.title, '새 제목');
+    assert.equal(merged.input?.['note.body'], '메모 본문', '고치지 않은 칸은 기본 글');
+    assert.equal(ToolTexts.merge(full.delegate, null), full.delegate);
+    const reordered = {
+      description: full.delegate.description,
+      input: Object.fromEntries(Object.entries(full.delegate.input).reverse()),
+    };
+    assert.equal(
+      ToolTexts.hash(reordered),
+      ToolTexts.hash(full.delegate),
+      '칸 순서는 해시와 상관없다',
+    );
+    assert.notEqual(ToolTexts.hash(merged), ToolTexts.hash(full.delegate));
+  });
 });

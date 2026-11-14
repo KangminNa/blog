@@ -1,11 +1,4 @@
-import type {
-  AgentRow,
-  GoalRow,
-  OutputRow,
-  TaskEventRow,
-  TaskRow,
-  TaskRunRow,
-} from '../task.tables';
+import type { GoalRow, OutputRow, TaskEventRow, TaskRow, TaskRunRow } from '../task.tables';
 
 // 작업의 읽기 모양 (REST, 화면). 웹이 `import type`으로 가져온다 (객체설계 6장).
 // 러너 · 에이전트가 MCP로 받는 모양(next_jobs · report_progress · delegate_task)은 job.view.ts.
