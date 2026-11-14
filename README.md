@@ -95,7 +95,7 @@ pnpm cairn connect https://내블로그주소               # Claude Code
 pnpm cairn connect https://내블로그주소 --tool codex  # Codex
 ```
 
-스킬(`cairn-save`, `cairn-recall`)과 검토자를 AI 도구에 넣고, MCP 서버를 등록하고, 브라우저에서 로그인해 이 기기를 연결합니다. 그 도구의 명령줄(`claude` 또는 `codex`)이 필요하고, 한 컴퓨터는 블로그 하나에 연결합니다. `--review-with codex`처럼 다른 회사 모델을 교차 검토자로 고를 수 있습니다.
+스킬(`cairn-save`, `cairn-recall`, `cairn-team`)과 검토자를 AI 도구에 넣고, MCP 서버를 등록하고, 브라우저에서 로그인해 이 기기를 연결합니다. 그 도구의 명령줄(`claude` 또는 `codex`)이 필요하고, 한 컴퓨터는 블로그 하나에 연결합니다. `--review-with codex`처럼 다른 회사 모델을 교차 검토자로 고를 수 있습니다.
 
 Claude Code는 팀 소식도 받습니다: 브라우저에서 "소식 읽기"만 가진 소식 기기(`<컴퓨터 이름> · 소식`)를 한 번 더 승인하면, 말을 걸 때마다 서버 팀의 새 소식이 대화에 덧붙고(훅) 아래 상태 줄에 `Cairn · 진행 2 · 소식 3`이 보입니다. 열쇠는 `~/.cairn/credentials.json`(나만 읽기), 스크립트는 `~/.cairn/bin`에 둡니다. 쓰고 있던 훅은 그대로 두고, 상태 줄이 이미 있으면 덮지 않고 붙이는 법을 알려 줍니다. 상태는 `pnpm cairn status`로 봅니다.
 

@@ -21,7 +21,7 @@ db/            DB 이미지(Postgres 17 + pgvector + pg_bigm)와 SQL 마이그�
 packages/cli/  연결 명령 cairn connect · status (스킬 넣기 + MCP 등록 + 로그인). 배포 전에는 pnpm cairn
 plugins/       플러그인 (comments-giscus · sync-github · login-github · office · browser-tabs · code-github). 규칙은 plugins/CLAUDE.md, 객체설계 12장
 scripts/       모듈 경계 검사, 구조 검사, 규칙 검사(+ 예외 목록 ratchet.json), 묶음 생성기(templates/), 플러그인 화면 맞추기
-skills/        AI 도구와 러너의 스킬 (cairn-save · cairn-recall, 러너 전용 cairn-write · cairn-tidy · cairn-browse · cairn-code · cairn-make, 지시문 틀 cairn-runner). 도구 입력 모양을 바꾸면 스킬도 함께 고친다
+skills/        AI 도구와 러너의 스킬 (cairn-save · cairn-recall · cairn-team, 러너 전용 cairn-write · cairn-tidy · cairn-browse · cairn-code · cairn-make, 지시문 틀 cairn-runner). 도구 입력 모양을 바꾸면 스킬도 함께 고친다
                AI에게 가는 지시문의 글은 코드가 아니라 cairn-runner의 틀(references/prompts.md)에 둔다 (러너 PromptPack · 서버 PromptTemplates가 채운다)
                러너 스킬은 저장소 판이고, 콘솔(스킬 메뉴)에서 그 위에 판을 쌓으면 서버가 일과 함께 그 판을 보낸다
                앱(ChatGPT·Claude)용 zip은 서버가 여기서 만든다(api/skills). 스크립트 테스트는 packages/cli

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AiTool } from './ai-tool';
 import { CairnSite, type SiteAddress } from './cairn-site';
@@ -9,7 +9,7 @@ import { CliError, type Terminal } from './terminal';
 /** 교차 검토에 쓸 수 있는 다른 AI 명령줄 */
 export const REVIEWERS = ['claude', 'codex', 'gemini'] as const;
 
-// cairn connect <블로그 주소>: 블로그 확인 → AI 도구 찾기 → 스킬·검토자 넣기 → MCP 등록 → 로그인 → 연결 확인
+// cairn connect <블로그 주소>: 블로그 확인 → AI 도구 찾기 → 스킬·검토자 넣기(이제 없는 스킬은 지우기) → MCP 등록 → 로그인 → 연결 확인
 // → (Claude Code) 소식 기기 · 훅 · 상태 줄 (NewsSetup).
 // 이미 된 단계는 건너뛰므로 여러 번 불러도 된다 (스킬을 새 버전으로 바꿀 때도 이것을 다시 부른다).
 export class ConnectCommand {
@@ -42,6 +42,7 @@ export class ConnectCommand {
 
     if (this.skills.length === 0) throw new CliError('함께 든 스킬이 없어요 (설치가 망가졌어요)');
     for (const skill of this.skills) await this.install(skill, at);
+    this.removeRetired();
 
     const before = await this.tool.server();
     if (before?.url === at.mcp) t.done(`MCP 서버 ${AiTool.SERVER} · 이미 등록됨`);
@@ -123,6 +124,24 @@ export class ConnectCommand {
     this.terminal.done(
       `스킬 ${skill.name} 넣음 · ${folder.dir}${reviewWith ? ` · 교차 검토 ${reviewWith}` : ''}`,
     );
+  }
+
+  /**
+   * 이 명령이 넣었지만 이제 함께 들지 않는 스킬(예: cairn-team에 합친 cairn-review)을 지운다.
+   * 표시(.cairn.json)가 있는 폴더만, 그 스킬이 넣은 검토자 파일과 함께
+   */
+  private removeRetired(): void {
+    if (!existsSync(this.tool.skillsDir)) return;
+    const bundled = new Set(this.skills.map((s) => s.name));
+    for (const name of readdirSync(this.tool.skillsDir)) {
+      if (bundled.has(name)) continue;
+      const folder = new SkillFolder(join(this.tool.skillsDir, name));
+      const marker = folder.marker();
+      if (!marker) continue;
+      for (const file of marker.agents) rmSync(file, { force: true });
+      rmSync(folder.dir, { recursive: true, force: true });
+      this.terminal.done(`이제 쓰지 않는 스킬 ${name} 지움`);
+    }
   }
 
   /** 검토자(하위 에이전트) 정의를 도구의 폴더에 넣고, 넣은 파일 경로를 돌려준다 */

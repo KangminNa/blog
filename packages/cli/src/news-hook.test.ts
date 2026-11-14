@@ -130,9 +130,13 @@ describe('프로젝트 (git 주소 → 서버와 같은 모양)', () => {
       ['https://github.com/only', null],
       ['', null],
     ];
-    // 스크립트는 ES 모듈이라 따로 띄운 node에서 부른다
+    // 스크립트는 ES 모듈이라 따로 띄운 node에서 부른다. 훅과 cairn-team의 보내기 전 검사가 같은 값을 내야
+    // ask_agent의 project와 훅의 거르기가 맞는다
     const remotes = JSON.stringify(cases.map(([remote]) => remote));
-    for (const file of [join(NEWS, 'news-state.mjs')]) {
+    for (const file of [
+      join(NEWS, 'news-state.mjs'),
+      join(__dirname, '../../../skills/cairn-team/scripts/before-send.mjs'),
+    ]) {
       const url = JSON.stringify(pathToFileURL(file).href);
       const got = JSON.parse(
         execFileSync(

@@ -290,6 +290,52 @@ describe('cairn connect', () => {
   });
 });
 
+describe('cairn connect · 이제 없는 스킬과 cairn-team', () => {
+  test('이 명령이 넣었지만 이제 함께 들지 않는 스킬은 검토자 파일과 함께 지운다. 사용자의 스킬은 그대로', async () => {
+    const skills = join(home, '.claude', 'skills');
+    const old = join(skills, 'cairn-review');
+    const reviewer = join(home, '.claude', 'agents', 'old-reviewer.md');
+    mkdirSync(old, { recursive: true });
+    mkdirSync(join(home, '.claude', 'agents'), { recursive: true });
+    writeFileSync(join(old, 'SKILL.md'), '옛 스킬');
+    writeFileSync(reviewer, '옛 검토자');
+    const marker = new SkillMarker('v', 'https://b', 'https://b/mcp', 'claude-code', null, [
+      reviewer,
+    ]);
+    writeFileSync(join(old, SkillMarker.FILE), JSON.stringify(marker));
+    const mine = join(skills, 'my-skill');
+    mkdirSync(mine, { recursive: true });
+    writeFileSync(join(mine, 'SKILL.md'), '내 스킬');
+    const terminal = new FakeTerminal();
+    await connect(terminal);
+    assert.equal(existsSync(old), false);
+    assert.equal(existsSync(reviewer), false);
+    assert.equal(readFileSync(join(mine, 'SKILL.md'), 'utf8'), '내 스킬');
+    assert.ok(terminal.lines.includes('✓ 이제 쓰지 않는 스킬 cairn-review 지움'));
+  });
+
+  test('cairn-team은 함께 들고, Claude Code에서는 맡기기 · 소식 도구와 검사 스크립트를 묻지 않는다', () => {
+    const bundled = SkillPackage.bundled();
+    const team = bundled.find((s) => s.name === 'cairn-team');
+    assert.ok(team);
+    assert.equal(
+      bundled.some((s) => s.name === 'cairn-review'),
+      false,
+    );
+    const dir = join(home, '.claude', 'skills', 'cairn-team');
+    const rendered = claude().renderSkill(team.files.get('SKILL.md') ?? '', dir);
+    const head = rendered.split('\n---\n')[0] ?? '';
+    assert.ok(
+      head.endsWith(
+        `allowed-tools: mcp__cairn__ask_agent, mcp__cairn__agent_updates, Bash(node \${CLAUDE_SKILL_DIR}/scripts/*)`,
+      ),
+      head,
+    );
+    assert.ok(rendered.includes(`node ${dir}/scripts/before-send.mjs`));
+    assert.equal(rendered.includes('agent_reply'), false);
+  });
+});
+
 describe('cairn connect · 소식 단계 (Claude Code)', () => {
   /** 소식 단계를 부른 값만 남긴다 (단계 자체는 news-setup.test.ts) */
   class FakeNews extends NewsSetup {

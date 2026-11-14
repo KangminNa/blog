@@ -10,7 +10,7 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
   외부 로그인(`ExternalLoginQuery`·`ExternalLoginController`): 로그인 플러그인(`login:<이름>`)의 경로·확인값·쿠키, 계정 연결·끊기
 - `device/`: 기기(`Device` + `DeviceCredential`), OAuth 클라이언트(`OAuthClient`), 승인 코드(`AuthorizationCode`), 승인 요청 규칙(`AuthorizationPolicy`).
   `OAuthController`(`/.well-known/*`, `/oauth/*`: 표준 경로라 /api 아래가 아님), `DeviceController`(`api/connect` 승인 화면, `api/devices` 기기 화면)
-- 기기 권한 `delegate`(에이전트에게 맡기기, 2026-11-14): 관리자가 켠다. 그 기기의 AI 도구가 task의 MCP `ask_agent` · `agent_reply`로 서버 팀에 일을 맡긴다 (칸 기기는 받지 못한다: `devices_sandbox_only`)
+- 기기 권한 `delegate`(에이전트에게 맡기기, 2026-11-14): 관리자가 켠다. 그 기기의 AI 도구가 task의 MCP `ask_agent`로 서버 팀에 일을 맡기고 `agent_updates`로 그 대화의 소식 · 답을 읽는다 (스킬 `cairn-team`) (칸 기기는 받지 못한다: `devices_sandbox_only`)
 - 기기 권한 `news`(소식 읽기, 2차 1-3): `cairn connect`가 OAuth 승인 요청에 `scope=news`를 실어 만드는 소식 기기만 갖는다 (내 컴퓨터의 훅 · 상태 줄이 task의 MCP `agent_updates`로 대화의 소식을 읽는다). 요청한 권한은 승인 요청(`ConsentInput`) → 승인 코드(`device_draft.scopes`) → `Device.connect`로 간다. 규칙은 `AuthorizationPolicy`: `news`만 보고, 다른 권한과 섞이거나 앱의 주소면 `invalid_scope`, `news`가 없으면 지금처럼 기본 권한
 - 러너는 OAuth 없이 콘솔에서 만든다 (`POST api/devices/runner`, `Device.forRunner`). 권한은 `run` 하나, 토큰은 응답에 한 번
 - 서버 러너는 스스로 연결한다 (`POST api/devices/server-runner`, `Device.forServerRunner`): 서버 키에서 만든 연결 값(`ServerRunnerPolicy`)을 서버가 시작할 때 볼륨에 쓰고(`ServerRunnerGateway`, `CAIRN_RUNNER_PAIRING_FILE`), 러너가 그 값을 내밀면 토큰을 준다
