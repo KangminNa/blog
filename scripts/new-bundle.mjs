@@ -183,6 +183,9 @@ const steps = [
     ? [
         `도구 목록: ${toolsFile}${existsSync(join(root, toolsFile)) ? '' : ' (없으면 만들고 mcp 모듈에 모은다)'}에 List${Name}Tool.
    스킬이 이 도구를 쓰면 skills/의 설명도 함께 (AGENTS.md)`,
+        `도구 설명서: apps/server/src/modules/${module}/${module}.tools.ko.json에
+   "list_${table}": { "description": "언제 이 도구를 쓸지 AI가 판단할 수 있게 적는다" }
+   (칸이 생기면 "input": { "칸 이름": "설명" }. 설명은 코드에 두지 않는다)`,
       ]
     : []),
   ...(menu

@@ -4,12 +4,12 @@ import { __Name__Query } from './__bundle__.query';
 import type { Tool__Name__View } from './__bundle__.view';
 
 // AI 도구가 읽는 __label__. 비공개면 read_all로만 연다. 입력 모양을 바꾸면 쓰는 스킬도 함께 고친다 (AGENTS.md).
+// 설명 · 칸 설명은 코드에 두지 않는다: 모듈의 <모듈>.tools.ko.json에 적는다 (빠지면 서버가 뜨지 않는다).
 @Injectable()
 export class List__Name__Tool extends BaseTool {
   readonly name = '__tool__';
   readonly scope = Actor.READ_ALL;
   readonly readOnly = true;
-  readonly description = '__label__ 목록을 읽는다. 언제 이 도구를 쓸지 AI가 판단할 수 있게 적는다.';
   readonly inputSchema = { properties: {} };
 
   constructor(private readonly query: __Name__Query) {

@@ -27,54 +27,40 @@ export class SaveSessionTool extends BaseTool {
   readonly scope = Actor.UPLOAD;
   readonly readOnly = false;
   override readonly idempotent = true;
-  readonly description = [
-    '방금 함께 작업한 AI 세션의 노트를 Cairn 블로그에 저장한다.',
-    '먼저 check_session으로 검사하고, 받은 request_id와 source_session_id를 그대로 쓴다. 사용자에게 노트와 올릴 곳을 보여 주고 확인받은 뒤에 부른다.',
-    '같은 대화(source_session_id)를 다시 저장하면 같은 세션에 새 판으로 쌓인다. 내용이 같으면 판을 만들지 않는다(unchanged).',
-    '토큰·키·비밀번호는 보내기 전에 지운다. 서버도 한 번 더 지우고 warnings로 알려 준다.',
-    '공개 여부는 정할 수 없다 (늘 비공개로 저장된다). 응답의 url을 사용자에게 보여 준다.',
-  ].join(' ');
   /** 노트 모양. 저장(save_session)과 검사(check_session)가 같이 쓴다 */
   static readonly NOTE_PROPERTIES: Readonly<Record<string, unknown>> = {
     source_session_id: {
       type: 'string',
       maxLength: 200,
-      description: 'AI 도구 안의 대화 id. 같은 대화는 늘 같은 값',
     },
     tool: {
       type: 'string',
       pattern: '^[a-z0-9][a-z0-9-]{0,39}$',
-      description: 'AI 도구 이름 (예: claude-code, codex)',
     },
-    project: { type: 'string', maxLength: 100, description: '작업한 프로젝트 (예: 저장소 이름)' },
-    title: { type: 'string', maxLength: 200, description: '세션 제목. 한 일을 한 줄로' },
-    did: { type: 'string', maxLength: SessionNote.SECTION_MAX, description: '한 일' },
+    project: { type: 'string', maxLength: 100 },
+    title: { type: 'string', maxLength: 200 },
+    did: { type: 'string', maxLength: SessionNote.SECTION_MAX },
     decisions: {
       type: 'string',
       maxLength: SessionNote.SECTION_MAX,
-      description: '결정한 것과 이유',
     },
     blocked: {
       type: 'string',
       maxLength: SessionNote.SECTION_MAX,
-      description: '막힌 점, 남은 문제',
     },
     quotes: {
       type: 'string',
       maxLength: SessionNote.QUOTES_MAX,
-      description: `핵심 원문 인용 (${SessionNote.QUOTES_MAX.toLocaleString('en-US')}자까지)`,
     },
-    extra: { type: 'string', maxLength: SessionNote.SECTION_MAX, description: '기타' },
+    extra: { type: 'string', maxLength: SessionNote.SECTION_MAX },
     tags: {
       type: 'array',
       items: { type: 'string', maxLength: 40 },
       maxItems: 20,
-      description: '태그',
     },
     started_at: {
       type: 'string',
       format: 'date-time',
-      description: '세션을 시작한 시각 (ISO 8601)',
     },
   };
 
@@ -83,7 +69,6 @@ export class SaveSessionTool extends BaseTool {
       request_id: {
         type: 'string',
         format: 'uuid',
-        description: 'check_session이 준 UUID. 응답을 받지 못해 다시 보낼 때는 같은 값을 쓴다',
       },
       ...SaveSessionTool.NOTE_PROPERTIES,
     },
@@ -107,12 +92,6 @@ export class CheckSessionTool extends BaseTool {
   readonly scope = Actor.UPLOAD;
   readonly readOnly = true;
   override readonly idempotent = true;
-  readonly description = [
-    '세션 노트를 저장하기 전에 검사한다. 저장하지 않는다.',
-    '노트 모양이 틀리면 고칠 칸을 알려 주고, 저장하면 서버가 지울 비밀값을 warnings로 알려 준다.',
-    '이번 저장에 쓸 request_id와 대화 id(source_session_id)를 준다. 대화 id를 모르면 비워 두고, 받은 값을 이 대화의 다음 저장에도 쓴다.',
-    'site는 노트가 올라갈 블로그 주소다. 사용자에게 보여 주고 확인받은 뒤 save_session으로 저장한다.',
-  ].join(' ');
   readonly inputSchema = {
     properties: SaveSessionTool.NOTE_PROPERTIES,
     required: ['title'],
@@ -136,40 +115,29 @@ export class SearchSessionsTool extends BaseTool {
   override readonly orScope = Actor.READ_ALL;
   readonly readOnly = true;
   override readonly idempotent = true;
-  readonly description = [
-    '저장된 세션 노트를 키워드로 찾는다. 제목과 본문에서 찾고, 한국어도 된다.',
-    '띄어 쓴 단어가 모두 들어 있는 세션만 찾는다. 대소문자를 구분하니 없으면 표기를 바꿔 다시 찾는다.',
-    'project, tool, from, to로 좁힐 수 있다. from과 to는 마지막 저장 시각 기준이다.',
-    '결과는 처음 저장한 때가 최근인 세션부터 나온다. next가 있으면 cursor에 그대로 넣어 다음 쪽을 부른다.',
-    '이 연결이 볼 수 있는 세션만 나온다. 내용 전체는 session_id로 get_session을 불러 읽는다.',
-  ].join(' ');
   readonly inputSchema = {
     properties: {
       query: {
         type: 'string',
         maxLength: SearchSessionsInput.QUERY_MAX,
-        description: '찾을 말. 에러 메시지나 코드 이름처럼 본문에 그대로 있을 말이 잘 찾아진다',
       },
-      project: { type: 'string', maxLength: 100, description: '이 프로젝트의 세션만' },
-      tool: { type: 'string', maxLength: 40, description: '이 AI 도구의 세션만 (예: claude-code)' },
+      project: { type: 'string', maxLength: 100 },
+      tool: { type: 'string', maxLength: 40 },
       from: {
         type: 'string',
         format: 'date-time',
-        description: '이 시각부터 저장된 세션만 (ISO 8601)',
       },
       to: {
         type: 'string',
         format: 'date-time',
-        description: '이 시각까지 저장된 세션만 (ISO 8601)',
       },
       limit: {
         type: 'integer',
         minimum: 1,
         maximum: SearchSessionsInput.LIMIT_MAX,
         default: SearchSessionsInput.LIMIT_DEFAULT,
-        description: '한 쪽에 받을 세션 수',
       },
-      cursor: { type: 'string', maxLength: 100, description: '앞 응답의 next 값 그대로' },
+      cursor: { type: 'string', maxLength: 100 },
     },
     required: ['query'],
   };
@@ -191,16 +159,9 @@ export class GetSessionTool extends BaseTool {
   override readonly orScope = Actor.READ_ALL;
   readonly readOnly = true;
   override readonly idempotent = true;
-  readonly description = [
-    '저장된 세션 노트 하나의 지금 판을 읽는다.',
-    '제목, 프로젝트, 도구, 시작·마지막 저장 시각, 판 번호, 태그와 내용이 있는 칸을 준다.',
-    '칸 이름은 save_session의 입력과 같다 (did, decisions, blocked, quotes, extra).',
-    '[지움: 종류]는 저장할 때 지운 비밀값 자리다. session_id는 search_sessions의 결과에서 얻는다.',
-    '없거나 이 연결이 볼 수 없는 세션이면 not_found가 온다.',
-  ].join(' ');
   readonly inputSchema = {
     properties: {
-      session_id: { type: 'string', format: 'uuid', description: '읽을 세션의 id' },
+      session_id: { type: 'string', format: 'uuid' },
     },
     required: ['session_id'],
   };

@@ -267,6 +267,11 @@ describe('내 컴퓨터의 AI 도구가 서버 팀에 맡기기 (MCP ask_agent �
     const names = await api.mcp(mac, 'tools/list');
     const tools = (names.json().result as Json).tools.map((t: Json) => t.name);
     assert.ok(tools.includes('ask_agent') && tools.includes('agent_reply'));
+    // 설명 · 칸 설명은 코드가 아니라 설명서(task.tools.ko.json)에서 얹힌다. 형식 · 길이는 코드의 것
+    const ask = (names.json().result as Json).tools.find((t: Json) => t.name === 'ask_agent');
+    assert.match(ask.description, /에이전트 팀/);
+    assert.equal(ask.inputSchema.properties.message.description, '보낼 메시지');
+    assert.equal(ask.inputSchema.properties.message.maxLength, 8000);
 
     const nobody = await call(mac, 'ask_agent', { request_id: randomUUID(), message: '검토' });
     assert.equal(nobody.ok, false);

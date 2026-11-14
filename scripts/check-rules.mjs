@@ -7,6 +7,7 @@
 //   3. 웹의 쓰기는 useAction, 읽기는 useLiveValue. 손으로 쓴 busy 상태 · 불러오기는 예외 목록에 있는 파일만
 //   4. 파일 하나의 코드는 MAX_LINES줄까지 (빈 줄 · 주석 · 시험 · 생성 파일 제외). 넘는 파일은 예외 목록에 적힌 줄 수까지만
 //   5. 패턴 목록(객체설계 11장)이 본보기로 가리키는 파일이 실제로 있다
+//   6. AI가 읽는 글은 코드에 두지 않는다 (2차 1-0): MCP 도구(*.tool.ts)의 설명 · 칸 설명은 <모듈>.tools.ko.json에
 //
 // 예외 목록(scripts/ratchet.json)은 줄어들기만 한다: 새 항목을 더하지 않고, 고친 파일은 목록에서 지운다.
 // 목록의 why에는 아직 남은 화면마다 까닭을 적어 둔다 (검사는 보지 않는다).
@@ -166,6 +167,20 @@ else {
     if (!BASES.some((base) => existsSync(join(root, base, path))))
       problems.push(`${at(patternDoc)} 패턴 목록: 본보기 ${path}가 없어요`);
   }
+}
+
+// --- AI가 읽는 글 ---
+// 도구의 설명과 입력 칸 설명은 설명서 파일(<모듈>.tools.ko.json)에 둔다. 콘솔에서 고친 판이 그 위에 얹힌다 (mcp 모듈)
+// 기능 패키지의 도구(platform/plugin/package.tool.ts)는 글을 목록 파일(cairn-plugin.json)에서 받아 와서 뺀다
+const toolFiles = walk(join(root, 'apps/server/src')).filter(
+  (f) => f.endsWith('.tool.ts') && !at(f).startsWith('apps/server/src/modules/platform/'),
+);
+for (const file of toolFiles) {
+  const text = readFileSync(file, 'utf8');
+  if (/\bdescription\s*[:=]/.test(text))
+    problems.push(
+      `${at(file)}: 도구 설명은 코드에 두지 않아요. 모듈의 <모듈>.tools.ko.json에 적어요 (서버가 칸 이름으로 얹는다)`,
+    );
 }
 
 if (update) {

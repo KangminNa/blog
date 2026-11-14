@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { BlogTools } from '../blog';
-import { type BaseTool, PackageService, PackageTool, PluginRegistry } from '../platform';
+import { type BaseTool, PackageService, PackageTool, PluginRegistry, ToolTexts } from '../platform';
 import { TaskTools } from '../task';
 import { VaultTools } from '../vault';
 
@@ -22,6 +22,8 @@ export class McpToolbox {
   ].join('\n');
 
   readonly tools: readonly BaseTool[];
+  /** 코어 도구의 글: 모듈마다 설명서(<모듈>.tools.ko.json)를 합친 것 */
+  readonly texts: ToolTexts;
 
   constructor(
     vault: VaultTools,
@@ -31,6 +33,20 @@ export class McpToolbox {
     private readonly packages: PackageService,
   ) {
     this.tools = [...vault.tools, ...blog.tools, ...task.tools];
+    this.texts = ToolTexts.of(vault.texts, blog.texts, task.texts);
+    // 설명서가 코드와 맞지 않으면 서버가 뜨지 않는다: 설명 없는 도구 · 칸이 AI에게 나가지 않게
+    const problems = this.texts.problems(this.tools);
+    if (problems.length > 0)
+      throw new Error(
+        `도구 설명서(<모듈>.tools.ko.json)가 코드와 맞지 않아요\n${problems.join('\n')}`,
+      );
+  }
+
+  /** AI에게 보일 설명과 입력 모양. 기능 패키지의 도구는 목록 파일(cairn-plugin.json)의 글 그대로 */
+  describe(tool: BaseTool): { description: string; inputSchema: Record<string, unknown> } {
+    if (tool instanceof PackageTool)
+      return { description: tool.description, inputSchema: { ...tool.inputSchema } };
+    return this.texts.describe(tool);
   }
 
   /** 코어 모듈의 도구와 지금 동작 중인 기능 패키지의 도구 */

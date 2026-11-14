@@ -10,7 +10,7 @@ paths:
 
 | 파일 | 해도 되는 것 | 하면 안 되는 것 |
 |---|---|---|
-| `*.api.ts` · `*.tool.ts` | Input 만들기 → Service·Query 메서드 **하나** 호출 → View 돌려주기 | if로 비즈니스 분기, Repository·SQL 직접 사용 |
+| `*.api.ts` · `*.tool.ts` | Input 만들기 → Service·Query 메서드 **하나** 호출 → View 돌려주기. 도구의 설명 · 칸 설명은 `<모듈>.tools.ko.json`에 | if로 비즈니스 분기, Repository·SQL 직접 사용, 도구 설명을 코드에 쓰기 |
 | `*.view.ts` | 행을 받아 내보낼 칸을 `toJSON()`에 적기. 보는 사람마다 다르면 View를 나눈다 | 조회, 저장, 행 펼치기(`...row`), 표 인터페이스 타입 말고 다른 import |
 | `*.input.ts` | `static from(raw)`로 모양 검사(`InvalidRequest`). 표의 칸은 `COLUMNS` 한 줄씩, `changes`로 넘긴다 | 의미 검사(도메인의 일), DB |
 | `*.api.test.ts` | 보는 사람별 결과: 방문자 · write 기기(`ApiClient.writeDevice`) · 주인 | 손으로 curl 확인 |

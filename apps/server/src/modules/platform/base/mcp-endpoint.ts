@@ -18,6 +18,11 @@ export class McpEndpoint {
     private readonly toolsNow: () => readonly BaseTool[],
     /** AI 도구가 서버에 붙을 때 받는 안내 (스킬이 없는 도구도 이것만 보고 쓸 수 있게) */
     private readonly instructions: string,
+    /** 도구의 설명과 칸마다 설명을 얹은 입력 모양 (글은 코드 밖에서: 설명서 · 콘솔의 판 · 기능 패키지의 목록 파일) */
+    private readonly describe: (tool: BaseTool) => {
+      description: string;
+      inputSchema: Record<string, unknown>;
+    },
   ) {}
 
   /** 인증된 요청자(기기) 하나의 HTTP 요청 하나 (POST·GET·DELETE /mcp). site: 블로그의 사이트 주소 */
@@ -35,17 +40,20 @@ export class McpEndpoint {
     const tools = this.toolsNow();
     const visible = tools.filter((t) => t.allows(actor));
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: visible.map((t) => ({
-        name: t.name,
-        description: t.description,
-        inputSchema: { type: 'object' as const, ...t.inputSchema },
-        annotations: {
-          readOnlyHint: t.readOnly,
-          destructiveHint: t.destructive,
-          idempotentHint: t.idempotent,
-          openWorldHint: false,
-        },
-      })),
+      tools: visible.map((t) => {
+        const said = this.describe(t);
+        return {
+          name: t.name,
+          description: said.description,
+          inputSchema: { type: 'object' as const, ...said.inputSchema },
+          annotations: {
+            readOnlyHint: t.readOnly,
+            destructiveHint: t.destructive,
+            idempotentHint: t.idempotent,
+            openWorldHint: false,
+          },
+        };
+      }),
     }));
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const tool = tools.find((t) => t.name === request.params.name);

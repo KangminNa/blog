@@ -13,44 +13,27 @@ export class SubmitChangesTool extends BaseTool {
   readonly scope = Actor.TIDY;
   readonly readOnly = false;
   override readonly idempotent = true;
-  readonly description = [
-    '정리 결과(wiki 쓰기·고치기, 세션의 대표 wiki, 연결, 카테고리 제안)를 변경 묶음 하나로 낸다.',
-    '서버가 변경마다 규칙을 대 보고 바로 합치기(merge) · 검토(review) · 거부(reject)를 정해 돌려준다.',
-    '검토나 거부가 있어도 호출은 성공이고, 변경마다 status와 reason을 본다.',
-    'op마다 payload: wiki.create { title, body_md } · wiki.revise { body_md, title? }(target_id = wiki, 본문 전체를 보낸다) ·',
-    'session.assign { wiki_id }(target_id = 세션) · edge.add·edge.remove { src, dst, kind }(kind: material · link · similar · replaces) ·',
-    'category.create { name, description?, color?, sort? } · category.assign { category_id }(target_id = wiki).',
-    'payload의 id 자리에 @번호를 쓰면 이 묶음의 그 번호(1부터) 변경이 만든 것을 가리킨다. 예: wiki.create 뒤에 session.assign { wiki_id: "@1" }.',
-    '가리킨 변경이 바로 합쳐지지 않았으면 이 변경은 거부된다.',
-    'base_version에는 읽을 때 본 version을 적는다. 그사이 바뀌었으면 검토로 간다.',
-    '새 내용은 늘 비공개이고 공개 여부는 정할 수 없다. 사람이 고친 칸과 연결은 덮지 못하고 검토로 간다.',
-    'replaces { src: 새 wiki, dst: 옛 wiki }는 새 wiki가 옛 wiki의 결론을 뒤집었다는 뜻이고(옛 wiki는 히스토리) 늘 검토로 간다.',
-    '작업 토큰이면 작업 하나에 묶음 하나다: 다시 내면 첫 결과를 돌려준다.',
-  ].join(' ');
   readonly inputSchema = {
     properties: {
       request_id: {
         type: 'string',
         maxLength: 200,
-        description: '이 요청의 id. 응답을 받지 못해 다시 보낼 때는 같은 값을 쓴다',
       },
-      message: { type: 'string', maxLength: 2000, description: '왜 바꾸는지' },
+      message: { type: 'string', maxLength: 2000 },
       ops: {
         type: 'array',
         minItems: 1,
         maxItems: SubmitChangesInput.OPS_MAX,
-        description: '변경들. 앞에서부터 차례로 판정하고 적용한다',
         items: {
           type: 'object',
           properties: {
             op: { type: 'string', enum: ChangeOps.FOR_AI },
-            target_id: { type: 'string', format: 'uuid', description: '대상 id' },
+            target_id: { type: 'string', format: 'uuid' },
             base_version: {
               type: 'integer',
               minimum: 1,
-              description: '읽을 때 본 대상의 version',
             },
-            payload: { type: 'object', description: '변경의 내용. 칸은 op마다 다르다' },
+            payload: { type: 'object' },
           },
           required: ['op', 'payload'],
         },

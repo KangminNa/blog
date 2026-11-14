@@ -129,7 +129,6 @@ describe('입구에서 busy로 바꾸기', () => {
     const failure = await statementTimeout();
     class SlowTool extends BaseTool {
       readonly name = 'slow';
-      readonly description = '시간 제한에 걸리는 도구';
       readonly scope = 'write';
       readonly inputSchema = { properties: {} };
       readonly readOnly = true;
@@ -137,7 +136,16 @@ describe('입구에서 busy로 바꾸기', () => {
         throw failure;
       }
     }
-    const endpoint = new McpEndpoint('cairn', 'test', () => [new SlowTool()], '');
+    const endpoint = new McpEndpoint(
+      'cairn',
+      'test',
+      () => [new SlowTool()],
+      '',
+      () => ({
+        description: '시간 제한에 걸리는 도구',
+        inputSchema: {},
+      }),
+    );
     const actor = new DeviceActor(
       '00000000-0000-7000-8000-000000000001',
       '00000000-0000-7000-8000-000000000002',

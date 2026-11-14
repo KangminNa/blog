@@ -55,6 +55,7 @@ export * as TableColumns from './base/table-columns';
 export { type ColumnRules, TableEntity, type TableRow } from './base/table-entity';
 export { type How, type RowOf, Rule, type Where } from './base/table-query';
 export { type EntityStore, TableRepository } from './base/table-repository';
+export { type ToolText, ToolTexts } from './base/tool-texts';
 export { ZipFile } from './base/zip-file';
 export { ZipLimits, ZipReader } from './base/zip-reader';
 export { Cookies } from './http/cookies';

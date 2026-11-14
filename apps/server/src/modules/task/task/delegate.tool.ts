@@ -15,16 +15,6 @@ export class DelegateTaskTool extends BaseTool {
   readonly scope = Actor.AGENT;
   readonly readOnly = false;
   override readonly idempotent = true;
-  readonly description = [
-    '바로 아래 팀원에게 하위 작업을 한 번에 맡긴다 (팀은 일의 "내 팀"에 있다).',
-    `한 번에 ${Task.DELEGATE_AT_ONCE}개, 작업 하나에 ${Task.SUBTASKS_MAX}개, 위임 깊이 ${Task.DEPTH_MAX}, 라운드 ${Task.ROUNDS_MAX}까지.`,
-    '맡긴 뒤 이 작업은 하위 작업을 기다리고, 이 실행은 여기서 끝낸다.',
-    '하위 작업이 모두 끝나면 결과와 함께 이 일이 다시 온다. 결재는 누가 올리든 주인이 한다.',
-    'code 일은 code 작업에서만 맡긴다: 하위 작업은 이 작업의 저장소를 물려받고, paths(이 작업의 고칠 수 있는 곳 안)만 정한다.',
-    '하위 작업끼리 paths가 겹치면 거절된다 (겹치면 PR이 부딪친다).',
-    'make 일(파일 만들기: 문서 · 슬라이드 · 표 · 웹 페이지)은 재료 없이 지시만 간다: 들어갈 내용(본문 · 숫자 · 출처)을 지시에 빠짐없이 적는다.',
-    '끝난 하위 작업의 결과에는 그 작업이 만든 결과물(outputs: id · 이름)이 실려 온다. 보고(report_round)의 근거로 output_id를 건다.',
-  ].join(' ');
   readonly inputSchema = {
     properties: {
       subtasks: {
@@ -37,30 +27,25 @@ export class DelegateTaskTool extends BaseTool {
             request_id: {
               type: 'string',
               maxLength: 200,
-              description: '하위 작업마다 새 id. 응답을 받지 못해 다시 보낼 때는 같은 값을 쓴다',
             },
-            to_agent_id: { type: 'string', format: 'uuid', description: '맡을 팀원의 agent_id' },
+            to_agent_id: { type: 'string', format: 'uuid' },
             kind: {
               type: 'string',
               enum: [...Task.DELEGABLE],
-              description: '일의 종류. 팀원의 kinds에 있는 것만 (기본 general)',
             },
-            title: { type: 'string', maxLength: 200, description: '하위 작업의 제목' },
+            title: { type: 'string', maxLength: 200 },
             instruction: {
               type: 'string',
               maxLength: 20000,
-              description: '팀원이 받을 지시. 팀원은 이 글과 목표만 보고 일한다',
             },
-            target_kind: { type: 'string', maxLength: 40, description: '대상의 종류 (예: post)' },
-            target_id: { type: 'string', format: 'uuid', description: '대상 id' },
-            target_version: { type: 'integer', minimum: 0, description: '대상의 판 번호' },
+            target_kind: { type: 'string', maxLength: 40 },
+            target_id: { type: 'string', format: 'uuid' },
+            target_version: { type: 'integer', minimum: 0 },
             paths: {
               type: 'array',
               minItems: 1,
               maxItems: CodeScope.PATHS_MAX,
               items: { type: 'string', maxLength: CodeScope.PATH_MAX },
-              description:
-                'kind가 code일 때만, 필수. 저장소 안의 상대 경로 접두어 (예: src/billing). 이 작업의 고칠 수 있는 곳 안에서, 다른 하위 작업과 겹치지 않게',
             },
           },
           required: ['request_id', 'to_agent_id', 'title', 'instruction'],

@@ -25,6 +25,7 @@ export class McpController {
       '0.1.0',
       () => toolbox.toolsNow(),
       McpToolbox.INSTRUCTIONS,
+      (tool) => toolbox.describe(tool),
     );
   }
 

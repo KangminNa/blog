@@ -1,0 +1,85 @@
+{
+  "check_session": {
+    "description": "세션 노트를 저장하기 전에 검사한다. 저장하지 않는다. 노트 모양이 틀리면 고칠 칸을 알려 주고, 저장하면 서버가 지울 비밀값을 warnings로 알려 준다. 이번 저장에 쓸 request_id와 대화 id(source_session_id)를 준다. 대화 id를 모르면 비워 두고, 받은 값을 이 대화의 다음 저장에도 쓴다. site는 노트가 올라갈 블로그 주소다. 사용자에게 보여 주고 확인받은 뒤 save_session으로 저장한다.",
+    "input": {
+      "source_session_id": "AI 도구 안의 대화 id. 같은 대화는 늘 같은 값",
+      "tool": "AI 도구 이름 (예: claude-code, codex)",
+      "project": "작업한 프로젝트 (예: 저장소 이름)",
+      "title": "세션 제목. 한 일을 한 줄로",
+      "did": "한 일",
+      "decisions": "결정한 것과 이유",
+      "blocked": "막힌 점, 남은 문제",
+      "quotes": "핵심 원문 인용 (4,000자까지)",
+      "extra": "기타",
+      "tags": "태그",
+      "started_at": "세션을 시작한 시각 (ISO 8601)"
+    }
+  },
+  "get_session": {
+    "description": "저장된 세션 노트 하나의 지금 판을 읽는다. 제목, 프로젝트, 도구, 시작·마지막 저장 시각, 판 번호, 태그와 내용이 있는 칸을 준다. 칸 이름은 save_session의 입력과 같다 (did, decisions, blocked, quotes, extra). [지움: 종류]는 저장할 때 지운 비밀값 자리다. session_id는 search_sessions의 결과에서 얻는다. 없거나 이 연결이 볼 수 없는 세션이면 not_found가 온다.",
+    "input": {
+      "session_id": "읽을 세션의 id"
+    }
+  },
+  "get_wiki": {
+    "description": "wiki 하나의 지금 판을 읽는다. 제목, 카테고리, version, 판 번호, 칸(## 제목 단위), 본문 md를 준다. version은 고칠 때 submit_changes의 base_version으로 쓴다. pinned_sections는 사람이 고친 칸이다. 이 칸을 바꾸면 바로 합쳐지지 않고 검토로 간다. wiki_id는 search_wikis의 결과나 지시문의 재료에서 얻는다. 없거나 이 연결이 볼 수 없는 wiki면 not_found가 온다.",
+    "input": {
+      "wiki_id": "읽을 wiki의 id"
+    }
+  },
+  "neighbors": {
+    "description": "그래프의 점 하나와 그 이웃을 읽는다. 점은 카테고리 · wiki · 세션 · 글이다. relation은 parent(이 점의 주소) · child(이 점에 놓인 점) · material(재료 세션) · link(wiki 사이 링크) · ref(글의 참고 wiki)다. node_id는 search_sessions, search_wikis의 결과나 이 도구의 이웃에서 얻는다. 없거나 이 연결이 볼 수 없는 점이면 not_found가 오고, 볼 수 없는 이웃은 나오지 않는다.",
+    "input": {
+      "node_id": "점의 id"
+    }
+  },
+  "save_session": {
+    "description": "방금 함께 작업한 AI 세션의 노트를 Cairn 블로그에 저장한다. 먼저 check_session으로 검사하고, 받은 request_id와 source_session_id를 그대로 쓴다. 사용자에게 노트와 올릴 곳을 보여 주고 확인받은 뒤에 부른다. 같은 대화(source_session_id)를 다시 저장하면 같은 세션에 새 판으로 쌓인다. 내용이 같으면 판을 만들지 않는다(unchanged). 토큰·키·비밀번호는 보내기 전에 지운다. 서버도 한 번 더 지우고 warnings로 알려 준다. 공개 여부는 정할 수 없다 (늘 비공개로 저장된다). 응답의 url을 사용자에게 보여 준다.",
+    "input": {
+      "request_id": "check_session이 준 UUID. 응답을 받지 못해 다시 보낼 때는 같은 값을 쓴다",
+      "source_session_id": "AI 도구 안의 대화 id. 같은 대화는 늘 같은 값",
+      "tool": "AI 도구 이름 (예: claude-code, codex)",
+      "project": "작업한 프로젝트 (예: 저장소 이름)",
+      "title": "세션 제목. 한 일을 한 줄로",
+      "did": "한 일",
+      "decisions": "결정한 것과 이유",
+      "blocked": "막힌 점, 남은 문제",
+      "quotes": "핵심 원문 인용 (4,000자까지)",
+      "extra": "기타",
+      "tags": "태그",
+      "started_at": "세션을 시작한 시각 (ISO 8601)"
+    }
+  },
+  "search_sessions": {
+    "description": "저장된 세션 노트를 키워드로 찾는다. 제목과 본문에서 찾고, 한국어도 된다. 띄어 쓴 단어가 모두 들어 있는 세션만 찾는다. 대소문자를 구분하니 없으면 표기를 바꿔 다시 찾는다. project, tool, from, to로 좁힐 수 있다. from과 to는 마지막 저장 시각 기준이다. 결과는 처음 저장한 때가 최근인 세션부터 나온다. next가 있으면 cursor에 그대로 넣어 다음 쪽을 부른다. 이 연결이 볼 수 있는 세션만 나온다. 내용 전체는 session_id로 get_session을 불러 읽는다.",
+    "input": {
+      "query": "찾을 말. 에러 메시지나 코드 이름처럼 본문에 그대로 있을 말이 잘 찾아진다",
+      "project": "이 프로젝트의 세션만",
+      "tool": "이 AI 도구의 세션만 (예: claude-code)",
+      "from": "이 시각부터 저장된 세션만 (ISO 8601)",
+      "to": "이 시각까지 저장된 세션만 (ISO 8601)",
+      "limit": "한 쪽에 받을 세션 수",
+      "cursor": "앞 응답의 next 값 그대로"
+    }
+  },
+  "search_wikis": {
+    "description": "정리된 wiki를 키워드로 찾는다. 제목과 본문에서 찾고, 한국어도 된다. 띄어 쓴 단어가 모두 들어 있는 wiki만 찾는다. 대소문자를 구분하니 없으면 표기를 바꿔 다시 찾는다. 결과는 최근에 만든 wiki부터 나온다. next가 있으면 cursor에 그대로 넣어 다음 쪽을 부른다. 이 연결이 볼 수 있는 wiki만 나온다. 내용 전체는 wiki_id로 get_wiki를 불러 읽는다.",
+    "input": {
+      "query": "찾을 말. 본문에 그대로 있을 말이 잘 찾아진다",
+      "limit": "한 쪽에 받을 wiki 수",
+      "cursor": "앞 응답의 next 값 그대로"
+    }
+  },
+  "submit_changes": {
+    "description": "정리 결과(wiki 쓰기·고치기, 세션의 대표 wiki, 연결, 카테고리 제안)를 변경 묶음 하나로 낸다. 서버가 변경마다 규칙을 대 보고 바로 합치기(merge) · 검토(review) · 거부(reject)를 정해 돌려준다. 검토나 거부가 있어도 호출은 성공이고, 변경마다 status와 reason을 본다. op마다 payload: wiki.create { title, body_md } · wiki.revise { body_md, title? }(target_id = wiki, 본문 전체를 보낸다) · session.assign { wiki_id }(target_id = 세션) · edge.add·edge.remove { src, dst, kind }(kind: material · link · similar · replaces) · category.create { name, description?, color?, sort? } · category.assign { category_id }(target_id = wiki). payload의 id 자리에 @번호를 쓰면 이 묶음의 그 번호(1부터) 변경이 만든 것을 가리킨다. 예: wiki.create 뒤에 session.assign { wiki_id: \"@1\" }. 가리킨 변경이 바로 합쳐지지 않았으면 이 변경은 거부된다. base_version에는 읽을 때 본 version을 적는다. 그사이 바뀌었으면 검토로 간다. 새 내용은 늘 비공개이고 공개 여부는 정할 수 없다. 사람이 고친 칸과 연결은 덮지 못하고 검토로 간다. replaces { src: 새 wiki, dst: 옛 wiki }는 새 wiki가 옛 wiki의 결론을 뒤집었다는 뜻이고(옛 wiki는 히스토리) 늘 검토로 간다. 작업 토큰이면 작업 하나에 묶음 하나다: 다시 내면 첫 결과를 돌려준다.",
+    "input": {
+      "request_id": "이 요청의 id. 응답을 받지 못해 다시 보낼 때는 같은 값을 쓴다",
+      "message": "왜 바꾸는지",
+      "ops": "변경들. 앞에서부터 차례로 판정하고 적용한다",
+      "ops[].target_id": "대상 id",
+      "ops[].base_version": "읽을 때 본 대상의 version",
+      "ops[].payload": "변경의 내용. 칸은 op마다 다르다",
+      "ops[].op": "변경의 종류 (정해진 목록 중 하나)"
+    }
+  }
+}
