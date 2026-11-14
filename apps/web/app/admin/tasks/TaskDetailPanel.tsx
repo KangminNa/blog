@@ -176,6 +176,9 @@ function Facts({ task }: { task: TaskDetail }) {
             {TARGET_LABELS[target.kind] ?? target.kind} ·{' '}
             {target.kind === 'post' ? (
               <Link href={`/admin/posts/${target.id}`}>{target.id}</Link>
+            ) : target.kind === 'browser_site' ? (
+              // 사이트 이름은 작업 제목에 있다 (id 대신 사이트 화면으로)
+              <Link href="/admin/p/browser-tabs">브라우저에서 보기</Link>
             ) : (
               target.id
             )}

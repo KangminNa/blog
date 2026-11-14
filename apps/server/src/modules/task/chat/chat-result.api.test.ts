@@ -147,9 +147,8 @@ describe('결과 카드', () => {
     assert.deepEqual([card.deliver, card.passed, card.review], [null, true, null]);
     const inbox = ok(await api.get('/api/approvals?status=pending', owner)).approvals as Json[];
     assert.ok(inbox.some((a) => a.id === card.id && a.action === 'task.chat.result'));
-    const home = ok(await api.get('/api/home', owner));
-    assert.ok(home.pendingApprovals >= 1);
-    assert.equal(home.chats.find((c: Json) => c.id === chat.id)?.state, 'waiting_approval');
+    const { chats } = ok(await api.get('/api/chats', owner));
+    assert.equal(chats.find((c: Json) => c.id === chat.id)?.state, 'waiting_approval');
 
     const visitor = await api.request(
       'POST',

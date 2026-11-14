@@ -4,6 +4,7 @@ import { chats, chatUpdates } from '../task.schema';
 import type { ChatRow } from '../task.tables';
 import { Chat } from './chat';
 import { ChatHistory, type ChatTurnRow } from './chat-history.policy';
+import { ChatRequest } from './chat-request.policy';
 import type { ChatTurnStateRow } from './chat-result.policy';
 import { type ChatPlaceRow, ChatUpdates } from './chat-update.policy';
 
@@ -24,7 +25,7 @@ export class ChatRepository extends TableRepository<ChatRow, Chat> {
 
   /** 이전 대화를 만들 앞 회차들 (최근 ChatHistory.TURNS개, 오래된 것부터) */
   previousTurns(chat: Chat, spaceId: string): Promise<ChatTurnRow[]> {
-    const ids = Chat.turnRequestIds(chat.id, chat.turns - ChatHistory.TURNS + 1, chat.turns);
+    const ids = ChatRequest.turns(chat.id, chat.turns - ChatHistory.TURNS + 1, chat.turns);
     if (ids.length === 0) return Promise.resolve([]);
     return this.sql<ChatTurnRow[]>`
       SELECT id, instruction, result, status, wait_reason, payload FROM task.tasks
@@ -75,7 +76,7 @@ export class ChatRepository extends TableRepository<ChatRow, Chat> {
     const [row] = await this.sql<{ busy: boolean }[]>`
       WITH RECURSIVE tree AS (
         SELECT id FROM task.tasks
-        WHERE space_id = ${chat.spaceId} AND request_id LIKE ${`${Chat.turnRequestPrefix()}${chat.id}:%`}
+        WHERE space_id = ${chat.spaceId} AND request_id LIKE ${`${ChatRequest.TURN_PREFIX}${chat.id}:%`}
         UNION ALL
         SELECT t.id FROM task.tasks t JOIN tree ON t.parent_id = tree.id
       )
@@ -91,14 +92,14 @@ export class ChatRepository extends TableRepository<ChatRow, Chat> {
 
   /** 지금 회차의 맨 위 작업(상태 · 지시 · 결과)과 그 회차의 검토 작업 */
   async turnState(chat: Chat): Promise<ChatTurnStateRow> {
-    const turn = Chat.turnRequestId(chat.id, chat.turns);
+    const turn = ChatRequest.turn(chat.id, chat.turns);
     const [row] = await this.sql<ChatTurnStateRow[]>`
       SELECT root.status, root.instruction, root.result,
         review.status AS review_status, review.result AS review_result
       FROM (SELECT 1) one
       LEFT JOIN task.tasks root ON root.space_id = ${chat.spaceId} AND root.request_id = ${turn}
       LEFT JOIN task.tasks review
-        ON review.space_id = ${chat.spaceId} AND review.request_id = ${Chat.reviewRequestId(chat.id, chat.turns)}`;
+        ON review.space_id = ${chat.spaceId} AND review.request_id = ${ChatRequest.review(chat.id, chat.turns)}`;
     return (
       row ?? {
         status: null,
@@ -108,6 +109,22 @@ export class ChatRepository extends TableRepository<ChatRow, Chat> {
         review_result: null,
       }
     );
+  }
+
+  /** 맡기 전에 글로 한 답들 (오래된 것부터): 덧붙인 말 중 회차 작업이 없는 것 */
+  async answersBefore(chatId: string): Promise<string[]> {
+    const rows = await this.sql<{ text: string }[]>`
+      SELECT text FROM task.chat_updates
+      WHERE chat_id = ${chatId} AND kind = ${ChatUpdates.APPENDED} AND task_id IS NULL ORDER BY n`;
+    return rows.map((r) => r.text);
+  }
+
+  /** 마지막 질문이 고르라고 준 에이전트들. 질문이 없으면 빈 목록 */
+  async lastChoices(chatId: string): Promise<string[]> {
+    const [row] = await this.sql<{ choices: string[] | null }[]>`
+      SELECT choices FROM task.chat_updates
+      WHERE chat_id = ${chatId} AND kind = ${ChatUpdates.QUESTION} ORDER BY n DESC LIMIT 1`;
+    return row?.choices ?? [];
   }
 
   /** 쌓은 소식의 번호 (커서). 저장한 뒤에 읽는다 */
@@ -120,7 +137,10 @@ export class ChatRepository extends TableRepository<ChatRow, Chat> {
   protected override async saveParts(chat: Chat): Promise<void> {
     const rows = chat.addedUpdates;
     if (rows.length === 0) return;
-    await this.insertRows(chatUpdates, [...rows]);
+    await this.insertRows(
+      chatUpdates,
+      rows.map((r) => ({ ...r, choices: r.choices ? [...r.choices] : null })),
+    );
     await ChangeSignal.send(this.sql, [new ChangeSignal(chat.spaceId, ChatUpdates.TOPIC, chat.id)]);
   }
 }

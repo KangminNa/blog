@@ -11,13 +11,16 @@ import { Task } from '../task/task';
 import type { ChatNew, ChatRow, ChatUpdateNew } from '../task.tables';
 import { ChatView } from './chat.view';
 import { ChatHistory, type ChatTurnRow } from './chat-history.policy';
+import { ChatRequest } from './chat-request.policy';
+import { ChatRoute } from './chat-route.policy';
 import { ChatUpdates } from './chat-update.policy';
 
 // 대화 하나 (task.chats, 기획서 결정 2026-11-14). 관리자와 바로 아래 에이전트 하나가 채팅처럼 주고받는다.
 // 서버 본체에는 AI가 없어서 메시지 하나 = 상대에게 맡기는 작업 하나다 (회차, request_id chat:<대화>:<회차>).
 // 이 줄은 머리(상대 · 제목 · 회차 수)만 든다: 메시지는 작업의 지시, 답은 작업의 결과라 두 벌로 두지 않는다.
 // 앞 대화는 회차 작업의 payload.chat.history에 자료로 싣는다. read_url의 기준(주인의 글)은 그대로 이번 메시지뿐이다.
-// 2차 1-1: 회차가 끝나지 않았을 때 보낸 말은 덧붙인 말이 된다 (appendTo): 소식 한 줄 + 대표가 짧게 답하는 작업 하나.
+// 2차 1-1: 회차가 끝나지 않았을 때 보낸 말은 덧붙인 말이 된다 (appendTo): 소식 한 줄 + 상대가 짧게 답하는 작업 하나.
+// 2차 1-5: 상대 없이 열고(첫 메시지는 pending) 맡을 에이전트를 정한다 (ChatRoute): 바로 · 배정 일(AI) · 관리자에게 묻기.
 // 대화의 소식(task.chat_updates, 추가만)은 이 엔티티를 거쳐 쌓인다 (ChatRepository.saveParts)
 export class Chat extends TableEntity<ChatRow, ChatNew> {
   /** 화면이 대화 목록 · 대화를 다시 읽는다 (받는 모듈은 없다) */
@@ -25,19 +28,21 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
   static readonly TITLE_MAX = 80;
   static readonly MESSAGE_MAX = 8000;
   static readonly GOAL_MAX = 300;
+  /** 배정 일은 쌓인 일보다 먼저 (관리자가 답을 기다린다) */
+  private static readonly ROUTE_PRIORITY = 900;
   /** 회차 작업의 제목 (작업 메뉴에서 대화의 일인지 알아보게) */
   private static readonly TASK_TITLE = 60;
   /** 이번에 쌓을 소식 (saveParts가 넣는다) */
   private added: ChatUpdateNew[] = [];
 
   /**
-   * 새 대화. 첫 메시지는 send로 (만드는 트랜잭션에서 함께). deviceId: 기기(MCP ask_agent)가 연 대화면 그 기기.
-   * goal: 목표 한 줄, project: 맞춘 git 주소 (ChatProject), deliver: 받을 것 (ChatResult.deliverOf). 열 때만 정한다
+   * 새 대화 (2차 1-5): 상대 없이 열고 첫 메시지를 pending에 둔다. 맡을 에이전트는 assign으로 (바로 · 배정 일 · 질문의 답).
+   * deviceId: 기기(MCP ask_agent)가 연 대화면 그 기기. goal: 목표 한 줄, project: 맞춘 git 주소 (ChatProject),
+   * deliver: 받을 것 (ChatResult.deliverOf). 열 때만 정한다 (배정 일이 받을 것을 고르면 비어 있을 때만 채운다)
    */
   static open(
     spaceId: string,
     requestId: string,
-    agent: Agent,
     message: string,
     now: Date,
     deviceId: string | null = null,
@@ -45,13 +50,15 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     project: string | null = null,
     deliver: string | null = null,
   ): Chat {
-    Chat.assertPartner(agent);
+    const text = message.trim();
+    if (!text) throw new RuleViolation('메시지를 적어요');
     return new Chat(
       {
         id: BaseEntity.newId(),
         space_id: spaceId,
-        agent_id: agent.id,
-        title: Chat.firstLine(message, Chat.TITLE_MAX),
+        agent_id: null,
+        pending: text,
+        title: Chat.firstLine(text, Chat.TITLE_MAX),
         turns: 0,
         request_id: requestId,
         device_id: deviceId,
@@ -69,68 +76,24 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     return new Chat(row);
   }
 
-  /**
-   * 기기(MCP ask_agent)가 고른 상대: 이름이나 id로, 관리자 바로 아래 · 멈추지 않은 · 지우지 않은 에이전트 중에서.
-   * 고르지 않으면 기본 대표, 대표가 없으면 하나뿐일 때 그 에이전트. 못 고르면 고를 수 있는 이름을 알린다 (기기의 AI가 다시 부르게)
-   */
-  static partnerOf(agents: readonly Agent[], wanted: string | null): Agent {
-    const choices = agents.filter((a) => a.topLevel && !a.paused && !a.deleted);
-    const names =
-      choices.map((a) => a.name).join(', ') ||
-      '없음 (콘솔에서 관리자 바로 아래 에이전트를 만들어요)';
-    const want = wanted?.trim() ?? '';
-    const lead = choices.filter((a) => a.lead);
-    const found = want
-      ? choices.filter((a) => a.id === want || a.name === want)
-      : lead.length > 0
-        ? lead
-        : choices;
-    const [only, ...more] = found;
-    if (only && more.length === 0) return only;
-    if (!want) throw new RuleViolation(`기본 대표가 없어요. 상대를 정해요 (agent): ${names}`);
-    if (only) throw new RuleViolation(`같은 이름이 여럿이에요: ${want} (id로 정해요)`);
-    throw new RuleViolation(`없는 상대예요: ${want}. 고를 수 있는 상대: ${names}`);
-  }
-
-  /** 회차 작업의 request_id 앞부분 (SQL이 대화 id · 회차를 이어 붙인다) */
-  static turnRequestPrefix(): string {
-    return 'chat:';
-  }
-
-  /** 회차 작업의 request_id */
-  static turnRequestId(chatId: string, turn: number): string {
-    return `${Chat.turnRequestPrefix()}${chatId}:${turn}`;
-  }
-
-  /** 회차 하나의 맨 위 작업들의 request_id: 회차 작업과 그 덧붙인 말에 답하는 작업들 (팀의 일은 그 아래) */
-  static turnRoots(chatId: string, turn: number): string[] {
-    const id = Chat.turnRequestId(chatId, turn);
-    const replies = Array.from(
-      { length: ChatUpdates.APPEND_MAX },
-      (_, k) => `${id}:reply:${k + 1}`,
-    );
-    return [id, ...replies];
-  }
-
-  /** 회차의 결과를 결재 전에 검토하는 작업의 request_id (검토자 짝, 2차 2단계) */
-  static reviewRequestId(chatId: string, turn: number): string {
-    return `${Chat.turnRequestId(chatId, turn)}:review`;
-  }
-
-  /** from회차부터 to회차까지의 request_id (작업을 찾는 데 쓴다) */
-  static turnRequestIds(chatId: string, from: number, to: number): string[] {
-    const ids: string[] = [];
-    for (let turn = Math.max(1, from); turn <= to; turn++)
-      ids.push(Chat.turnRequestId(chatId, turn));
-    return ids;
-  }
-
   get spaceId(): string {
     return this.row.space_id;
   }
 
-  get agentId(): string {
+  /** 맡은 에이전트. 맡기 전(배정 · 질문 중)이면 null */
+  get agentId(): string | null {
     return this.row.agent_id;
+  }
+
+  /** 맡은 에이전트. 맡기 전이면 RuleViolation (회차 · 카드는 맡은 대화에만 생긴다) */
+  get partnerId(): string {
+    if (this.row.agent_id === null) throw new RuleViolation('아직 맡은 에이전트가 없어요');
+    return this.row.agent_id;
+  }
+
+  /** 맡기 전에 받은 첫 메시지 (맡으면 첫 회차가 되고 비워진다) */
+  get pending(): string | null {
+    return this.row.pending;
   }
 
   get turns(): number {
@@ -188,7 +151,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     this.changed();
     return Task.open(
       this.row.space_id,
-      Chat.turnRequestId(this.id, turn),
+      ChatRequest.turn(this.id, turn),
       {
         kind: Task.GENERAL,
         agent_id: agent.id,
@@ -224,7 +187,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
   review(reviewer: Agent, instruction: string, now: Date): Task {
     return Task.open(
       this.row.space_id,
-      Chat.reviewRequestId(this.id, this.row.turns),
+      ChatRequest.review(this.id, this.row.turns),
       {
         kind: Task.GENERAL,
         agent_id: reviewer.id,
@@ -265,7 +228,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     const turn = this.row.turns;
     return Task.open(
       this.row.space_id,
-      `${Chat.turnRequestId(this.id, turn)}:reply:${appended + 1}`,
+      `${ChatRequest.turn(this.id, turn)}:reply:${appended + 1}`,
       {
         kind: Task.GENERAL,
         agent_id: agent.id,
@@ -286,8 +249,73 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     );
   }
 
+  /**
+   * 맡긴다 (2차 1-5): 상대를 정하고 맡기 전의 첫 메시지로 첫 회차를 연다. 맡음 소식(routed)을 남긴다.
+   * reason: 배정 일이 고른 까닭 (없으면 이름), deliver: 배정 일이 고른 받을 것 (열 때 정했으면 그대로), routeTaskId: 고른 배정 일
+   */
+  assign(
+    agent: Agent,
+    now: Date,
+    reason = '',
+    deliver: string | null = null,
+    routeTaskId: string | null = null,
+  ): Task {
+    const message = this.row.pending;
+    if (this.row.agent_id !== null || message === null) throw new Conflict('이미 맡은 대화예요');
+    Chat.assertPartner(agent);
+    this.put('agent_id', agent.id);
+    this.put('pending', null);
+    if (deliver && !this.row.deliver) this.put('deliver', deliver);
+    this.note(ChatUpdates.ROUTED, reason || agent.name, routeTaskId, agent.id, now);
+    return this.send(agent, this.row.request_id, message, [], now, this.row.device_id);
+  }
+
+  /** 맡을 에이전트를 AI가 한 번 고른다 (배정 일, 에이전트 없이 tool로 돈다). instruction은 지시문 틀 chat-route로 채운 글 */
+  route(tool: string, instruction: string, now: Date): Task {
+    this.assertPending();
+    this.touch(now);
+    return Task.open(
+      this.row.space_id,
+      `${ChatRequest.route(this.id)}${BaseEntity.newId()}`,
+      {
+        kind: Task.ROUTE,
+        title: `배정 · ${Chat.firstLine(this.row.title, Chat.TASK_TITLE)}`,
+        instruction,
+        payload: { tool, route: { chatId: this.id } },
+        priority: Chat.ROUTE_PRIORITY,
+      },
+      now,
+    );
+  }
+
+  /** 관리자에게 묻는다: 어느 에이전트에게 맡길지 (choices에서 고른다). routeTaskId: 이 질문을 낸 배정 일 */
+  ask(question: string, choices: readonly Agent[], now: Date, routeTaskId: string | null = null) {
+    this.assertPending();
+    const ids = choices.map((a) => a.id) as string[];
+    this.note(ChatUpdates.QUESTION, question, routeTaskId, null, now, ids);
+    this.touch(now);
+  }
+
+  /** 맡기 전에 글로 한 답 (고를 것을 가리키지 않는 말). answered: 이미 한 답의 수. 첫 회차에 덧붙인 말로 함께 간다 */
+  answer(text: string, answered: number, now: Date): void {
+    this.assertPending();
+    if (answered >= ChatRoute.ANSWER_MAX)
+      throw new RuleViolation(
+        `맡기 전의 답은 ${ChatRoute.ANSWER_MAX}개까지예요. 고를 것에서 골라요`,
+      );
+    this.note(ChatUpdates.APPENDED, text, null, null, now);
+    this.touch(now);
+  }
+
   /** 소식 한 줄을 남긴다 (끝난 작업 · post_update · 덧붙인 말). 저장할 때 함께 쌓인다 */
-  note(kind: string, text: string, taskId: string | null, agentId: string | null, now: Date): void {
+  note(
+    kind: string,
+    text: string,
+    taskId: string | null,
+    agentId: string | null,
+    now: Date,
+    choices: string[] | null = null,
+  ): void {
     this.added.push({
       id: BaseEntity.newId(),
       space_id: this.row.space_id,
@@ -296,6 +324,7 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
       text: ChatUpdates.text(text),
       task_id: taskId,
       agent_id: agentId,
+      choices,
       created_at: now,
     });
   }
@@ -325,6 +354,15 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
         `관리자 바로 아래 에이전트와만 대화해요: ${agent.name}은(는) 팀원이에요`,
       );
     if (agent.paused) throw new RuleViolation(`멈춘 에이전트예요: ${agent.name} (재개한 뒤에)`);
+  }
+
+  private assertPending(): void {
+    if (this.row.agent_id !== null) throw new Conflict('이미 맡은 대화예요');
+  }
+
+  private touch(now: Date): void {
+    this.put('updated_at', now);
+    this.changed();
   }
 
   private static firstLine(text: string, max: number): string {

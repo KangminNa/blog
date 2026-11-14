@@ -61,8 +61,13 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
    * 에이전트도 작업 토큰도 없다 (연결 확인과 같다)
    */
   static readonly AI_SIGNIN = 'ai_signin';
+  /**
+   * 대화의 배정 (2차 1-5): 새 대화를 어느 에이전트가 맡을지 AI가 한 번 고른다. 연결 확인처럼 에이전트 없이 지시문 하나를 돌리고,
+   * 답(JSON 한 줄)은 서버가 읽는다 (ChatRoute). payload: { tool, route: { chatId } }
+   */
+  static readonly ROUTE = 'chat_route';
   /** 에이전트 없이 러너가 바로 도는 일 */
-  static readonly AGENTLESS: readonly string[] = [Task.AI_TEST, Task.AI_SIGNIN];
+  static readonly AGENTLESS: readonly string[] = [Task.AI_TEST, Task.AI_SIGNIN, Task.ROUTE];
   /** 서버 브라우저로 하는 작업. 브라우저가 있다고 알린 러너(next_jobs의 browser)에게만 빌려 준다 */
   static readonly BROWSE = 'browse';
   /** 코드 작업: 코드 러너 칸에서 셸로 저장소를 고친다 (docs/코드작업.md) */
@@ -701,15 +706,19 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
 
   /** 하위 작업 하나의 결과. 러너는 결과를 { text }로 낸다 */
   private resultView(agentName: string | null): JobSubtaskResultView {
-    const text = this.result?.text;
-    const summary = typeof text === 'string' ? text : null;
-    return new JobSubtaskResultView(this.row, agentName, summary, this.failure);
+    return new JobSubtaskResultView(this.row, agentName, this.answer || null, this.failure);
   }
 
-  /** 에이전트 없는 일(연결 확인 · 웹 로그인)의 도구. 없으면 null */
+  /** 에이전트 없는 일(연결 확인 · 웹 로그인 · 배정)의 도구. 없으면 null */
   get payloadTool(): string | null {
     const tool = this.payload.tool;
     return typeof tool === 'string' ? tool : null;
+  }
+
+  /** 끝난 일의 답 (러너는 결과를 { text }로 낸다). 없으면 빈 글 */
+  get answer(): string {
+    const text = this.result?.text;
+    return typeof text === 'string' ? text : '';
   }
 
   private get payload(): Readonly<Record<string, unknown>> {

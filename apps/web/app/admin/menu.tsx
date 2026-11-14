@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 // 콘솔 왼쪽 메뉴. 메뉴 하나 = app/admin/<주소>/ 폴더 하나 + 여기 한 줄. 기능이 생길 때 더한다.
+// 2차 1-5: 처음 화면은 대화다 (왼쪽은 대화 목록). 아래 MENU는 "설정"에서 보인다.
 const ICONS: Record<string, ReactNode> = {
   home: <path d="M2.5 7.2 8 2.6l5.5 4.6M4 6.4v7h8v-7" />,
   task: (
@@ -100,19 +101,27 @@ const ICONS: Record<string, ReactNode> = {
   ),
 };
 
-export const HOME_HREF = '/admin';
+export const CHAT_HREF = '/admin';
+export const CHATS_HREF = '/admin/chats';
 export const APPROVALS_HREF = '/admin/approvals';
+/** 설정의 첫 화면 (대화 칸 아래의 "설정") */
+export const SETTINGS_HREF = '/admin/agents';
 
+/** 대화 칸 (2차 1-5): 새 대화와 대화 하나 (/admin/chats/<id>). 왼쪽은 대화 목록이라 이 줄들은 메뉴로 그리지 않는다 */
+export const CHAT_MENU = [
+  { href: CHAT_HREF, name: '새 대화', icon: 'chat' },
+  { href: CHATS_HREF, name: '대화', icon: 'chat' },
+];
+
+/** 설정: 대화 뒤에서 에이전트 · 러너 · 지식 · 블로그 · 연결을 다듬는 곳 */
 export const MENU = [
-  { label: '', items: [{ href: HOME_HREF, name: '홈', icon: 'home' }] },
   {
     label: '운영',
     items: [
-      { href: '/admin/chats', name: '대화', icon: 'chat' },
+      { href: SETTINGS_HREF, name: '에이전트', icon: 'people' },
+      { href: APPROVALS_HREF, name: '결재', icon: 'stamp' },
       { href: '/admin/tasks', name: '작업', icon: 'task' },
       { href: '/admin/outputs', name: '결과물', icon: 'box' },
-      { href: APPROVALS_HREF, name: '결재', icon: 'stamp' },
-      { href: '/admin/agents', name: '에이전트', icon: 'people' },
       { href: '/admin/goals', name: '목표', icon: 'flag' },
       { href: '/admin/runners', name: '러너', icon: 'runner' },
       { href: '/admin/skills', name: '스킬', icon: 'scroll' },

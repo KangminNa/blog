@@ -259,11 +259,16 @@ export function bytes(n: number): string {
 
 /** 대화의 상태 (상태판의 state: 마지막 회차로 정한다) */
 export const CHAT_STATE: Record<string, string> = {
+  routing: '맡길 곳 찾는 중',
+  asking: '질문',
   working: '일하는 중',
-  waiting_approval: '결재 대기',
+  waiting_approval: '결재',
   done: '끝남',
   failed: '실패',
 };
+
+/** 나에게 온 것: 목록에서 채운 표시로 (질문 · 결재). 나머지는 테두리 */
+export const CHAT_NEEDS_ME: readonly string[] = ['asking', 'waiting_approval'];
 
 /** 대화의 소식 종류 (task.chat_updates.kind) */
 export const NEWS_KINDS: Record<string, string> = {
@@ -273,9 +278,12 @@ export const NEWS_KINDS: Record<string, string> = {
   decision: '정한 것',
   assumption: '가정',
   appended: '덧붙인 말',
-  reply: '대표의 답',
+  reply: '짧은 답',
   final: '최종 답',
   failed: '실패',
+  review: '검토',
+  question: '질문',
+  routed: '맡음',
 };
 
 /** 대화의 받을 것 (chats.deliver). 비우면 대화 답 */

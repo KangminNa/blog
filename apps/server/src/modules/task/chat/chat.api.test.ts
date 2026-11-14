@@ -194,10 +194,7 @@ describe('대화', () => {
 
     const { chats } = ok(await api.get('/api/chats', owner));
     const listed = chats.find((c: Json) => c.id === chat.id);
-    assert.deepEqual(
-      [listed.agentName, listed.turns, listed.lastStatus],
-      [partner.name, 2, 'queued'],
-    );
+    assert.deepEqual([listed.agentName, listed.turns, listed.state], [partner.name, 2, 'working']);
   });
 
   test('팀원 · 멈춘 에이전트와는 열지 못한다 (422). 상대를 지우면 대화는 보이고 보내기는 404', async () => {
@@ -265,12 +262,12 @@ describe('대화', () => {
     );
   });
 
-  test('상대를 비우면 기본 대표와 연다. 목표 · 프로젝트(git 주소를 맞춘다)와 함께, 주소가 아니면 422', async () => {
-    const lead = await agent('콘솔 대표');
-    ok(await api.request('POST', `/api/agents/${lead.id}/lead`, owner, { version: lead.version }));
+  test('상대를 정해 열면 그 에이전트가 바로 맡는다. 목표 · 프로젝트(git 주소를 맞춘다)와 함께, 주소가 아니면 422', async () => {
+    const lead = await agent('콘솔 상대');
     const chat = ok(
       await api.request('POST', '/api/chats', owner, {
         requestId: randomUUID(),
+        agentId: lead.id,
         message: '이번 주 글감 정리해 줘',
         goal: '금요일까지 초안 셋',
         project: 'https://github.com/Me/Blog.git',
@@ -283,6 +280,7 @@ describe('대화', () => {
     );
     const bad = await api.request('POST', '/api/chats', owner, {
       requestId: randomUUID(),
+      agentId: lead.id,
       message: '정리',
       project: '그냥 글자',
     });
@@ -300,7 +298,7 @@ describe('내 컴퓨터의 AI 도구가 서버 팀에 맡기기 (MCP ask_agent �
     assert.deepEqual([refused.ok, refused.body.scope], [false, 'delegate']);
   });
 
-  test('상대를 비우면 기본 대표. 기다리지 않고 소식으로 받는다: 덧붙인 말 · 대표의 짧은 답 · 최종 답, 커서 · 상태판', async () => {
+  test('상대를 이름으로 정한다. 기다리지 않고 소식으로 받는다: 덧붙인 말 · 상대의 짧은 답 · 최종 답, 커서 · 상태판', async () => {
     const lead = await agent('대회 팀장');
     await agent('다른 팀장');
     const mac = await device(`mac-${randomUUID().slice(0, 6)}`, ['delegate']);
@@ -314,17 +312,20 @@ describe('내 컴퓨터의 AI 도구가 서버 팀에 맡기기 (MCP ask_agent �
     assert.equal(ask.inputSchema.properties.message.description, '보낼 메시지');
     assert.equal(ask.inputSchema.properties.message.maxLength, 8000);
 
-    // 대표가 없고 상대가 여럿이면 고를 수 있는 이름을 알린다
-    await db.sql`UPDATE task.agents SET lead = false WHERE lead`;
-    const nobody = await call(mac, 'ask_agent', { request_id: randomUUID(), message: '검토' });
+    // 없는 이름이면 고를 수 있는 이름을 알린다 (기기의 AI가 다시 부르게)
+    const nobody = await call(mac, 'ask_agent', {
+      request_id: randomUUID(),
+      message: '검토',
+      agent: '없는 팀장',
+    });
     assert.equal(nobody.ok, false);
-    assert.match(nobody.body.message, /기본 대표가 없어요/);
+    assert.match(nobody.body.message, /없는 상대예요/);
     assert.match(nobody.body.message, new RegExp(lead.name));
-    ok(await api.request('POST', `/api/agents/${lead.id}/lead`, owner, { version: lead.version }));
 
     const requestId = randomUUID();
     const sent = await call(mac, 'ask_agent', {
       request_id: requestId,
+      agent: lead.name,
       message: '이 분석 검토해 줘\n결론: A안',
       goal: '대회 제출 전에 근거를 보강한다',
       project: 'git@github.com:Owner/Contest.git',
@@ -334,19 +335,28 @@ describe('내 컴퓨터의 AI 도구가 서버 팀에 맡기기 (MCP ask_agent �
     assert.deepEqual(
       [sent.body.agentId, sent.body.goal, sent.body.project],
       [lead.id, '대회 제출 전에 근거를 보강한다', 'github.com/owner/contest'],
-      '상대를 비우면 기본 대표, 프로젝트는 host/owner/repo로',
+      '이름으로 정한 상대, 프로젝트는 host/owner/repo로',
     );
-    const again = await call(mac, 'ask_agent', { request_id: requestId, message: '같은 말' });
+    const again = await call(mac, 'ask_agent', {
+      request_id: requestId,
+      agent: lead.name,
+      message: '같은 말',
+    });
     assert.equal(again.body.id, chatId, '같은 request_id는 같은 대화');
     const bad = await call(mac, 'ask_agent', {
       request_id: randomUUID(),
+      agent: lead.name,
       message: '검토',
       project: '그냥 이름',
     });
     assert.deepEqual([bad.ok, bad.body.code], [false, 'rule_violation']);
 
     const start = await call(mac, 'agent_updates', { chat_id: chatId });
-    assert.deepEqual(start.body.news, [], '아직 소식이 없다');
+    assert.deepEqual(
+      start.body.news.map((n: Json) => [n.kind, n.agent]),
+      [['routed', lead.name]],
+      '맡음 소식 하나뿐 (이름으로 정한 상대)',
+    );
     const board = start.body.board[0];
     assert.deepEqual(
       [board.chat_id, board.state, board.active, board.project],
@@ -355,7 +365,7 @@ describe('내 컴퓨터의 AI 도구가 서버 팀에 맡기기 (MCP ask_agent �
     const job = (await jobs()).find((j) => j.task.payload.chat?.chatId === chatId) as Json;
     assert.equal(job.task.payload.chat.via, 'device');
 
-    // 도는 회차에 덧붙이면 소식 한 줄 + 대표가 짧게 답하는 작업 (회차는 그대로)
+    // 도는 회차에 덧붙이면 소식 한 줄 + 상대가 짧게 답하는 작업 (회차는 그대로)
     const more = await call(mac, 'ask_agent', {
       request_id: randomUUID(),
       message: '마감일만 먼저 알려 줘',
@@ -439,15 +449,9 @@ describe('내 컴퓨터의 AI 도구가 서버 팀에 맡기기 (MCP ask_agent �
       kind: 'assumption',
       text: '본선은 오프라인이라고 가정',
     });
-    // 대화 상세(관리자)의 팀: 상대와 그 아래, 사람마다 이 회차에서 도는 작업
+    // 대화 상세(관리자)는 팀을 싣지 않고 상태와 지금 도는 작업 수만 (화면은 대화만, 2차 1-5)
     const busy = await detail(chatId);
-    assert.deepEqual(
-      busy.team.map((m: Json) => [m.name, m.depth, m.open, m.doing]),
-      [
-        [boss.name, 0, 1, turn.task.title],
-        [member.name, 1, 1, '요강 읽기'],
-      ],
-    );
+    assert.deepEqual([busy.team, busy.state, busy.active], [undefined, 'working', 2]);
     await tool(runner, 'submit_result', {
       task_id: sub.task.id,
       request_id: randomUUID(),
@@ -470,13 +474,6 @@ describe('내 컴퓨터의 AI 도구가 서버 팀에 맡기기 (MCP ask_agent �
       room.news.slice(-3).map((n: Json) => [n.kind, n.agent]),
       news.map((n: Json) => [n.kind, n.agent]),
       '상세의 소식은 agent_updates와 같다',
-    );
-    assert.deepEqual(
-      room.team.map((m: Json) => [m.name, m.open, m.doing]),
-      [
-        [boss.name, 1, turn.task.title],
-        [member.name, 0, null],
-      ],
     );
     const woken = (await jobs()).find((j) => j.task.id === turn.task.id) as Json;
     assert.deepEqual(

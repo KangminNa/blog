@@ -33,7 +33,7 @@ export class ChatResultService extends BaseService {
     await this.transaction(async (tx) => {
       const chats = new ChatRepository(tx);
       const chat = await chats.lock(spaceId, chatId);
-      if (await chats.busy(chat)) return;
+      if (chat.agentId === null || (await chats.busy(chat))) return;
       const approvals = new ApprovalRepository(tx);
       const outputs = new OutputRepository(tx);
       const actions = await approvals.lockUncarded(chat.id);
@@ -76,7 +76,7 @@ export class ChatResultService extends BaseService {
         await tasks.insertOnce(chat.review(reviewer, instruction, now));
       } else if (step === ChatResult.CARD) {
         const open = await approvals.lockOpenCard(chat.id);
-        const card = open ?? Approval.forChat(spaceId, chat.id, chat.agentId, chat.turns, now);
+        const card = open ?? Approval.forChat(spaceId, chat.id, chat.partnerId, chat.turns, now);
         if (open) open.grew(chat.turns);
         await approvals.save(card);
         for (const action of actions) {

@@ -20,6 +20,9 @@ import { AskAgentTool } from './chat/chat.tool';
 import { ChatCardHandler } from './chat/chat-card.handler';
 import { ChatResultHandler } from './chat/chat-result.handler';
 import { ChatResultService } from './chat/chat-result.service';
+import { ChatRouteHandler } from './chat/chat-route.handler';
+import { ChatRouteJob } from './chat/chat-route.job';
+import { ChatRouteService } from './chat/chat-route.service';
 import { ChatUpdateHandler } from './chat/chat-update.handler';
 import { ChatUpdateQuery } from './chat/chat-update.query';
 import { ChatUpdateService } from './chat/chat-update.service';
@@ -32,8 +35,6 @@ import { GoalRunHandler } from './goal-run/goal-run.handler';
 import { GoalRunQuery } from './goal-run/goal-run.query';
 import { GoalRunService } from './goal-run/goal-run.service';
 import { ReportRoundTool } from './goal-run/goal-run.tool';
-import { HomeController } from './home/home.api';
-import { HomeQuery } from './home/home.query';
 import { OutputController } from './output/output.api';
 import { OutputPolicy } from './output/output.policy';
 import { OutputQuery } from './output/output.query';
@@ -85,7 +86,6 @@ import { WebPageGateway } from './web/web-page.gateway';
     ApprovalQuery,
     ApprovalService,
     UsageQuery,
-    HomeQuery,
     GoalQuery,
     GoalService,
     ScheduleQuery,
@@ -132,6 +132,9 @@ import { WebPageGateway } from './web/web-page.gateway';
     ChatResultService,
     ChatResultHandler,
     ChatCardHandler,
+    ChatRouteService,
+    ChatRouteHandler,
+    ChatRouteJob,
     AgentUpdatesTool,
     PostUpdateTool,
     GoalRunHandler,
@@ -149,7 +152,6 @@ import { WebPageGateway } from './web/web-page.gateway';
     TaskController,
     ApprovalController,
     UsageController,
-    HomeController,
     AiLoginController,
     GoalController,
     ScheduleController,
@@ -184,6 +186,8 @@ export class TaskModule implements OnModuleInit {
     private readonly goalRuns: GoalRunHandler,
     private readonly chatResults: ChatResultHandler,
     private readonly chatCards: ChatCardHandler,
+    private readonly chatRoutes: ChatRouteHandler,
+    private readonly chatRouteJob: ChatRouteJob,
   ) {}
 
   onModuleInit(): void {
@@ -194,6 +198,8 @@ export class TaskModule implements OnModuleInit {
     for (const topic of GoalRunHandler.DECIDED) this.workers.on(topic, this.goalRuns);
     for (const topic of ChatResultHandler.TOPICS) this.workers.on(topic, this.chatResults);
     for (const topic of ChatCardHandler.TOPICS) this.workers.on(topic, this.chatCards);
+    this.workers.on(Task.CHANGED, this.chatRoutes);
+    this.workers.every(this.chatRouteJob, ChatRouteJob.EVERY_MS);
     this.workers.on('*', this.results);
     this.workers.every(this.leases, TaskModule.LEASE_CHECK_MS);
     this.workers.every(this.schedules, TaskModule.SCHEDULE_CHECK_MS);

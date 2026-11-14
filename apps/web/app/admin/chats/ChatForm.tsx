@@ -7,12 +7,13 @@ const MESSAGE_MAX = 8000;
 
 // 대화 안의 메시지 입력 칸. Enter로 보내고 Shift+Enter로 줄을 바꾼다 (한글 조합 중의 Enter는 보내지 않는다).
 // 일하는 중에도 보낸다: 그 회차에 덧붙인 말이 된다 (2차 1-1). 보낸 뒤 칸을 비우는 것은 패널이 key로 폼을 새로 만들어서.
-// 새 대화는 _task/ChatStartForm (상대 · 프로젝트 · 목표).
+// 새 대화(ChatNewPanel)와 대화 하나(ChatThreadPanel)가 함께 쓴다 (2차 1-5: 입력은 하나)
 export function ChatForm({
   busy,
   problem,
   blocked,
   hint,
+  rows = 2,
   onSubmit,
 }: {
   busy: boolean;
@@ -21,6 +22,8 @@ export function ChatForm({
   blocked: string | null;
   /** 보내면 어떻게 되는지 (일하는 중이면 덧붙인 말) */
   hint: string | null;
+  /** 입력 칸의 처음 줄 수 (새 대화는 크게) */
+  rows?: number;
   onSubmit: (body: { message: string }) => void;
 }) {
   const [message, setMessage] = useState('');
@@ -52,7 +55,7 @@ export function ChatForm({
           className="input"
           aria-label="메시지"
           placeholder="메시지 (Enter로 보내기, Shift+Enter로 줄 바꿈)"
-          rows={2}
+          rows={rows}
           maxLength={MESSAGE_MAX}
           value={message}
           disabled={blocked !== null}

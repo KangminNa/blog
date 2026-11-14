@@ -169,26 +169,6 @@ export class AgentService extends EntityService<Agent> {
     });
   }
 
-  /** 기본 대표로 정한다. 있던 대표는 내려간다 (공간에 하나: 조직도를 잠그고 먼저 내린 뒤 올린다) */
-  async makeLead(actor: Actor, req: VersionInput): Promise<Agent> {
-    actor.assertOwner();
-    const spaceId = actor.requireSpace();
-    return this.transaction(async (tx) => {
-      const agents = new AgentRepository(tx);
-      const org = await agents.lockAll(spaceId);
-      const agent = org.find((a) => a.id === req.id);
-      if (!agent) throw new NotFound('에이전트를 찾을 수 없어요');
-      agent.assertVersion(req.version);
-      for (const other of org.filter((a) => a.lead && a.id !== agent.id)) {
-        other.markLead(false);
-        await agents.save(other);
-      }
-      agent.markLead(true);
-      await agents.save(agent);
-      return agent;
-    });
-  }
-
   pause(actor: Actor, req: VersionInput): Promise<Agent> {
     return this.changeAsOwner(actor, req, (agent) => agent.pause());
   }

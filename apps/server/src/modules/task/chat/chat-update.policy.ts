@@ -10,7 +10,8 @@ export type ChatPlaceRow = Pick<
 
 // 대화의 소식 (task.chat_updates, 2차 1-1 · docs/API설계.md 4장 agent_updates). 무엇이 소식이 되는지 한 곳에서 정한다.
 //   팀원(하위 작업)이 끝남 · 실패 → member_done · member_failed, 회차가 끝남 · 실패 → final · failed,
-//   덧붙인 말에 대표가 답함 → reply, 검토자 짝이 결과를 검토함 → review (2차 2단계),
+//   덧붙인 말에 상대가 답함 → reply, 검토자 짝이 결과를 검토함 → review (2차 2단계),
+//   맡을 에이전트를 물음 → question, 맡음 → routed (2차 1-5, 맡기 전에 글로 한 답은 appended),
 //   에이전트가 post_update로 남김 → progress · decision · assumption, 덧붙인 말 → appended.
 // 글은 AI가 쓴 결과 · 관리자의 말을 자르기만 한다 (설명 문장을 코드에서 덧붙이지 않는다). 취소는 소식이 아니다
 // biome-ignore lint/complexity/noStaticOnlyClass: 상태 없는 판단 한 곳. Chat · ChatRepository · Query가 함께 쓴다
@@ -21,6 +22,10 @@ export class ChatUpdates {
   static readonly APPENDED = 'appended';
   static readonly REPLY = 'reply';
   static readonly REVIEW = 'review';
+  /** 맡을 에이전트를 묻는 질문 (고를 에이전트 choices와 함께, 2차 1-5) */
+  static readonly QUESTION = 'question';
+  /** 에이전트가 대화를 맡았다 (agent_id, 글은 고른 까닭이나 이름) */
+  static readonly ROUTED = 'routed';
   /** 에이전트가 post_update로 남기는 종류 (작업마다 POST_MAX개) */
   static readonly POSTED: readonly string[] = ['progress', 'decision', 'assumption'];
   static readonly POST_MAX = 20;

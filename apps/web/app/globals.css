@@ -986,43 +986,6 @@ textarea.input {
   font-size: 13px;
 }
 
-.stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 12px 14px;
-  border-right: 1px solid var(--line);
-  text-decoration: none;
-}
-
-.stat:last-child {
-  border-right: 0;
-}
-
-.stat:hover {
-  background: var(--raised);
-}
-
-.stat b {
-  font-size: 24px;
-  font-weight: 600;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-}
-
-.stat small {
-  color: var(--muted);
-  font-size: 12.5px;
-}
-
 .two {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1125,11 +1088,6 @@ textarea.input {
 .split-back {
   display: none;
   align-self: flex-start;
-}
-
-/* 대화 목록은 좁게: 이름과 첫 줄만 */
-.split.chat-split {
-  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
 }
 
 /* 대화: 말풍선. 관리자는 오른쪽에 채움, 상대는 왼쪽에 테두리. 입력 칸은 아래에 붙는다 */
@@ -1242,8 +1200,7 @@ a.chip {
 }
 
 /* 감싸는 칸이 overflow: hidden이라 포커스 표시를 안쪽으로 둔다 (밖에 두면 잘려서 보이지 않는다) */
-.item:focus-visible,
-.stat:focus-visible {
+.item:focus-visible {
   outline-offset: -2px;
 }
 
@@ -1746,8 +1703,7 @@ a.chip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .split,
-  .split.chat-split {
+  .split {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -2300,18 +2256,6 @@ a.chip {
     min-height: 44px;
   }
 
-  .stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .stat:nth-child(2) {
-    border-right: 0;
-  }
-
-  .stat:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
-  }
-
   .two,
   .agents {
     grid-template-columns: minmax(0, 1fr);
@@ -2357,101 +2301,6 @@ a.chip {
   }
 }
 
-/* 홈 (2차 1-4): 인사 · 입력 하나 · 나에게 온 것 · 대화 · 결과물 · 팀 */
-.console-inner.home {
-  max-width: 880px;
-}
-
-.home-head {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 24px;
-}
-
-.home-head h1 {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 600;
-}
-
-/* 새 대화의 입력: 큰 칸 하나 + 곁들이는 칸들 (좁으면 줄을 바꾸고, 버튼은 줄바꿈하지 않는다) */
-.start-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-}
-
-.start-form textarea {
-  border: 0;
-  padding: 4px;
-  min-height: 72px;
-  resize: vertical;
-  font-size: 15px;
-}
-
-.start-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.start-pick {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  flex: 0 1 200px;
-}
-
-.start-pick.grow {
-  flex: 1 1 220px;
-}
-
-.start-pick > span {
-  font-size: 12px;
-  color: var(--faint);
-}
-
-.start-tools .cta {
-  margin-left: auto;
-}
-
-/* 결과물 카드 */
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  height: 100%;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--fg);
-  text-decoration: none;
-}
-
-.card:hover {
-  background: var(--hover);
-}
-
-.card small {
-  color: var(--faint);
-  font-size: 12px;
-}
-
 .clamp {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -2460,110 +2309,233 @@ a.chip {
   overflow-wrap: anywhere;
 }
 
-/* 대화 목록의 프로젝트 묶음 */
-.chat-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.chat-group h3 {
-  margin: 6px 0 0;
-  font-size: 12px;
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
-
-/* 대화의 머리: 제목과 상대 */
-.chat-head {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.clamp-1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   min-width: 0;
 }
 
-.chat-head small {
-  color: var(--faint);
-  font-size: 13px;
-}
-
-/* 대화: 가운데 대화와 옆 칸 (진행 · 팀 · 소식 · 결과물). 좁으면 옆 칸이 아래로 */
-.chat-room {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
-  gap: 16px;
-  align-items: start;
-}
-
-.chat-side {
-  position: sticky;
-  top: 16px;
+/* 대화 칸 (2차 1-5, ChatGPT · Claude 같은 모양): 왼쪽은 대화 목록, 가운데는 주고받음 하나와 입력 칸 하나 */
+.chat-nav {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
+  min-height: 0;
+}
+
+.chat-new {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.chat-new svg {
+  width: 16px;
+  height: 16px;
+}
+
+.chat-day {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--fg);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.chat-link:hover {
+  background: var(--hover);
+}
+
+.chat-link[aria-current="page"] {
+  background: var(--raised);
+  font-weight: 600;
+}
+
+.chat-link .pill {
+  flex: none;
+}
+
+.chat-nav-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.chat-back {
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+/* 새 대화: 가운데 인사와 큰 입력 칸 */
+.chat-home {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 760px;
+  min-height: calc(100vh - 160px);
+  margin: 0 auto;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+
+.chat-home h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.chat-home > .note {
+  text-align: center;
+}
+
+.chat-home .chat-compose {
+  position: static;
+  padding: 0;
+  border-top: 0;
+}
+
+/* 대화 하나: 가운데 한 줄 (읽기 좋은 폭), 입력 칸은 아래에 붙는다. 폰에서도 16px 여백 */
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 792px;
+  margin: 0 auto;
+  padding: 16px 16px 0;
+  box-sizing: border-box;
+}
+
+.chat-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.chat-top h1 {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.chat-event {
+  margin: 0;
+  color: var(--muted);
   font-size: 13px;
 }
 
-.chat-side h3 {
-  margin: 0 0 8px;
-  font-size: 12px;
-  font-weight: 600;
+/* 과정: 접어 둔다 (팀이 무엇을 하는지는 펼쳐야 보인다) */
+.chat-process {
+  align-self: flex-start;
+  max-width: min(720px, 100%);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.chat-process summary {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
   color: var(--muted);
+  cursor: pointer;
 }
 
-.chat-side .row {
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
-}
-
-.side-line {
-  margin: 6px 0 0;
-  overflow-wrap: anywhere;
-}
-
-.side-line small {
-  color: var(--faint);
-  margin-right: 4px;
-}
-
-.side-list {
+.chat-process ol {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-process li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.chat-process li small {
+  color: var(--faint);
+}
+
+.chat-process > .note {
+  display: inline-block;
+  margin-bottom: 10px;
+}
+
+/* 맡기 전의 질문: 고를 것마다 이름과 맡는 일 */
+.chat-question {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-question > .text {
+  margin: 0;
+  font-size: 15px;
+}
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 520px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.side-list li {
+.choice {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 6px;
-  overflow-wrap: anywhere;
-}
-
-.side-list small {
-  color: var(--faint);
-  width: 100%;
-}
-
-.side-list.news li {
   flex-direction: column;
-  align-items: stretch;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--line);
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--fg);
+  text-align: left;
 }
 
-@media (max-width: 1040px) {
-  .chat-room {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.choice.first {
+  border-color: var(--fg);
+}
 
-  .chat-side {
-    position: static;
-  }
+.choice:hover {
+  background: var(--hover);
+}
+
+.choice small {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* 결과 카드 (2차 2단계): 항목마다 고르는 칸, 검토 의견, 승인 · 수정 요청 · 반려 */

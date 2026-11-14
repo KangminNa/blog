@@ -7,7 +7,7 @@ import { Chat } from './chat';
 export class CreateChatInput extends BaseRequest {
   private constructor(
     readonly requestId: string,
-    /** 상대. 비우면 기본 대표 (Chat.partnerOf, ask_agent와 같다) */
+    /** 상대. 비우면 배정 (ChatRoute: 맡는 일이 맞는 에이전트, 애매하면 대화로 묻는다) */
     readonly agentId: string | null,
     readonly message: string,
     readonly goal: string | null,
@@ -36,18 +36,23 @@ export class CreateChatInput extends BaseRequest {
   }
 }
 
-/** POST /api/chats/:id/messages { requestId, version, message }. 같은 requestId는 한 번만 보낸다 */
+/**
+ * POST /api/chats/:id/messages { requestId, version, message, choice? }. 같은 requestId는 한 번만 보낸다.
+ * choice: 맡기 전의 대화에서 질문의 고를 것 하나 (에이전트 id, 2차 1-5). message는 화면에 보일 말 (고른 이름)
+ */
 export class SendChatInput extends BaseRequest {
   private constructor(
     readonly id: string,
     readonly requestId: string,
     readonly version: number,
     readonly message: string,
+    readonly choice: string | null,
   ) {
     super();
   }
 
   static from(id: string, raw: unknown): SendChatInput {
+    const body = (raw ?? {}) as Record<string, unknown>;
     return BaseRequest.read(
       { ...(raw as object), id },
       (f) =>
@@ -56,6 +61,7 @@ export class SendChatInput extends BaseRequest {
           f.text('requestId', 200),
           f.version(),
           f.text('message', Chat.MESSAGE_MAX),
+          body.choice === undefined || body.choice === null ? null : f.uuid('choice'),
         ),
     );
   }
@@ -73,8 +79,9 @@ export class ChatIdInput extends BaseRequest {
 }
 
 /**
- * MCP ask_agent { request_id, message, agent?, chat_id?, goal?, project? }: 기기가 서버 팀에 메시지를 보낸다.
- * chat_id가 없으면 새 대화(agent: 상대의 이름이나 id, 생략하면 기본 대표 · goal · project), 있으면 그 기기가 연 대화에 이어서
+ * MCP ask_agent { request_id, message, agent?, chat_id?, goal?, project?, deliver?, choice? }: 기기가 서버 팀에 메시지를 보낸다.
+ * chat_id가 없으면 새 대화(agent: 상대의 이름이나 id, 생략하면 배정 · goal · project), 있으면 그 기기가 연 대화에 이어서.
+ * choice: 맡기 전의 대화에서 질문의 고를 것 하나 (에이전트 id. 번호 · 이름을 message로 보내도 된다)
  */
 export class AskAgentInput extends BaseRequest {
   private constructor(
@@ -86,6 +93,7 @@ export class AskAgentInput extends BaseRequest {
     /** git 주소 그대로 (ChatProject가 맞춘다) */
     readonly project: string | null,
     readonly deliver: string | null,
+    readonly choice: string | null,
   ) {
     super();
   }
@@ -103,6 +111,7 @@ export class AskAgentInput extends BaseRequest {
           f.optionalText('goal', Chat.GOAL_MAX),
           f.optionalText('project', 400),
           f.optionalText('deliver', 20),
+          body.choice === undefined || body.choice === null ? null : f.uuid('choice'),
         ),
     );
   }

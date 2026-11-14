@@ -11,12 +11,6 @@ import type {
 // REST(관리자만)는 camelCase, MCP 도구(agent_updates · post_update, docs/API설계.md 4장)는 snake_case.
 // 회차 하나 = 관리자의 메시지(작업의 지시)와 상대의 답(작업의 결과). 결과물 · 기다리는 결재는 그 회차의 작업과 하위 작업의 것.
 
-/** 목록 한 줄: 상대 이름과 마지막 회차의 상태를 함께 읽는다 */
-export type ChatListRow = ChatRow & {
-  agent_name: string;
-  last_status: string | null;
-  last_wait_reason: string | null;
-};
 /** 대화 상대 (말을 걸 수 있는지 화면이 알린다. 막는 것은 서버의 Chat) */
 export type ChatPartnerRow = Pick<AgentRow, 'name' | 'status' | 'reports_to' | 'deleted_at'>;
 /** 회차 작업 한 줄 + 마지막 진행 기록과 끝나지 않은 하위 작업 수 */
@@ -27,19 +21,16 @@ export type ChatOutputRow = Pick<OutputRow, 'id' | 'name' | 'kind'> & { root: st
 export type ChatCardOutputRow = Pick<OutputRow, 'id' | 'name' | 'kind' | 'mime'>;
 /** 회차(맨 위 작업 root)와 그 아래에서 기다리는 결재 */
 export type ChatApprovalRow = Pick<ApprovalRow, 'id'> & { root: string };
-/** 소식 한 줄과 남긴 에이전트의 이름 */
-export type ChatUpdateLine = ChatUpdateRow & { agent: string | null };
-/**
- * 상태판의 대화 한 줄: 상대 이름, 마지막 회차로 정한 상태(working · waiting_approval · done · failed, SQL이 정한다),
- * 지금 도는 작업 수 (마지막 회차와 그 덧붙인 말의 답 아래 전부)
- */
-export type ChatBoardRow = ChatRow & { partner: string; state: string; active: number };
-/** 대화의 팀 한 사람: 상대와 그 아래 에이전트, 이 대화의 지금 회차에서 도는 작업 수와 가장 최근 작업의 제목 */
-export type ChatTeamRow = Pick<AgentRow, 'id' | 'name' | 'role' | 'status' | 'lead'> & {
-  depth: number;
-  open: number;
-  doing: string | null;
+/** 소식 한 줄과 남긴 에이전트의 이름, 질문이면 고를 에이전트들 (role은 맡는 일: 역할의 첫 줄) */
+export type ChatUpdateLine = ChatUpdateRow & {
+  agent: string | null;
+  choice_list: Pick<AgentRow, 'id' | 'name' | 'role'>[] | null;
 };
+/**
+ * 상태판의 대화 한 줄: 상대 이름(맡기 전이면 null), 상태(SQL이 정한다: 맡기 전 routing · asking, 맡은 뒤 마지막 회차로
+ * working · waiting_approval · done · failed), 지금 도는 작업 수 (마지막 회차와 그 덧붙인 말의 답 아래 전부)
+ */
+export type ChatBoardRow = ChatRow & { partner: string | null; state: string; active: number };
 
 /** 대화 하나 (만들기 · 보내기의 응답, 목록 · 상세의 머리) */
 export class ChatView {
@@ -49,8 +40,11 @@ export class ChatView {
     const r = this.row;
     return {
       id: r.id,
+      /** 맡은 에이전트. 맡기 전(배정 · 질문 중)이면 null */
       agentId: r.agent_id,
       title: r.title,
+      /** 맡기 전에 받은 첫 메시지 (맡으면 첫 회차의 메시지가 되고 null) */
+      pending: r.pending ?? null,
       turns: r.turns,
       /** 기기(MCP ask_agent)가 연 대화면 그 기기 (기기 목록의 id). 관리자가 연 대화면 null */
       deviceId: r.device_id ?? null,
@@ -66,17 +60,17 @@ export class ChatView {
   }
 }
 
-/** 대화 목록 (최근에 보낸 것부터) */
+/** 대화 목록 (최근에 보낸 것부터): 맡은 에이전트의 이름과 상태 (routing · asking · working · waiting_approval · done · failed) */
 export class ChatListView {
-  constructor(private readonly rows: readonly ChatListRow[]) {}
+  constructor(private readonly rows: readonly ChatBoardRow[]) {}
 
   toJSON() {
     return {
       chats: this.rows.map((r) => ({
         ...new ChatView(r).toJSON(),
-        agentName: r.agent_name,
-        lastStatus: r.last_status,
-        lastWaitReason: r.last_wait_reason,
+        agentName: r.partner,
+        state: r.state,
+        active: Number(r.active),
       })),
     };
   }
@@ -171,33 +165,40 @@ export class ChatCardView {
   }
 }
 
-/** 대화 하나와 회차들 (오래된 것부터, 최근 ChatQuery.TURNS개), 상태판 · 최근 소식 · 팀 (2차 1-1), 결과 카드 (2차 2단계) */
+/**
+ * 대화 하나와 회차들 (오래된 것부터, 최근 ChatQuery.TURNS개), 상태 · 최근 소식(과정), 결과 카드 (2차 2단계),
+ * 맡기 전이면 지금 질문 (2차 1-5)
+ */
 export class ChatDetailView {
   constructor(
     private readonly chat: Readonly<ChatRow>,
-    private readonly partner: Readonly<ChatPartnerRow>,
+    private readonly partner: Readonly<ChatPartnerRow> | null,
     private readonly turns: readonly ChatTurnView[],
     private readonly board: Readonly<ChatBoardRow> | null,
     private readonly news: readonly ChatUpdateLine[],
-    private readonly team: readonly ChatTeamRow[],
+    private readonly question: Readonly<ChatUpdateLine> | null,
     private readonly card: ChatCardView | null,
   ) {}
 
   toJSON() {
     const p = this.partner;
+    const q = this.question;
     return {
       chat: new ChatView(this.chat).toJSON(),
-      partner: {
-        name: p.name,
-        paused: p.status === 'paused',
-        topLevel: p.reports_to === null,
-        deleted: p.deleted_at !== null,
-      },
+      /** 맡은 에이전트 (맡기 전이면 null) */
+      partner: p
+        ? {
+            name: p.name,
+            paused: p.status === 'paused',
+            topLevel: p.reports_to === null,
+            deleted: p.deleted_at !== null,
+          }
+        : null,
       turns: this.turns.map((t) => t.toJSON()),
-      /** working · waiting_approval · done · failed, 지금 도는 작업 수 */
+      /** routing · asking · working · waiting_approval · done · failed, 지금 도는 작업 수 */
       state: this.board?.state ?? 'done',
       active: Number(this.board?.active ?? 0),
-      /** 최근 소식 (오래된 것부터) */
+      /** 최근 소식 (오래된 것부터): 과정 · 맡기 전의 질문 · 답 · 맡음 */
       news: this.news.map((r) => ({
         n: Number(r.n),
         kind: r.kind,
@@ -206,17 +207,8 @@ export class ChatDetailView {
         taskId: r.task_id,
         createdAt: r.created_at.toISOString(),
       })),
-      /** 상대(depth 0)와 그 아래 에이전트. open: 이 대화의 지금 회차에서 도는 작업 수, doing: 그 가장 최근 작업의 제목 */
-      team: this.team.map((m) => ({
-        id: m.id,
-        name: m.name,
-        role: m.role,
-        lead: m.lead,
-        paused: m.status === 'paused',
-        depth: m.depth,
-        open: m.open,
-        doing: m.doing,
-      })),
+      /** 맡기 전의 지금 질문과 고를 에이전트 (choice로 답한다). 묻지 않았거나 맡았으면 null */
+      question: q ? { text: q.text, choices: q.choice_list ?? [] } : null,
       /** 기다리는 결과 카드 (없으면 null) */
       card: this.card?.toJSON() ?? null,
     };
@@ -237,6 +229,8 @@ export class ChatUpdateView {
       text: r.text,
       agent: r.agent,
       task_id: r.task_id,
+      /** question이면 고를 에이전트들 (ask_agent의 choice로 답한다). 아니면 null */
+      choices: r.choice_list,
       created_at: r.created_at.toISOString(),
     };
   }
@@ -252,6 +246,7 @@ export class ChatBoardView {
       title: r.title,
       goal: r.goal,
       project: r.project,
+      /** 맡은 에이전트 (맡기 전이면 null, state는 routing · asking) */
       partner: r.partner,
       state: r.state,
       active: Number(r.active),

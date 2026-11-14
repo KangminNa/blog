@@ -3,9 +3,9 @@ import { Actor, BaseQuery, ChangeStream, Database, Forbidden, RuleViolation } fr
 import { Approval } from '../approval/approval';
 import { JobChatView } from '../task/job.view';
 import { Task } from '../task/task';
-import { Chat } from './chat';
 import { AgentUpdatesView, type ChatBoardRow, type ChatUpdateLine } from './chat.view';
 import { ChatProject } from './chat-project.policy';
+import { ChatRequest } from './chat-request.policy';
 import type { AgentUpdatesInput } from './chat-update.input';
 import { ChatUpdates } from './chat-update.policy';
 
@@ -65,16 +65,21 @@ export class ChatUpdateQuery extends BaseQuery {
   async forJob(actor: Actor, taskId: string): Promise<JobChatView | null> {
     actor.assertCan(Actor.RUN);
     const sql = this.sql;
+    // 첫 회차는 맡기 전에 글로 한 답(회차 작업이 없는 덧붙인 말)도 함께 받는다 (2차 1-5)
     const appended = await sql<ChatUpdateLine[]>`
-      SELECT u.*, NULL AS agent FROM task.chat_updates u
-      WHERE u.task_id = ${taskId} AND u.kind = ${ChatUpdates.APPENDED} ORDER BY u.n`;
+      SELECT u.*, NULL AS agent, NULL AS choice_list FROM task.chat_updates u
+      WHERE u.kind = ${ChatUpdates.APPENDED}
+        AND (u.task_id = ${taskId} OR (u.task_id IS NULL AND u.chat_id = (
+          SELECT (t.payload->'chat'->>'chatId')::uuid FROM task.tasks t WHERE t.id = ${taskId}
+            AND t.request_id = ${ChatRequest.TURN_PREFIX} || (t.payload->'chat'->>'chatId') || ':1')))
+      ORDER BY u.n`;
     const team = await sql<ChatUpdateLine[]>`
       WITH RECURSIVE tree AS (
         SELECT id FROM task.tasks WHERE parent_id = ${taskId}
         UNION ALL
         SELECT t.id FROM task.tasks t JOIN tree ON t.parent_id = tree.id
       )
-      SELECT u.*, a.name AS agent FROM task.chat_updates u
+      SELECT u.*, a.name AS agent, NULL AS choice_list FROM task.chat_updates u
       LEFT JOIN task.agents a ON a.id = u.agent_id
       WHERE u.task_id IN (SELECT id FROM tree)
         AND u.kind = ANY(${ChatUpdates.POSTED as string[]}::text[])
@@ -83,10 +88,10 @@ export class ChatUpdateQuery extends BaseQuery {
     return view.empty ? null : view;
   }
 
-  /** 관리자의 상태판 (홈 · 대화 상세): 공간의 모든 대화, chatId를 주면 그 대화 하나 */
-  ownerBoard(actor: Actor, chatId: string | null): Promise<ChatBoardRow[]> {
+  /** 관리자의 상태판 (대화 목록 · 상세): 공간의 대화 limit개, chatId를 주면 그 대화 하나 */
+  ownerBoard(actor: Actor, chatId: string | null, limit = ChatUpdateQuery.BOARD) {
     actor.assertOwner();
-    return this.board(actor.requireSpace(), null, chatId, null);
+    return this.board(actor.requireSpace(), null, chatId, null, limit);
   }
 
   private async lastNumber(spaceId: string): Promise<number> {
@@ -105,7 +110,12 @@ export class ChatUpdateQuery extends BaseQuery {
   ): Promise<ChatUpdateLine[]> {
     const sql = this.sql;
     const rows = await sql<ChatUpdateLine[]>`
-      SELECT u.*, a.name AS agent FROM task.chat_updates u
+      SELECT u.*, a.name AS agent,
+        (SELECT json_agg(json_build_object('id', x.id, 'name', x.name,
+            'role', split_part(x.role, E'\n', 1)) ORDER BY o.ord)
+          FROM unnest(u.choices) WITH ORDINALITY AS o(id, ord)
+          JOIN task.agents x ON x.id = o.id) AS choice_list
+      FROM task.chat_updates u
       JOIN task.chats c ON c.id = u.chat_id
       LEFT JOIN task.agents a ON a.id = u.agent_id
       WHERE u.space_id = ${spaceId}
@@ -120,21 +130,27 @@ export class ChatUpdateQuery extends BaseQuery {
   }
 
   /**
-   * 대화마다 마지막 회차로 정한 상태와 지금 도는 작업 수 (마지막 회차 · 그 덧붙인 말의 답 아래 전부).
-   * 상태: 결재를 기다리면 waiting_approval, 끝나지 않았으면 working, 실패 · 취소면 failed, 아니면 done
+   * 대화마다 상태와 지금 도는 작업 수 (마지막 회차 · 그 덧붙인 말의 답 아래 전부).
+   * 상태: 맡기 전이면 배정 일이 돌 때 routing, 아니면 asking (2차 1-5). 맡은 뒤에는 마지막 회차로:
+   * 결재를 기다리면 waiting_approval, 끝나지 않았으면 working, 실패 · 취소면 failed, 아니면 done
    */
   private async board(
     spaceId: string,
     device: string | null,
     chatId: string | null,
     project: string | null,
+    limit = ChatUpdateQuery.BOARD,
   ): Promise<ChatBoardRow[]> {
     const sql = this.sql;
-    const prefix = Chat.turnRequestPrefix();
+    const prefix = ChatRequest.TURN_PREFIX;
     const replies = Array.from({ length: ChatUpdates.APPEND_MAX }, (_, i) => `:reply:${i + 1}`);
     return await sql<ChatBoardRow[]>`
       SELECT c.*, a.name AS partner,
         CASE
+          WHEN c.agent_id IS NULL THEN
+            CASE WHEN EXISTS (SELECT 1 FROM task.tasks r WHERE r.space_id = c.space_id
+              AND r.request_id LIKE ${ChatRequest.ROUTE_PREFIX} || c.id || ':%'
+              AND r.status = ANY(${[Task.QUEUED, Task.RUNNING]}::text[])) THEN 'routing' ELSE 'asking' END
           WHEN EXISTS (SELECT 1 FROM task.approvals card WHERE card.action = ${Approval.CARD}
             AND card.target_id = c.id AND card.status = ${Approval.PENDING}) THEN 'waiting_approval'
           WHEN last.status = ${Task.WAITING} AND last.wait_reason = ${Task.WAIT_APPROVAL} THEN 'waiting_approval'
@@ -149,13 +165,13 @@ export class ChatUpdateQuery extends BaseQuery {
            SELECT t.id, t.status FROM task.tasks t JOIN tree ON t.parent_id = tree.id
          ) SELECT count(*) FROM tree WHERE status = ANY(${ChatUpdateQuery.OPEN as string[]}::text[])) AS active
       FROM task.chats c
-      JOIN task.agents a ON a.id = c.agent_id
+      LEFT JOIN task.agents a ON a.id = c.agent_id
       LEFT JOIN task.tasks last
         ON last.space_id = c.space_id AND last.request_id = ${prefix} || c.id || ':' || c.turns
       WHERE c.space_id = ${spaceId}
         ${device === null ? sql`` : sql`AND c.device_id = ${device}`}
         ${chatId === null ? sql`` : sql`AND c.id = ${chatId}`}
         ${project === null ? sql`` : sql`AND c.project = ${project}`}
-      ORDER BY c.updated_at DESC, c.id DESC LIMIT ${ChatUpdateQuery.BOARD}`;
+      ORDER BY c.updated_at DESC, c.id DESC LIMIT ${limit}`;
   }
 }

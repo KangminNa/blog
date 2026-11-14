@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useMe } from '../../_account/live';
 import { api } from '../../_lib/client-api';
@@ -10,15 +9,15 @@ import { CHAT_DETAIL_TOPICS } from '../../_task/live';
 import type { Chat, ChatDetail } from '../../_task/types';
 import { ChatCardForm } from './ChatCardForm';
 import { ChatForm } from './ChatForm';
-import { ChatSide } from './ChatSide';
+import { ChatQuestion } from './ChatQuestion';
 import { ChatTurns } from './ChatTurns';
 
-/** 일하는 중인 회차의 상태 */
-const WAITING = ['queued', 'running', 'waiting'];
+/** 도는 상태 (멈추기가 보인다) */
+const RUNNING = ['routing', 'working'];
 
-// 대화 하나. 회차(메시지 + 답)를 오래된 것부터 그리고, 아래에서 다음 메시지를 보낸다. 옆 칸은 진행 · 팀 · 소식 · 결과물 (ChatSide).
-// 일하는 중에도 보낸다: 그 회차에 덧붙인 말이 되고 대표가 짧게 답한다 (2차 1-1). 진행 기록 · 소식 · 결재가 오면 신호로 다시 읽는다.
-// 결재는 결과 카드 하나로 정하고(2차 2단계), 멈추기는 도는 일 · 기다리는 결재 · 카드를 모두 취소한다.
+// 대화 하나 (2차 1-5, ChatGPT · Claude 같은 모양): 가운데 주고받음, 아래 입력 칸 하나. 팀 · 진행 옆 칸은 없다.
+// 맡기 전에는 질문의 고를 것(ChatQuestion)이 아래에 붙고, 결재는 결과 카드 하나로 정한다 (2차 2단계).
+// 일하는 중에도 보낸다: 덧붙인 말이 되고 맡은 에이전트가 짧게 답한다 (2차 1-1). 신호가 오면 다시 읽는다
 export function ChatThreadPanel({ id }: { id: string }) {
   // 대상(id)으로 거르지 않는다: 신호의 대상은 회차 작업 · 결재라 대화 id가 아니다
   const detail = useLiveValue(
@@ -38,13 +37,12 @@ export function ChatThreadPanel({ id }: { id: string }) {
   const [sent, setSent] = useState(0);
   const bottom = useRef<HTMLDivElement>(null);
   const d = detail.data;
-  const last = d?.turns.at(-1);
 
-  // 새 회차 · 답이 오면 맨 아래로
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 회차 수와 마지막 상태가 바뀔 때만
+  // 새 회차 · 답 · 질문 · 카드가 오면 맨 아래로
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 주고받음의 길이와 상태가 바뀔 때만
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'end' });
-  }, [d?.turns.length, last?.status]);
+  }, [d?.turns.length, d?.turns.at(-1)?.status, d?.news.length, d?.state, d?.card?.id]);
 
   if (!d)
     return detail.status === 404 ? (
@@ -55,20 +53,25 @@ export function ChatThreadPanel({ id }: { id: string }) {
       <p className="label-mono">불러오는 중…</p>
     );
 
-  const { partner } = d;
-  const waiting = last !== undefined && WAITING.includes(last.status);
-  const blocked = partner.deleted
-    ? '삭제한 에이전트라 보낼 수 없어요 (복원하면 이어서)'
-    : !partner.topLevel
-      ? '팀원이 된 에이전트예요. 관리자 바로 아래 에이전트와만 대화해요'
-      : partner.paused
-        ? '멈춘 에이전트예요. 재개하면 보낼 수 있어요'
+  const { partner, question } = d;
+  const blocked = !partner
+    ? null
+    : partner.deleted
+      ? '삭제한 에이전트라 보낼 수 없어요 (복원하면 이어서)'
+      : !partner.topLevel
+        ? '팀원이 된 에이전트예요. 관리자 바로 아래 에이전트와만 대화해요'
+        : partner.paused
+          ? '멈춘 에이전트예요. 재개하면 보낼 수 있어요'
+          : null;
+  const hint = question
+    ? null
+    : d.state === 'routing'
+      ? '맡길 곳 찾는 중. 보내면 함께 봐요'
+      : d.state === 'working'
+        ? '일하는 중. 보내면 덧붙인 말이 되고 짧게 답해요 (회차마다 5개)'
         : null;
-  const hint = waiting
-    ? '일하는 중. 보내면 덧붙인 말이 되고 대표가 짧게 답해요 (회차마다 5개)'
-    : null;
 
-  async function send(body: { message: string }) {
+  async function send(body: { message: string; choice?: string }) {
     const reply = await sending.run(
       'send',
       () =>
@@ -112,60 +115,64 @@ export function ChatThreadPanel({ id }: { id: string }) {
     });
 
   return (
-    <div className="chat-room">
-      <section className="panel chat" aria-label={`${partner.name}와 대화`}>
-        <div className="sec-title flat">
-          <div className="chat-head">
-            <h2>{d.chat.title}</h2>
-            <small>{partner.name}</small>
-          </div>
-          <div className="row">
-            {(waiting || d.card) && (
-              <button
-                type="button"
-                className="ghost"
-                disabled={stopping.busy !== null}
-                onClick={stop}
-              >
-                {stopping.busy ? '멈추는 중' : '멈추기'}
-              </button>
-            )}
-            <Link className="ghost split-back" href="/admin/chats">
-              대화 목록
-            </Link>
-          </div>
-        </div>
-        {detail.error && <p className="error">{detail.error}</p>}
-        {stopping.problem && <p className="error">{stopping.problem}</p>}
-        <ChatTurns
-          turns={d.turns}
-          me={me.data?.name ?? '관리자'}
-          partner={partner.name}
-          busy={cancelling.busy}
-          onCancel={cancel}
-        />
-        {cancelling.problem && <p className="error">{cancelling.problem}</p>}
-        {d.card && (
-          <ChatCardForm
-            key={`${d.card.id}:${d.card.version}`}
-            card={d.card}
-            busy={deciding.busy !== null}
-            problem={deciding.problem}
-            onDecide={decide}
-          />
+    <div className="chat-page">
+      <header className="chat-top">
+        <h1 className="clamp-1">{d.chat.title}</h1>
+        {d.chat.deviceId && <span className="pill">기기에서</span>}
+        {(RUNNING.includes(d.state) || d.card) && (
+          <button
+            type="button"
+            className="ghost small"
+            disabled={stopping.busy !== null}
+            onClick={stop}
+          >
+            {stopping.busy ? '멈추는 중' : '멈추기'}
+          </button>
         )}
-        <ChatForm
-          key={sent}
+      </header>
+      {detail.error && <p className="error">{detail.error}</p>}
+      {stopping.problem && <p className="error">{stopping.problem}</p>}
+      <ChatTurns
+        turns={d.turns}
+        news={d.news}
+        pending={d.chat.pending}
+        me={me.data?.name ?? '관리자'}
+        partner={partner?.name ?? null}
+        busy={cancelling.busy}
+        onCancel={cancel}
+      />
+      {cancelling.problem && <p className="error">{cancelling.problem}</p>}
+      {d.state === 'routing' && d.turns.length === 0 && (
+        <p className="chat-event" aria-live="polite">
+          맡길 곳 찾는 중…
+        </p>
+      )}
+      {question && (
+        <ChatQuestion
+          question={question}
           busy={sending.busy !== null}
-          problem={sending.problem}
-          blocked={blocked}
-          hint={hint}
-          onSubmit={send}
+          onPick={(c) => send({ message: c.name, choice: c.id })}
         />
-        {/* 입력 칸 아래: 여기로 내리면 입력 칸이 마지막 말풍선을 가리지 않는다 */}
-        <div ref={bottom} />
-      </section>
-      <ChatSide detail={d} />
+      )}
+      {d.card && (
+        <ChatCardForm
+          key={`${d.card.id}:${d.card.version}`}
+          card={d.card}
+          busy={deciding.busy !== null}
+          problem={deciding.problem}
+          onDecide={decide}
+        />
+      )}
+      <ChatForm
+        key={sent}
+        busy={sending.busy !== null}
+        problem={sending.problem}
+        blocked={blocked}
+        hint={hint}
+        onSubmit={send}
+      />
+      {/* 입력 칸 아래: 여기로 내리면 입력 칸이 마지막 말풍선을 가리지 않는다 */}
+      <div ref={bottom} />
     </div>
   );
 }

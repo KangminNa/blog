@@ -31,9 +31,12 @@ const LABELS = {
   decision: '정한 것',
   assumption: '가정',
   appended: '덧붙인 말',
-  reply: '대표의 답',
+  reply: '짧은 답',
   final: '최종 답',
   failed: '실패',
+  review: '검토',
+  question: '질문',
+  routed: '맡음',
 };
 const RECONNECT = 'Cairn · 다시 연결 (cairn connect)';
 
@@ -81,7 +84,10 @@ function newsText(news, board, max = HOOK_MAX) {
   for (const [i, item] of news.entries()) {
     const title = titles.get(item.chat_id);
     const who = [item.agent, title ? `"${brief(title, 40)}"` : null].filter(Boolean).join(' · ');
-    const body = brief(item.text, item.kind === 'final' ? 500 : 240);
+    // 질문(맡을 에이전트 고르기)은 고를 것을 번호와 함께: 사용자가 번호로 답하면 ask_agent로 보낸다
+    const choices = (item.choices ?? []).map((c, k) => `${k + 1} ${c.name}`).join(' · ');
+    const said = choices ? `${item.text} (${choices})` : item.text;
+    const body = brief(said, item.kind === 'final' ? 500 : 240);
     const line = `- [${LABELS[item.kind] ?? item.kind}] ${who ? `${who}: ` : ''}${body}`;
     const more = i < news.length - 1 ? 40 : 0;
     if (used + 1 + line.length + more > max) break;

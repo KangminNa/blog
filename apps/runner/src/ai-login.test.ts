@@ -109,6 +109,18 @@ describe('연결 확인 일', () => {
     assert.equal(aiTest.prompt(REPO_PROMPTS, false), 'ok라고만 답하세요.');
   });
 
+  test('대화의 배정(chat_route)도 서버가 채운 지시 하나를 그대로 돌린다 (지시문 틀 단락을 붙이지 않는다)', () => {
+    const route = job('chat_route', {
+      task: { id: 'task-3', kind: 'chat_route', title: '배정 · 글', payload: { tool: 'claude' } },
+      instruction: '# 맡길 에이전트 고르기\n…',
+      agent: null,
+      run_token: null,
+    });
+    assert.equal(route.tool, 'claude');
+    assert.equal(route.runToken, null);
+    assert.equal(route.prompt(REPO_PROMPTS, false), '# 맡길 에이전트 고르기\n…');
+  });
+
   test('보통 일의 모양은 그대로다', () => {
     const general = job('general');
     assert.equal(general.isAiTest, false);

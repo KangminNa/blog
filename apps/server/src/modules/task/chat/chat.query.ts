@@ -3,28 +3,28 @@ import { type Actor, BaseQuery, Database, NotFound } from '../../platform';
 import { Approval } from '../approval/approval';
 import { Task } from '../task/task';
 import type { ApprovalRow, ChatRow, TaskRow } from '../task.tables';
-import { Chat } from './chat';
 import type { ChatIdInput } from './chat.input';
 import {
   type ChatApprovalRow,
   type ChatCardOutputRow,
   ChatCardView,
   ChatDetailView,
-  type ChatListRow,
   ChatListView,
   type ChatOutputRow,
   type ChatPartnerRow,
-  type ChatTeamRow,
   type ChatTurnTaskRow,
   ChatTurnView,
   type ChatUpdateLine,
 } from './chat.view';
+import { ChatRequest } from './chat-request.policy';
 import { ChatResult } from './chat-result.policy';
+import { ChatUpdates } from './chat-update.policy';
 import { ChatUpdateQuery } from './chat-update.query';
 
 // 대화 읽기 (관리자만). 회차는 작업이라 그 대화의 회차 request_id로 작업을 찾는다.
 // 결과물 · 기다리는 결재는 회차 작업과 그 아래 하위 작업(위임) 모두에서 모은다: 팀장에게 말하면 팀이 일한다.
-// 상세에는 상태판(ChatUpdateQuery와 같은 규칙) · 최근 소식 · 팀(상대와 그 아래 에이전트)을 함께 싣는다 (2차 1-1)
+// 상세에는 상태(ChatUpdateQuery와 같은 규칙) · 최근 소식(과정)을 함께 싣는다 (2차 1-1). 팀은 싣지 않는다: 화면은 대화만 (2차 1-5).
+// 맡기 전의 대화는 회차가 없고 첫 메시지(pending)와 지금 질문을 싣는다
 @Injectable()
 export class ChatQuery extends BaseQuery {
   private static readonly PAGE = 100;
@@ -32,8 +32,6 @@ export class ChatQuery extends BaseQuery {
   private static readonly TURNS = 100;
   /** 상세에 싣는 최근 소식 수 */
   private static readonly NEWS = 50;
-  /** 팀으로 보이는 조직도 깊이 (상대 아래로) */
-  private static readonly TEAM_DEPTH = 4;
 
   constructor(
     db: Database,
@@ -42,30 +40,9 @@ export class ChatQuery extends BaseQuery {
     super(db);
   }
 
+  /** 대화 목록 (최근 것부터): 맡은 에이전트의 이름과 상태 (상태판과 같은 규칙) */
   async list(actor: Actor): Promise<ChatListView> {
-    actor.assertOwner();
-    const spaceId = actor.requireSpace();
-    const rows = await this.sql<(ChatRow & { agent_name: string })[]>`
-      SELECT c.*, a.name AS agent_name FROM task.chats c
-      JOIN task.agents a ON a.id = c.agent_id
-      WHERE c.space_id = ${spaceId}
-      ORDER BY c.updated_at DESC, c.id DESC LIMIT ${ChatQuery.PAGE}`;
-    const last = rows.filter((r) => r.turns > 0).map((r) => Chat.turnRequestId(r.id, r.turns));
-    const states =
-      last.length === 0
-        ? []
-        : await this.sql<Pick<ChatTurnTaskRow, 'request_id' | 'status' | 'wait_reason'>[]>`
-          SELECT request_id, status, wait_reason FROM task.tasks
-          WHERE space_id = ${spaceId} AND request_id = ANY(${last}::text[])`;
-    const listed: ChatListRow[] = rows.map((r) => {
-      const state = states.find((s) => s.request_id === Chat.turnRequestId(r.id, r.turns));
-      return {
-        ...r,
-        last_status: state?.status ?? null,
-        last_wait_reason: state?.wait_reason ?? null,
-      };
-    });
-    return new ChatListView(listed);
+    return new ChatListView(await this.updates.ownerBoard(actor, null, ChatQuery.PAGE));
   }
 
   async get(actor: Actor, req: ChatIdInput): Promise<ChatDetailView> {
@@ -76,16 +53,18 @@ export class ChatQuery extends BaseQuery {
     if (!chat) throw new NotFound('대화를 찾을 수 없어요');
     const [partner] = await this.sql<ChatPartnerRow[]>`
       SELECT name, status, reports_to, deleted_at FROM task.agents WHERE id = ${chat.agent_id}`;
-    const ids = Chat.turnRequestIds(chat.id, chat.turns - ChatQuery.TURNS + 1, chat.turns);
+    const ids = ChatRequest.turns(chat.id, chat.turns - ChatQuery.TURNS + 1, chat.turns);
     const turns = await this.turns(spaceId, ids);
     const [board] = await this.updates.ownerBoard(actor, chat.id);
+    const news = await this.news(chat.id);
+    const asked = news.filter((n) => n.kind === ChatUpdates.QUESTION).at(-1) ?? null;
     return new ChatDetailView(
       chat,
-      partner as ChatPartnerRow,
+      partner ?? null,
       await this.views(turns),
       board ?? null,
-      await this.news(chat.id),
-      await this.team(chat),
+      news,
+      chat.agent_id === null ? asked : null,
       await this.card(chat),
     );
   }
@@ -105,7 +84,7 @@ export class ChatQuery extends BaseQuery {
     const [review] = await this.sql<Pick<TaskRow, 'status' | 'result'>[]>`
       SELECT status, result FROM task.tasks
       WHERE space_id = ${chat.space_id}
-        AND request_id = ${Chat.reviewRequestId(chat.id, card.target_version)}`;
+        AND request_id = ${ChatRequest.review(chat.id, card.target_version)}`;
     const missing = ChatResult.missing(
       chat.deliver,
       actions.map((a) => a.action),
@@ -115,40 +94,19 @@ export class ChatQuery extends BaseQuery {
     return new ChatCardView(card, actions, outputs, chat.deliver, missing === null, said || null);
   }
 
-  /** 이 대화의 최근 소식 (오래된 것부터) */
+  /** 이 대화의 최근 소식 (오래된 것부터). 질문이면 고를 에이전트들 (맡는 일은 역할의 첫 줄) */
   private news(chatId: string): Promise<ChatUpdateLine[]> {
     return this.sql<ChatUpdateLine[]>`
       SELECT * FROM (
-        SELECT u.*, a.name AS agent FROM task.chat_updates u
+        SELECT u.*, a.name AS agent,
+          (SELECT json_agg(json_build_object('id', x.id, 'name', x.name,
+              'role', split_part(x.role, E'\n', 1)) ORDER BY c.ord)
+            FROM unnest(u.choices) WITH ORDINALITY AS c(id, ord)
+            JOIN task.agents x ON x.id = c.id) AS choice_list
+        FROM task.chat_updates u
         LEFT JOIN task.agents a ON a.id = u.agent_id
         WHERE u.chat_id = ${chatId} ORDER BY u.n DESC LIMIT ${ChatQuery.NEWS}
       ) recent ORDER BY n`;
-  }
-
-  /** 상대와 그 아래 에이전트(지운 것 빼고), 사람마다 이 대화의 지금 회차(덧붙인 말의 답 포함) 아래에서 도는 작업 */
-  private team(chat: ChatRow): Promise<ChatTeamRow[]> {
-    const roots = chat.turns > 0 ? Chat.turnRoots(chat.id, chat.turns) : [];
-    const open = ChatQuery.OPEN as string[];
-    return this.sql<ChatTeamRow[]>`
-      WITH RECURSIVE team AS (
-        SELECT id, 0 AS depth FROM task.agents WHERE id = ${chat.agent_id}
-        UNION ALL
-        SELECT a.id, team.depth + 1 FROM task.agents a JOIN team ON a.reports_to = team.id
-        WHERE a.deleted_at IS NULL AND team.depth < ${ChatQuery.TEAM_DEPTH}
-      ), work AS (
-        SELECT t.id, t.agent_id, t.status, t.title, t.created_at FROM task.tasks t
-        WHERE t.space_id = ${chat.space_id} AND t.request_id = ANY(${roots}::text[])
-        UNION ALL
-        SELECT t.id, t.agent_id, t.status, t.title, t.created_at FROM task.tasks t
-        JOIN work ON t.parent_id = work.id
-      )
-      SELECT a.id, a.name, a.role, a.status, a.lead, team.depth,
-        (SELECT count(*)::int FROM work w
-          WHERE w.agent_id = a.id AND w.status = ANY(${open}::text[])) AS open,
-        (SELECT w.title FROM work w WHERE w.agent_id = a.id AND w.status = ANY(${open}::text[])
-          ORDER BY w.created_at DESC LIMIT 1) AS doing
-      FROM team JOIN task.agents a ON a.id = team.id
-      ORDER BY team.depth, a.name`;
   }
 
   /** 회차마다 그 아래의 결과물 · 기다리는 결재를 붙인다 */

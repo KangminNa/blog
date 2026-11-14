@@ -33,7 +33,8 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
    * 빌려 줄 작업을 잠근다. 다른 러너가 잡은 행은 건너뛰고, 담당이 없거나 일을 받을 수 있는 에이전트(ready)의 일만,
    * 우선순위 → 오래된 순. 멈췄거나 쉬는 에이전트의 일과 맡을 권한이 없는 일은 대기열에 남아 뒤의 일을 막지 않는다.
    * 연결 확인과 웹 로그인은 에이전트가 필요 없어 일을 받을 에이전트가 없어도 빌려 준다.
-   * 그 둘은 도구로 거른다 (null이면 거르지 않는다): 연결 확인은 testTools, 웹 로그인은 signinTools의 도구만.
+   * 그 둘은 도구로 거른다 (null이면 거르지 않는다): 연결 확인 · 대화의 배정은 testTools(서버의 로그인이 쓸 수 있는 도구),
+   * 웹 로그인은 signinTools의 도구만.
    * 브라우저 작업(browse)은 브라우저에 붙어 있다고 알린 러너(browser)에게만
    */
   async lockNext(
@@ -57,6 +58,7 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
           OR (agent_id IS NULL AND ${agentIds.length > 0}))
         ${this.scoped(ready)}
         ${this.byTool(Task.AI_TEST, tools.testTools)}
+        ${this.byTool(Task.ROUTE, tools.testTools)}
         ${this.byTool(Task.AI_SIGNIN, tools.signinTools)}
         ${tools.browser ? this.sql`` : this.sql`AND kind <> ${Task.BROWSE}`}
         ${
@@ -124,6 +126,31 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
       request_id: Rule.like(`${prefix}%`),
       status: [Task.QUEUED, Task.RUNNING, Task.WAITING],
     });
+  }
+
+  /** 공간 안의 작업 하나 (잠그지 않는다). 없으면 null */
+  findIn(spaceId: string, id: string): Promise<Task | null> {
+    return this.findOne({ space_id: spaceId, id });
+  }
+
+  /** request_id가 prefix로 시작하는, 대기 · 실행 중인 작업을 잠근다 (대화의 배정 일) */
+  lockOpenRequests(spaceId: string, prefix: string): Promise<readonly Task[]> {
+    return this.find(
+      {
+        space_id: spaceId,
+        request_id: Rule.like(`${prefix}%`),
+        status: [Task.QUEUED, Task.RUNNING],
+      },
+      { lock: true },
+    );
+  }
+
+  /** before보다 먼저 만들어 아직 아무도 빌려 가지 않은 그 종류의 작업 (잠그지 않는다: 부르는 쪽이 대화부터 잠근다) */
+  staleQueued(kind: string, before: Date, limit: number): Promise<readonly Task[]> {
+    return this.find(
+      { kind, status: Task.QUEUED, created_at: Rule.before(before) },
+      { order: ['created_at'], limit },
+    );
   }
 
   /** 이 작업을 맡긴 위 작업의 id. 없으면 null */

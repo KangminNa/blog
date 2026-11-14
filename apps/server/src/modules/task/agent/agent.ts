@@ -135,6 +135,11 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     return this.row.role;
   }
 
+  /** 맡는 일: 역할의 첫 줄. 대화의 배정이 이것으로 고른다 (2차 1-5) */
+  get duty(): string {
+    return this.row.role.trim().split('\n')[0]?.trim() ?? '';
+  }
+
   get tool(): string {
     return this.row.tool;
   }
@@ -156,18 +161,6 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     return this.row.status === Agent.PAUSED;
   }
 
-  /** 기본 대표: 상대를 정하지 않고 맡기면(MCP ask_agent) 받는다 (공간에 하나, 관리자 바로 아래만. Service가 다른 대표를 내린다) */
-  get lead(): boolean {
-    return this.row.lead === true;
-  }
-
-  /** 대표로 올리거나 내린다. 팀원 · 지운 에이전트는 대표가 될 수 없다 */
-  markLead(on: boolean): void {
-    if (on && (!this.topLevel || this.deleted))
-      throw new RuleViolation('관리자 바로 아래 에이전트만 대표가 돼요');
-    if (this.lead !== on) this.put('lead', on);
-  }
-
   /** 휴지통에 있는지: 목록 · 조직도에서 빠지고 새 일을 받지 않는다 (기록은 남는다). 새로 연 줄(저장 전)과 시험의 줄에는 칸이 없을 수 있어 값이 있을 때만 */
   get deleted(): boolean {
     return this.row.deleted_at instanceof Date;
@@ -183,7 +176,6 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     const team = org.filter((a) => this.manages(a));
     for (const member of team) member.reportTo(this.row.reports_to, org);
     this.put('deleted_at', now);
-    this.markLead(false);
     this.announce();
     return team;
   }
@@ -294,7 +286,6 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     if (managerId === this.row.reports_to) return;
     const before = this.settingsSnapshot();
     this.put('reports_to', managerId);
-    if (managerId !== null) this.markLead(false);
     this.noteSettings(before);
   }
 

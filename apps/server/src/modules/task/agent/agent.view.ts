@@ -45,8 +45,6 @@ export class AgentSavedView {
       /** 검토자 짝 (다른 AI 도구의 에이전트, 2차 2단계) */
       reviewerId: r.reviewer_id ?? null,
       status: r.status,
-      /** 기본 대표: 상대를 정하지 않고 맡기면 받는다 (공간에 하나) */
-      lead: r.lead,
       /** 휴지통에 넣은 때. null이면 쓰는 에이전트 */
       deletedAt: r.deleted_at?.toISOString() ?? null,
       version: r.version,

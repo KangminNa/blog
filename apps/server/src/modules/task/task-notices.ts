@@ -38,7 +38,7 @@ export class TaskNotices implements OnModuleInit {
                   .slice(0, TaskNotices.BODY_MAX),
                 link:
                   e.data.action === TaskNotices.CARD
-                    ? `/admin/chats?chat=${e.data.targetId}`
+                    ? `/admin/chats/${e.data.targetId}`
                     : '/admin/approvals',
                 group_key: `approval:${e.data.approvalId}`,
                 data: { approvalId: e.data.approvalId, taskId: e.data.taskId },

@@ -11,15 +11,17 @@ import { NotifyContext } from '../_ui/notify';
 import { ThemeToggle } from '../_ui/ThemeToggle';
 import { useToast } from '../_ui/useToast';
 import { useWaitingChanges } from '../_vault/live';
-import { APPROVALS_HREF, HOME_HREF, MENU, MenuIcon } from './menu';
+import { ChatNav } from './ChatNav';
+import { APPROVALS_HREF, CHAT_HREF, CHATS_HREF, MENU, MenuIcon } from './menu';
 import { NotificationBell } from './NotificationBell';
 
-/** 지금 메뉴인가. 홈(/admin)은 모든 메뉴의 앞부분이라 정확히 같을 때만 */
-function isCurrent(pathname: string, href: string): boolean {
-  return href === HOME_HREF ? pathname === href : pathname.startsWith(href);
+/** 대화 칸인가 (새 대화 · 대화 하나): 왼쪽이 대화 목록이 된다 */
+function isChat(pathname: string | null): boolean {
+  return pathname === CHAT_HREF || (pathname?.startsWith(`${CHATS_HREF}/`) ?? false);
 }
 
-// 콘솔의 틀: 왼쪽 메뉴 + 작업 칸. 좁은 화면에서는 메뉴가 서랍으로 열린다.
+// 콘솔의 틀: 왼쪽 칸 + 작업 칸. 좁은 화면에서는 왼쪽 칸이 서랍으로 열린다.
+// 2차 1-5: 대화 칸에서는 왼쪽이 대화 목록(ChatNav, 아래에 결재 · 설정), 그 밖(설정)에서는 메뉴와 "대화로".
 // 메뉴는 일반 링크로 둔다: 글 편집기의 "저장 안 한 내용" 확인(beforeunload)이 페이지를 떠날 때 돌아야 한다.
 export function AdminShell({
   ownerName,
@@ -81,46 +83,11 @@ export function AdminShell({
             )}
             {siteName || 'Cairn'}
           </a>
-          {MENU.map((group) => (
-            <nav key={group.label} aria-label={group.label || '홈'}>
-              {group.label && <div className="console-label">{group.label}</div>}
-              {packages
-                .filter((p) => p.group === group.label)
-                .map((p) => (
-                  <PackageLink key={p.plugin} entry={p} pathname={pathname} />
-                ))}
-              {group.items.map((item) => (
-                <a
-                  key={item.href}
-                  className="console-link"
-                  href={item.href}
-                  aria-current={isCurrent(pathname, item.href) ? 'page' : undefined}
-                >
-                  <MenuIcon name={item.icon} />
-                  {item.name}
-                  {item.href === APPROVALS_HREF && pendingCount && (
-                    <span className="console-count">
-                      <span className="sr">대기 </span>
-                      {pendingCount}
-                      <span className="sr">건</span>
-                    </span>
-                  )}
-                </a>
-              ))}
-            </nav>
-          ))}
-          {[...new Set(packages.map((p) => p.group))]
-            .filter((label) => !MENU.some((group) => group.label === label))
-            .map((label) => (
-              <nav key={`package-${label}`} aria-label={label || '기능 패키지'}>
-                <div className="console-label">{label || '기능 패키지'}</div>
-                {packages
-                  .filter((p) => p.group === label)
-                  .map((p) => (
-                    <PackageLink key={p.plugin} entry={p} pathname={pathname} />
-                  ))}
-              </nav>
-            ))}
+          {isChat(pathname) ? (
+            <ChatNav pathname={pathname} pendingCount={pendingCount} />
+          ) : (
+            <SettingsNav pathname={pathname} packages={packages} pendingCount={pendingCount} />
+          )}
           <div className="console-foot">
             <span className="label-mono">{ownerName}</span>
             <a className="console-link" href="/">
@@ -163,6 +130,66 @@ export function AdminShell({
         </div>
       )}
     </NotifyContext.Provider>
+  );
+}
+
+/** 설정 칸의 왼쪽: 대화로 돌아가는 줄, 메뉴 묶음과 그 묶음의 기능 패키지, 묶음이 없는 기능 패키지 */
+function SettingsNav({
+  pathname,
+  packages,
+  pendingCount,
+}: {
+  pathname: string | null;
+  packages: readonly PackageEntry[];
+  pendingCount: string | null;
+}) {
+  return (
+    <>
+      <a className="console-link chat-back" href={CHAT_HREF}>
+        <MenuIcon name="chat" />
+        대화로
+      </a>
+      {MENU.map((group) => (
+        <nav key={group.label} aria-label={group.label}>
+          <div className="console-label">{group.label}</div>
+          {packages
+            .filter((p) => p.group === group.label)
+            .map((p) => (
+              <PackageLink key={p.plugin} entry={p} pathname={pathname} />
+            ))}
+          {group.items.map((item) => (
+            <a
+              key={item.href}
+              className="console-link"
+              href={item.href}
+              aria-current={pathname?.startsWith(item.href) ? 'page' : undefined}
+            >
+              <MenuIcon name={item.icon} />
+              {item.name}
+              {item.href === APPROVALS_HREF && pendingCount && (
+                <span className="console-count">
+                  <span className="sr">대기 </span>
+                  {pendingCount}
+                  <span className="sr">건</span>
+                </span>
+              )}
+            </a>
+          ))}
+        </nav>
+      ))}
+      {[...new Set(packages.map((p) => p.group))]
+        .filter((label) => !MENU.some((group) => group.label === label))
+        .map((label) => (
+          <nav key={`package-${label}`} aria-label={label || '기능 패키지'}>
+            <div className="console-label">{label || '기능 패키지'}</div>
+            {packages
+              .filter((p) => p.group === label)
+              .map((p) => (
+                <PackageLink key={p.plugin} entry={p} pathname={pathname} />
+              ))}
+          </nav>
+        ))}
+    </>
   );
 }
 

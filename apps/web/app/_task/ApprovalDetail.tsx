@@ -139,10 +139,10 @@ function Loaded({
       ) : a.target.kind === GOAL_RUN ? (
         <GoalRunTarget approval={a} />
       ) : a.target.kind === 'chat' ? (
-        // 결과 카드 (2차 2단계): 항목 고르기는 대화에서. 여기서 승인하면 모두 고른 것과 같다
+        // 결과 카드 (2차 2단계): 정하는 것은 대화에서만 (항목을 골라야 해서, 2차 1-5). 여기서는 그 대화로 간다
         <p className="note">
           대화의 결과 카드 ·{' '}
-          <Link href={`/admin/chats?chat=${a.target.id}`}>대화에서 항목 골라 정하기</Link>
+          <Link href={`/admin/chats/${a.target.id}`}>대화에서 항목 골라 정하기</Link>
         </p>
       ) : (
         <OtherTarget approval={a} />
@@ -179,7 +179,7 @@ function Loaded({
       {a.status === 'pending' && a.action === LOGIN_SITE && (
         <LoginDecide approval={a} reload={reload} />
       )}
-      {a.status === 'pending' && a.action !== LOGIN_SITE && (
+      {a.status === 'pending' && a.action !== LOGIN_SITE && a.target.kind !== 'chat' && (
         <Decide
           approval={a}
           canApprove={!isPost || (post.data !== null && post.error === null)}
