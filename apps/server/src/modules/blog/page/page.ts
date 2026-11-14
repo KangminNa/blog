@@ -83,7 +83,7 @@ export class Page extends TableEntity<PageRow, PageNew> {
 
   /** 보이는 판을 옮긴다 (되돌리기도 같다). 이미 그 판이면 아무것도 바뀌지 않는다 */
   switchTo(seq: number, now: Date): void {
-    if (seq < 1 || seq > this.row.revisions) throw new NotFound(`없는 판이에요: ${seq}`);
+    if (seq < 1 || seq > this.row.revisions) throw new NotFound(`없는 버전이에요: ${seq}`);
     if (seq === this.row.current_seq) return;
     this.put('current_seq', seq);
     this.put('updated_at', now);

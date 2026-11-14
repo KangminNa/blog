@@ -1,10 +1,17 @@
 import type { ReactNode } from 'react';
+import type { SpaceInfo } from './_account/types';
+import { serverGet } from './_lib/server-api';
 import './globals.css';
 
-export const metadata = {
-  title: 'Cairn',
-  description: '내 서버에서 도는 Personal AI OS. AI 세션, 작업, 블로그를 한곳에서',
-};
+/** 사이트 로고를 올렸으면 브라우저 탭 아이콘으로도 쓴다 */
+export async function generateMetadata() {
+  const space = await serverGet<SpaceInfo>('/api/space', true);
+  return {
+    title: 'Cairn',
+    description: '내 서버에서 도는 Personal AI OS. AI 세션, 작업, 블로그를 한곳에서',
+    ...(space?.logoUrl ? { icons: { icon: space.logoUrl } } : {}),
+  };
+}
 
 // AGPL-3.0: 서비스를 쓰는 사람도 소스를 받을 수 있게 모든 화면에 링크를 둔다
 const SOURCE_URL = process.env.CAIRN_SOURCE_URL ?? 'https://github.com/KangminNa/blog';

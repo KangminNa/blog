@@ -9,5 +9,6 @@ export default async function Account({
   searchParams: Promise<{ error?: string }>;
 }) {
   const [{ error }, owner] = await Promise.all([searchParams, serverGet<Owner>('/api/auth/me')]);
-  return <AccountPage login={owner?.login ?? ''} error={error ?? null} />;
+  if (!owner) return <p className="error">서버에 연결하지 못했어요</p>;
+  return <AccountPage owner={owner} error={error ?? null} />;
 }

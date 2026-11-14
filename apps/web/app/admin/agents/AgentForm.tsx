@@ -68,6 +68,7 @@ export type AgentBody = {
 export function AgentForm({
   agent,
   agents,
+  ownerName,
   busy,
   problem,
   onSubmit,
@@ -77,6 +78,8 @@ export function AgentForm({
   agent: Agent | null;
   /** 공간의 모든 에이전트 (보고 대상 고르기) */
   agents: readonly Agent[];
+  /** 관리자의 이름 (보고 대상이 없으면 이 사람에게) */
+  ownerName: string;
   busy: boolean;
   problem: string | null;
   onSubmit: (body: AgentBody, requestId: string) => void;
@@ -190,7 +193,7 @@ export function AgentForm({
           aria-describedby={`${id}-boss-help`}
           onChange={(e) => change(() => setReportsTo(e.target.value))}
         >
-          <option value="">주인</option>
+          <option value="">{ownerName}</option>
           {bossesFor(agent, agents).map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
@@ -198,7 +201,8 @@ export function AgentForm({
           ))}
         </select>
         <small id={`${id}-boss-help`}>
-          보고 대상은 이 에이전트에게 일을 나눠 맡길 수 있어요. 조직도는 4단계까지, 결재는 늘 주인
+          보고 대상은 이 에이전트에게 일을 나눠 맡길 수 있어요. 조직도는 4단계까지, 결재는 늘{' '}
+          {ownerName}
         </small>
       </div>
       <fieldset className="checks">

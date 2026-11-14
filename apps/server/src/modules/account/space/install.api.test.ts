@@ -78,7 +78,12 @@ describe('처음 설치', () => {
     assert.ok(cookies.cairn_session);
     assert.equal(cookies.cairn_install, '', '통행증은 다 썼으니 지운다');
     owner = new TestUser({ cairn_session: cookies.cairn_session ?? '' });
-    assert.deepEqual((await api.get('/api/auth/me', owner)).json(), { login: 'owner' });
+    assert.deepEqual((await api.get('/api/auth/me', owner)).json(), {
+      login: 'owner',
+      displayName: null,
+      name: 'owner',
+      version: 1,
+    });
     assert.deepEqual((await api.get('/api/install')).json(), { installed: true, step: 'done' });
     const [row] = await api.service(Database).sql`
       SELECT password_hash FROM account.users WHERE login = 'owner'`;
@@ -152,6 +157,7 @@ describe('블로그 정보', () => {
       installed: true,
       version: version + 1,
       hostedApps: false,
+      logoUrl: null,
     });
   });
 
@@ -198,6 +204,100 @@ describe('블로그 정보', () => {
     ])
       assert.equal((await put(local)).status, 200, local);
     assert.equal((await put('https://blog.example.com')).status, 200);
+  });
+});
+
+describe('표시 이름과 로고', () => {
+  // 1×1 PNG (형식은 앞부분으로 본다)
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const putLogo = (version: unknown, body: Buffer, type: string, as: TestUser = owner) =>
+    fetch(`${api.baseUrl}/api/space/logo?version=${version}`, {
+      method: 'PUT',
+      headers: {
+        'content-type': type,
+        ...(as.cookies.cairn_session
+          ? { cookie: `cairn_session=${as.cookies.cairn_session}` }
+          : {}),
+      },
+      body,
+    });
+
+  test('이름: 주인만 정하고, 비우면 아이디로 돌아간다. 낡은 version은 409, 40자를 넘으면 422', async () => {
+    const me = (await api.get('/api/auth/me', owner)).json() as { version: number };
+    const visitor = await api.request('PUT', '/api/auth/me/profile', TestUser.visitor, {
+      displayName: '남',
+      version: me.version,
+    });
+    assert.equal(visitor.status, 403);
+    const named = await api.request('PUT', '/api/auth/me/profile', owner, {
+      displayName: '  나 강민  ',
+      version: me.version,
+    });
+    assert.equal(named.status, 200, named.text);
+    assert.deepEqual(named.json(), {
+      login: 'owner',
+      displayName: '나 강민',
+      name: '나 강민',
+      version: me.version + 1,
+    });
+    const stale = await api.request('PUT', '/api/auth/me/profile', owner, {
+      displayName: '다른 이름',
+      version: me.version,
+    });
+    assert.equal(stale.status, 409);
+    const long = await api.request('PUT', '/api/auth/me/profile', owner, {
+      displayName: '가'.repeat(41),
+      version: me.version + 1,
+    });
+    assert.equal(long.status, 422);
+    const cleared = await api.request('PUT', '/api/auth/me/profile', owner, {
+      displayName: '',
+      version: me.version + 1,
+    });
+    assert.deepEqual(
+      [cleared.json().displayName, cleared.json().name],
+      [null, 'owner'],
+      '비우면 아이디',
+    );
+  });
+
+  test('로고: 주인만 올리고 누구나 본다. 그림이 아니면 415, 1MB를 넘으면 413, 빼면 404', async () => {
+    let { version } = (await api.get('/api/space')).json() as { version: number };
+    assert.equal((await putLogo(version, PNG, 'image/png', TestUser.visitor)).status, 403);
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+    );
+    assert.equal((await putLogo(version, svg, 'image/svg+xml')).status, 415, 'SVG는 받지 않는다');
+    const big = Buffer.concat([PNG, Buffer.alloc(1024 * 1024)]);
+    assert.equal((await putLogo(version, big, 'image/png')).status, 413);
+    assert.equal((await putLogo('x', PNG, 'image/png')).status, 400);
+
+    const up = await putLogo(version, PNG, 'image/png');
+    assert.equal(up.status, 200, await up.clone().text());
+    const space = (await up.json()) as { logoUrl: string; version: number };
+    assert.match(space.logoUrl, /^\/api\/space\/logo\?v=[0-9a-f]{12}$/);
+    assert.equal((await putLogo(version, PNG, 'image/png')).status, 409, '낡은 version');
+    version = space.version;
+
+    const seen = await fetch(`${api.baseUrl}${space.logoUrl}`);
+    assert.equal(seen.status, 200, '방문자도 본다 (블로그 머리)');
+    assert.equal(seen.headers.get('content-type'), 'image/png');
+    assert.equal(seen.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(seen.headers.get('content-security-policy'), 'sandbox');
+    assert.deepEqual(Buffer.from(await seen.arrayBuffer()), PNG);
+    assert.equal((await api.get('/api/space')).json().logoUrl, space.logoUrl);
+
+    const visitor = await api.request('POST', '/api/space/logo/delete', TestUser.visitor, {
+      version,
+    });
+    assert.equal(visitor.status, 403);
+    const removed = await api.request('POST', '/api/space/logo/delete', owner, { version });
+    assert.equal(removed.status, 200, removed.text);
+    assert.equal(removed.json().logoUrl, null);
+    assert.equal((await fetch(`${api.baseUrl}/api/space/logo`)).status, 404);
   });
 });
 

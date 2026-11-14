@@ -42,6 +42,23 @@ export class LoginInput extends BaseRequest {
   }
 }
 
+/** PUT /api/auth/me/profile: 화면에 보일 이름 (비우면 아이디). 길이 · 글자는 Owner.rename이 본다 */
+export class RenameOwnerInput extends BaseRequest {
+  private constructor(
+    readonly displayName: string | null,
+    readonly version: number,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): RenameOwnerInput {
+    return BaseRequest.read(
+      raw,
+      (f) => new RenameOwnerInput(f.optionalText('displayName', 200), f.version()),
+    );
+  }
+}
+
 /** 비밀번호 바꾸기: 지금 비밀번호를 한 번 더 확인한다 */
 export class ChangePasswordInput extends BaseRequest {
   private constructor(

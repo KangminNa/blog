@@ -213,7 +213,7 @@ function RepoItem({
         {repo.setup ? ` · setup: ${repo.setup}` : ''}
         {repo.checks.length > 0 ? ` · checks: ${repo.checks.join(' / ')}` : ''}
       </span>
-      <form className="stack" onSubmit={ask} aria-label={`${repo.name}에 일 맡기기`}>
+      <form className="stack" onSubmit={ask} aria-label={`${repo.name}에 작업 맡기기`}>
         <label className="field">
           <span>맡길 일</span>
           <textarea
@@ -247,7 +247,7 @@ function RepoItem({
         </label>
         <div className="row">
           <button type="submit" className="cta small" disabled={busy}>
-            일 맡기기
+            작업 맡기기
           </button>
           <button type="button" className="ghost" onClick={archive}>
             보관

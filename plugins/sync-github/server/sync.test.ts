@@ -159,7 +159,7 @@ describe('sync-github', () => {
       new RestorePreviewAction(gh, 'main', restorer, []),
       new RestoreAction(gh, 'main', restorer, []),
     ])
-      await assert.rejects(action.run(new VisitorActor()), /주인만/);
+      await assert.rejects(action.run(new VisitorActor()), /관리자만/);
     for (const action of [
       new RestorePreviewAction(null, 'main', restorer, ['repo']),
       new RestoreAction(null, 'main', restorer, ['repo']),

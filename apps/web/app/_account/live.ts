@@ -2,7 +2,7 @@
 
 import { api } from '../_lib/client-api';
 import { useLiveValue } from '../_lib/use-live';
-import type { DeviceList, SpaceInfo } from './types';
+import type { DeviceList, Owner, SpaceInfo } from './types';
 
 // 여러 화면이 함께 쓰는 읽기 (account).
 
@@ -12,6 +12,11 @@ const DEVICE_TOPICS = ['account.device.*'];
 /** 기기 목록. 끊은 기기도 들어 있다 */
 export function useDevices() {
   return useLiveValue('devices', () => api<DeviceList>('GET', '/api/devices'), DEVICE_TOPICS);
+}
+
+/** 로그인한 관리자와 화면에 보일 이름 (조직도 · 결재 도장). 신호가 없어 처음과 다시 연결될 때만 읽는다 */
+export function useMe() {
+  return useLiveValue('me', () => api<Owner>('GET', '/api/auth/me'), []);
 }
 
 /** 블로그 정보. 변경 신호가 없어 처음과 다시 연결될 때만 읽는다 */

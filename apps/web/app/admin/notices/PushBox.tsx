@@ -154,7 +154,7 @@ export function PushBox() {
         {state === 'on' && (
           <>
             <button type="button" className="ghost" disabled={busy} onClick={test}>
-              보내 보기
+              테스트 알림
             </button>
             <button type="button" className="ghost" disabled={busy} onClick={turnOff}>
               끄기

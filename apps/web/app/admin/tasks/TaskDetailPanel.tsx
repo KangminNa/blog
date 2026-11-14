@@ -279,7 +279,7 @@ function Runs({ runs }: { runs: readonly TaskRun[] }) {
   if (runs.length === 0) return null;
   return (
     <section className="panel" aria-labelledby="task-runs">
-      <h2 id="task-runs">실행</h2>
+      <h2 id="task-runs">실행 기록</h2>
       <ol className="list" aria-label="실행">
         {runs.map((r) => (
           <li key={r.seq} className="list-cell stack">
@@ -290,14 +290,14 @@ function Runs({ runs }: { runs: readonly TaskRun[] }) {
               {r.agentRevision !== null && (
                 <>
                   <dt>에이전트 설정</dt>
-                  <dd>판 {r.agentRevision}</dd>
+                  <dd>버전 {r.agentRevision}</dd>
                 </>
               )}
               <dt>스킬</dt>
               <dd>
                 {r.skill === null
                   ? '없음'
-                  : `${r.skill.name} · ${r.skill.source === 'console' ? `콘솔 판 ${r.skill.revision}` : '저장소 판'} · ${(r.skill.hash ?? '').slice(0, 7)}`}
+                  : `${r.skill.name} · ${r.skill.source === 'console' ? `콘솔 버전 ${r.skill.revision}` : '저장소 버전'} · ${(r.skill.hash ?? '').slice(0, 7)}`}
               </dd>
               <dt>러너 빌드</dt>
               <dd>{r.runnerBuild ?? '알 수 없음'}</dd>

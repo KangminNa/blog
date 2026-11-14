@@ -107,6 +107,7 @@ export const spaces = accountSchema.table('spaces', {
   name: text('name').notNull(),
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
   version: integer('version').notNull(),
+  logo_blob_hash: text('logo_blob_hash'),
 });
 
 /** account.users */
@@ -119,6 +120,7 @@ export const users = accountSchema.table('users', {
   login: text('login').notNull(),
   password_hash: text('password_hash'),
   password_changed_at: timestamp('password_changed_at', { withTimezone: true }),
+  version: integer('version').notNull(),
 });
 
 /** account.web_sessions */

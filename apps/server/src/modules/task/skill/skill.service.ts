@@ -64,7 +64,7 @@ export class SkillService extends EntityService<Skill> {
     return this.transaction(async (tx) => {
       const skills = new SkillRepository(tx);
       const skill = await skills.lockByName(spaceId, req.name);
-      if (!skill) throw new NotFound(`콘솔 판이 없는 스킬이에요: ${req.name}`);
+      if (!skill) throw new NotFound(`콘솔 버전이 없는 스킬이에요: ${req.name}`);
       skill.assertVersion(req.version);
       skill.activate(req.revision, new Date());
       await skills.save(skill);

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { BaseEntity, DomainEvent, TableEntity } from '../../platform';
+import { BaseEntity, DomainEvent, RuleViolation, TableEntity } from '../../platform';
 import type {
   LoginLinkNew,
   SpaceMemberNew,
@@ -8,6 +8,7 @@ import type {
   WebSessionNew,
   WebSessionRow,
 } from '../account.tables';
+import { OwnerView } from './owner.view';
 
 /** 주인 한 줄: 계정에 주인 자리의 공간을 더해 읽는다 */
 export type LoadedOwner = UserRow & { space_id: string };
@@ -67,6 +68,8 @@ export class WebSession extends TableEntity<WebSessionRow, WebSessionNew> {
 // 비밀번호는 바꾼 값(PasswordHasher)만 들고 있다.
 export class Owner extends TableEntity<UserRow, UserNew> {
   private static readonly ROLE = 'owner';
+  /** 화면에 보일 이름의 길이 (DB CHECK users_display_name_len과 같다) */
+  static readonly NAME_MAX = 40;
   private readonly sessions: WebSession[] = [];
   private passwordChanged = false;
   private keepOnPasswordChange: string | null = null;
@@ -177,5 +180,23 @@ export class Owner extends TableEntity<UserRow, UserNew> {
 
   unlink(method: string): void {
     this.unlinked.add(method);
+  }
+
+  /**
+   * 화면에서 "주인" 대신 보일 이름. 비우면 아이디를 보인다. 본 version이어야 한다 (다른 곳의 저장을 덮지 않게).
+   * 이름을 바꿀 때만 version이 오른다: 로그인 · 비밀번호 저장이 이름 고치기와 부딪히지 않게
+   */
+  rename(name: string | null, seen: number): void {
+    this.assertVersion(seen);
+    const value = (name ?? '').replace(/\s+/g, ' ').trim();
+    if (value.length > Owner.NAME_MAX)
+      throw new RuleViolation(`이름은 ${Owner.NAME_MAX}자까지예요`);
+    if (/\p{Cc}/u.test(value)) throw new RuleViolation('이름에 쓸 수 없는 글자가 있어요');
+    this.put('display_name', value || null);
+    this.put('version', this.version + 1);
+  }
+
+  view(): OwnerView {
+    return new OwnerView(this.row);
   }
 }

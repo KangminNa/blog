@@ -1,6 +1,6 @@
-import { Module } from '@nestjs/common';
+import { Module, type OnModuleInit } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { PasswordHasher, SecretBox } from '../platform';
+import { BlobStore, PasswordHasher, SecretBox } from '../platform';
 import { AccountNotices } from './account-notices';
 import { DeviceController } from './device/device.api';
 import { DeviceQuery } from './device/device.query';
@@ -67,4 +67,16 @@ import { SpaceService } from './space/space.service';
   ],
   exports: [InstallPolicy, SpaceQuery, OwnerService, DeviceQuery, ServerRunnerGateway],
 })
-export class AccountModule {}
+export class AccountModule implements OnModuleInit {
+  constructor(
+    private readonly blobs: BlobStore,
+    private readonly spaces: SpaceQuery,
+  ) {}
+
+  onModuleInit(): void {
+    // 로고가 가리키는 파일: 쓰는 동안 platform이 지우지 않게
+    this.blobs.registerUse(['account.spaces.logo_blob_hash'], (actor, hashes) =>
+      this.spaces.usedBlobs(actor, hashes),
+    );
+  }
+}

@@ -112,6 +112,7 @@ export interface SpaceRow {
   name: string;
   created_at: Date;
   version: number;
+  logo_blob_hash: string | null;
 }
 export type SpaceNew = Partial<SpaceRow> & Pick<SpaceRow, 'id' | 'slug' | 'name'>;
 
@@ -125,6 +126,7 @@ export interface UserRow {
   login: string;
   password_hash: string | null;
   password_changed_at: Date | null;
+  version: number;
 }
 export type UserNew = Partial<UserRow> & Pick<UserRow, 'id' | 'login'>;
 

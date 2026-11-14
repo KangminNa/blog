@@ -118,9 +118,9 @@ export function ScheduleForm({
     <form
       className="panel stack"
       onSubmit={submit}
-      aria-label={schedule ? `${schedule.title} 고치기` : '새 스케줄'}
+      aria-label={schedule ? `${schedule.title} 편집` : '새 스케줄'}
     >
-      <b>{schedule ? `${schedule.title} 고치기` : '새 스케줄'}</b>
+      <b>{schedule ? `${schedule.title} 편집` : '새 스케줄'}</b>
       <div className="field">
         <label htmlFor={`${id}-title`}>이름</label>
         <input
@@ -227,7 +227,7 @@ export function ScheduleForm({
           required
           onChange={(e) => edit(() => setDailyMax(Number(e.target.value)))}
         />
-        <small>시간대 기준 하루에 만드는 작업 수. "지금 한 번"도 함께 세요</small>
+        <small>시간대 기준 하루에 만드는 작업 수. "지금 실행"도 함께 세요</small>
       </div>
       <div className="field">
         <label htmlFor={`${id}-zone`}>시간대</label>

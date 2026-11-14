@@ -233,7 +233,7 @@ function WikiView({
     );
 
   async function trash(version: number) {
-    if (!window.confirm('휴지통으로 보낼까요? 휴지통에서 되살릴 수 있어요')) return;
+    if (!window.confirm('휴지통으로 보낼까요? 휴지통에서 복원할 수 있어요')) return;
     const send = () => api('POST', `/api/wikis/${id}/trash`, { version });
     const reply = await action.run('trash', send, { done: '휴지통으로 보냈어요' });
     if (reply?.ok) router.push(back);
@@ -273,7 +273,7 @@ function WikiView({
         </div>
         <div className="row">
           <button type="button" className="ghost" onClick={() => setEditing(true)}>
-            고치기
+            편집
           </button>
           <button type="button" className="ghost" onClick={() => trash(w.version)}>
             휴지통으로
@@ -291,7 +291,7 @@ function WikiView({
         <p className="rows-empty">본문 없음</p>
       )}
       <dl className="kv">
-        <dt>판</dt>
+        <dt>버전</dt>
         <dd>{w.revisionCount}</dd>
         <dt>고친 때</dt>
         <dd>{when(w.updatedAt)}</dd>
@@ -475,7 +475,7 @@ function TrashList() {
 
   async function restore(wiki: TrashedWiki) {
     const send = () => api('POST', `/api/wikis/${wiki.id}/restore`, { version: wiki.version });
-    const plan = { done: `${wiki.title} 되살림`, reload: trash.reload };
+    const plan = { done: `${wiki.title} 복원됨`, reload: trash.reload };
     const reply = await action.run(wiki.id, send, plan);
     if (reply && !reply.ok) notify(describe(reply.error));
   }
@@ -485,7 +485,7 @@ function TrashList() {
   if (trash.data.wikis.length === 0) return <p className="rows-empty">휴지통 비어 있음</p>;
   return (
     <>
-      <p className="note">되살리면 판 · 연결 · 세션의 대표가 그대로 돌아와요</p>
+      <p className="note">복원하면 버전 · 연결 · 세션의 대표가 그대로 돌아와요</p>
       <ul className="list" aria-label="휴지통">
         {trash.data.wikis.map((w) => (
           <li key={w.id} className="item">
@@ -494,7 +494,7 @@ function TrashList() {
               <small>지운 때 {w.deletedAt ? when(w.deletedAt) : '-'}</small>
             </div>
             <button type="button" className="ghost" onClick={() => restore(w)}>
-              되살리기
+              복원
             </button>
           </li>
         ))}
@@ -534,7 +534,7 @@ function ReplaceBox({ id }: { id: string }) {
   async function replace(e: FormEvent) {
     e.preventDefault();
     const send = () => api('POST', `/api/wikis/${id}/replaces`, { oldId });
-    const reply = await action.run('replace', send, { done: '대체로 표시했어요', reload });
+    const reply = await action.run('replace', send, { done: '다른 위키로 대체했어요', reload });
     if (reply?.ok) setOldId('');
     else if (reply) notify(describe(reply.error));
   }
@@ -559,11 +559,11 @@ function ReplaceBox({ id }: { id: string }) {
           <Link href={hrefOf(null, r.wikiId)}>{r.title}</Link>
           <span className="note">대체함</span>
           <button type="button" className="ghost" onClick={() => release(r.wikiId)}>
-            대체 해제
+            대체 취소
           </button>
         </div>
       ))}
-      <form className="row" onSubmit={replace} aria-label="대체로 표시">
+      <form className="row" onSubmit={replace} aria-label="다른 위키로 대체">
         <label className="sr" htmlFor={`replace-${id}`}>
           결론을 뒤집은 옛 위키
         </label>
@@ -581,7 +581,7 @@ function ReplaceBox({ id }: { id: string }) {
           ))}
         </select>
         <button type="submit" className="ghost" disabled={action.busy === 'replace' || !oldId}>
-          대체로 표시
+          다른 위키로 대체
         </button>
       </form>
     </div>
@@ -619,7 +619,7 @@ function WikiEdit({
   }
 
   return (
-    <form className="panel wiki-edit" aria-label={`${wiki.title} 고치기`} onSubmit={submit}>
+    <form className="panel wiki-edit" aria-label={`${wiki.title} 편집`} onSubmit={submit}>
       <label className="field" htmlFor="wiki-title">
         <span>제목</span>
         <input

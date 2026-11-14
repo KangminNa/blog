@@ -22,18 +22,13 @@ import {
 import { APPROVAL_TOPICS, useAgents } from '../../_task/live';
 import { ApprovalPill } from '../../_task/parts';
 import type { Agent, Approval, TaskDetail } from '../../_task/types';
+import { Stamps } from './ApprovalStamps';
 import { GoalRunTarget, OtherTarget, PullTarget } from './ApprovalTargets';
 
 const DONE_NOTES: Record<string, string> = {
   approve: '승인됨',
   revise: '수정 요청 전달됨',
   reject: '반려됨',
-};
-const SEALS: Record<string, string> = {
-  approved: '승인',
-  rejected: '반려',
-  revision_requested: '수정',
-  cancelled: '취소',
 };
 const NO_VALUE = { ok: true, data: null } as const;
 /** 승인 직전에 다시 읽은 글이 보던 것과 다르다. 서버에 보내지 않고 이 오류로 멈춘다 */
@@ -180,25 +175,6 @@ function Loaded({
         />
       )}
     </article>
-  );
-}
-
-/** 결재선: 요청 → 결재 */
-function Stamps({ approval, requester }: { approval: Approval; requester: string }) {
-  const seal = SEALS[approval.status];
-  return (
-    <div className="stamps" role="img" aria-label={`요청 ${requester}, 결재 ${seal ?? '대기'}`}>
-      <div className="stamp-cell">
-        <span>요청</span>
-        <div>{requester}</div>
-      </div>
-      <div className="stamp-cell">
-        <span>결재</span>
-        <div>
-          <span className={seal ? 'seal' : 'seal blank'}>{seal ?? '대기'}</span>
-        </div>
-      </div>
-    </div>
   );
 }
 

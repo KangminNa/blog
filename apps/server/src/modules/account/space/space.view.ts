@@ -36,6 +36,12 @@ export class SpaceView {
     return this.row?.settings?.[SpaceView.HOSTED_APPS] === true;
   }
 
+  /** 로고 주소. 내용이 바뀌면 주소도 바뀌어(v) 브라우저가 옛 그림을 들고 있지 않는다 */
+  get logoUrl(): string | null {
+    const hash = this.row?.logo_blob_hash;
+    return hash ? `/api/space/logo?v=${hash.slice(0, 12)}` : null;
+  }
+
   toJSON() {
     return {
       name: this.row?.name ?? '',
@@ -44,6 +50,7 @@ export class SpaceView {
       installed: this.installed,
       version: this.row?.version ?? 0,
       hostedApps: this.hostedApps,
+      logoUrl: this.logoUrl,
     };
   }
 

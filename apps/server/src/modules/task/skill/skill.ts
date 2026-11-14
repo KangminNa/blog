@@ -64,7 +64,7 @@ export class Skill extends TableEntity<SkillRow, SkillNew> {
   /** 쓸 판을 옮긴다. null이면 저장소 판. 이미 그 판이면 아무것도 바뀌지 않는다 */
   activate(revision: number | null, now: Date): void {
     if (revision !== null && (revision < 1 || revision > this.row.revisions))
-      throw new NotFound(`없는 판이에요: ${revision}`);
+      throw new NotFound(`없는 버전이에요: ${revision}`);
     if (revision === this.row.active_revision) return;
     this.put('active_revision', revision);
     this.put('updated_at', now);

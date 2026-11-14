@@ -122,7 +122,7 @@ export class SessionQuery extends BaseQuery {
     actor.assertCan(Actor.READ_ALL);
     await this.find(actor, req.id);
     const row = await this.row(sessionRevisions, { session_id: req.id, seq: req.seq ?? 0 });
-    if (!row) throw new NotFound(`${req.seq}번 판이 없어요`);
+    if (!row) throw new NotFound(`버전 ${req.seq}이 없어요`);
     return SessionQuery.revision(row);
   }
 
@@ -174,7 +174,7 @@ export class SessionQuery extends BaseQuery {
   private async headOf(session: SessionRow): Promise<SessionRevisionRow> {
     const id = session.head_revision_id;
     const head = id === null ? null : await this.row(sessionRevisions, { id });
-    if (!head) throw new NotFound('세션의 지금 판을 찾을 수 없어요');
+    if (!head) throw new NotFound('세션의 지금 버전을 찾을 수 없어요');
     return head;
   }
 

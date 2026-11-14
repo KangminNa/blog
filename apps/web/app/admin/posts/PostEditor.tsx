@@ -215,7 +215,7 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
       mainWikiId: saved.mainWikiId,
       refWikiIds: saved.refWikiIds,
     }));
-    if (saved.revised) showToast(`저장했어요 · ${saved.revisionCount}판`);
+    if (saved.revised) showToast(`저장했어요 · 버전 ${saved.revisionCount}`);
     else showToast(saved.version === post?.version ? '바뀐 내용이 없어요' : '저장했어요');
     return saved;
   }
@@ -245,7 +245,7 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
 
   async function trash() {
     if (!post) return;
-    if (!window.confirm('휴지통으로 옮길까요? 30일 동안 되살릴 수 있어요')) return;
+    if (!window.confirm('휴지통으로 옮길까요? 30일 동안 복원할 수 있어요')) return;
     const drop = () => api('DELETE', `/api/posts/${post.id}`, { version: post.version });
     const reply = await send('trash', drop);
     if (reply?.ok) window.location.href = '/admin/posts';
@@ -258,7 +258,7 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
     );
     if (!reply?.ok) return;
     setPost(reply.data);
-    showToast('되살렸어요');
+    showToast('복원했어요');
   }
 
   /** 사진은 글에 붙으므로 새 글이면 먼저 저장한다. 본문에는 커서 자리에 넣고, 저장은 평소처럼 */
@@ -318,7 +318,7 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
     ? '새 글 · 아직 저장 안 함'
     : dirty
       ? '저장 안 한 변경 있음'
-      : `저장됨 · ${post.revisionCount}판`;
+      : `저장됨 · 버전 ${post.revisionCount}`;
 
   /** 도구 막대 단추 하나. 누르는 동안 본문의 고른 곳이 풀리지 않게 mousedown을 막는다 */
   const tool = (label: string, title: string, on: boolean | undefined, run: () => void) => (
@@ -477,9 +477,9 @@ export function PostEditor({ initial }: { initial: LinkedPost | null }) {
       {!panel && notice('error editor-note')}
       {trashed && (
         <p className="warn editor-note">
-          휴지통에 있는 글이에요. 되살린 뒤 고칠 수 있어요
+          휴지통에 있는 글. 복원한 뒤 편집할 수 있어요
           <button type="button" className="ghost" onClick={recover}>
-            되살리기
+            복원
           </button>
         </p>
       )}

@@ -393,7 +393,7 @@ export class Post extends TableEntity<PostRow, PostNew> {
 
   private static assertOwner(by: Actor): void {
     if (by.kind !== 'owner')
-      throw new Forbidden('publish', '공개 범위·휴지통·공개된 글 고치기는 주인만 할 수 있어요');
+      throw new Forbidden('publish', '공개 범위·휴지통·공개된 글 편집은 관리자만 할 수 있어요');
   }
 
   /** 참고 wiki: 겹치는 것과 대표와 같은 것을 빼고 id 순서로 (보낸 순서만 달라서는 바뀐 것이 아니다) */

@@ -28,7 +28,7 @@ export function LinkedLogins({ onMessage }: { onMessage: (text: string) => void 
     const reply = await action.run(method, () => api('DELETE', `/api/auth/links/${method}`), {
       reload: () => Promise.all([found.reload(), linked.reload()]),
     });
-    if (reply?.ok) onMessage('연결을 끊었어요. 그 계정으로는 더 로그인할 수 없어요');
+    if (reply?.ok) onMessage('연결을 해제했어요. 그 계정으로는 더 로그인할 수 없어요');
   }
 
   if (error) return <p className="error">{error}</p>;
@@ -53,7 +53,7 @@ export function LinkedLogins({ onMessage }: { onMessage: (text: string) => void 
                   disabled={action.busy === m.method}
                   onClick={() => unlink(m.method)}
                 >
-                  끊기
+                  연결 해제
                 </button>
               ) : (
                 <a

@@ -53,7 +53,7 @@ export function PostsPanel({ onMessage }: { onMessage: (text: string) => void })
       () => api('POST', `/api/posts/${post.id}/restore`, { version: post.version }),
       { reload: posts.reload },
     );
-    if (reply?.ok) onMessage(`${post.title}을(를) 되살렸어요`);
+    if (reply?.ok) onMessage(`${post.title}을(를) 복원했어요`);
   }
 
   return (
@@ -97,13 +97,13 @@ export function PostsPanel({ onMessage }: { onMessage: (text: string) => void })
               <a className="list-row" href={`/admin/posts/${p.id}`}>
                 <b>{p.title}</b>
                 <small>
-                  {p.deletedAt ? '휴지통' : POST_STATUS_LABELS[p.status]} · {p.revisionCount}판 ·{' '}
+                  {p.deletedAt ? '휴지통' : POST_STATUS_LABELS[p.status]} · 버전 {p.revisionCount} ·{' '}
                   {new Date(p.updatedAt).toLocaleString('ko-KR')}
                 </small>
               </a>
               {p.deletedAt && (
                 <button type="button" className="ghost" onClick={() => restore(p)}>
-                  되살리기
+                  복원
                 </button>
               )}
             </li>

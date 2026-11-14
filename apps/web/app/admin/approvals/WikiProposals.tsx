@@ -151,7 +151,7 @@ function Proposal({
           disabled={action.busy !== null}
           onClick={() => decide('decline')}
         >
-          거절
+          반려
         </button>
       </div>
     </article>

@@ -131,7 +131,7 @@ export class PluginManifest {
     if (use === 'api') return 'API 경로를 열어요 (/api/p/<이름>/…)';
     if (kind === 'tool') return `MCP 도구 "${arg}"을(를) AI에게 열어요`;
     if (use === 'menu') return '콘솔에 메뉴와 화면을 더해요';
-    if (use === 'task:request') return 'AI 에이전트에게 작업을 맡겨요 (결재는 그대로 주인에게)';
+    if (use === 'task:request') return 'AI 에이전트에게 작업을 맡겨요 (결재는 그대로 관리자에게)';
     return use;
   }
 

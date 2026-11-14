@@ -227,11 +227,11 @@ function SiteItem({
           에이전트는 글 · 소재 · 비공개 세션을 읽지 못해요. 채울 내용은 모두 여기에 적어 주세요
         </p>
         <button type="submit" className="cta small fit" disabled={busy || instruction === ''}>
-          일 맡기기
+          작업 맡기기
         </button>
       </form>
       <button type="button" className="small fit" onClick={() => onRemove(site)}>
-        지우기
+        삭제
       </button>
     </li>
   );

@@ -19,6 +19,7 @@ export default async function BlogLayout({ children }: { children: ReactNode }) 
     <div className="blog">
       <BlogHeader
         name={space?.name ?? ''}
+        logoUrl={space?.logoUrl ?? null}
         owner={owner !== null}
         pages={(pages?.pages.length ?? 0) > 0}
       />

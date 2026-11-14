@@ -77,7 +77,7 @@ export function SchedulesPanel({ agentId }: { agentId: string | null }) {
         <h1>스케줄</h1>
         {open !== NEW && (
           <button type="button" className="cta small" onClick={() => setOpen(NEW)}>
-            만들기
+            스케줄 추가
           </button>
         )}
       </header>
@@ -142,10 +142,10 @@ export function SchedulesPanel({ agentId }: { agentId: string | null }) {
                     disabled={action.busy === s.id}
                     onClick={() => runNow(s)}
                   >
-                    지금 한 번
+                    지금 실행
                   </button>
                   <button type="button" className="ghost" onClick={() => setOpen(s.id)}>
-                    고치기
+                    편집
                   </button>
                   <button
                     type="button"
@@ -153,7 +153,7 @@ export function SchedulesPanel({ agentId }: { agentId: string | null }) {
                     disabled={action.busy === s.id}
                     onClick={() => remove(s)}
                   >
-                    지우기
+                    삭제
                   </button>
                 </div>
               </li>

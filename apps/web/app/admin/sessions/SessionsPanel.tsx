@@ -107,7 +107,7 @@ export function SessionsPanel({ initialId }: { initialId: string | null }) {
                   {[
                     s.project ?? '프로젝트 없음',
                     devices[s.deviceId] ?? s.tool,
-                    `${s.revisionCount}판`,
+                    `버전 ${s.revisionCount}`,
                     when(s.lastRevisionAt),
                   ].join(' · ')}
                 </small>
@@ -193,7 +193,7 @@ function SessionView({
             )}
           </div>
           <fieldset className="row" style={{ border: 0, margin: 0, padding: 0 }}>
-            <legend className="sr">판</legend>
+            <legend className="sr">버전</legend>
             {(allRevisions ? detail.history : detail.history.slice(0, RECENT_REVISIONS)).map(
               (h) => (
                 <button
@@ -204,7 +204,8 @@ function SessionView({
                   title={`${KIND_LABELS[h.kind] ?? h.kind} · ${when(h.createdAt)}`}
                   onClick={() => pick(h.seq)}
                 >
-                  {h.seq}판{h.seq === detail.head.seq ? ' (지금)' : ''}
+                  버전 {h.seq}
+                  {h.seq === detail.head.seq ? ' (지금)' : ''}
                 </button>
               ),
             )}

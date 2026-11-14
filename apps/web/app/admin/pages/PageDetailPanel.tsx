@@ -27,7 +27,7 @@ const NO_FILES = {
   status: 0,
   error: {
     code: 'no_files',
-    message: '보이는 판의 파일이 결과물에 없어요. 결과물의 휴지통에서 되살린 뒤 다시 해 주세요',
+    message: '공개 버전의 파일이 결과물에 없어요. 결과물의 휴지통에서 복원한 뒤 다시 해 주세요',
   },
 } as const;
 
@@ -113,7 +113,7 @@ export function PageDetailPanel({ id }: { id: string }) {
     action.run(
       `seq:${r.seq}`,
       () => api('POST', `/api/pages/${shown.id}/current`, { version: shown.version, seq: r.seq }),
-      { done: `판 ${r.seq} 보이는 중`, reload: page.reload, conflict: CONFLICT },
+      { done: `버전 ${r.seq} 공개 중`, reload: page.reload, conflict: CONFLICT },
     );
 
   return (
@@ -128,7 +128,7 @@ export function PageDetailPanel({ id }: { id: string }) {
         <div className="row">
           {!renaming && (
             <button type="button" className="ghost" onClick={() => setRenaming(true)}>
-              제목 고치기
+              제목 편집
             </button>
           )}
           <a className="ghost" href={path} target="_blank" rel="noreferrer">
@@ -162,7 +162,7 @@ export function PageDetailPanel({ id }: { id: string }) {
           <PageAskForm
             label="고칠 내용"
             placeholder="예: 둘째 날은 실내 코스로 바꿔 줘"
-            submit="고치기"
+            submit="저장"
             busy={ask.busy !== null}
             problem={ask.problem}
             onSubmit={(instruction, requestId) => fix(p, instruction, requestId)}
@@ -202,15 +202,15 @@ export function PageDetailPanel({ id }: { id: string }) {
           </section>
           <section aria-labelledby="page-revisions">
             <div className="sec-title">
-              <h2 id="page-revisions">판</h2>
+              <h2 id="page-revisions">버전</h2>
             </div>
             <ul className="list">
               {p.revisionList.map((r) => (
                 <li key={r.seq} className="list-cell schedule-row">
                   <div className="item-main">
                     <b>
-                      판 {r.seq}{' '}
-                      {r.seq === p.currentSeq && <span className="pill on">보이는 판</span>}
+                      버전 {r.seq}{' '}
+                      {r.seq === p.currentSeq && <span className="pill on">공개 버전</span>}
                     </b>
                     <small>
                       {when(r.createdAt)} · 파일 {r.files.length}개 ·{' '}
@@ -225,7 +225,7 @@ export function PageDetailPanel({ id }: { id: string }) {
                       disabled={action.busy !== null}
                       onClick={() => show(p, r)}
                     >
-                      이 판 보이기
+                      이 버전 공개
                     </button>
                   )}
                 </li>

@@ -109,9 +109,8 @@ describe('계정 연결', () => {
     assert.equal(res.status, 302);
     assert.equal(res.location, '/');
     const session = new TestUser({ cairn_session: res.cookies().cairn_session ?? '' });
-    assert.deepEqual((await api.get('/api/auth/me', session)).json(), {
-      login: ApiClient.OWNER_LOGIN,
-    });
+    const me = (await api.get('/api/auth/me', session)).json();
+    assert.equal(me.login, ApiClient.OWNER_LOGIN, '연결한 계정의 주인으로 로그인');
   });
 
   test('연결하지 않은 다른 GitHub 계정은 안 된다', async () => {

@@ -108,7 +108,7 @@ export function MakeForm({
   return (
     <form className="panel stack" aria-label="만들기" onSubmit={submit}>
       <div className="sec-title flat">
-        <h2>{revising ? `고쳐 달라: ${revising.name}` : '만들기'}</h2>
+        <h2>{revising ? `수정 요청: ${revising.name}` : '만들기'}</h2>
         <button type="button" className="ghost" onClick={onClose}>
           닫기
         </button>

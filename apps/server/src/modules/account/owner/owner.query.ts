@@ -19,7 +19,11 @@ export class OwnerQuery extends BaseQuery {
 
   async me(actor: Actor): Promise<OwnerView> {
     if (actor.kind !== 'owner' || !actor.id) throw new Unauthenticated('로그인해 주세요');
-    const row = await this.row(users, { id: actor.id }, { columns: ['login'] });
+    const row = await this.row(
+      users,
+      { id: actor.id },
+      { columns: ['login', 'display_name', 'version'] },
+    );
     if (!row) throw new Unauthenticated('로그인해 주세요');
     return new OwnerView(row);
   }

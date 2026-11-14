@@ -15,7 +15,12 @@ import { SpaceQuery } from '../space/space.query';
 import type { ExternalCallbackInput } from './external-login.input';
 import { ExternalLoginQuery } from './external-login.query';
 import { Owner, WebSession } from './owner';
-import type { ChangePasswordInput, CreateOwnerInput, LoginInput } from './owner.input';
+import type {
+  ChangePasswordInput,
+  CreateOwnerInput,
+  LoginInput,
+  RenameOwnerInput,
+} from './owner.input';
 import { OwnerRepository } from './owner.repository';
 import { PasswordPolicy } from './password.policy';
 
@@ -170,6 +175,19 @@ export class OwnerService extends BaseService {
       if (!owner) throw new Unauthenticated('로그인해 주세요');
       owner.unlink(method);
       await owners.save(owner);
+    });
+  }
+
+  /** 화면에 보일 이름 (주인만) */
+  async rename(actor: Actor, req: RenameOwnerInput): Promise<Owner> {
+    actor.assertOwner();
+    return this.transaction(async (tx) => {
+      const owners = new OwnerRepository(tx);
+      const owner = await owners.findById(actor.id ?? '');
+      if (!owner) throw new Unauthenticated('로그인해 주세요');
+      owner.rename(req.displayName, req.version);
+      await owners.save(owner);
+      return owner;
     });
   }
 

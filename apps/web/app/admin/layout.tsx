@@ -21,8 +21,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   if (!owner) redirect('/login?return=/admin');
   return (
     <AdminShell
-      login={owner.login}
+      ownerName={owner.name}
       siteName={space?.name ?? ''}
+      logoUrl={space?.logoUrl ?? null}
       activePlugins={plugins?.plugins.filter((p) => p.active).map((p) => p.name) ?? []}
     >
       {children}

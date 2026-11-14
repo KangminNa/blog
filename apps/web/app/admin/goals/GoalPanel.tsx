@@ -169,11 +169,11 @@ function GoalRow({
       </div>
       <div className="row">
         <button type="button" className="ghost" onClick={onTasks} aria-expanded={showingTasks}>
-          작업
+          작업 보기
         </button>
         {active && (
           <button type="button" className="ghost" onClick={onAddChild}>
-            하위 목표
+            하위 목표 추가
           </button>
         )}
         <button type="button" className="ghost" onClick={onEdit}>

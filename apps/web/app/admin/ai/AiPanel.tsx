@@ -307,7 +307,7 @@ function CodeForm({ taskId }: { taskId: string }) {
         required
       />
       <button className="cta small" type="submit" disabled={action.busy !== null || !code.trim()}>
-        넣기
+        저장
       </button>
       {action.problem && <p className="error">{action.problem}</p>}
     </form>

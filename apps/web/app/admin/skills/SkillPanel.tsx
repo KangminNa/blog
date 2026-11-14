@@ -10,7 +10,7 @@ const CONFLICT = '이미 바뀐 스킬이에요. 최신 내용을 다시 읽었�
 
 const short = (hash: string) => hash.slice(0, 7);
 const sourceOf = (s: { source: string; revision: number | null }) =>
-  s.source === 'console' ? `콘솔 판 ${s.revision}` : '저장소 판';
+  s.source === 'console' ? `콘솔 버전 ${s.revision}` : '저장소 버전';
 const dateOf = (iso: string) => new Date(iso).toLocaleString('ko-KR');
 
 // 스킬: 러너가 일할 때 따르는 지침(cairn-write 등). 저장소 판 위에 콘솔 판을 쌓고, 쓸 판을 골라 되돌린다.
@@ -31,7 +31,7 @@ export function SkillPanel() {
         <h1>스킬</h1>
       </header>
       <p className="note">
-        러너가 일할 때 따르는 지침. 저장하면 다음 작업부터 모든 러너가 그 판을 써요. 권한 · 결재 ·
+        러너가 일할 때 따르는 지침. 저장하면 다음 작업부터 모든 러너가 그 버전을 써요. 권한 · 결재 ·
         격리는 스킬로 바뀌지 않아요.
       </p>
       {error && <p className="error">{error}</p>}
@@ -58,7 +58,7 @@ export function SkillPanel() {
               </div>
               {skill.repoChanged && (
                 <p className="warn">
-                  저장소 판이 바뀌었어요 (배포). 비교해서 필요한 것을 옮겨 주세요
+                  저장소 버전이 바뀌었어요 (배포). 비교해서 필요한 것을 옮겨 주세요
                 </p>
               )}
               {open === skill.name && <SkillEditor name={skill.name} onChanged={skills.reload} />}
@@ -104,7 +104,7 @@ function SkillEditor({ name, onChanged }: { name: string; onChanged: () => Promi
     const reply = await action.run(
       'save',
       () => api<SkillSaved>('POST', `/api/runner-skills/${name}/revisions`, body),
-      { done: (saved) => `${name} 콘솔 판 ${saved.revision} 저장`, reload, conflict: CONFLICT },
+      { done: (saved) => `${name} 콘솔 버전 ${saved.revision} 저장`, reload, conflict: CONFLICT },
     );
     if (!reply?.ok) return;
     requestId.current = null;
@@ -116,7 +116,7 @@ function SkillEditor({ name, onChanged }: { name: string; onChanged: () => Promi
       `use:${revision}`,
       () => api<SkillSaved>('PUT', `/api/runner-skills/${name}/active`, { revision, version }),
       {
-        done: `${name}: ${revision === null ? '저장소 판' : `콘솔 판 ${revision}`} 사용`,
+        done: `${name}: ${revision === null ? '저장소 버전' : `콘솔 버전 ${revision}`} 사용`,
         reload,
         conflict: CONFLICT,
       },
@@ -163,16 +163,16 @@ function SkillEditor({ name, onChanged }: { name: string; onChanged: () => Promi
           onChange={(e) => setNote(e.target.value)}
         />
         <button type="button" className="cta small" disabled={busy || !changed} onClick={save}>
-          새 판으로 저장
+          새 버전으로 저장
         </button>
         {changed && (
           <button type="button" className="ghost" disabled={busy} onClick={() => setEdited(null)}>
-            되돌리기
+            변경 취소
           </button>
         )}
       </div>
       <button type="button" className="ghost" onClick={() => setShowRepo(!showRepo)}>
-        {showRepo ? '저장소 판 닫기' : '저장소 판 보기'}
+        {showRepo ? '저장소 버전 닫기' : '저장소 버전 보기'}
       </button>
       {showRepo && (
         <>
@@ -183,18 +183,18 @@ function SkillEditor({ name, onChanged }: { name: string; onChanged: () => Promi
             className="input"
             rows={16}
             readOnly
-            aria-label={`저장소 판 ${file}`}
-            value={detail.repo.files[file] ?? '(저장소 판에 없는 파일)'}
+            aria-label={`저장소 버전 ${file}`}
+            value={detail.repo.files[file] ?? '(저장소 버전에 없는 파일)'}
           />
         </>
       )}
-      <h2 className="label-mono">판</h2>
+      <h2 className="label-mono">버전</h2>
       <ol className="list">
         <li className="list-cell row">
-          <b>저장소 판</b> <span className="label-mono">{short(detail.repo.hash)}</span>{' '}
+          <b>저장소 버전</b> <span className="label-mono">{short(detail.repo.hash)}</span>{' '}
           {detail.source === 'console' ? (
             <button type="button" className="ghost" disabled={busy} onClick={() => use(null)}>
-              이 판 쓰기
+              이 버전 사용
             </button>
           ) : (
             <span className="label-mono">쓰는 중</span>
@@ -202,7 +202,7 @@ function SkillEditor({ name, onChanged }: { name: string; onChanged: () => Promi
         </li>
         {detail.revisionList.map((r) => (
           <li key={r.revision} className="list-cell row">
-            <b>콘솔 판 {r.revision}</b>{' '}
+            <b>콘솔 버전 {r.revision}</b>{' '}
             <span className="label-mono">
               {dateOf(r.createdAt)} · {short(r.hash)}
             </span>
@@ -216,7 +216,7 @@ function SkillEditor({ name, onChanged }: { name: string; onChanged: () => Promi
                 disabled={busy}
                 onClick={() => use(r.revision)}
               >
-                이 판 쓰기
+                이 버전 사용
               </button>
             )}
           </li>

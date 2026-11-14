@@ -208,7 +208,7 @@ describe('목표 실행', () => {
     await decide(now.pendingApprovalId, 'revise', '야경 명소를 꼭 넣어 줘');
 
     const second = await takeRound(String(run.id));
-    assert.match(second.instruction, /주인의 말 \(결재에서\)\n야경 명소를 꼭 넣어 줘/);
+    assert.match(second.instruction, /결재에서 남긴 말\n야경 명소를 꼭 넣어 줘/);
     await finishRound(second, {
       summary: '확인 중',
       completed: ['야경 추가'],

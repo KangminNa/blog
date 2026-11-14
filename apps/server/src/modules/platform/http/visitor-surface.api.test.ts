@@ -22,6 +22,8 @@ const VISITOR_GET: Readonly<Record<string, number>> = {
   'GET /api/plugins': 200,
   'GET /api/posts': 200,
   'GET /api/space': 200,
+  // 사이트 로고: 누구나 보지만 올린 적이 없으면 404
+  'GET /api/space/logo': 404,
   'GET /api/wikis': 200,
   'GET /api/files/:hash': 404,
   'GET /api/plugins/:name/settings': 404,

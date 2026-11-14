@@ -137,7 +137,7 @@ export function DevicesPanel({
                 disabled={action.busy === d.id}
                 onClick={() => revoke(d)}
               >
-                끊기
+                연결 해제
               </button>
             </div>
             {d.scopes.includes(SANDBOX) ? (

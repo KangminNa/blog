@@ -70,15 +70,23 @@ export class OwnerRepository extends BaseRepository<Owner> {
     await this.publishEvents(owner);
   }
 
-  /** 새 주인이면 계정과 주인 자리를 넣고, 아니면 바뀐 칸만 고친다 */
+  /**
+   * 새 주인이면 계정과 주인 자리를 넣고, 아니면 바뀐 칸만 고친다.
+   * version을 올리는 저장(이름 고치기)은 읽은 판일 때만: 사이에 다른 저장이 끼면 409
+   */
   private async saveAccount(owner: Owner): Promise<void> {
     const fresh = owner.isNew;
+    const unsaved = owner.unsaved;
+    const guarded = !fresh && 'version' in unsaved;
     const [row] = fresh
       ? await this.sql<UserRow[]>`
-          INSERT INTO account.users ${this.sql(owner.unsaved as never)} RETURNING *`
+          INSERT INTO account.users ${this.sql(unsaved as never)} RETURNING *`
       : await this.sql<UserRow[]>`
-          UPDATE account.users SET ${this.sql(owner.unsaved as never)} WHERE id = ${owner.id}
+          UPDATE account.users SET ${this.sql(unsaved as never)} WHERE id = ${owner.id}
+          ${guarded ? this.sql`AND version = ${owner.version}` : this.sql``}
           RETURNING *`;
+    if (!row && guarded)
+      throw new Conflict('다른 곳에서 먼저 바뀌었어요. 다시 읽은 뒤 저장해 주세요');
     if (fresh) await this.insertRows(spaceMembers, owner.membership);
     if (row) owner.saved(row);
   }

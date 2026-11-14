@@ -1274,6 +1274,39 @@ a.chip {
   overflow-wrap: anywhere;
 }
 
+/* 사이트 로고: 콘솔 왼쪽 위 · 블로그 머리 (Cairn 표시와 같은 크기), 사이트 메뉴의 미리 보기 */
+.brand-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.logo-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.logo-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.logo-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 /* 목표 실행의 회차 보고: 한 일 · 남은 일 · 근거의 목록 */
 .bullets {
   margin: 0;

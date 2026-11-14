@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { useMe } from '../../_account/live';
 import { api } from '../../_lib/client-api';
 import { SCOPE_LABELS } from '../../_lib/types';
 import { useAction } from '../../_lib/use-action';
@@ -17,6 +18,8 @@ const CONFLICT = '이미 바뀐 에이전트예요. 최신 내용을 다시 읽�
 // 에이전트: 조직도, 사용량과 한도, 추가, 편집, 중지, 재개.
 export function AgentsPanel({ adding }: { adding: boolean }) {
   const agents = useAgents();
+  // 맨 위(보고 대상이 없을 때)에 보일 관리자의 이름
+  const ownerName = useMe().data?.name ?? '관리자';
   const running = useTasksIn('running');
   const waiting = useTasksIn('waiting');
   const usage = useUsage();
@@ -87,11 +90,12 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
         )}
       </header>
       {problem && <p className="error">{problem}</p>}
-      {list && list.length > 0 && <OrgChart agents={list} />}
+      {list && list.length > 0 && <OrgChart agents={list} ownerName={ownerName} />}
       {open === NEW && (
         <AgentForm
           agent={null}
           agents={list ?? []}
+          ownerName={ownerName}
           busy={save.busy !== null}
           problem={save.problem}
           onSubmit={(body, requestId) => submit(null, body, requestId)}
@@ -121,6 +125,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
                 key={a.id}
                 agent={a}
                 agents={list}
+                ownerName={ownerName}
                 busy={save.busy !== null}
                 problem={save.problem}
                 onSubmit={(body, requestId) => submit(a, body, requestId)}
@@ -133,7 +138,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
                 agent={a}
                 work={workOf(a)}
                 hold={holdLabel(usage.data?.agents.find((u) => u.id === a.id))}
-                boss={list.find((b) => b.id === a.reportsTo)?.name ?? null}
+                boss={list.find((b) => b.id === a.reportsTo)?.name ?? ownerName}
                 busy={action.busy === a.id}
                 onFlip={() => flip(a)}
                 onEdit={() => show(a.id)}
@@ -146,15 +151,15 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
   );
 }
 
-/** 조직도: 맨 위는 주인. 보고 대상이 없는 에이전트는 주인에게 보고한다. 위임은 바로 아래 팀에게만 */
-function OrgChart({ agents }: { agents: readonly Agent[] }) {
+/** 조직도: 맨 위는 관리자(정한 이름). 보고 대상이 없는 에이전트는 관리자에게 보고한다. 위임은 바로 아래 팀에게만 */
+function OrgChart({ agents, ownerName }: { agents: readonly Agent[]; ownerName: string }) {
   const rows = flatTree(agents, (a) => a.reportsTo);
   return (
     <section className="panel" aria-labelledby="org-chart">
       <h2 id="org-chart">조직도</h2>
       <ol className="org" aria-label="보고 순서">
         <li>
-          <b>주인</b> <small className="note">결재 · 발행</small>
+          <b>{ownerName}</b> <small className="note">결재 · 발행</small>
         </li>
         {rows.map(({ item, depth }) => (
           <li key={item.id} style={{ paddingLeft: (depth + 1) * 20 }}>
@@ -180,8 +185,8 @@ function AgentCard({
   agent: Agent;
   work: string | null;
   hold: string | null;
-  /** 보고 대상의 이름. null이면 주인 */
-  boss: string | null;
+  /** 보고 대상의 이름 (없으면 관리자의 이름) */
+  boss: string;
   busy: boolean;
   onFlip: () => void;
   onEdit: () => void;
@@ -194,7 +199,7 @@ function AgentCard({
           <b>{agent.name}</b>
           <small>
             {agent.role ? `${agent.role} · ` : ''}
-            {TOOL_LABELS[agent.tool] ?? agent.tool} · 보고: {boss ?? '주인'}
+            {TOOL_LABELS[agent.tool] ?? agent.tool} · 보고: {boss}
           </small>
         </div>
         {!paused && hold && <span className="pill strong">{hold}</span>}

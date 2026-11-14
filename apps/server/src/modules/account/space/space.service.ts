@@ -3,6 +3,7 @@ import {
   Actor,
   AttemptLimiter,
   BaseService,
+  BlobStore,
   Conflict,
   Database,
   Forbidden,
@@ -10,11 +11,17 @@ import {
 } from '../../platform';
 import { InstallPolicy } from './install.policy';
 import { Space } from './space';
-import type { HostedAppsInput, InstallCodeInput, RenameSpaceInput } from './space.input';
+import type {
+  HostedAppsInput,
+  InstallCodeInput,
+  RemoveLogoInput,
+  RenameSpaceInput,
+  UploadLogoInput,
+} from './space.input';
 import { SpaceQuery } from './space.query';
 import { SpaceRepository } from './space.repository';
 
-// 공간 쓰기: 설치 코드 확인(공간 만들기), 블로그 이름·소개·사이트 주소 바꾸기, 앱 연결 허용.
+// 공간 쓰기: 설치 코드 확인(공간 만들기), 블로그 이름·소개·사이트 주소 바꾸기, 로고, 앱 연결 허용.
 @Injectable()
 export class SpaceService extends BaseService {
   /** 설치 코드는 한 곳에서 1분에 5번까지 */
@@ -24,6 +31,7 @@ export class SpaceService extends BaseService {
     db: Database,
     private readonly install: InstallPolicy,
     private readonly spaces: SpaceQuery,
+    private readonly blobs: BlobStore,
   ) {
     super(db);
   }
@@ -53,6 +61,20 @@ export class SpaceService extends BaseService {
       space.edit(req.changes);
       space.describe(req.description, req.siteUrl);
     });
+  }
+
+  /**
+   * 로고 올리기 (주인만). 파일은 트랜잭션 밖에서 쓰고(같은 내용이면 있던 파일), 공간에는 해시만 남긴다.
+   * 판이 낡아 저장하지 못하면 파일만 남고, 아무도 쓰지 않으니 platform의 청소가 지운다
+   */
+  async uploadLogo(actor: Actor, req: UploadLogoInput): Promise<Space> {
+    actor.assertOwner();
+    const blob = await this.blobs.save(req.bytes, req.mime);
+    return this.change(actor, req.version, (space) => space.setLogo(blob.hash));
+  }
+
+  removeLogo(actor: Actor, req: RemoveLogoInput): Promise<Space> {
+    return this.change(actor, req.version, (space) => space.setLogo(null));
   }
 
   setHostedApps(actor: Actor, req: HostedAppsInput): Promise<Space> {

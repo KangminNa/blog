@@ -22,13 +22,17 @@ function isCurrent(pathname: string, href: string): boolean {
 // 콘솔의 틀: 왼쪽 메뉴 + 작업 칸. 좁은 화면에서는 메뉴가 서랍으로 열린다.
 // 메뉴는 일반 링크로 둔다: 글 편집기의 "저장 안 한 내용" 확인(beforeunload)이 페이지를 떠날 때 돌아야 한다.
 export function AdminShell({
-  login,
+  ownerName,
   siteName,
+  logoUrl,
   activePlugins,
   children,
 }: {
-  login: string;
+  /** 화면에 보일 이름 (정한 이름, 없으면 아이디) */
+  ownerName: string;
   siteName: string;
+  /** 사이트 로고. 없으면 Cairn 표시 */
+  logoUrl: string | null;
   /** 서버에서 읽은 켜진 플러그인 이름. 메뉴를 처음부터 그 모양으로 그린다 */
   activePlugins: readonly string[];
   children: ReactNode;
@@ -69,7 +73,12 @@ export function AdminShell({
         />
         <aside className="console-side" aria-label="콘솔 메뉴">
           <a className="console-brand" href="/admin">
-            <CairnMark />
+            {logoUrl ? (
+              // biome-ignore lint/performance/noImgElement: 작은 로고 하나라 Next의 이미지 최적화를 거치지 않는다
+              <img className="brand-logo" src={logoUrl} alt="" />
+            ) : (
+              <CairnMark />
+            )}
             {siteName || 'Cairn'}
           </a>
           {MENU.map((group) => (
@@ -113,7 +122,7 @@ export function AdminShell({
               </nav>
             ))}
           <div className="console-foot">
-            <span className="label-mono">{login}</span>
+            <span className="label-mono">{ownerName}</span>
             <a className="console-link" href="/">
               블로그 열기
             </a>

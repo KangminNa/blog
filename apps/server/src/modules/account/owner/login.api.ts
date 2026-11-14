@@ -7,7 +7,7 @@ import {
   type HttpResponse,
 } from '../../platform';
 import { WebSession } from './owner';
-import { ChangePasswordInput, LoginInput } from './owner.input';
+import { ChangePasswordInput, LoginInput, RenameOwnerInput } from './owner.input';
 import { OwnerQuery } from './owner.query';
 import { OwnerService } from './owner.service';
 import { LoggedInView, LoggedOutView, type OwnerView, PasswordChangedView } from './owner.view';
@@ -40,6 +40,12 @@ export class LoginController {
   @Get('me')
   me(@CurrentActor() actor: Actor): Promise<OwnerView> {
     return this.owners.me(actor);
+  }
+
+  /** 화면에 보일 이름 고치기 */
+  @Put('me/profile')
+  async rename(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<OwnerView> {
+    return (await this.service.rename(actor, RenameOwnerInput.from(body))).view();
   }
 
   @HttpCode(200)

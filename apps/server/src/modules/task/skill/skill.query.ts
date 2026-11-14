@@ -54,11 +54,11 @@ export class SkillQuery extends BaseQuery {
     actor.assertOwner();
     this.runnerSkill(name);
     if (!Number.isInteger(revision) || revision < 1)
-      throw new NotFound(`없는 판이에요: ${revision}`);
+      throw new NotFound(`없는 버전이에요: ${revision}`);
     const [row] = await this.sql<SkillRevisionRow[]>`
       SELECT r.* FROM task.skill_revisions r JOIN task.skills s ON s.id = r.skill_id
       WHERE s.space_id = ${actor.requireSpace()} AND s.name = ${name} AND r.revision = ${revision}`;
-    if (!row) throw new NotFound(`없는 판이에요: ${revision}`);
+    if (!row) throw new NotFound(`없는 버전이에요: ${revision}`);
     return new SkillRevisionView(row);
   }
 

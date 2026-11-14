@@ -43,7 +43,7 @@ export abstract class Actor {
    * write 권한을 가진 기기나 에이전트가 스스로 결재하지 못하게.
    */
   assertOwner(): void {
-    if (this.kind !== 'owner') throw new Forbidden('owner', '주인만 할 수 있어요');
+    if (this.kind !== 'owner') throw new Forbidden('owner', '관리자만 할 수 있어요');
   }
 
   /**

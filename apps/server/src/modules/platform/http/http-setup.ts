@@ -57,7 +57,8 @@ export class HttpSetup {
 
   private static isImageUpload(req: UploadRequest): boolean {
     const type = String(req.headers['content-type'] ?? '');
-    return type.startsWith('image/') && /\/assets(?:\?|$)/.test(req.url ?? '');
+    // 그림을 받는 경로: 글의 사진(…/assets), 사이트 로고(…/logo)
+    return type.startsWith('image/') && /\/(?:assets|logo)(?:\?|$)/.test(req.url ?? '');
   }
 
   /** 본문 읽기의 오류. 인자가 넷이어야 Express가 오류 처리기로 부른다 */

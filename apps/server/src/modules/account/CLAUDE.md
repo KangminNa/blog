@@ -5,8 +5,8 @@
 요청이 들어오면 Guard가 토큰·쿠키를 확인해 Actor(`OwnerActor` · `DeviceActor` · `AgentActor` · `VisitorActor`)를 만든다.
 M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
 
-- `space/`: 공간 (`Space`), 설치 코드·통행증 규칙(`InstallPolicy`), `api/install`(코드 확인, 주인 계정 만들기)·`api/space`(+ `PUT api/space/hosted-apps`: ChatGPT·Claude 앱 연결 허용)
-- `owner/`: 주인 (`Owner` + `WebSession` + `LoginLink`), 비밀번호 규칙(`PasswordPolicy`), `api/auth`(로그인·로그아웃·비밀번호 바꾸기)
+- `space/`: 공간 (`Space`), 설치 코드·통행증 규칙(`InstallPolicy`), `api/install`(코드 확인, 주인 계정 만들기)·`api/space`(+ `PUT api/space/hosted-apps`: ChatGPT·Claude 앱 연결 허용, 사이트 로고 `PUT api/space/logo` · `POST api/space/logo/delete` · 누구나 보는 `GET api/space/logo`)
+- `owner/`: 주인 (`Owner` + `WebSession` + `LoginLink`), 비밀번호 규칙(`PasswordPolicy`), `api/auth`(로그인·로그아웃·비밀번호 바꾸기, 화면에 보일 이름 `PUT api/auth/me/profile`)
   외부 로그인(`ExternalLoginQuery`·`ExternalLoginController`): 로그인 플러그인(`login:<이름>`)의 경로·확인값·쿠키, 계정 연결·끊기
 - `device/`: 기기(`Device` + `DeviceCredential`), OAuth 클라이언트(`OAuthClient`), 승인 코드(`AuthorizationCode`), 승인 요청 규칙(`AuthorizationPolicy`).
   `OAuthController`(`/.well-known/*`, `/oauth/*`: 표준 경로라 /api 아래가 아님), `DeviceController`(`api/connect` 승인 화면, `api/devices` 기기 화면)
@@ -17,7 +17,7 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
 
 엔티티는 `TableEntity`(platform)로 표 한 줄을 들고, Repository(`TableRepository`)는 바뀐 칸만 저장한다 (객체설계 6장). 칼럼을 아는 곳은 `account.tables.ts`, Entity의 `RULES`, Input의 `COLUMNS`, View의 `toJSON`이다.
 - `Space`는 이름만 칸이고 소개 · 사이트 주소 · 앱 연결 허용은 settings의 값이다(`LoadedSpace`, 키는 `SpaceView`). 저장할 때 `saveParts`가 설정을 모두 다시 적는다
-- `Space` · `Device`는 칸이 그대로여도(설정 · 토큰만 바뀌어도) 저장하면 version이 오른다. `Owner`는 users에 version · space_id가 없어 `BaseRepository`로 바뀐 칸만 저장하고, 칸이 그대로여도 계정 행을 고친다 (같은 주인의 저장이 그 행에서 차례를 기다린다)
+- `Space` · `Device`는 칸이 그대로여도(설정 · 토큰만 바뀌어도) 저장하면 version이 오른다. `Owner`는 users에 space_id가 없어 `BaseRepository`로 바뀐 칸만 저장하고, 칸이 그대로여도 계정 행을 고친다 (같은 주인의 저장이 그 행에서 차례를 기다린다). users의 version은 표시 이름을 고칠 때만 오르고(`Owner.rename`), 그 저장만 읽은 판일 때 쓴다 (사이에 다른 이름 저장이 끼면 409). 로그인 · 비밀번호 저장은 version을 보지도 올리지도 않는다
 - `OAuthClient` · `AuthorizationCode`는 열쇠가 id가 아니라(client_id · code_hash) `BaseEntity`로 새 행을 들고 저장한다
 - 토큰 · 해시 · 비밀번호 해시는 어떤 View에도 없다. 원문은 만든 순간의 응답에만 실린다 (`DeviceSavedView`의 token, `TokenView`, 로그인 쿠키)
 
@@ -43,6 +43,8 @@ M1 A(설치·주인 로그인)와 B(기기 연결, MCP OAuth 2.1)까지 있다.
 platform
 
 ## 지켜야 할 것
+- 화면에는 "주인" 대신 표시 이름(`OwnerView.name`: 정한 이름, 없으면 아이디)을 쓴다. 이름을 모르는 곳(방문자에게 보이는 오류)은 "관리자". 표시 이름은 주인만 읽는다 (`api/auth/me`). 공개 정보(`SpaceView`)에 넣지 않는다
+- 사이트 로고는 그림만 (형식은 파일 앞부분으로 `FileSniff`, PNG · JPEG · WebP · GIF, 1MB. SVG는 스크립트를 담을 수 있어 받지 않는다). 파일은 트랜잭션 밖에서 `BlobStore.save`, 공간에는 해시만. 가리키는 칸은 `registerUse`로 등록한다 (`SpaceQuery.usedBlobs`). 보내기는 `nosniff` + sandbox CSP
 - 관리 일(기기 목록·권한·토큰·끊기, 승인 화면, 사이트 정보·앱 연결 허용, 연결된 로그인)은 `assertOwner()`로 막는다. `assertCan(WRITE)`는 write 기기도 통과한다. 기기 토큰은 `/mcp`에서만 요청자가 되지만(`ActorGuard`, 2026-11-06), 관리 일은 Service에서도 한 번 더 막는다 (두 겹). API 테스트에 write 기기 경우를 둔다 (`device.api.test.ts`)
 - 비밀값(GitHub client secret, SMTP 비밀번호 등)은 `secrets`에 암호화해서만 저장하고, 응답·로그에 내보내지 않는다
 - 토큰(로그인·기기)은 해시만 저장한다. 원문은 만든 순간의 응답(쿠키)에만

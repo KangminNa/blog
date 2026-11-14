@@ -189,7 +189,7 @@ function AppSteps({
     onMessage(
       reply.data.hostedApps
         ? 'ChatGPT·Claude 앱 연결을 켰어요'
-        : '앱 연결을 껐어요 · 이미 연결된 앱은 아래 목록에서 끊기',
+        : '앱 연결을 껐어요 · 이미 연결된 앱은 아래 목록에서 연결 해제',
     );
   }
 

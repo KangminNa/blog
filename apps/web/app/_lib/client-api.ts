@@ -17,9 +17,11 @@ export async function uploadFile<T>(
   file: File,
   /** 본문의 형식. 서버가 JSON으로 읽지 않게 파일 그대로 보낼 때는 application/octet-stream */
   type = file.type || 'image/png',
+  /** 하나뿐인 것을 바꾸는 올리기(사이트 로고)는 PUT */
+  method: 'POST' | 'PUT' = 'POST',
 ): Promise<ApiReply<T>> {
   return send<T>(path, {
-    method: 'POST',
+    method,
     headers: { 'content-type': type },
     body: file,
   });

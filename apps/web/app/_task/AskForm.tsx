@@ -178,7 +178,7 @@ export function AskForm({
           className="cta small"
           disabled={action.busy !== null || !instruction.trim()}
         >
-          실행
+          맡기기
         </button>
       </div>
       {files.length > 0 && (

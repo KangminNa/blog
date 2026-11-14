@@ -193,9 +193,9 @@ export function OutputPanel({ taskId }: { taskId: string | null }) {
                       type="button"
                       className="ghost"
                       disabled={busy}
-                      onClick={() => act(o, 'restore', '되살림')}
+                      onClick={() => act(o, 'restore', '복원됨')}
                     >
-                      되살리기
+                      복원
                     </button>
                     <button
                       type="button"
@@ -221,7 +221,7 @@ export function OutputPanel({ taskId }: { taskId: string | null }) {
                       </button>
                     ) : (
                       <button type="button" className="ghost" onClick={() => startMaking(o)}>
-                        고쳐 달라
+                        수정 요청
                       </button>
                     )}
                     <button

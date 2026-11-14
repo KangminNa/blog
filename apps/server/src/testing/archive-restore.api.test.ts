@@ -539,7 +539,7 @@ describe('복원하기 전: 실패하면 아무것도 쓰지 않는다', () => {
   });
 
   test('주인과 서버 자신만 복원한다', async () => {
-    await assert.rejects(target.restores.preview(new VisitorActor(), exported), /주인만/);
+    await assert.rejects(target.restores.preview(new VisitorActor(), exported), /관리자만/);
     await assert.rejects(target.restores.apply(system, null, exported), /설치를 마친 뒤에/);
     await assert.rejects(target.restores.apply(system, 'local', exported), /설치를 마친 뒤에/);
     assert.equal(await target.rows(), 0);
