@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { OutboxWorker } from '../modules/platform';
+import { Database, OutboxWorker } from '../modules/platform';
 import { ApiClient, TestUser } from './api-client';
 
 // 기능 패키지 browser-tabs의 브라우저 에이전트 (2차 3단계 서버 브라우저 목표, 2026-11-14).
@@ -323,6 +323,13 @@ describe('브라우저 에이전트: 결재된 클릭', () => {
     assert.deepEqual((await tool(runner, 'browser_click_next')).body, { click: null }, '승인 전');
     await decide(approval, 'approve');
     assert.equal((await clickOf(clickId)).status, 'approved');
+    // 같은 승인 이벤트가 한 번 더 와도 (일꾼이 처리 표시 전에 멈춘 뒤) 승인된 클릭을 실패로 돌리지 않는다
+    await api.service(Database).sql`
+      UPDATE platform.outbox SET processed_at = NULL
+      WHERE topic = 'task.approval.granted' AND payload->>'approvalId' = ${String(approval.id)}`;
+    await drain();
+    assert.equal((await clickOf(clickId)).status, 'approved');
+    assert.equal((await taskOf(taskId)).status, 'running', '결과를 기다린다');
     assert.deepEqual(
       (await tool(other, 'browser_click_next')).body,
       { click: null },

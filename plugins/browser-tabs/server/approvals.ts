@@ -63,6 +63,8 @@ export class ApprovalDecided extends Command<DecidedInput> {
       input.targetKind === CLICK_TARGET && input.targetId
         ? await work.row(clicks, { id: input.targetId, space_id: input.spaceId })
         : null;
+    // 이미 다룬 결재다 (같은 이벤트가 두 번 와도 결과가 같게: 승인된 클릭을 실패로 돌리지 않는다)
+    if (row?.approval_id === input.approvalId) return;
     const pending = row?.status === 'held' && row.version === input.targetVersion;
     if (this.decision !== 'granted') {
       if (row && pending)
