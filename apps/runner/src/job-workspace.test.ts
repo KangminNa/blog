@@ -322,6 +322,35 @@ describe('지시문', () => {
     );
   });
 
+  test('대화의 일: 덧붙인 말 · 팀 소식(자료) 단락, 덧붙인 말에 답하는 일은 짧게 답하는 법 (2차 1-1)', () => {
+    const turn = job({
+      task: {
+        id: 't',
+        title: '대화 · 대회 분석',
+        payload: { chat: { chatId: 'c', turn: 1, history: [] } },
+      },
+      chat_updates: {
+        appended: [{ n: 3, text: '마감일만 먼저 알려 줘' }],
+        team: [{ n: 4, kind: 'assumption', agent: '리서처', text: '본선은 오프라인이라고 가정' }],
+      },
+    }).prompt(REPO_PROMPTS, false);
+    assert.ok(turn.includes('# 덧붙인 말\n관리자가 이 회차에 덧붙인 말입니다'));
+    assert.ok(turn.includes('- 마감일만 먼저 알려 줘'));
+    assert.ok(turn.includes('# 팀 소식 (자료)'));
+    assert.ok(turn.includes('- [assumption] 리서처: 본선은 오프라인이라고 가정'));
+    assert.ok(turn.includes('post_update'), '대표에게 가정을 남기는 법');
+    const reply = job({
+      task: {
+        id: 'r',
+        title: '대화 · 마감일만',
+        payload: { chat: { chatId: 'c', turn: 1, reply: true, history: [] } },
+      },
+    }).prompt(REPO_PROMPTS, false);
+    assert.ok(reply.includes('# 덧붙인 말에 답하는 법'));
+    assert.equal(reply.includes('# 대화로 답하는 법'), false);
+    assert.equal(reply.includes('# 팀 소식'), false, '소식이 없으면 단락도 없다');
+  });
+
   test('팀이 없으면 위임을 말하지 않고, 횟수를 다 쓰면 직접 마무리한다', () => {
     assert.equal(job().prompt(REPO_PROMPTS, false).includes('delegate_task'), false);
     const spent = job({

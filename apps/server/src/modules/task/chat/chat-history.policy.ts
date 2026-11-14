@@ -2,7 +2,10 @@ import { Task } from '../task/task';
 import type { TaskRow } from '../task.tables';
 
 /** 앞 회차 작업에서 이전 대화를 만드는 데 읽는 칸 */
-export type ChatTurnRow = Pick<TaskRow, 'instruction' | 'result' | 'status' | 'payload'>;
+export type ChatTurnRow = Pick<
+  TaskRow,
+  'id' | 'instruction' | 'result' | 'status' | 'wait_reason' | 'payload'
+>;
 
 // 회차 작업에 싣는 이전 대화 (payload.chat.history). 러너가 "이전 대화 (자료)"로 그린다.
 // 관리자의 메시지(작업의 지시)와 에이전트의 답(작업의 결과)을 번갈아, 최근 회차만 잘라서 싣는다:

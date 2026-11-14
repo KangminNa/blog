@@ -31,6 +31,7 @@ export interface AgentRow {
   settings_revision: number;
   deleted_at: Date | null;
   runner_id: string | null;
+  lead: boolean;
 }
 export type AgentNew = Partial<AgentRow> & Pick<AgentRow, 'id' | 'space_id' | 'name' | 'tool'>;
 
@@ -68,6 +69,21 @@ export interface ApprovalRow {
 }
 export type ApprovalNew = Partial<ApprovalRow> & Pick<ApprovalRow, 'id' | 'space_id' | 'action' | 'target_kind' | 'target_id' | 'target_version'>;
 
+/** task.chat_updates */
+export interface ChatUpdateRow {
+  id: string;
+  n: number;
+  tx: string;
+  space_id: string;
+  chat_id: string;
+  kind: string;
+  task_id: string | null;
+  agent_id: string | null;
+  text: string;
+  created_at: Date;
+}
+export type ChatUpdateNew = Partial<ChatUpdateRow> & Pick<ChatUpdateRow, 'id' | 'space_id' | 'chat_id' | 'kind' | 'text'>;
+
 /** task.chats */
 export interface ChatRow {
   id: string;
@@ -80,6 +96,8 @@ export interface ChatRow {
   created_at: Date;
   updated_at: Date;
   device_id: string | null;
+  goal: string | null;
+  project: string | null;
 }
 export type ChatNew = Partial<ChatRow> & Pick<ChatRow, 'id' | 'space_id' | 'agent_id' | 'title' | 'request_id'>;
 

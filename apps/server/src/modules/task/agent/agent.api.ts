@@ -55,6 +55,17 @@ export class AgentController {
     return (await this.service.pause(actor, VersionInput.from(id, body))).view();
   }
 
+  /** 기본 대표로 (상대를 정하지 않은 맡기기를 받는다) */
+  @HttpCode(200)
+  @Post(':id/lead')
+  async lead(
+    @CurrentActor() actor: Actor,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<AgentSavedView> {
+    return (await this.service.makeLead(actor, VersionInput.from(id, body))).view();
+  }
+
   @HttpCode(200)
   @Post(':id/resume')
   async resume(

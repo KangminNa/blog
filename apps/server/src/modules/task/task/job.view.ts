@@ -1,4 +1,4 @@
-import type { AgentRow, OutputRow, TaskRow } from '../task.tables';
+import type { AgentRow, ChatUpdateRow, OutputRow, TaskRow } from '../task.tables';
 
 // 러너 · 에이전트가 MCP로 받는 작업의 모양 (next_jobs · report_progress · submit_result · delegate_task). 도구의 모양이라 snake_case.
 // 화면이 받는 모양은 task.view.ts. view끼리는 서로 가져오지 않는다 (경계 검사: view는 표 인터페이스만)
@@ -125,6 +125,14 @@ export class JobView {
     return this;
   }
 
+  /** 대화의 일이면 덧붙인 말 · 팀 소식 (러너가 지시문의 단락으로 그린다). 그 밖의 일은 null */
+  private chat: JobChatView | null = null;
+
+  withChat(chat: JobChatView | null): this {
+    this.chat = chat;
+    return this;
+  }
+
   /** 하위 작업마다 만든 결과물 (작업 id → 결과물). 깨어난 위 작업이 결재문의 근거(output_id)로 건다 */
   private made: ReadonlyMap<string, readonly SubtaskOutputRow[]> = new Map();
 
@@ -149,6 +157,7 @@ export class JobView {
       skill: this.skill,
       skill_package: this.skillPackage?.toJSON() ?? null,
       prompt_package: this.promptPackage?.toJSON() ?? null,
+      chat_updates: this.chat?.toJSON() ?? null,
       revision_note: this.revisionNote,
       // bound: 이 러너에 묶인 에이전트 (묶인 일은 그 러너만 빌린다). 러너는 이때만 나눈 폴더를 연다
       agent:
@@ -223,6 +232,28 @@ export class DelegatedView {
         status: r.status,
       })),
       waiting: this.waiting,
+    };
+  }
+}
+
+/**
+ * 대화의 일에 실어 보내는 소식 (next_jobs의 chat_updates, 2차 1-1): 이 회차에 덧붙인 말, 그리고 이 일 아래 팀원이 남긴 소식
+ * (중간 보고 · 정한 것 · 가정). 둘 다 자료다: 지시는 관리자의 말(덧붙인 말 포함)뿐이다
+ */
+export class JobChatView {
+  constructor(
+    private readonly appended: readonly Readonly<ChatUpdateRow>[],
+    private readonly team: readonly Readonly<ChatUpdateRow & { agent: string | null }>[],
+  ) {}
+
+  get empty(): boolean {
+    return this.appended.length === 0 && this.team.length === 0;
+  }
+
+  toJSON() {
+    return {
+      appended: this.appended.map((u) => ({ n: Number(u.n), text: u.text })),
+      team: this.team.map((u) => ({ n: Number(u.n), kind: u.kind, agent: u.agent, text: u.text })),
     };
   }
 }

@@ -18,6 +18,7 @@ import { AiLogin } from '../ai/ai-login';
 import { AiLoginRepository } from '../ai/ai-login.repository';
 import { Approval } from '../approval/approval';
 import { ApprovalRepository } from '../approval/approval.repository';
+import { ChatUpdateQuery } from '../chat/chat-update.query';
 import { GoalRepository } from '../goal/goal.repository';
 import { OutputQuery } from '../output/output.query';
 import { RunnerRepository } from '../runner/runner.repository';
@@ -64,6 +65,7 @@ export class TaskService extends BaseService {
     private readonly changes: ChangeStream,
     private readonly repoSkills: RepoSkillGateway,
     private readonly outputs: OutputQuery,
+    private readonly chats: ChatUpdateQuery,
   ) {
     super(db);
   }
@@ -324,9 +326,10 @@ export class TaskService extends BaseService {
         sandbox,
       });
       const busy = [...running];
+      const skills = new SkillRepository(tx);
+      const packageOf = (name: string) => skills.current(spaceId, name, this.repoSkills.get(name));
       // 지시문 틀(cairn-runner)의 지금 판: 에이전트의 일마다 함께 보내고 실행 기록에 남긴다
-      const prompts =
-        picked.length > 0 ? await this.packageOf(tx, spaceId, PromptTemplates.SKILL) : null;
+      const prompts = picked.length > 0 ? await packageOf(PromptTemplates.SKILL) : null;
       for (const task of picked) {
         if (jobs.length >= req.limit) break;
         const scope = task.codeScope;
@@ -342,7 +345,7 @@ export class TaskService extends BaseService {
         if (agent) busy.push(agent.tool);
         if (scope) held.push(scope);
         task.lease(runnerId, agent?.id ?? null, now);
-        const skill = task.skill === null ? null : await this.packageOf(tx, spaceId, task.skill);
+        const skill = task.skill === null ? null : await packageOf(task.skill);
         const prompt = agent ? prompts : null;
         const tool = agent?.tool ?? task.payloadTool;
         const cli = tool === null ? null : (req.cliVersions.get(tool) ?? null);
@@ -372,16 +375,8 @@ export class TaskService extends BaseService {
     const ids = children.map((c) => c.id);
     const made = await this.outputs.madeBy(actor, ids);
     const view = task.jobView(agent, this.box, goals, org, children, skill?.jobView() ?? null);
-    return view.withOutputs(made).withPrompt(prompt?.jobView() ?? null);
-  }
-
-  /**
-   * 러너 스킬의 지금 판: 주인이 콘솔에서 고친 판이 있으면 그것, 없으면 서버 이미지의 저장소 판.
-   * 일의 스킬(러너가 CLI에 깐다)과 지시문 틀(cairn-runner, 러너가 채운다)이 같은 길로 간다
-   */
-  private async packageOf(tx: Sql, spaceId: string, name: string): Promise<SkillPackage | null> {
-    const active = await new SkillRepository(tx).activeRevision(spaceId, name);
-    return SkillPackage.pick(name, active, this.repoSkills.get(name));
+    view.withOutputs(made).withChat(await this.chats.forJob(actor, task.id));
+    return view.withPrompt(prompt?.jobView() ?? null);
   }
 
   private async expire(tx: Sql, now: Date): Promise<number> {

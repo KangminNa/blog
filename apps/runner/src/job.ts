@@ -229,7 +229,10 @@ export class Job {
       raw.field('skill_package') ? SkillPackage.from(raw.child('skill_package')) : null,
       task.text('kind') === Job.MAKE ? (task.child('payload').field('make') ?? null) : null,
       task.text('kind') === Job.MAKE && Boolean(task.child('payload').field('page')),
-      ChatTurn.from(task.child('payload')),
+      ChatTurn.from(
+        task.child('payload'),
+        raw.field('chat_updates') ? raw.child('chat_updates') : null,
+      ),
       agent.flag('bound'),
       raw.field('prompt_package') ? SkillPackage.from(raw.child('prompt_package')) : null,
     );

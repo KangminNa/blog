@@ -14,17 +14,31 @@ export class ChatTurn {
     readonly turn: number,
     /** [말한 쪽, 글] (오래된 것부터, 서버가 최근 것만 잘라 보낸다) */
     private readonly lines: readonly (readonly [string, string])[],
+    /** 팀이 일하는 도중에 덧붙인 말에 짧게 답하는 일인가 (payload.chat.reply) */
+    private readonly reply = false,
+    /** 이 회차에 덧붙인 말 (next_jobs의 chat_updates.appended) */
+    private readonly appended: readonly string[] = [],
+    /** 팀원이 남긴 소식 [종류, 팀원, 글] (chat_updates.team, 오래된 것부터) */
+    private readonly team: readonly (readonly [string, string, string])[] = [],
   ) {}
 
-  /** 대화의 회차가 아니면 null */
-  static from(payload: Json): ChatTurn | null {
+  /** 대화의 회차가 아니면 null. updates: next_jobs의 chat_updates (없을 수 있다) */
+  static from(payload: Json, updates: Json | null = null): ChatTurn | null {
     const chat = payload.child('chat');
     if (!chat.text('chatId')) return null;
     const lines = chat
       .list('history')
       .filter((line) => line.text('text') !== '')
       .map((line) => [line.text('from'), line.text('text')] as const);
-    return new ChatTurn(chat.number('turn'), lines);
+    return new ChatTurn(
+      chat.number('turn'),
+      lines,
+      chat.flag('reply'),
+      (updates?.list('appended') ?? []).map((u) => u.text('text')).filter(Boolean),
+      (updates?.list('team') ?? []).map(
+        (u) => [u.text('kind'), u.text('agent'), u.text('text')] as const,
+      ),
+    );
   }
 
   /** 지시문의 단락 (틀 chat): 앞 대화(있으면)와 대화로 답하는 법 */
@@ -33,6 +47,15 @@ export class ChatTurn {
       const template = ChatTurn.SPEAKERS[from];
       return template ? prompts.fill(template, { text }) : `[${from}] ${text}`;
     });
-    return prompts.fill('chat', { history: history.join('\n') });
+    const parts = [prompts.fill('chat', { history: history.join('\n'), reply: this.reply })];
+    if (this.appended.length > 0)
+      parts.push(
+        prompts.fill('chat-appended', { lines: this.appended.map((t) => `- ${t}`).join('\n') }),
+      );
+    if (this.team.length > 0) {
+      const lines = this.team.map(([kind, agent, text]) => `- [${kind}] ${agent || '-'}: ${text}`);
+      parts.push(prompts.fill('chat-team', { lines: lines.join('\n') }));
+    }
+    return parts.join('\n\n');
   }
 }

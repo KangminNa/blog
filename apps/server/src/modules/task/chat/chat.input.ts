@@ -63,8 +63,8 @@ export class ChatIdInput extends BaseRequest {
 }
 
 /**
- * MCP ask_agent { request_id, message, agent?, chat_id? }: 기기가 서버 팀에 메시지를 보낸다.
- * chat_id가 없으면 새 대화(agent: 상대의 이름이나 id), 있으면 그 기기가 연 대화에 이어서
+ * MCP ask_agent { request_id, message, agent?, chat_id?, goal?, project? }: 기기가 서버 팀에 메시지를 보낸다.
+ * chat_id가 없으면 새 대화(agent: 상대의 이름이나 id, 생략하면 기본 대표 · goal · project), 있으면 그 기기가 연 대화에 이어서
  */
 export class AskAgentInput extends BaseRequest {
   private constructor(
@@ -72,6 +72,9 @@ export class AskAgentInput extends BaseRequest {
     readonly message: string,
     readonly agent: string | null,
     readonly chatId: string | null,
+    readonly goal: string | null,
+    /** git 주소 그대로 (ChatProject가 맞춘다) */
+    readonly project: string | null,
   ) {
     super();
   }
@@ -86,29 +89,8 @@ export class AskAgentInput extends BaseRequest {
           f.text('message', Chat.MESSAGE_MAX),
           f.optionalText('agent', 100),
           body.chat_id === undefined || body.chat_id === null ? null : f.uuid('chat_id'),
-        ),
-    );
-  }
-}
-
-/** MCP agent_reply { chat_id, wait_seconds? }: 그 대화의 마지막 회차의 답. 끝나지 않았으면 wait_seconds(0~25, 기본 20)까지 기다린다 */
-export class AgentReplyInput extends BaseRequest {
-  static readonly WAIT_MAX = 25;
-
-  private constructor(
-    readonly chatId: string,
-    readonly waitSeconds: number,
-  ) {
-    super();
-  }
-
-  static from(raw: unknown): AgentReplyInput {
-    return BaseRequest.read(
-      raw,
-      (f) =>
-        new AgentReplyInput(
-          f.uuid('chat_id'),
-          f.optionalInteger('wait_seconds', 0, AgentReplyInput.WAIT_MAX) ?? 20,
+          f.optionalText('goal', Chat.GOAL_MAX),
+          f.optionalText('project', 400),
         ),
     );
   }

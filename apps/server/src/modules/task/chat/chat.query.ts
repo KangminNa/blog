@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseQuery, ChangeStream, Database, Forbidden, NotFound } from '../../platform';
+import { type Actor, BaseQuery, NotFound } from '../../platform';
 import { Approval } from '../approval/approval';
 import { Task } from '../task/task';
 import type { ChatRow } from '../task.tables';
 import { Chat } from './chat';
-import type { AgentReplyInput, ChatIdInput } from './chat.input';
+import type { ChatIdInput } from './chat.input';
 import {
   type ChatApprovalRow,
   ChatDetailView,
@@ -12,7 +12,6 @@ import {
   ChatListView,
   type ChatOutputRow,
   type ChatPartnerRow,
-  ChatReplyView,
   type ChatTurnTaskRow,
   ChatTurnView,
 } from './chat.view';
@@ -24,21 +23,6 @@ export class ChatQuery extends BaseQuery {
   private static readonly PAGE = 100;
   /** 상세에 싣는 최근 회차 수 */
   private static readonly TURNS = 100;
-  /** agent_reply가 기다리는 동안 다시 읽는 신호 (회차 작업 · 결재 · 진행 기록) */
-  private static readonly WATCH: readonly string[] = [
-    'task.task.changed',
-    'task.event.added',
-    'task.approval.requested',
-  ];
-  /** 신호를 놓쳐도 이만큼마다 다시 읽는다 */
-  private static readonly RECHECK_MS = 5_000;
-
-  constructor(
-    db: Database,
-    private readonly changes: ChangeStream,
-  ) {
-    super(db);
-  }
 
   async list(actor: Actor): Promise<ChatListView> {
     actor.assertOwner();
@@ -77,38 +61,6 @@ export class ChatQuery extends BaseQuery {
     const ids = Chat.turnRequestIds(chat.id, chat.turns - ChatQuery.TURNS + 1, chat.turns);
     const turns = await this.turns(spaceId, ids);
     return new ChatDetailView(chat, partner as ChatPartnerRow, await this.views(turns));
-  }
-
-  /**
-   * MCP agent_reply: 기기가 연 대화의 마지막 회차. 답이 오거나(끝남 · 실패 · 멈춤) 관리자의 결재를 기다리게 되면 바로,
-   * 아니면 waitSeconds까지 신호를 기다렸다가 돌려준다 (트랜잭션 밖). 다른 기기 · 관리자의 대화는 없는 것처럼 (404)
-   */
-  async reply(actor: Actor, req: AgentReplyInput): Promise<ChatReplyView> {
-    actor.assertCan(Actor.DELEGATE);
-    if (actor.kind !== 'device' || !actor.id) throw new Forbidden(Actor.DELEGATE);
-    const spaceId = actor.requireSpace();
-    const deadline = Date.now() + req.waitSeconds * 1000;
-    for (;;) {
-      const [chat] = await this.sql<ChatRow[]>`
-        SELECT * FROM task.chats
-        WHERE space_id = ${spaceId} AND id = ${req.chatId} AND device_id = ${actor.id}`;
-      if (!chat) throw new NotFound('대화를 찾을 수 없어요');
-      const [turn] = await this.turns(
-        spaceId,
-        Chat.turnRequestIds(chat.id, chat.turns, chat.turns),
-      );
-      const answered =
-        !turn || !ChatQuery.OPEN.includes(turn.status) || turn.wait_reason === 'approval';
-      const left = deadline - Date.now();
-      if (answered || left <= 0 || this.changes.closed) {
-        const [view] = turn ? await this.views([turn]) : [];
-        return new ChatReplyView(chat, view ?? null, answered);
-      }
-      await this.changes.wait(
-        (signal) => signal.spaceId === spaceId && ChatQuery.WATCH.includes(signal.topic),
-        Math.min(left, ChatQuery.RECHECK_MS),
-      );
-    }
   }
 
   /** 회차마다 그 아래의 결과물 · 기다리는 결재를 붙인다 */

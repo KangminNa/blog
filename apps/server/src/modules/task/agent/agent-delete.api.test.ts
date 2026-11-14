@@ -150,3 +150,40 @@ describe('에이전트 삭제', () => {
     assert.ok((await listed()).includes(scheduled.id), '지우지 않았다');
   });
 });
+
+describe('기본 대표 (2차 1-1)', () => {
+  const lead = async (a: Json) =>
+    api.request('POST', `/api/agents/${a.id}/lead`, owner, {
+      version: (await current(a.id)).version,
+    });
+
+  test('공간에 하나: 새 대표를 정하면 있던 대표는 내려간다. 팀원은 대표가 될 수 없고, 팀원이 되거나 지우면 내려간다', async () => {
+    const first = await agent('대표 후보');
+    const second = await agent('대표 둘째');
+    ok(await lead(first));
+    assert.equal((await current(first.id)).lead, true);
+    ok(await lead(second));
+    assert.deepEqual(
+      [(await current(first.id)).lead, (await current(second.id)).lead],
+      [false, true],
+      '있던 대표는 내려간다',
+    );
+    const member = await agent('팀원', second.id);
+    assert.equal((await lead(member)).status, 422, '팀원은 대표가 될 수 없다');
+    assert.equal(
+      (await api.request('POST', `/api/agents/${first.id}/lead`, TestUser.visitor, { version: 1 }))
+        .status,
+      403,
+    );
+    ok(
+      await api.request('PATCH', `/api/agents/${second.id}`, owner, {
+        reportsTo: first.id,
+        version: (await current(second.id)).version,
+      }),
+    );
+    assert.equal((await current(second.id)).lead, false, '팀원이 되면 내려간다');
+    ok(await lead(first));
+    ok(await remove(first));
+    assert.equal((await current(first.id)).lead, false, '지우면 내려간다');
+  });
+});

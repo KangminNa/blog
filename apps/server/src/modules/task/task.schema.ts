@@ -4,6 +4,7 @@
 import { bigint, boolean, customType, integer, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 const byteaColumn = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
+const xid8Column = customType<{ data: string }>({ dataType: () => 'xid8' });
 const taskSchema = pgSchema('task');
 
 /** task.agent_revisions */
@@ -34,6 +35,7 @@ export const agents = taskSchema.table('agents', {
   settings_revision: integer('settings_revision').notNull(),
   deleted_at: timestamp('deleted_at', { withTimezone: true }),
   runner_id: uuid('runner_id'),
+  lead: boolean('lead').notNull(),
 });
 
 /** task.ai_logins */
@@ -68,6 +70,20 @@ export const approvals = taskSchema.table('approvals', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
 });
 
+/** task.chat_updates */
+export const chatUpdates = taskSchema.table('chat_updates', {
+  id: uuid('id').notNull(),
+  n: bigint('n', { mode: 'number' }).notNull(),
+  tx: xid8Column('tx').notNull(),
+  space_id: uuid('space_id').notNull(),
+  chat_id: uuid('chat_id').notNull(),
+  kind: text('kind').notNull(),
+  task_id: uuid('task_id'),
+  agent_id: uuid('agent_id'),
+  text: text('text').notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
 /** task.chats */
 export const chats = taskSchema.table('chats', {
   id: uuid('id').notNull(),
@@ -80,6 +96,8 @@ export const chats = taskSchema.table('chats', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
   updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
   device_id: uuid('device_id'),
+  goal: text('goal'),
+  project: text('project'),
 });
 
 /** task.goal_rounds */

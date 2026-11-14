@@ -31,6 +31,9 @@ export class ChatView {
       turns: r.turns,
       /** 기기(MCP ask_agent)가 연 대화면 그 기기 (기기 목록의 id). 관리자가 연 대화면 null */
       deviceId: r.device_id ?? null,
+      /** 목표 한 줄과 프로젝트(host/owner/repo). 새 대화를 열 때 정한다 */
+      goal: r.goal ?? null,
+      project: r.project ?? null,
       version: r.version,
       createdAt: r.created_at.toISOString(),
       updatedAt: r.updated_at.toISOString(),
@@ -108,28 +111,6 @@ export class ChatDetailView {
         deleted: p.deleted_at !== null,
       },
       turns: this.turns.map((t) => t.toJSON()),
-    };
-  }
-}
-
-/**
- * MCP agent_reply: 기기가 연 대화의 마지막 회차. answered는 기다려도 더 바뀌지 않는 때
- * (끝남 · 실패 · 멈춤, 또는 관리자의 결재를 기다림: 결재는 콘솔에서만 한다)
- */
-export class ChatReplyView {
-  constructor(
-    private readonly chat: Readonly<ChatRow>,
-    private readonly turn: ChatTurnView | null,
-    private readonly answered: boolean,
-  ) {}
-
-  toJSON() {
-    return {
-      chatId: this.chat.id,
-      answered: this.answered,
-      /** 콘솔에서 이 대화를 여는 주소 (결재 · 결과물 열기는 거기서) */
-      consolePath: `/admin/chats?chat=${this.chat.id}`,
-      turn: this.turn?.toJSON() ?? null,
     };
   }
 }

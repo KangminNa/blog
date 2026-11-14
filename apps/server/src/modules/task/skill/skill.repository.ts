@@ -2,6 +2,8 @@ import { TableRepository } from '../../platform';
 import { skillRevisions, skills } from '../task.schema';
 import type { SkillRevisionRow, SkillRow } from '../task.tables';
 import { Skill } from './skill';
+import type { SkillFiles } from './skill-files';
+import { SkillPackage } from './skill-package';
 
 // task.skills ↔ Skill. 판(task.skill_revisions)은 saveParts로 함께 넣는다 (추가만).
 export class SkillRepository extends TableRepository<SkillRow, Skill> {
@@ -29,6 +31,18 @@ export class SkillRepository extends TableRepository<SkillRow, Skill> {
       JOIN task.skill_revisions r ON r.skill_id = s.id AND r.revision = s.active_revision
       WHERE s.space_id = ${spaceId} AND s.name = ${name}`;
     return row ?? null;
+  }
+
+  /**
+   * 러너 스킬의 지금 판: 주인이 콘솔에서 고친 판이 있으면 그것, 없으면 저장소 판(repo, 서버 이미지의 skills/).
+   * 일을 빌려 줄 때 일의 스킬(러너가 CLI에 깐다)과 지시문 틀(cairn-runner, 러너가 채운다)이 같은 길로 간다
+   */
+  async current(
+    spaceId: string,
+    name: string,
+    repo: SkillFiles | null,
+  ): Promise<SkillPackage | null> {
+    return SkillPackage.pick(name, await this.activeRevision(spaceId, name), repo);
   }
 
   protected override async saveParts(skill: Skill): Promise<void> {

@@ -16,7 +16,11 @@ import { ApprovalResultHandler } from './approval/approval-result.handler';
 import { ChatController } from './chat/chat.api';
 import { ChatQuery } from './chat/chat.query';
 import { ChatService } from './chat/chat.service';
-import { AgentReplyTool, AskAgentTool } from './chat/chat.tool';
+import { AskAgentTool } from './chat/chat.tool';
+import { ChatUpdateHandler } from './chat/chat-update.handler';
+import { ChatUpdateQuery } from './chat/chat-update.query';
+import { ChatUpdateService } from './chat/chat-update.service';
+import { AgentUpdatesTool, PostUpdateTool } from './chat/chat-update.tool';
 import { GoalController } from './goal/goal.api';
 import { GoalQuery } from './goal/goal.query';
 import { GoalService } from './goal/goal.service';
@@ -114,7 +118,12 @@ import { WebPageGateway } from './web/web-page.gateway';
     ChatQuery,
     ChatService,
     AskAgentTool,
-    AgentReplyTool,
+    // 대화의 소식 (2차 1-1): 끝난 작업 → 소식(ChatUpdateHandler), agent_updates · post_update
+    ChatUpdateService,
+    ChatUpdateQuery,
+    ChatUpdateHandler,
+    AgentUpdatesTool,
+    PostUpdateTool,
     GoalRunHandler,
     ReportRoundTool,
     // 주소 읽기 (read_url): 서버가 AI 대신 연다. 목줄은 WebReach
@@ -150,6 +159,7 @@ export class TaskModule implements OnModuleInit {
     private readonly workers: CoreWorkers,
     private readonly requested: TaskRequestedHandler,
     private readonly settled: SubtaskSettledHandler,
+    private readonly chatUpdates: ChatUpdateHandler,
     private readonly results: ApprovalResultHandler,
     private readonly leases: LeaseJob,
     private readonly schedules: ScheduleJob,
@@ -166,6 +176,7 @@ export class TaskModule implements OnModuleInit {
   onModuleInit(): void {
     this.workers.on(Task.REQUESTED, this.requested);
     this.workers.on(Task.CHANGED, this.settled);
+    this.workers.on(Task.CHANGED, this.chatUpdates);
     this.workers.on(Task.CHANGED, this.goalRuns);
     for (const topic of GoalRunHandler.DECIDED) this.workers.on(topic, this.goalRuns);
     this.workers.on('*', this.results);

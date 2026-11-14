@@ -23,7 +23,7 @@ export abstract class Actor {
    */
   static readonly SANDBOX = 'sandbox';
   /**
-   * 기기: 서버 팀(관리자 바로 아래 에이전트)에게 일을 맡기고 답을 받는다 (MCP ask_agent · agent_reply).
+   * 기기: 서버 팀(관리자 바로 아래 에이전트, 비우면 기본 대표)에게 일을 맡기고 소식을 받는다 (MCP ask_agent · agent_updates).
    * 관리자가 기기 메뉴에서 켠다. 그 기기가 연 대화만 이어 쓰고 읽는다. 결재는 하지 못한다
    */
   static readonly DELEGATE = 'delegate';

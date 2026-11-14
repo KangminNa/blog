@@ -42,6 +42,8 @@ export class AgentSavedView {
       /** 일을 맡을 러너 (task.runners의 id). null이면 아무 러너 */
       runnerId: r.runner_id ?? null,
       status: r.status,
+      /** 기본 대표: 상대를 정하지 않고 맡기면 받는다 (공간에 하나) */
+      lead: r.lead,
       /** 휴지통에 넣은 때. null이면 쓰는 에이전트 */
       deletedAt: r.deleted_at?.toISOString() ?? null,
       version: r.version,

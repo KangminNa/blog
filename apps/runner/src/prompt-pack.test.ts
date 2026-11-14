@@ -129,6 +129,8 @@ describe('PromptPack', () => {
       'chat',
       'chat-owner',
       'chat-agent',
+      'chat-appended',
+      'chat-team',
       'target',
       'goal',
       'revision',
