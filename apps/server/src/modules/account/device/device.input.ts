@@ -48,7 +48,7 @@ export class AuthorizeInput extends BaseRequest {
     readonly codeChallenge: string | null,
     readonly codeChallengeMethod: string | null,
     readonly state: string | null,
-    /** 요청한 권한 (빈칸으로 나눈 이름들). 앱이 요청할 수 있는 것은 news뿐이다 (AuthorizationPolicy.scopesOf) */
+    /** 요청한 권한 (빈칸으로 나눈 이름들). 앱이 요청할 수 있는 것은 기기 모양 하나뿐이다 (AuthorizationPolicy) */
     readonly scope: string | null,
   ) {
     super();
@@ -151,7 +151,7 @@ export class ConsentInput extends BaseRequest {
     readonly name: string,
     /** 인가 서버 주소. 돌려보낼 때 iss로 붙인다 (RFC 9207, 다른 서버의 응답과 섞이지 않게) */
     readonly issuer: string,
-    /** 앱이 요청해 승인 화면이 보일 권한 (news). 없으면 null: 새 기기는 기본 권한 */
+    /** 앱이 요청한 기기 모양 (news · collect · extension). 없으면 null: 새 기기는 기본 권한 */
     readonly scopes: readonly string[] | null,
   ) {
     super();

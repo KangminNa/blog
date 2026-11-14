@@ -1,4 +1,4 @@
-import type { SessionRevisionRow, SessionRow } from '../vault.tables';
+import type { SessionRevisionRow, SessionRow, SessionTranscriptRow } from '../vault.tables';
 
 // 세션의 읽기 모양. 웹이 `import type`으로 가져온다 (객체설계 6장).
 // 표의 칸 중 무엇을 내보내는지는 여기 한 곳에만 적는다. 관리 화면(REST)은 camelCase, AI 도구(MCP)의 답은 snake_case다.
@@ -67,6 +67,28 @@ export class SessionSavedView {
   }
 }
 
+/**
+ * save_transcript · save_note의 답 (수집 훅 · 확장 · 서버 러너에게). saved · unchanged · duplicate · skipped.
+ * 원문이면 seq는 원문의 번호, 노트면 판의 번호. 모으지 않는 프로젝트의 원문은 세션이 없다 (session_id null)
+ */
+export class TranscriptSavedView {
+  constructor(
+    private readonly status: string,
+    private readonly sessionId: string | null,
+    private readonly seq: number,
+    private readonly warnings: readonly object[],
+  ) {}
+
+  toJSON() {
+    return {
+      status: this.status,
+      session_id: this.sessionId,
+      seq: this.seq,
+      warnings: this.warnings,
+    };
+  }
+}
+
 /** check_session의 답 (AI에게). 저장할 때 그대로 쓸 값, 올릴 곳, 저장하면 서버가 지울 것 */
 export class SessionCheckView {
   constructor(
@@ -113,6 +135,7 @@ export class SessionSummaryView {
       deviceId: r.device_id,
       visibility: r.visibility,
       revisionCount: r.revision_count,
+      transcriptCount: r.transcript_count,
       startedAt: r.started_at?.toISOString() ?? null,
       lastRevisionAt: r.last_revision_at?.toISOString() ?? null,
     };
@@ -206,16 +229,80 @@ export class RevisionStampView {
 export class SessionDetailView {
   constructor(
     private readonly row: Readonly<SessionRow>,
-    private readonly head: SessionRevisionView,
+    /** 원문만 있고 노트가 아직 없으면 null */
+    private readonly head: SessionRevisionView | null,
     private readonly history: readonly RevisionStampView[],
+    private readonly transcripts: readonly TranscriptStampView[],
   ) {}
 
   toJSON() {
     return {
       ...new SessionSummaryView(this.row).toJSON(),
       sourceSessionId: this.row.source_session_id,
-      head: this.head.toJSON(),
+      head: this.head?.toJSON() ?? null,
       history: this.history.map((h) => h.toJSON()),
+      transcripts: this.transcripts.map((t) => t.toJSON()),
+    };
+  }
+}
+
+/** 원문 기록의 한 줄 (내용 없이): 번호, 글자 수, 지운 민감정보 수 */
+export interface TranscriptStampRow extends Pick<SessionTranscriptRow, 'seq' | 'created_at'> {
+  chars: number;
+  redactions: number;
+}
+
+export class TranscriptStampView {
+  constructor(private readonly row: Readonly<TranscriptStampRow>) {}
+
+  toJSON() {
+    const r = this.row;
+    return {
+      seq: r.seq,
+      chars: r.chars,
+      redactions: r.redactions,
+      createdAt: r.created_at.toISOString(),
+    };
+  }
+}
+
+/** 원문 하나 (관리 화면) */
+export class TranscriptView {
+  constructor(private readonly row: Readonly<SessionTranscriptRow>) {}
+
+  toJSON() {
+    const r = this.row;
+    return {
+      seq: r.seq,
+      text: r.text,
+      actorType: r.actor_type,
+      createdAt: r.created_at.toISOString(),
+    };
+  }
+}
+
+/** 세션 노트 일의 원문 (서버 러너가 읽는다): 세션의 머리와 원문 하나 */
+export interface TranscriptJobRow
+  extends Pick<SessionRow, 'node_id' | 'tool' | 'project' | 'head_title' | 'started_at'>,
+    Pick<SessionTranscriptRow, 'seq' | 'text'> {}
+
+/** read_transcript의 답 (서버 러너에게). text는 AI에게 줄 만큼 가운데를 줄인 원문 */
+export class TranscriptJobView {
+  constructor(
+    private readonly row: Readonly<TranscriptJobRow>,
+    private readonly text: string,
+  ) {}
+
+  toJSON() {
+    const r = this.row;
+    return {
+      session_id: r.node_id,
+      seq: r.seq,
+      tool: r.tool,
+      project: r.project,
+      title: r.head_title,
+      started_at: r.started_at?.toISOString() ?? null,
+      text: this.text,
     };
   }
 }

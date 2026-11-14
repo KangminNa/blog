@@ -187,6 +187,19 @@ export const sessionRevisions = vaultSchema.table('session_revisions', {
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
 });
 
+/** vault.session_transcripts */
+export const sessionTranscripts = vaultSchema.table('session_transcripts', {
+  id: uuid('id').notNull(),
+  session_id: uuid('session_id').notNull(),
+  seq: integer('seq').notNull(),
+  text: text('text').notNull(),
+  content_hash: text('content_hash').notNull(),
+  redactions: jsonb('redactions'),
+  actor_type: text('actor_type').notNull(),
+  actor_id: uuid('actor_id'),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
 /** vault.sessions */
 export const sessions = vaultSchema.table('sessions', {
   node_id: uuid('node_id').notNull(),
@@ -207,6 +220,8 @@ export const sessions = vaultSchema.table('sessions', {
   meta: jsonb('meta').notNull(),
   wiki_id: uuid('wiki_id'),
   tidy_requested_seq: integer('tidy_requested_seq').notNull(),
+  transcript_count: integer('transcript_count').notNull(),
+  noted_seq: integer('noted_seq').notNull(),
 });
 
 /** vault.stale_wikis */

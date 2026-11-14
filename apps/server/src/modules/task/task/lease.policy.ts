@@ -6,6 +6,9 @@
 // 알리지 않은 값(null)은 거르지 않는다: 도구를 알리기 전의 러너.
 // biome-ignore lint/complexity/noStaticOnlyClass: 상태 없는 판단 한 곳. 일을 빌려 줄 때만 쓴다
 export class LeasePolicy {
+  /** 에이전트 없는 일에 먼저 쓰는 도구 */
+  static readonly PREFERRED = 'claude';
+
   /**
    * 에이전트의 일을 맡길 수 있는 도구.
    * 서버의 로그인을 쓰는 도구 중 갱신 토큰이 쓸 때마다 바뀌는 것(rotating)은 공간에서 한 번에 하나만 돈다:
@@ -37,6 +40,13 @@ export class LeasePolicy {
     busy: readonly string[],
   ): boolean {
     return ownLogins.includes(tool) || !(rotating.includes(tool) && busy.includes(tool));
+  }
+
+  /** 에이전트 없는 일(배정 · 세션 노트)을 돌릴 서버의 로그인 도구: Claude가 쓸 수 있으면 Claude, 아니면 첫 것. 없으면 null */
+  static serverTool(usableLogins: readonly string[]): string | null {
+    return usableLogins.includes(LeasePolicy.PREFERRED)
+      ? LeasePolicy.PREFERRED
+      : (usableLogins[0] ?? null);
   }
 
   /** 연결 확인을 맡길 수 있는 도구: 실행할 수 있고, 확인할 서버의 로그인이 쓸 수 있는 상태 */

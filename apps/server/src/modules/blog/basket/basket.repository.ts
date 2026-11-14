@@ -33,6 +33,12 @@ export class BasketRepository extends TableRepository<BasketItemRow, BasketItem>
     return String(made?.id);
   }
 
+  /** 이 상자에 같은 주소의 링크가 있으면 그 소재 (페이지 보관을 한 번만) */
+  async linkOf(basketId: string, url: string): Promise<BasketItem | null> {
+    const row = await this.row(basketItems, { basket_id: basketId, kind: BasketItem.LINK, url });
+    return row ? this.toEntity(row) : null;
+  }
+
   async remove(item: BasketItem): Promise<void> {
     await this.deleteRows(basketItems, { id: item.id });
   }

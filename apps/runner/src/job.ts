@@ -104,12 +104,14 @@ export class SkillPackage {
 }
 
 // next_jobs가 빌려 준 일 하나. run_token은 AI CLI의 MCP 설정에만 쓴다.
-// 연결 확인(ai_test) · 웹 로그인(ai_signin) · 대화의 배정(chat_route)에는 에이전트도 run_token도 없다.
+// 연결 확인(ai_test) · 웹 로그인(ai_signin) · 대화의 배정(chat_route) · 세션 노트(session_note)에는 에이전트도 run_token도 없다.
 // 도구는 작업의 payload에 있고, MCP 없이 지시만 돌린다.
 export class Job {
   private static readonly AI_TEST = 'ai_test';
   /** 대화의 배정 (2차 1-5): 서버가 채운 지시(지시문 틀 chat-route) 하나를 그대로 돌리고 답(JSON 한 줄)을 낸다 */
   private static readonly ROUTE = 'chat_route';
+  /** 세션 노트 (2차 4단계): NoteStage가 원문으로 채운 지시문 틀(session-note) 하나를 돌리고 답(JSON)을 vault에 보낸다 */
+  private static readonly SESSION_NOTE = 'session_note';
   /** 웹 AI 로그인: 러너가 로그인 명령을 대신 돌린다 (SigninRun) */
   static readonly AI_SIGNIN = 'ai_signin';
   /** 서버 브라우저로 하는 일: 어디서 돌지는 러너가 browser_job으로 받고(BrowseStage) Playwright MCP를 붙인다 */
@@ -249,6 +251,11 @@ export class Job {
     return this.kind === Job.AI_TEST;
   }
 
+  /** 세션 노트를 쓰는 일 (NoteStage) */
+  get writesNote(): boolean {
+    return this.kind === Job.SESSION_NOTE;
+  }
+
   /** 주인이 웹에서 누른 AI 로그인. 도구(tool)는 작업의 payload에 있다 */
   get isAiSignin(): boolean {
     return this.kind === Job.AI_SIGNIN;
@@ -287,6 +294,7 @@ export class Job {
     outputsDir: string | null = null,
   ): string {
     if (this.isAiTest || this.kind === Job.ROUTE) return this.instruction;
+    if (this.writesNote) return this.brief ?? '';
     const parts = [
       prompts.fill('intro', { agent: this.agentName, role: this.agentRole }),
       prompts.fill('task', { title: this.title, instruction: this.instruction }),

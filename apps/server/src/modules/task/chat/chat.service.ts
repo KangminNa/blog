@@ -17,6 +17,7 @@ import { Approval } from '../approval/approval';
 import { ApprovalRepository } from '../approval/approval.repository';
 import type { PromptTemplates } from '../skill/prompt-templates';
 import { SkillQuery } from '../skill/skill.query';
+import { LeasePolicy } from '../task/lease.policy';
 import { TaskRepository } from '../task/task.repository';
 import { Chat } from './chat';
 import type { AskAgentInput, CreateChatInput, SendChatInput } from './chat.input';
@@ -215,7 +216,7 @@ export class ChatService extends BaseService {
     }
     if (candidates.length === 0) throw new RuleViolation(ChatRoute.NONE);
     const usable = await new AiLoginRepository(tx).usableTools(chat.spaceId, now);
-    const tool = usable.includes('claude') ? 'claude' : (usable[0] ?? null);
+    const tool = LeasePolicy.serverTool(usable);
     if (tool === null) {
       if (!again) chat.ask(ChatRoute.QUESTION, candidates, now);
       await chats.save(chat);

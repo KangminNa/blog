@@ -7,7 +7,7 @@ import { AssetService } from './asset/asset.service';
 import { BasketController } from './basket/basket.api';
 import { BasketQuery } from './basket/basket.query';
 import { BasketService } from './basket/basket.service';
-import { BasketGetTool } from './basket/basket.tool';
+import { BasketGetTool, KeepPageTool } from './basket/basket.tool';
 import { BlogTools } from './blog-tools';
 import { PageController } from './page/page.api';
 import { PageQuery } from './page/page.query';
@@ -35,6 +35,7 @@ import { PublishApprovedHandler } from './post/publish-approved.handler';
     BlogGetPostTool,
     BlogSaveDraftTool,
     BasketGetTool,
+    KeepPageTool,
     BlogTools,
     PublishApprovedHandler,
     PageService,

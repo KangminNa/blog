@@ -66,8 +66,14 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
    * 답(JSON 한 줄)은 서버가 읽는다 (ChatRoute). payload: { tool, route: { chatId } }
    */
   static readonly ROUTE = 'chat_route';
+  /**
+   * 세션 노트 (2차 4단계): vault가 원문을 받으면 요청한다 (task.agentless.requested). 에이전트 없이 서버의 로그인으로,
+   * 러너가 vault에서 원문을 받아(read_transcript) 지시문 틀 session-note로 쓰고 답을 vault에 보낸다(save_note).
+   * 원문은 작업에 싣지 않는다 (비공개 사본이 vault 밖에 남지 않게). 대상은 세션, 대상의 판은 원문 번호
+   */
+  static readonly SESSION_NOTE = 'session_note';
   /** 에이전트 없이 러너가 바로 도는 일 */
-  static readonly AGENTLESS: readonly string[] = [Task.AI_TEST, Task.AI_SIGNIN, Task.ROUTE];
+  static readonly AGENTLESS = [Task.AI_TEST, Task.AI_SIGNIN, Task.ROUTE, Task.SESSION_NOTE];
   /** 서버 브라우저로 하는 작업. 브라우저가 있다고 알린 러너(next_jobs의 browser)에게만 빌려 준다 */
   static readonly BROWSE = 'browse';
   /** 코드 작업: 코드 러너 칸에서 셸로 저장소를 고친다 (docs/코드작업.md) */
@@ -262,7 +268,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     return this.row.kind === Task.AI_TEST;
   }
 
-  /** 에이전트 없이 러너가 바로 도는 일인가 (연결 확인, 웹 로그인) */
+  /** 에이전트 없이 러너가 바로 도는 일인가 (연결 확인, 웹 로그인, 배정, 세션 노트) */
   get agentless(): boolean {
     return Task.AGENTLESS.includes(this.row.kind);
   }
@@ -320,11 +326,6 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     return typeof error === 'string' ? error : null;
   }
 
-  /** 연결 확인이 보는 도구 */
-  get testedTool(): string {
-    return String(this.payload.tool);
-  }
-
   /** 연결 확인이 이 판의 로그인을 보는가. 그사이 토큰을 바꿨으면 아니다 */
   tests(loginVersion: number): boolean {
     return this.payload.loginVersion === loginVersion;
@@ -370,7 +371,12 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
    * 되돌려 써야 한다: 버리면 다음 실행이 이미 쓴 갱신 토큰을 내밀어 로그인이 깨진다
    */
   assertWorkedBy(runnerId: string): void {
-    this.assertLeasedBy(runnerId);
+    if (this.row.leased_by !== runnerId) throw new RuleViolation('다른 러너가 맡은 작업이에요');
+  }
+
+  /** 세션 노트 일인가: 에이전트 없이 돌지만 러너가 지시문 틀(session-note)로 AI에게 줄 글을 만든다 */
+  get writesNote(): boolean {
+    return this.row.kind === Task.SESSION_NOTE;
   }
 
   /** 이 러너가 자격을 넘겨 이미 끝난 웹 로그인인가. 응답을 잃은 러너가 다시 보내도 같은 답을 준다 */
@@ -413,7 +419,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
    * 늘린 임대는 version 없이 저장한다 (TaskRepository.saveLease)
    */
   acceptReport(runnerId: string, now: Date): void {
-    this.assertLeasedBy(runnerId);
+    this.assertWorkedBy(runnerId);
     if (this.cancelled || this.row.status === Task.WAITING) return;
     this.assertHeldBy(runnerId, now);
     this.put('lease_until', new Date(now.getTime() + Task.LEASE_MS));
@@ -423,7 +429,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   assertHeldBy(runnerId: string, now: Date): void {
     if (this.row.status !== Task.RUNNING)
       throw new RuleViolation(`진행 중인 작업이 아니에요 (${this.row.status})`);
-    this.assertLeasedBy(runnerId);
+    this.assertWorkedBy(runnerId);
     if (!this.leaseAlive(now)) throw new RuleViolation('임대가 끝난 작업이에요');
   }
 
@@ -709,7 +715,7 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
     return new JobSubtaskResultView(this.row, agentName, this.answer || null, this.failure);
   }
 
-  /** 에이전트 없는 일(연결 확인 · 웹 로그인 · 배정)의 도구. 없으면 null */
+  /** 에이전트 없는 일(연결 확인 · 웹 로그인 · 배정 · 세션 노트)의 도구. 없으면 null */
   get payloadTool(): string | null {
     const tool = this.payload.tool;
     return typeof tool === 'string' ? tool : null;
@@ -754,10 +760,6 @@ export class Task extends TableEntity<TaskRow, TaskNew> {
   private leaseAlive(now: Date): boolean {
     const until = this.row.lease_until;
     return until !== null && until.getTime() > now.getTime();
-  }
-
-  private assertLeasedBy(runnerId: string): void {
-    if (this.row.leased_by !== runnerId) throw new RuleViolation('다른 러너가 맡은 작업이에요');
   }
 
   private holdLease(runnerId: string | null, until: Date | null): void {

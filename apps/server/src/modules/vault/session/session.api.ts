@@ -2,9 +2,14 @@ import { Controller, Get, Param, Query } from '@nestjs/common';
 import { type Actor, CurrentActor } from '../../platform';
 import { ListSessionsInput, ReadSessionInput } from './session.input';
 import { SessionQuery } from './session.query';
-import type { SessionDetailView, SessionPageView, SessionRevisionView } from './session.view';
+import type {
+  SessionDetailView,
+  SessionPageView,
+  SessionRevisionView,
+  TranscriptView,
+} from './session.view';
 
-// 관리 화면의 세션 시트가 부르는 API. 저장은 MCP 도구(save_session)로만 들어온다.
+// 관리 화면의 세션 시트가 부르는 API. 저장은 MCP 도구(save_session · save_transcript · save_note)로만 들어온다.
 @Controller('api/sessions')
 export class SessionController {
   constructor(private readonly sessions: SessionQuery) {}
@@ -23,5 +28,11 @@ export class SessionController {
   @Get(':id/revisions/:seq')
   revision(@CurrentActor() actor: Actor, @Param() params: unknown): Promise<SessionRevisionView> {
     return this.sessions.revisionOf(actor, ReadSessionInput.from(params));
+  }
+
+  /** 원문 하나 (수집 훅 · 확장이 올린 대화 글, 2차 4단계) */
+  @Get(':id/transcripts/:seq')
+  transcript(@CurrentActor() actor: Actor, @Param() params: unknown): Promise<TranscriptView> {
+    return this.sessions.transcriptOf(actor, ReadSessionInput.from(params));
   }
 }

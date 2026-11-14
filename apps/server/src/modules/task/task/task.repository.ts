@@ -33,7 +33,7 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
    * 빌려 줄 작업을 잠근다. 다른 러너가 잡은 행은 건너뛰고, 담당이 없거나 일을 받을 수 있는 에이전트(ready)의 일만,
    * 우선순위 → 오래된 순. 멈췄거나 쉬는 에이전트의 일과 맡을 권한이 없는 일은 대기열에 남아 뒤의 일을 막지 않는다.
    * 연결 확인과 웹 로그인은 에이전트가 필요 없어 일을 받을 에이전트가 없어도 빌려 준다.
-   * 그 둘은 도구로 거른다 (null이면 거르지 않는다): 연결 확인 · 대화의 배정은 testTools(서버의 로그인이 쓸 수 있는 도구),
+   * 그 둘은 도구로 거른다 (null이면 거르지 않는다): 연결 확인 · 대화의 배정 · 세션 노트는 testTools(서버의 로그인이 쓸 수 있는 도구),
    * 웹 로그인은 signinTools의 도구만.
    * 브라우저 작업(browse)은 브라우저에 붙어 있다고 알린 러너(browser)에게만
    */
@@ -59,6 +59,7 @@ export class TaskRepository extends TableRepository<TaskRow, Task> {
         ${this.scoped(ready)}
         ${this.byTool(Task.AI_TEST, tools.testTools)}
         ${this.byTool(Task.ROUTE, tools.testTools)}
+        ${this.byTool(Task.SESSION_NOTE, tools.testTools)}
         ${this.byTool(Task.AI_SIGNIN, tools.signinTools)}
         ${tools.browser ? this.sql`` : this.sql`AND kind <> ${Task.BROWSE}`}
         ${

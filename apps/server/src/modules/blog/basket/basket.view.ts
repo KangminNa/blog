@@ -48,3 +48,15 @@ export class ToolBasketView {
     };
   }
 }
+
+/** keep_page의 답 (브라우저 확장에게): 담은 소재, saved · duplicate(같은 주소를 이미 담았다) */
+export class KeptPageView {
+  constructor(
+    private readonly itemId: string,
+    private readonly status: string,
+  ) {}
+
+  toJSON() {
+    return { item_id: this.itemId, status: this.status };
+  }
+}

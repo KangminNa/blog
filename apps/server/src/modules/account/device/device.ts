@@ -67,10 +67,17 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
   /** 새 기기의 기본 권한: 올리기 + 공개 읽기. 나머지는 관리 화면에서 켠다 */
   static readonly DEFAULT_SCOPES: readonly string[] = [Actor.UPLOAD, Actor.READ_PUBLIC];
   /**
-   * 소식 기기의 권한 (2차 1-3): 앱이 승인 요청에 scope=news를 실어 만든다 (cairn connect의 훅 · 상태 줄).
-   * 다른 권한과 함께 두지 않아 관리자가 주거나 바꾸지 못한다 (ALL_SCOPES에 없음, DB CHECK devices_news_only)
+   * 앱이 승인 요청의 scope에 이름 하나를 실어 고르는 기기 모양 (이름 → 권한). 섞어 요청하지 못한다 (AuthorizationPolicy).
+   *   news: 소식 기기 (2차 1-3, cairn connect의 훅 · 상태 줄). 다른 권한과 함께 두지 않아 관리자가 주거나 바꾸지 못한다
+   *     (ALL_SCOPES에 없음, DB CHECK devices_news_only)
+   *   collect: 수집 기기 (2차 4단계, 세션이 끝날 때 원문을 올리는 훅). 올리기만
+   *   extension: 브라우저 확장 (2차 4단계). 원문 · 페이지 올리기, 서버 팀에 맡기기, 기다리는 결재 · 질문 보기
    */
-  static readonly NEWS_SCOPES: readonly string[] = [Actor.NEWS];
+  static readonly PROFILES: Readonly<Record<string, readonly string[]>> = {
+    news: [Actor.NEWS],
+    collect: [Actor.UPLOAD],
+    extension: [Actor.UPLOAD, Actor.DELEGATE, Actor.INBOX],
+  };
   static readonly ALL_SCOPES: readonly string[] = [
     Actor.UPLOAD,
     Actor.READ_PUBLIC,
@@ -79,6 +86,7 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
     Actor.WRITE,
     Actor.RUN,
     Actor.DELEGATE,
+    Actor.INBOX,
   ];
 
   /** 러너의 도구 이름 (기기 목록에 보인다) */
@@ -118,7 +126,7 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
 
   /**
    * OAuth로 연결한 기기: 주인이 승인 화면에서 정한 이름과 기본 권한.
-   * 앱이 소식 권한을 요청해 승인됐으면(requested: [news]) 그 권한만 갖는 소식 기기
+   * 앱이 기기 모양(PROFILES: news · collect · extension)을 요청해 승인됐으면 그 모양의 권한만 갖는다
    */
   static connect(
     spaceId: string,
@@ -129,9 +137,14 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
     now: Date,
     requested: readonly string[] | null = null,
   ): Device {
-    const news = requested?.length === 1 && requested[0] === Actor.NEWS;
-    const scopes = news ? Device.NEWS_SCOPES : Device.DEFAULT_SCOPES;
+    const scopes = Device.scopesFor(requested);
     return Device.open(spaceId, userId, name, scopes, clientId, clientName, now);
+  }
+
+  /** 앱이 요청한 기기 모양(PROFILES의 이름 하나)의 권한. 요청이 없거나 모르는 이름이면 기본 권한 */
+  static scopesFor(requested: readonly string[] | null): readonly string[] {
+    const [name] = requested ?? [];
+    return (requested?.length === 1 && name && Device.PROFILES[name]) || Device.DEFAULT_SCOPES;
   }
 
   /** 러너: OAuth 없이 콘솔에서 만든다. 일을 빌리는 권한만 갖고, 토큰은 만들 때 한 번만 보인다 */

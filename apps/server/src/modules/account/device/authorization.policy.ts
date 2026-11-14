@@ -1,4 +1,5 @@
-import { Actor, type SecretBox } from '../../platform';
+import type { SecretBox } from '../../platform';
+import { Device } from './device';
 import type { AuthorizeInput } from './device.input';
 import { ConsentInput } from './device.input';
 import { OAuthClient } from './oauth-client';
@@ -10,12 +11,14 @@ import { OAuthError } from './oauth-error';
 //   문제가 없으면: 승인 화면(/connect)으로. PKCE는 S256만 받는다
 //   ChatGPT·Claude 앱의 주소인데 블로그가 앱 연결을 껐으면: 돌려보내지 않고 400
 //   돌려보낼 때는 iss(이 인가 서버 주소)를 붙인다 (RFC 9207)
-// 요청한 권한(scope)은 news 하나만 본다 (소식 기기, 2차 1-3). 나머지 이름은 보지 않는다: 새 기기는 기본 권한이고
-// 넓히기는 관리자가 기기 메뉴에서 한다 (AI 도구가 무엇을 실어 보내든 지금의 연결이 그대로 돈다).
-// news는 다른 권한과 함께 요청할 수 없고, 이 컴퓨터로 돌아가는 연결만 요청할 수 있다 (앱에 공간의 소식을 내주지 않게).
+// 요청한 권한(scope)은 기기 모양의 이름(Device.PROFILES: news · collect · extension)만 본다. 나머지 이름은 보지 않는다:
+// 새 기기는 기본 권한이고 넓히기는 관리자가 기기 메뉴에서 한다 (AI 도구가 무엇을 실어 보내든 지금의 연결이 그대로 돈다).
+// 모양은 하나만, 다른 권한과 섞지 않는다. news · collect는 이 컴퓨터로 돌아가는 연결만 (앱에 공간의 소식 · 올리기를 내주지 않게),
+// extension은 브라우저 확장의 주소(chromiumapp.org)만, 확장의 주소는 extension만 요청한다 (2차 4단계).
 export class AuthorizationPolicy {
   /** 요청해도 되는 권한. 그 밖의 이름(offline_access 빼고)과 함께 오면 invalid_scope */
-  private static readonly REQUESTABLE: readonly string[] = [Actor.NEWS];
+  private static readonly REQUESTABLE: readonly string[] = Object.keys(Device.PROFILES);
+  private static readonly EXTENSION = 'extension';
   /** 갱신 토큰을 쓴다는 표시. 권한이 아니라 보지 않는다 */
   private static readonly OFFLINE = 'offline_access';
 
@@ -69,12 +72,16 @@ export class AuthorizationPolicy {
     );
   }
 
-  /** 요청한 권한으로 연결할 수 없는 까닭. news가 없으면 늘 null (다른 이름은 보지 않는다) */
+  /** 요청한 권한으로 연결할 수 없는 까닭. 기기 모양을 요청하지 않은 이 컴퓨터 · 앱의 연결은 늘 null (다른 이름은 보지 않는다) */
   private static scopeProblem(names: readonly string[], redirectUri: string): string | null {
-    if (!names.some((n) => AuthorizationPolicy.REQUESTABLE.includes(n))) return null;
-    if (names.length > 1) return '소식 권한(news)은 다른 권한과 함께 요청할 수 없어요';
-    if (OAuthClient.appOf(redirectUri))
-      return '소식 권한(news)은 이 컴퓨터의 도구만 요청할 수 있어요';
+    const extension = OAuthClient.isExtension(redirectUri);
+    const [asked] = names.filter((n) => AuthorizationPolicy.REQUESTABLE.includes(n));
+    if (asked === undefined) return extension ? '브라우저 확장은 extension 권한을 요청해요' : null;
+    if (names.length > 1) return `${asked} 권한은 다른 권한과 함께 요청할 수 없어요`;
+    if (asked === AuthorizationPolicy.EXTENSION)
+      return extension ? null : 'extension 권한은 브라우저 확장만 요청할 수 있어요';
+    if (extension || OAuthClient.appOf(redirectUri))
+      return `${asked} 권한은 이 컴퓨터의 도구만 요청할 수 있어요`;
     return null;
   }
 

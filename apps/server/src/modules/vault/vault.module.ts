@@ -13,6 +13,9 @@ import { NeighborsTool } from './graph/graph.tool';
 import { PostMarkHandler } from './post-mark/post-mark.handler';
 import { PostMarkService } from './post-mark/post-mark.service';
 import { PostWikiQuery } from './post-mark/post-wiki.query';
+import { ProjectRuleController } from './project/project-rule.api';
+import { ProjectRuleQuery } from './project/project-rule.query';
+import { ProjectRuleService } from './project/project-rule.service';
 import { SessionController } from './session/session.api';
 import { SessionQuery } from './session/session.query';
 import { SessionService } from './session/session.service';
@@ -22,6 +25,7 @@ import {
   SaveSessionTool,
   SearchSessionsTool,
 } from './session/session.tool';
+import { ReadTranscriptTool, SaveNoteTool, SaveTranscriptTool } from './session/transcript.tool';
 import { TidyController } from './tidy/tidy.api';
 import { TidyQuery } from './tidy/tidy.query';
 import { TidyService } from './tidy/tidy.service';
@@ -38,7 +42,7 @@ import { WikiScoreQuery } from './wiki-score/wiki-score.query';
 import { WikiScoreService } from './wiki-score/wiki-score.service';
 import { WikiStaleJob } from './wiki-score/wiki-stale.job';
 
-// AI 작업 세션과 그래프: 세션 저장·찾기·읽기, wiki · 카테고리, 변경 묶음(검토·되돌리기), 세션 정리 요청,
+// AI 작업 세션과 그래프: 세션 저장·찾기·읽기(원문 · 프로젝트 규칙 포함), wiki · 카테고리, 변경 묶음(검토·되돌리기), 세션 정리 요청,
 // 그래프 보기, 글 자리 사본, 보관 형식 내보내기, wiki 점수.
 @Module({
   providers: [
@@ -49,6 +53,11 @@ import { WikiStaleJob } from './wiki-score/wiki-stale.job';
     CheckSessionTool,
     SearchSessionsTool,
     GetSessionTool,
+    SaveTranscriptTool,
+    ReadTranscriptTool,
+    SaveNoteTool,
+    ProjectRuleQuery,
+    ProjectRuleService,
     ReviewPolicy,
     ChangeService,
     ChangeQuery,
@@ -73,6 +82,7 @@ import { WikiStaleJob } from './wiki-score/wiki-stale.job';
   ],
   controllers: [
     SessionController,
+    ProjectRuleController,
     WikiController,
     WikiScoreController,
     CategoryController,

@@ -113,7 +113,7 @@ describe('AI 도구가 찾아오기', () => {
       assert.equal(bad.json().error, 'invalid_redirect_uri');
       assert.match(
         String(bad.json().error_description),
-        /이 컴퓨터\(http:\/\/localhost\)나 ChatGPT·Claude 앱만/,
+        /이 컴퓨터\(http:\/\/localhost\) · 브라우저 확장 · ChatGPT·Claude 앱만/,
       );
     }
     for (const uri of ['http://127.0.0.1:5555/callback', 'http://[::1]:5555/callback'])
@@ -388,6 +388,8 @@ describe('MCP', () => {
         'search_wikis',
         'get_wiki',
         'neighbors',
+        'save_transcript',
+        'keep_page',
       ],
       '기본 권한(올리기 + 공개 읽기)으로 보이는 도구',
     );
@@ -402,6 +404,8 @@ describe('MCP', () => {
       ['search_wikis', true, false],
       ['get_wiki', true, false],
       ['neighbors', true, false],
+      ['save_transcript', false, false],
+      ['keep_page', false, false],
     ]);
     const instructions = String(
       (init.json().result as { instructions?: string }).instructions ?? '',
@@ -554,6 +558,45 @@ describe('소식 기기 (scope=news)', () => {
     }
   });
 
+  test('collect는 올리기만, extension은 확장의 주소로만 올리기 · 맡기기 · 결재 보기를 받는다 (2차 4단계)', async () => {
+    const shownFor = async (clientId: string, scope: string, redirect = REDIRECT) => {
+      const request = requestOf(await ask(clientId, pkce().challenge, scope, redirect));
+      return (await api.get(`/api/connect?request=${encodeURIComponent(request)}`, owner)).json();
+    };
+    const local = await register();
+    assert.deepEqual((await shownFor(local, 'collect')).scopes, ['upload']);
+
+    const extension = `https://${'b'.repeat(32)}.chromiumapp.org/`;
+    const ext = await register(extension);
+    // 확장의 주소는 확장 id(a~p 32자)의 맨 위 경로만
+    for (const uri of [
+      'https://short.chromiumapp.org/',
+      `https://${'q'.repeat(32)}.chromiumapp.org/`,
+      `https://${'a'.repeat(32)}.chromiumapp.org/cb`,
+    ]) {
+      const bad = await fresh.request('POST', '/oauth/register', TestUser.visitor, {
+        client_name: 'ext',
+        redirect_uris: [uri],
+      });
+      assert.equal(bad.status, 400, uri);
+    }
+    const shown = await shownFor(ext, 'extension offline_access', extension);
+    assert.deepEqual(shown.scopes, ['upload', 'delegate', 'inbox']);
+    assert.equal(shown.redirectHost, `${'b'.repeat(32)}.chromiumapp.org`);
+    assert.equal(shown.app, null);
+
+    // 확장의 주소는 extension만, extension은 확장의 주소만, collect는 다른 권한과 섞지 않는다
+    for (const [clientId, scope, redirect] of [
+      [ext, '', extension],
+      [ext, 'collect', extension],
+      [local, 'extension', REDIRECT],
+      [local, 'collect upload', REDIRECT],
+    ] as const) {
+      const back = new URL((await ask(clientId, pkce().challenge, scope, redirect)).location ?? '');
+      assert.equal(back.searchParams.get('error'), 'invalid_scope', `${scope} → ${redirect}`);
+    }
+  });
+
   test('news가 없는 요청은 지금처럼: 다른 권한 이름은 보지 않고 기본 권한으로 승인 화면에 간다', async () => {
     const clientId = await register();
     const request = requestOf(
@@ -589,6 +632,8 @@ describe('러너 추가', () => {
     const tools = await api.mcp(runner.token, 'tools/list');
     const names = (tools.json().result as { tools: { name: string }[] }).tools.map((t) => t.name);
     assert.deepEqual(names, [
+      'read_transcript',
+      'save_note',
       'next_jobs',
       'report_progress',
       'submit_result',

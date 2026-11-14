@@ -8,6 +8,7 @@ import {
   SaveSessionTool,
   SearchSessionsTool,
 } from './session/session.tool';
+import { ReadTranscriptTool, SaveNoteTool, SaveTranscriptTool } from './session/transcript.tool';
 import texts from './vault.tools.ko.json';
 import { GetWikiTool, SearchWikisTool } from './wiki/wiki.tool';
 
@@ -27,6 +28,9 @@ export class VaultTools {
     getWiki: GetWikiTool,
     neighbors: NeighborsTool,
     submitChanges: SubmitChangesTool,
+    saveTranscript: SaveTranscriptTool,
+    readTranscript: ReadTranscriptTool,
+    saveNote: SaveNoteTool,
   ) {
     this.tools = [
       checkSession,
@@ -37,6 +41,9 @@ export class VaultTools {
       getWiki,
       neighbors,
       submitChanges,
+      saveTranscript,
+      readTranscript,
+      saveNote,
     ];
   }
 }

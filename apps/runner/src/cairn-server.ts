@@ -3,6 +3,7 @@ import type { HeldButton } from './browser-page';
 import { Job } from './job';
 import type { Json } from './json';
 import type { McpClient } from './mcp-client';
+import { NoteSource } from './note-source';
 import { type ProgressBatch, ProgressState, type RunResult } from './progress';
 import type { RunnerAbility } from './runner-ability';
 
@@ -217,6 +218,23 @@ export class CairnServer {
       note: approval.note,
     });
     return body.text('approval_id');
+  }
+
+  /** 세션 노트 일의 원문 (vault read_transcript, 쥔 일의 것만). 다른 일이거나 원문이 없으면 ToolRefused */
+  async readTranscript(taskId: string, stop?: AbortSignal): Promise<NoteSource> {
+    const body = await this.mcp.call('read_transcript', { task_id: taskId }, 0, stop);
+    return new NoteSource(
+      body.optionalText('title'),
+      body.text('tool'),
+      body.optionalText('project'),
+      body.text('text'),
+    );
+  }
+
+  /** 세션 노트 일의 AI 답을 vault에 보낸다 (save_note). 답: 저장 결과 한 줄 (saved · 판 2 등). JSON이 아니면 ToolRefused */
+  async saveNote(taskId: string, answer: string): Promise<string> {
+    const body = await this.mcp.call('save_note', { task_id: taskId, answer });
+    return `${body.text('status')} · 판 ${body.number('seq')}`;
   }
 
   /** browser-tabs: 빌린 browse 작업이 어디서 도는지 (사이트 · 둘러보기). 패키지가 꺼져 있거나 사이트가 없으면 ToolRefused */

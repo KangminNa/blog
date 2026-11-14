@@ -227,3 +227,56 @@ describe('지우기 (DELETE /api/basket/items/:id)', () => {
     assert.equal((await api.request('DELETE', '/api/basket/items/x', owner)).status, 400);
   });
 });
+
+describe('페이지 보관 (MCP keep_page, 브라우저 확장)', () => {
+  const keep = (token: string, args: Json) =>
+    tool(token, 'keep_page', { request_id: randomUUID(), title: '읽은 글', ...args });
+
+  test('upload 기기가 지금 페이지를 링크 소재로 담고, 읽은 글은 비밀값을 지워 메모로 둔다', async () => {
+    const url = `https://example.com/read/${randomUUID()}`;
+    const kept = await keep(laptop, {
+      url,
+      text: `본문 첫 줄\n키 sk-ant-api03-${'k'.repeat(40)}`,
+    });
+    assert.equal(kept.ok, true, JSON.stringify(kept.body));
+    assert.equal(kept.body.status, 'saved');
+    const [item] = (await items()) as (Item & { url: string; note: string })[];
+    assert.deepEqual([item?.id, item?.kind, item?.url], [kept.body.item_id, 'link', url]);
+    assert.match(item?.note ?? '', /본문 첫 줄/);
+    assert.ok(!(item?.note ?? '').includes('sk-ant-api03'), '비밀값은 지운다');
+    const [row] = await db.sql<{ actor_type: string }[]>`
+      SELECT actor_type FROM work.basket_items WHERE id = ${String(kept.body.item_id)}`;
+    assert.equal(row?.actor_type, 'device');
+  });
+
+  test('같은 주소는 한 번만 (duplicate), 같은 request_id도 한 번만', async () => {
+    const url = `https://example.com/twice/${randomUUID()}`;
+    const first = await keep(laptop, { url });
+    const again = await keep(laptop, { url, title: '다른 제목' });
+    assert.deepEqual([again.body.status, again.body.item_id], ['duplicate', first.body.item_id]);
+    const requestId = randomUUID();
+    const one = await tool(laptop, 'keep_page', {
+      request_id: requestId,
+      url: `${url}?b`,
+      title: 'b',
+    });
+    const two = await tool(laptop, 'keep_page', {
+      request_id: requestId,
+      url: `${url}?b`,
+      title: 'b',
+    });
+    assert.equal(one.body.item_id, two.body.item_id);
+    assert.equal((await items()).length, 2);
+  });
+
+  test('주소는 http · https만, 방문자는 부르지 못한다', async () => {
+    const bad = await keep(laptop, { url: 'javascript:alert(1)' });
+    assert.equal(bad.ok, false);
+    const visitor = await api.mcp(null, 'tools/call', {
+      name: 'keep_page',
+      arguments: { request_id: randomUUID(), url: 'https://example.com', title: 'x' },
+    });
+    assert.equal(visitor.status, 401);
+    assert.equal((await items()).length, 0);
+  });
+});

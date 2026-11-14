@@ -13,13 +13,23 @@ export class SessionRepository extends NodeRepository<LoadedSession, Session> {
     return Session.restore(row);
   }
 
-  /** 세션 한 줄과 휴지통 표시. 휴지통의 세션도 읽는다 */
+  /** 세션 한 줄과 휴지통 표시. 휴지통의 세션도 읽는다. 잠글 때는 있는 판 · 원문의 해시도 (새 판을 쌓을 수 있게) */
   protected override select(spaceId: string, id: string, lock: boolean) {
     return this.sql`
       SELECT s.*, s.node_id AS id, n.deleted_at
+        ${lock ? this.sql`, ${this.hashes()}` : this.sql``}
       FROM vault.sessions s JOIN vault.nodes n ON n.id = s.node_id
       WHERE s.node_id = ${id} AND s.space_id = ${spaceId}
       ${lock ? this.sql`FOR UPDATE OF s` : this.sql``}`;
+  }
+
+  /** 있는 판 · 원문의 내용 해시 → 번호 (LoadedSession의 known · known_transcripts) */
+  private hashes() {
+    return this.sql`
+      (SELECT jsonb_object_agg(r.content_hash, r.seq)
+         FROM vault.session_revisions r WHERE r.session_id = s.node_id) AS known,
+      (SELECT jsonb_object_agg(t.content_hash, t.seq)
+         FROM vault.session_transcripts t WHERE t.session_id = s.node_id) AS known_transcripts`;
   }
 
   /**
@@ -37,9 +47,7 @@ export class SessionRepository extends NodeRepository<LoadedSession, Session> {
     await this.sql`SELECT pg_advisory_xact_lock(hashtextextended(${place}, 0))`;
     return this.maybeOne(
       await this.sql`
-        SELECT s.*, s.node_id AS id,
-               (SELECT jsonb_object_agg(r.content_hash, r.seq)
-                  FROM vault.session_revisions r WHERE r.session_id = s.node_id) AS known
+        SELECT s.*, s.node_id AS id, ${this.hashes()}
         FROM vault.sessions s
         WHERE s.space_id = ${spaceId} AND s.device_id = ${deviceId}
           AND s.tool = ${tool} AND s.source_session_id = ${sourceSessionId}
@@ -59,11 +67,13 @@ export class SessionRepository extends NodeRepository<LoadedSession, Session> {
     return update.count > 0;
   }
 
-  /** 새 판 (판은 추가만) */
+  /** 새 판 · 원문 (둘 다 추가만) */
   protected override async saveParts(session: Session): Promise<void> {
-    const revision = session.addedRevision;
-    if (!revision) return;
-    await this.sql`INSERT INTO vault.session_revisions ${this.sql(revision as never)}`;
+    const { addedRevision: revision, addedTranscript: transcript } = session;
+    if (transcript)
+      await this.sql`INSERT INTO vault.session_transcripts ${this.sql(transcript as never)}`;
+    if (revision)
+      await this.sql`INSERT INTO vault.session_revisions ${this.sql(revision as never)}`;
     session.revisionSaved();
   }
 }

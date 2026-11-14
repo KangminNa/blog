@@ -4,10 +4,12 @@ import type {
   WaitingChangePageView,
 } from '../../../server/src/modules/vault/change/change.view';
 import type { GraphView } from '../../../server/src/modules/vault/graph/graph.view';
+import type { ProjectRuleListView } from '../../../server/src/modules/vault/project/project-rule.view';
 import type {
   SessionDetailView,
   SessionPageView,
   SessionRevisionView,
+  TranscriptView,
 } from '../../../server/src/modules/vault/session/session.view';
 import type {
   TidyBacklogView,
@@ -32,8 +34,12 @@ export type GraphNode = Graph['nodes'][number];
 export type SessionPage = ReturnType<SessionPageView['toJSON']>;
 /** 세션의 판 하나: 그 판의 칸과 저장 전에 지운 비밀값 */
 export type SessionRevision = ReturnType<SessionRevisionView['toJSON']>;
-/** 세션 하나: 지금 판(head)과 판 기록 */
+/** 세션 하나: 지금 판(head, 원문만 있으면 null)과 판 · 원문 기록 */
 export type SessionDetail = ReturnType<SessionDetailView['toJSON']>;
+/** 세션의 원문 하나 (수집 훅 · 확장이 올린 대화 글) */
+export type Transcript = ReturnType<TranscriptView['toJSON']>;
+/** 프로젝트별 원문 모으기 */
+export type ProjectRules = ReturnType<ProjectRuleListView['toJSON']>;
 export type WikiPage = ReturnType<WikiPageView['toJSON']>;
 export type WikiSummary = WikiPage['wikis'][number];
 export type WikiDetail = ReturnType<WikiDetailView['toJSON']>;

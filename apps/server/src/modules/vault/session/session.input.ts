@@ -1,5 +1,6 @@
 import { BaseRequest, type RequestFields } from '../../platform';
 import { SessionNote } from './session-note';
+import { SessionTranscript } from './session-transcript';
 
 /**
  * 세션 저장 (MCP `save_session`). AI 도구가 보내는 모양 그대로 snake_case.
@@ -47,6 +48,64 @@ export class SaveSessionInput extends BaseRequest {
           name === 'quotes' ? SessionNote.QUOTES_MAX : SessionNote.SECTION_MAX,
         ) ?? '',
       ]),
+    );
+  }
+}
+
+/**
+ * 원문 올리기 (MCP `save_transcript`, 2차 4단계). 수집 훅 · 확장이 대화 원문을 보낸다 (내 컴퓨터에서 민감정보를 지운 것).
+ * 같은 기기 · 도구 · 대화 id는 같은 세션이다. 제목은 노트가 오기 전에 보일 이름
+ */
+export class SaveTranscriptInput extends BaseRequest {
+  private constructor(
+    readonly requestId: string,
+    readonly tool: string,
+    readonly sourceSessionId: string,
+    readonly project: string | null,
+    readonly title: string | null,
+    readonly startedAt: Date | null,
+    readonly text: string,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): SaveTranscriptInput {
+    return BaseRequest.read(
+      raw,
+      (f) =>
+        new SaveTranscriptInput(
+          f.uuid('request_id'),
+          f.text('tool', 40),
+          f.text('source_session_id', 200),
+          f.optionalText('project', 100),
+          f.optionalText('title', SessionNote.TITLE_MAX),
+          f.optionalDate('started_at'),
+          f.text('text', SessionTranscript.MAX),
+        ),
+    );
+  }
+}
+
+/** 서버 러너의 세션 노트 일 (MCP `read_transcript` · `save_note`): 러너가 쥔 일의 id, 노트면 AI의 답 */
+export class NoteWorkInput extends BaseRequest {
+  private static readonly ANSWER_MAX = 200_000;
+
+  private constructor(
+    readonly taskId: string,
+    /** AI의 답 (지시문 틀 session-note의 JSON). 읽기에는 없다 */
+    readonly answer: string,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): NoteWorkInput {
+    return BaseRequest.read(
+      raw,
+      (f) =>
+        new NoteWorkInput(
+          f.uuid('task_id'),
+          f.optionalText('answer', NoteWorkInput.ANSWER_MAX) ?? '',
+        ),
     );
   }
 }

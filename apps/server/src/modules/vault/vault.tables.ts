@@ -198,6 +198,20 @@ export interface SessionRevisionRow {
 }
 export type SessionRevisionNew = Partial<SessionRevisionRow> & Pick<SessionRevisionRow, 'id' | 'session_id' | 'seq' | 'kind' | 'body_md' | 'sections' | 'section_hashes' | 'content_hash' | 'actor_type'>;
 
+/** vault.session_transcripts */
+export interface SessionTranscriptRow {
+  id: string;
+  session_id: string;
+  seq: number;
+  text: string;
+  content_hash: string;
+  redactions: unknown | null;
+  actor_type: string;
+  actor_id: string | null;
+  created_at: Date;
+}
+export type SessionTranscriptNew = Partial<SessionTranscriptRow> & Pick<SessionTranscriptRow, 'id' | 'session_id' | 'seq' | 'text' | 'content_hash' | 'actor_type'>;
+
 /** vault.sessions */
 export interface SessionRow {
   node_id: string;
@@ -218,6 +232,8 @@ export interface SessionRow {
   meta: unknown;
   wiki_id: string | null;
   tidy_requested_seq: number;
+  transcript_count: number;
+  noted_seq: number;
 }
 export type SessionNew = Partial<SessionRow> & Pick<SessionRow, 'node_id' | 'space_id' | 'device_id' | 'tool' | 'source_session_id'>;
 

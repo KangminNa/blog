@@ -1,13 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { Actor, BaseQuery, Database, NotFound, Redaction, SensitivePolicy } from '../../platform';
-import { sessionRevisions } from '../vault.schema';
+import {
+  Actor,
+  BaseQuery,
+  Database,
+  Leases,
+  NotFound,
+  Redaction,
+  SensitivePolicy,
+} from '../../platform';
+import { sessionRevisions, sessionTranscripts } from '../vault.schema';
 import type { SessionRevisionRow, SessionRow } from '../vault.tables';
 import { Session } from './session';
 import {
   type CheckSessionInput,
   type GetSessionInput,
   ListSessionsInput,
+  type NoteWorkInput,
   type ReadSessionInput,
   SearchSessionsInput,
 } from './session.input';
@@ -26,8 +35,14 @@ import {
   SessionRevisionView,
   SessionSectionView,
   SessionSummaryView,
+  type TranscriptJobRow,
+  TranscriptJobView,
+  type TranscriptStampRow,
+  TranscriptStampView,
+  TranscriptView,
 } from './session.view';
 import { SessionNote } from './session-note';
+import { SessionTranscript } from './session-transcript';
 
 // 세션 읽기. 관리 화면의 목록·상세·판은 비공개까지 볼 수 있는 요청자(주인, read_all 기기)만,
 // AI 도구의 찾기·읽기(search · note)는 read_public이나 read_all 중 하나로, read_public은 공개 세션만 본다.
@@ -42,6 +57,7 @@ export class SessionQuery extends BaseQuery {
   constructor(
     db: Database,
     private readonly sensitive: SensitivePolicy,
+    private readonly leases: Leases,
   ) {
     super(db);
   }
@@ -95,17 +111,47 @@ export class SessionQuery extends BaseQuery {
     );
   }
 
+  /** 세션 하나: 지금 판(원문만 있고 노트가 아직 없으면 null), 판 기록, 원문 기록 (내용 없이) */
   async get(actor: Actor, req: ReadSessionInput): Promise<SessionDetailView> {
     actor.assertCan(Actor.READ_ALL);
     const session = await this.find(actor, req.id);
     const history = await this.sql<RevisionStampRow[]>`
       SELECT seq, kind, actor_type, created_at, coalesce(jsonb_array_length(redactions), 0) AS redactions
       FROM vault.session_revisions WHERE session_id = ${req.id} ORDER BY seq DESC`;
+    const transcripts = await this.sql<TranscriptStampRow[]>`
+      SELECT seq, char_length(text) AS chars, created_at,
+             coalesce(jsonb_array_length(redactions), 0) AS redactions
+      FROM vault.session_transcripts WHERE session_id = ${req.id} ORDER BY seq DESC`;
     return new SessionDetailView(
       session,
-      SessionQuery.revision(await this.headOf(session)),
+      session.head_revision_id === null ? null : SessionQuery.revision(await this.headOf(session)),
       history.map((r) => new RevisionStampView(r)),
+      transcripts.map((t) => new TranscriptStampView(t)),
     );
+  }
+
+  /** 원문 하나 (관리 화면의 원문 보기). 지운 민감정보는 [지움: 종류]로 남아 있다 */
+  async transcriptOf(actor: Actor, req: ReadSessionInput): Promise<TranscriptView> {
+    actor.assertCan(Actor.READ_ALL);
+    await this.find(actor, req.id);
+    const row = await this.row(sessionTranscripts, { session_id: req.id, seq: req.seq ?? 0 });
+    if (!row) throw new NotFound(`원문 ${req.seq}이 없어요`);
+    return new TranscriptView(row);
+  }
+
+  /**
+   * 서버 러너가 세션 노트를 쓸 원문 (MCP read_transcript): 이 러너가 지금 쥔 세션 노트 일의 세션 · 원문만
+   * (platform Leases로 묻는다). AI에게 줄 만큼 가운데를 줄인 글
+   */
+  async transcriptFor(actor: Actor, req: NoteWorkInput): Promise<TranscriptJobView> {
+    actor.assertCan(Actor.RUN);
+    const [sessionId, seq] = Session.noteWork(await this.leases.of(actor, req.taskId));
+    const [row] = await this.sql<TranscriptJobRow[]>`
+      SELECT s.node_id, s.tool, s.project, s.head_title, s.started_at, t.seq, t.text
+      FROM vault.sessions s JOIN vault.session_transcripts t ON t.session_id = s.node_id
+      WHERE s.node_id = ${sessionId} AND s.space_id = ${actor.requireSpace()} AND t.seq = ${seq}`;
+    if (!row) throw new NotFound('원문을 찾을 수 없어요');
+    return new TranscriptJobView(row, SessionTranscript.restore(row.text).forPrompt());
   }
 
   /** 판 하나 (지난 판 보기) */

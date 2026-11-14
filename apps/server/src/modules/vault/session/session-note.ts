@@ -18,6 +18,10 @@ export class SessionNote {
   /** 인용은 핵심 원문만: 넘으면 AI가 줄여서 다시 보낸다 */
   static readonly QUOTES_MAX = 4_000;
   static readonly SECTION_MAX = 20_000;
+  /** 제목 · 태그의 길이와 태그 수 (save_session의 입력과 같다) */
+  static readonly TITLE_MAX = 200;
+  static readonly TAG_MAX = 40;
+  static readonly TAGS_MAX = 20;
 
   private constructor(
     readonly title: string,
@@ -45,6 +49,44 @@ export class SessionNote {
     if ([...filled.values()].every((text) => !text))
       throw new RuleViolation('한 일 · 결정 · 막힌 점 · 인용 · 기타 중 하나는 써 주세요');
     return note;
+  }
+
+  /**
+   * 서버 러너의 답에서 (지시문 틀 session-note: JSON 한 덩어리, 2차 4단계). 칸은 글이나 글 목록(줄마다 "- "),
+   * 길면 자른다 (다시 보내 달라고 할 AI가 없다). JSON이 아니거나 제목 · 내용이 없으면 RuleViolation
+   */
+  static fromAnswer(answer: string): SessionNote {
+    const start = answer.indexOf('{');
+    const json =
+      start < 0 ? null : SessionNote.parsed(answer.slice(start, answer.lastIndexOf('}') + 1));
+    if (json === null) throw new RuleViolation('노트를 JSON으로 읽지 못했어요');
+    const text = (value: unknown, max: number): string => {
+      const items = Array.isArray(value) ? value.filter((v) => typeof v === 'string') : null;
+      const joined = items ? items.map((v) => `- ${v.trim()}`).join('\n') : value;
+      return typeof joined === 'string' ? joined.trim().slice(0, max) : '';
+    };
+    const tags = Array.isArray(json.tags) ? json.tags.filter((t) => typeof t === 'string') : [];
+    return SessionNote.write(
+      text(json.title, SessionNote.TITLE_MAX),
+      tags.slice(0, SessionNote.TAGS_MAX).map((t) => t.slice(0, SessionNote.TAG_MAX)),
+      new Map(
+        SessionNote.SECTIONS.map(([name]) => [
+          name,
+          text(json[name], name === 'quotes' ? SessionNote.QUOTES_MAX : SessionNote.SECTION_MAX),
+        ]),
+      ),
+    );
+  }
+
+  private static parsed(text: string): Record<string, unknown> | null {
+    try {
+      const value: unknown = JSON.parse(text);
+      return typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
   }
 
   /** 판(session_revisions)의 sections·redactions 칸에서 */

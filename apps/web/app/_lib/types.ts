@@ -18,4 +18,5 @@ export const SCOPE_LABELS: Record<string, string> = {
   delegate: '에이전트에게 맡기기',
   sandbox: '샌드박스',
   news: '소식 읽기',
+  inbox: '결재 · 질문 보기',
 };

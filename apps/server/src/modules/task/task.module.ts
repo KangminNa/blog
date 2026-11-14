@@ -35,6 +35,8 @@ import { GoalRunHandler } from './goal-run/goal-run.handler';
 import { GoalRunQuery } from './goal-run/goal-run.query';
 import { GoalRunService } from './goal-run/goal-run.service';
 import { ReportRoundTool } from './goal-run/goal-run.tool';
+import { InboxQuery } from './inbox/inbox.query';
+import { InboxTool } from './inbox/inbox.tool';
 import { OutputController } from './output/output.api';
 import { OutputPolicy } from './output/output.policy';
 import { OutputQuery } from './output/output.query';
@@ -52,6 +54,8 @@ import { RepoSkillGateway } from './skill/repo-skill.gateway';
 import { SkillController } from './skill/skill.api';
 import { SkillQuery } from './skill/skill.query';
 import { SkillService } from './skill/skill.service';
+import { AgentlessService } from './task/agentless.service';
+import { AgentlessRequestHandler } from './task/agentless-request.handler';
 import { DelegateTaskTool } from './task/delegate.tool';
 import { LeaseJob } from './task/lease.job';
 import { SubtaskSettledHandler } from './task/subtask-settled.handler';
@@ -106,6 +110,10 @@ import { WebPageGateway } from './web/web-page.gateway';
     DelegateTaskTool,
     TaskTools,
     TaskRequestedHandler,
+    AgentlessRequestHandler,
+    AgentlessService,
+    InboxQuery,
+    InboxTool,
     SubtaskSettledHandler,
     ApprovalResultHandler,
     LeaseJob,
@@ -188,10 +196,12 @@ export class TaskModule implements OnModuleInit {
     private readonly chatCards: ChatCardHandler,
     private readonly chatRoutes: ChatRouteHandler,
     private readonly chatRouteJob: ChatRouteJob,
+    private readonly agentless: AgentlessRequestHandler,
   ) {}
 
   onModuleInit(): void {
     this.workers.on(Task.REQUESTED, this.requested);
+    this.workers.on(AgentlessRequestHandler.TOPIC, this.agentless);
     this.workers.on(Task.CHANGED, this.settled);
     this.workers.on(Task.CHANGED, this.chatUpdates);
     this.workers.on(Task.CHANGED, this.goalRuns);

@@ -5,10 +5,12 @@ import { OAuthClientView } from './device.view';
 import { OAuthError } from './oauth-error';
 
 // AI 도구(Claude Code 등)가 스스로 등록한 OAuth 클라이언트 (동적 등록, RFC 7591). 비밀값이 없는 공개 클라이언트다.
-// 돌려보낼 주소는 둘만 받는다.
+// 돌려보낼 주소는 셋만 받는다.
 //   이 컴퓨터(localhost · 127.0.0.1 · [::1]): Claude Code · Codex 등. 남이 보낸 승인 링크를 눌러도 열쇠(승인 코드)는
 //     내 컴퓨터로만 가서 그 사람이 가져갈 수 없다.
 //   ChatGPT · Claude 앱의 정해진 주소: 블로그에서 "앱 연결 허용"을 켰을 때만 (SpaceView.hostedApps).
+//   브라우저 확장의 주소(https://<확장 id 32자>.chromiumapp.org/, 2차 4단계): 브라우저가 그 확장에게만 넘기는 주소라
+//     이 컴퓨터와 같다 (chrome.identity.launchWebAuthFlow). 확장은 extension 권한만 요청한다 (AuthorizationPolicy).
 // 열쇠가 id가 아니라 client_id이고 고치지 않는 행이라 TableEntity가 아니라 BaseEntity다.
 export class OAuthClient extends BaseEntity {
   private constructor(private readonly row: OauthClientNew) {
@@ -21,6 +23,14 @@ export class OAuthClient extends BaseEntity {
     ['ChatGPT', /^https:\/\/chatgpt\.com\/connector_platform_oauth_redirect$/],
     ['ChatGPT', /^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]+$/],
   ];
+
+  /** 브라우저 확장이 열쇠를 돌려받는 주소. 확장 id는 a~p 32자 */
+  private static readonly EXTENSION = /^https:\/\/[a-p]{32}\.chromiumapp\.org\/$/;
+
+  /** 돌려보낼 주소가 브라우저 확장의 것인가 */
+  static isExtension(redirectUri: string): boolean {
+    return OAuthClient.EXTENSION.test(redirectUri);
+  }
 
   /** 돌려보낼 주소가 ChatGPT·Claude 앱의 것이면 그 앱 이름 */
   static appOf(redirectUri: string): string | null {
@@ -97,10 +107,11 @@ export class OAuthClient extends BaseEntity {
       OAuthClient.assertAppAllowed(uri, hostedApps, 'invalid_redirect_uri');
       return;
     }
+    if (OAuthClient.isExtension(uri)) return;
     if (!loopback || (url.protocol !== 'http:' && url.protocol !== 'https:'))
       throw new OAuthError(
         'invalid_redirect_uri',
-        `돌려보낼 주소는 이 컴퓨터(http://localhost)나 ChatGPT·Claude 앱만 쓸 수 있어요: ${uri}`,
+        `돌려보낼 주소는 이 컴퓨터(http://localhost) · 브라우저 확장 · ChatGPT·Claude 앱만 쓸 수 있어요: ${uri}`,
       );
   }
 }

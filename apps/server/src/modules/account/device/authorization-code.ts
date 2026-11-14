@@ -28,7 +28,7 @@ export class AuthorizationCode extends BaseEntity {
     deviceName: string,
     clientName: string,
     now: Date,
-    /** 앱이 요청한 권한 (소식 기기면 [news]). 없으면 null: 기본 권한 */
+    /** 앱이 요청한 기기 모양 ([news] · [collect] · [extension]). 없으면 null: 기본 권한 */
     scopes: readonly string[] | null = null,
   ): AuthorizationCode {
     const code = randomBytes(32).toString('base64url');

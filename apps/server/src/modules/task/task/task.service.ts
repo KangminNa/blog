@@ -346,7 +346,7 @@ export class TaskService extends BaseService {
         if (scope) held.push(scope);
         task.lease(runnerId, agent?.id ?? null, now);
         const skill = task.skill === null ? null : await packageOf(task.skill);
-        const prompt = agent ? prompts : null;
+        const prompt = agent || task.writesNote ? prompts : null;
         const tool = agent?.tool ?? task.payloadTool;
         const cli = tool === null ? null : (req.cliVersions.get(tool) ?? null);
         const record = new RunRecord(agent ?? null, skill, prompt, req.runnerBuild, cli);
@@ -397,7 +397,7 @@ export class TaskService extends BaseService {
   private async noteAiTest(tx: Sql, task: Task, now: Date): Promise<void> {
     if (!task.isAiTest || !task.ended) return;
     const logins = new AiLoginRepository(tx);
-    const login = await logins.lockTool(task.spaceId, task.testedTool);
+    const login = await logins.lockTool(task.spaceId, task.payloadTool ?? '');
     if (login === null || !task.tests(login.version)) return;
     login.noteTest(task.failure, now);
     await logins.save(login);

@@ -32,6 +32,11 @@ export abstract class Actor {
    * 다른 권한과 함께 두지 않는다 (보내기 · 결재 · 읽기 넓히기 없음)
    */
   static readonly NEWS = 'news';
+  /**
+   * 기기: 기다리는 결재 · 질문만 읽는다 (MCP inbox, 2차 4단계). 브라우저 확장이 아이콘의 숫자로 보인다.
+   * 확장 기기(OAuth scope=extension)가 갖고, 관리자도 기기 메뉴에서 줄 수 있다
+   */
+  static readonly INBOX = 'inbox';
   /** 작업 토큰을 가진 에이전트만의 자격 (request_approval). 기기에 줄 수 있는 권한이 아니다 */
   static readonly AGENT = 'agent';
 

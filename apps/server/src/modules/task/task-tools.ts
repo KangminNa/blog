@@ -5,6 +5,7 @@ import { RequestApprovalTool } from './approval/approval.tool';
 import { AskAgentTool } from './chat/chat.tool';
 import { AgentUpdatesTool, PostUpdateTool } from './chat/chat-update.tool';
 import { ReportRoundTool } from './goal-run/goal-run.tool';
+import { InboxTool } from './inbox/inbox.tool';
 import { BeginDownloadTool, BeginUploadTool } from './output/output.tool';
 import { DelegateTaskTool } from './task/delegate.tool';
 import {
@@ -38,6 +39,7 @@ export class TaskTools {
     readUrl: ReadUrlTool,
     reportRound: ReportRoundTool,
     askAgent: AskAgentTool,
+    inbox: InboxTool,
     agentUpdates: AgentUpdatesTool,
     postUpdate: PostUpdateTool,
   ) {
@@ -56,6 +58,7 @@ export class TaskTools {
       readUrl,
       reportRound,
       askAgent,
+      inbox,
       agentUpdates,
       postUpdate,
     ];

@@ -207,7 +207,7 @@ export class AiLoginService extends BaseService {
       // 그 일이 쓴 도구의 로그인만 바꾼다: 다른 도구로 일한 작업의 id로 이 도구의 로그인을 덮지 못하게.
       // 에이전트의 도구는 잠그지 않고 읽는다 (잠그는 순서 작업 → 로그인을 지키고, 도구는 바뀌어도 이 일의 것이 아니다)
       const used = task.agentless
-        ? task.testedTool
+        ? task.payloadTool
         : (await new AgentRepository(tx).load(spaceId, task.agentId ?? '')).tool;
       if (used !== req.tool) throw new RuleViolation(`이 작업은 ${req.tool}로 일하지 않았어요`);
       const logins = new AiLoginRepository(tx);

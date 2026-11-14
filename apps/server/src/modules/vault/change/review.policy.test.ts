@@ -71,6 +71,8 @@ function session(wikiId: string | null, pinned: readonly string[] = []): Session
     head_title: null,
     head_text: null,
     revision_count: 1,
+    transcript_count: 0,
+    noted_seq: 0,
     started_at: null,
     last_revision_at: null,
     meta: {},

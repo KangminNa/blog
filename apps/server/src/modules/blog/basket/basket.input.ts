@@ -55,3 +55,31 @@ export class BasketItemIdInput extends BaseRequest {
     return BaseRequest.read({ id }, (f) => new BasketItemIdInput(f.uuid('id')));
   }
 }
+
+/**
+ * 페이지 보관 (MCP keep_page, 2차 4단계): 브라우저 확장이 지금 페이지의 주소 · 제목 · 읽은 글을 보낸다.
+ * 링크 소재가 되고 글은 메모 칸에 (민감정보를 지운 뒤). 같은 request_id는 한 번만
+ */
+export class KeepPageInput extends BaseRequest {
+  private constructor(
+    readonly requestId: string,
+    readonly url: string,
+    readonly title: string,
+    readonly text: string | null,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): KeepPageInput {
+    return BaseRequest.read(raw, (f) => {
+      const url = BasketItem.linkOf(f.text('url', BasketItem.URL_MAX));
+      if (!url) f.reject('url', 'http나 https 주소여야 해요');
+      return new KeepPageInput(
+        f.uuid('request_id'),
+        url ?? '',
+        f.text('title', BasketItem.TITLE_MAX),
+        f.optionalText('text', BasketItem.NOTE_MAX),
+      );
+    });
+  }
+}

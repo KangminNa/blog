@@ -13,6 +13,7 @@ import { JobPool } from './job-pool';
 import { CliUnavailable, JobRun } from './job-run';
 import { MakeStage } from './make-stage';
 import { AccessDenied, McpClient, ToolRefused } from './mcp-client';
+import { NoteStage } from './note-stage';
 import { RunResult } from './progress';
 import { Redactor, RunLog } from './redactor';
 import { RunnerAbility } from './runner-ability';
@@ -253,6 +254,8 @@ export class Runner {
       // 어디서 일할지 받고 마지막 버튼 · 로그인을 러너가 맡는다 (BrowseStage)
       stage = new BrowseStage(job, this.config, this.server, this.slot, this.pages as BrowserPages);
     }
+    // 세션 노트: 원문을 받아 틀을 채우고, 답을 vault에 보낸다 (NoteStage)
+    if (job.writesNote) stage = new NoteStage(job, this.server);
     const login = await this.logins.forJob(job);
     await new JobRun(
       job,
