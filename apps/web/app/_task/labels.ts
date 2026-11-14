@@ -100,6 +100,12 @@ export const EVENT_KINDS: Record<string, string> = {
 
 export const TOOL_LABELS: Record<string, string> = { claude: 'Claude Code', codex: 'Codex' };
 
+/** 팀 템플릿이 다 돌려면 필요한 것 (서버의 AgentTeamRow.needs) */
+export const NEEDS_LABELS: Record<string, string> = {
+  'code-runner': '코드 러너 칸 필요 (만들기 · 코드)',
+  'code-github': 'code-github 플러그인 필요',
+};
+
 /** ISO 요일 (월 1 ~ 일 7)의 이름 */
 export const WEEKDAY_LABELS: Record<number, string> = {
   1: '월',

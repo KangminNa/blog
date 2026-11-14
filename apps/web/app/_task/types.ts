@@ -1,5 +1,10 @@
 import type { PullView } from '../../../../plugins/code-github/server/views';
-import type { AgentListView, AgentView } from '../../../server/src/modules/task/agent/agent.view';
+import type {
+  AgentListView,
+  AgentTeamListView,
+  AgentTeamSavedView,
+  AgentView,
+} from '../../../server/src/modules/task/agent/agent.view';
 import type { AiTestView, AiToolListView } from '../../../server/src/modules/task/ai/ai-login.view';
 import type {
   ApprovalPageView,
@@ -62,6 +67,9 @@ export type Approval = ReturnType<ApprovalView['toJSON']>;
 export type ApprovalPage = ReturnType<ApprovalPageView['toJSON']>;
 export type Agent = ReturnType<AgentView['toJSON']>;
 export type AgentList = ReturnType<AgentListView['toJSON']>;
+export type AgentTeamList = ReturnType<AgentTeamListView['toJSON']>;
+export type AgentTeam = AgentTeamList['teams'][number];
+export type AgentTeamSaved = ReturnType<AgentTeamSavedView['toJSON']>;
 export type Schedule = ReturnType<ScheduleView['toJSON']>;
 export type ScheduleList = ReturnType<ScheduleListView['toJSON']>;
 export type Usage = ReturnType<UsageView['toJSON']>;

@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { type Actor, BaseQuery, NotFound } from '../../platform';
 import { agentRevisions, agents } from '../task.schema';
 import type { AgentRow } from '../task.tables';
-import { AgentListView, AgentRevisionListView, AgentView } from './agent.view';
+import { AgentListView, AgentRevisionListView, AgentTeamListView, AgentView } from './agent.view';
+import { AgentTeams } from './agent-team.policy';
 
 // 에이전트 읽기. 주인만. 이번 달 사용량은 실행 기록에서 더하고, 하트비트를 함께 싣는다.
 @Injectable()
@@ -15,6 +16,12 @@ export class AgentQuery extends BaseQuery {
     return new AgentRevisionListView(
       await this.rows(agentRevisions, { agent_id: id }, { order: ['revision desc'] }),
     );
+  }
+
+  /** 팀 템플릿 목록 (코드에 둔 것, AgentTeams) */
+  teams(actor: Actor): AgentTeamListView {
+    actor.assertOwner();
+    return new AgentTeamListView(AgentTeams.ALL);
   }
 
   async list(actor: Actor): Promise<AgentListView> {

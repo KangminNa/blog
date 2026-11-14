@@ -11,6 +11,7 @@ import { useAgents, useTasksIn, useUsage } from '../../_task/live';
 import { AgentUsage } from '../../_task/parts';
 import type { Agent } from '../../_task/types';
 import { type AgentBody, AgentForm } from './AgentForm';
+import { AgentTeamsPanel } from './AgentTeamsPanel';
 
 const NEW = 'new';
 const CONFLICT = '이미 바뀐 에이전트예요. 최신 내용을 다시 읽었어요';
@@ -25,6 +26,8 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
   const usage = useUsage();
   // 열린 입력 칸: 추가, 또는 편집 중인 에이전트의 id
   const [open, setOpen] = useState<string | null>(adding ? NEW : null);
+  // 팀 템플릿 칸 (에이전트가 없을 때는 늘 보인다)
+  const [teams, setTeams] = useState(false);
   const action = useAction();
   const save = useAction();
   const list = agents.data?.agents;
@@ -84,12 +87,20 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
       <header className="page-head">
         <h1>에이전트</h1>
         {list && list.length > 0 && open !== NEW && (
-          <button type="button" className="cta small" onClick={() => show(NEW)}>
-            에이전트 추가
-          </button>
+          <div className="row">
+            <button type="button" className="ghost" onClick={() => setTeams(!teams)}>
+              팀 템플릿
+            </button>
+            <button type="button" className="cta small" onClick={() => show(NEW)}>
+              에이전트 추가
+            </button>
+          </div>
         )}
       </header>
       {problem && <p className="error">{problem}</p>}
+      {teams && list && list.length > 0 && (
+        <AgentTeamsPanel onMade={agents.reload} onClose={() => setTeams(false)} />
+      )}
       {list && list.length > 0 && <OrgChart agents={list} ownerName={ownerName} />}
       {open === NEW && (
         <AgentForm
@@ -107,15 +118,19 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
         !agents.error && <p className="label-mono">불러오는 중…</p>
       ) : list.length === 0 ? (
         open !== NEW && (
-          <div className="panel">
-            <b>에이전트 없음</b>
-            <p className="note">
-              작업은 활성 에이전트가 생길 때까지 대기. 추가하면 대기 작업부터 실행
-            </p>
-            <button type="button" className="cta small fit" onClick={() => show(NEW)}>
-              에이전트 추가
-            </button>
-          </div>
+          <>
+            <div className="panel">
+              <b>에이전트 없음</b>
+              <p className="note">
+                작업은 활성 에이전트가 생길 때까지 대기. 하나씩 추가하거나 아래 팀 템플릿으로 한
+                번에
+              </p>
+              <button type="button" className="cta small fit" onClick={() => show(NEW)}>
+                에이전트 추가
+              </button>
+            </div>
+            <AgentTeamsPanel onMade={agents.reload} onClose={null} />
+          </>
         )
       ) : (
         <div className="agents">

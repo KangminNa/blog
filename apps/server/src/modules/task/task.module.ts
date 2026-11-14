@@ -3,6 +3,7 @@ import { BlobStore, CoreWorkers, Leases, SecretRotation } from '../platform';
 import { AgentController } from './agent/agent.api';
 import { AgentQuery } from './agent/agent.query';
 import { AgentService } from './agent/agent.service';
+import { AgentTeamController } from './agent/agent-team.api';
 import { AiLoginController } from './ai/ai-login.api';
 import { AiLoginQuery } from './ai/ai-login.query';
 import { AiLoginService } from './ai/ai-login.service';
@@ -117,6 +118,7 @@ import { WebPageGateway } from './web/web-page.gateway';
   ],
   controllers: [
     AgentController,
+    AgentTeamController,
     TaskController,
     ApprovalController,
     UsageController,

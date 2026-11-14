@@ -4,7 +4,8 @@
 에이전트가 일하고 주인이 결재하는 구조. 러너가 일을 빌려 가고, 위험한 동작은 결재를 거치고, 결과가 오면 작업을 끝낸다.
 설계는 docs/객체설계.md 13장, API는 docs/API설계.md, 표는 docs/테이블설계.md 6장.
 
-- `agent/`: 에이전트 (`Agent`). 권한, 결재로 맡길 동작, 토큰 한도(한 달 · 5시간), 구독 사용률 멈춤값, 보고 대상(조직도). `api/agents`
+- `agent/`: 에이전트 (`Agent`). 권한, 결재로 맡길 동작, 토큰 한도(한 달 · 5시간), 구독 사용률 멈춤값, 보고 대상(조직도). `api/agents`.
+  팀 템플릿 (`AgentTeams`, 데이터는 `research-teams.ts` · `work-teams.ts`): `api/agent-teams`로 팀 하나를 한 트랜잭션에서 만든다 (`AgentService.createTeam`, 조직도 전체를 잠그고 보고 대상이 앞인 순서로, requestId 하나). 구성원도 `Agent`의 규칙(권한 조합 · 조직도 깊이)을 그대로 지난다
 - `goal/`: 목표 (`Goal`). 회사 목표부터 이어지는 나무. 작업이 목표 하나에 이어진다. `api/goals`
 - `schedule/`: 스케줄 (`Schedule`, `SchedulePolicy`, 7단계에서 하트비트를 넓혀 합침). 정해진 시각에 지시대로 작업을 만든다. `api/schedules`, 일꾼의 `ScheduleJob`(1분마다)
 - `task/`: 작업 (`Task` + 실행 기록 `task_events`). `queued → running → waiting → running → done`, `failed`, `cancelled`.

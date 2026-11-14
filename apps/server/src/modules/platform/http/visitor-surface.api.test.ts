@@ -43,6 +43,7 @@ const VISITOR_GET: Readonly<Record<string, number>> = {
   // 주인만
   'GET /api/auth/me': 401,
   'GET /api/agents': 403,
+  'GET /api/agent-teams': 403,
   'GET /api/agents/:id/revisions': 403,
   'GET /api/ai': 403,
   'GET /api/approvals': 403,

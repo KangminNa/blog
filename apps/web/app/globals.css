@@ -1274,6 +1274,15 @@ a.chip {
   overflow-wrap: anywhere;
 }
 
+/* 팀 템플릿 목록: 템플릿마다 카드 하나 */
+.team-templates {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 /* 사이트 로고: 콘솔 왼쪽 위 · 블로그 머리 (Cairn 표시와 같은 크기), 사이트 메뉴의 미리 보기 */
 .brand-logo {
   width: 22px;

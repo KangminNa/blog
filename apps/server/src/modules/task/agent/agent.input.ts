@@ -48,6 +48,29 @@ export class CreateAgentInput extends BaseRequest {
   }
 }
 
+/** POST /api/agent-teams: 템플릿(team)으로 팀 하나. tool은 모든 구성원의 AI 도구 (기본 claude) */
+export class CreateAgentTeamInput extends BaseRequest {
+  private constructor(
+    readonly requestId: string,
+    readonly team: string,
+    readonly tool: string,
+  ) {
+    super();
+  }
+
+  static from(raw: unknown): CreateAgentTeamInput {
+    return BaseRequest.read(
+      raw,
+      (f) =>
+        new CreateAgentTeamInput(
+          f.uuid('requestId'),
+          f.text('team', 40),
+          f.optionalText('tool', 40) ?? 'claude',
+        ),
+    );
+  }
+}
+
 /** PATCH /api/agents/:id. reportsTo에 null이면 주인에게 보고 */
 export class UpdateAgentInput extends BaseRequest {
   private constructor(
