@@ -1,6 +1,11 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { type Actor, CurrentActor, VersionInput } from '../../platform';
-import { CreateAgentInput, UpdateAgentInput } from './agent.input';
+import {
+  CreateAgentInput,
+  DeleteAgentInput,
+  ListAgentsInput,
+  UpdateAgentInput,
+} from './agent.input';
 import { AgentQuery } from './agent.query';
 import { AgentService } from './agent.service';
 import type { AgentListView, AgentRevisionListView, AgentSavedView } from './agent.view';
@@ -20,9 +25,10 @@ export class AgentController {
     return this.agents.revisions(actor, id);
   }
 
+  /** 쓰는 에이전트. ?deleted=1이면 휴지통의 에이전트 */
   @Get()
-  list(@CurrentActor() actor: Actor): Promise<AgentListView> {
-    return this.agents.list(actor);
+  list(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<AgentListView> {
+    return this.agents.list(actor, ListAgentsInput.from(query));
   }
 
   @Post()
@@ -57,5 +63,26 @@ export class AgentController {
     @Body() body: unknown,
   ): Promise<AgentSavedView> {
     return (await this.service.resume(actor, VersionInput.from(id, body))).view();
+  }
+
+  /** 휴지통으로 (지우지 않는다). { version, team? } */
+  @HttpCode(200)
+  @Post(':id/delete')
+  async remove(
+    @CurrentActor() actor: Actor,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<AgentSavedView> {
+    return (await this.service.delete(actor, DeleteAgentInput.from(id, body))).view();
+  }
+
+  @HttpCode(200)
+  @Post(':id/restore')
+  async restore(
+    @CurrentActor() actor: Actor,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<AgentSavedView> {
+    return (await this.service.restore(actor, VersionInput.from(id, body))).view();
   }
 }

@@ -18,6 +18,7 @@ import {
 import { useAgents, usePendingApprovals } from '../../_task/live';
 import { OutputOpen, TaskPill } from '../../_task/parts';
 import type { Task, TaskDetail, TaskEvent, TaskOutput, TaskRun } from '../../_task/types';
+import { TaskResult } from './TaskResult';
 
 /** 서버가 상세에 보내는 실행 기록의 최대 개수 (TaskQuery.EVENTS) */
 const EVENTS_MAX = 500;
@@ -92,7 +93,7 @@ export function TaskDetailPanel({ id }: { id: string }) {
         <p className="text">{t.instruction || '지시 없음'}</p>
         <Facts task={t} />
       </section>
-      <Result result={t.result} />
+      <TaskResult result={t.result} />
       <Outputs taskId={t.id} outputs={t.outputs} />
       {(t.parentId || t.children.length > 0) && (
         <section className="panel" aria-labelledby="task-family">
@@ -199,20 +200,6 @@ function Facts({ task }: { task: TaskDetail }) {
         </>
       )}
     </dl>
-  );
-}
-
-/** 결과는 러너가 정하는 자유 형식이라 그대로 보인다. 실패 이유만 따로 */
-function Result({ result }: { result: unknown }) {
-  if (typeof result !== 'object' || result === null || Object.keys(result).length === 0)
-    return null;
-  const { error, ...rest } = result as Record<string, unknown>;
-  return (
-    <section className="panel" aria-labelledby="task-result">
-      <h2 id="task-result">결과</h2>
-      {typeof error === 'string' && <p className="error">{error}</p>}
-      {Object.keys(rest).length > 0 && <pre className="raw">{JSON.stringify(rest, null, 2)}</pre>}
-    </section>
   );
 }
 

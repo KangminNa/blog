@@ -145,6 +145,7 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
         reports_to: null,
         status: Agent.ACTIVE,
         created_at: now,
+        deleted_at: null,
       },
       true,
     );
@@ -183,6 +184,40 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
 
   get paused(): boolean {
     return this.row.status === Agent.PAUSED;
+  }
+
+  /** 휴지통에 있다: 목록 · 조직도에서 빠지고 새 일을 받지 않는다 (기록은 남는다) */
+  /** 휴지통에 있는지. 새로 연 줄(저장 전)과 시험의 줄에는 칸이 없을 수 있어 값이 있을 때만 */
+  get deleted(): boolean {
+    return this.row.deleted_at instanceof Date;
+  }
+
+  /**
+   * 휴지통으로 (행은 지우지 않는다: 작업 · 결재 · 설정 판이 이 에이전트를 가리킨다).
+   * 바로 아래 팀원은 이 에이전트의 보고 대상(없으면 주인)에게 올리고, 올린 팀원을 돌려준다 (부른 쪽이 저장한다).
+   * 진행 중인 작업 · 스케줄 · 목표 실행은 Service가 먼저 본다
+   */
+  delete(org: readonly Agent[], now: Date): readonly Agent[] {
+    if (this.deleted) throw new RuleViolation('이미 삭제한 에이전트예요');
+    const team = org.filter((a) => this.manages(a));
+    for (const member of team) member.reportTo(this.row.reports_to, org);
+    this.put('deleted_at', now);
+    this.announce();
+    return team;
+  }
+
+  /** 휴지통에서 되돌린다. 보고 대상이 그사이 삭제됐으면 주인에게 보고한다 */
+  restore(org: readonly Agent[]): void {
+    if (!this.deleted) throw new RuleViolation('삭제하지 않은 에이전트예요');
+    const boss = org.find((a) => a.id === this.row.reports_to);
+    this.put('deleted_at', null);
+    if (!boss || boss.deleted) this.reportTo(null, org);
+    this.announce();
+  }
+
+  /** head와 그 아래 팀 전체, 아래부터 (팀째 지울 때 팀원을 위로 올리지 않게 아래부터 지운다) */
+  static teamUnder(head: Agent, org: readonly Agent[]): readonly Agent[] {
+    return [...org.filter((a) => head.manages(a)).flatMap((a) => Agent.teamUnder(a, org)), head];
   }
 
   /** 주인이 고친 칸을 적는다. 설정이 바뀌면 설정 판을 하나 올린다 */
@@ -227,7 +262,7 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     let level = 1;
     if (managerId !== null) {
       const manager = org.find((a) => a.id === managerId);
-      if (!manager) throw new RuleViolation('보고 대상 에이전트가 없어요');
+      if (!manager || manager.deleted) throw new RuleViolation('보고 대상 에이전트가 없어요');
       const above = Agent.chainUp(manager, org);
       if (above.some((a) => a.id === this.id))
         throw new RuleViolation('자기 자신이나 자기 팀원에게는 보고할 수 없어요');
@@ -241,9 +276,9 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     this.noteSettings(before);
   }
 
-  /** 이 에이전트의 바로 아래 팀원인가 (위임은 바로 아래에게만) */
+  /** 이 에이전트의 바로 아래 팀원인가 (위임은 바로 아래에게만). 삭제한 에이전트는 팀원이 아니다 */
   manages(other: Agent): boolean {
-    return other.row.reports_to === this.id;
+    return other.row.reports_to === this.id && !other.deleted;
   }
 
   /** 멈춘다. 새 일을 빌려주지 않는다. 이미 멈췄으면 그대로 */
@@ -315,7 +350,7 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
   private static heightOf(id: string, org: readonly Agent[], seen = new Set<string>()): number {
     if (seen.has(id)) return 1;
     seen.add(id);
-    const team = org.filter((a) => a.row.reports_to === id);
+    const team = org.filter((a) => a.row.reports_to === id && !a.deleted);
     return 1 + Math.max(0, ...team.map((a) => Agent.heightOf(a.id, org, seen)));
   }
 

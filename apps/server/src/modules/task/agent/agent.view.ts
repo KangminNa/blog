@@ -40,6 +40,8 @@ export class AgentSavedView {
       /** 보고 대상 에이전트. null이면 주인에게 보고한다 */
       reportsTo: r.reports_to,
       status: r.status,
+      /** 휴지통에 넣은 때. null이면 쓰는 에이전트 */
+      deletedAt: r.deleted_at?.toISOString() ?? null,
       version: r.version,
       /** 설정 판: 주인이 정하는 칸이 바뀔 때마다 오른다 (실행 기록이 이 번호를 남긴다) */
       settingsRevision: r.settings_revision,

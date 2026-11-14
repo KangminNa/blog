@@ -1,25 +1,83 @@
 import { Injectable } from '@nestjs/common';
 import {
   type Actor,
+  Database,
   EntityService,
   Idempotency,
+  NotFound,
+  RuleViolation,
   type Sql,
   type VersionInput,
 } from '../../platform';
 import { Agent } from './agent';
-import type { CreateAgentInput, CreateAgentTeamInput, UpdateAgentInput } from './agent.input';
+import type {
+  CreateAgentInput,
+  CreateAgentTeamInput,
+  DeleteAgentInput,
+  UpdateAgentInput,
+} from './agent.input';
+import { AgentQuery } from './agent.query';
 import { AgentRepository } from './agent.repository';
 import { AgentTeams } from './agent-team.policy';
 
-// 에이전트 쓰기: 만들기, 고치기, 멈추기, 다시 시작. 모두 주인만.
+// 에이전트 쓰기: 만들기, 고치기, 멈추기, 다시 시작, 휴지통 · 복원. 모두 주인만.
 // 보고 대상을 정할 때는 조직도 전체를 잠근다 (AgentRepository.lockAll): 동시에 바꿔도 순환이 생기지 않게.
 @Injectable()
 export class AgentService extends EntityService<Agent> {
   private static readonly CREATE = 'create_agent';
   private static readonly CREATE_TEAM = 'create_agent_team';
 
+  constructor(
+    db: Database,
+    private readonly agents: AgentQuery,
+  ) {
+    super(db);
+  }
+
   protected store(tx: Sql): AgentRepository {
     return new AgentRepository(tx);
+  }
+
+  /**
+   * 휴지통으로 (기획서 결정 2026-11-14). team이면 아래 팀 전체를 아래부터, 아니면 바로 아래 팀원을 이 에이전트의 보고 대상으로
+   * 올린다. 진행 중인 작업 · 스케줄 · 도는 목표 실행이 있으면 지우지 않고 까닭을 알린다 (조용히 취소하지 않는다)
+   */
+  async delete(actor: Actor, req: DeleteAgentInput): Promise<Agent> {
+    actor.assertOwner();
+    const spaceId = actor.requireSpace();
+    return this.transaction(async (tx) => {
+      const agents = new AgentRepository(tx);
+      const org = await agents.lockAll(spaceId);
+      const agent = org.find((a) => a.id === req.id && !a.deleted);
+      if (!agent) throw new NotFound('에이전트를 찾을 수 없어요');
+      agent.assertVersion(req.version);
+      const gone = req.team ? Agent.teamUnder(agent, org) : [agent];
+      const why = await this.agents.blockers(
+        actor,
+        gone.map((a) => a.id),
+      );
+      if (why.length > 0) throw new RuleViolation(`삭제할 수 없어요: ${why.join(', ')}`);
+      const now = new Date();
+      const moved = gone.flatMap((a) => a.delete(org, now));
+      for (const a of new Set([...moved, ...gone])) await agents.save(a);
+      return agent;
+    });
+  }
+
+  /** 휴지통에서 되돌린다 (보고 대상이 그사이 지워졌으면 주인 아래로) */
+  async restore(actor: Actor, req: VersionInput): Promise<Agent> {
+    actor.assertOwner();
+    const spaceId = actor.requireSpace();
+    return this.transaction(async (tx) => {
+      const agents = new AgentRepository(tx);
+      const org = await agents.lockAll(spaceId);
+      const agent = org.find((a) => a.id === req.id);
+      if (!agent) throw new NotFound('에이전트를 찾을 수 없어요');
+      agent.assertVersion(req.version);
+      agent.restore(org);
+      await agents.save(agent);
+      return agent;
+    });
   }
 
   /** 같은 requestId가 다시 오면 처음 만든 에이전트를 돌려준다 */

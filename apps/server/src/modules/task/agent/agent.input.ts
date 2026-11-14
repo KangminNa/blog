@@ -71,6 +71,41 @@ export class CreateAgentTeamInput extends BaseRequest {
   }
 }
 
+/** GET /api/agents?deleted=1: 휴지통의 에이전트만 */
+export class ListAgentsInput extends BaseRequest {
+  private constructor(readonly deleted: boolean) {
+    super();
+  }
+
+  static from(raw: unknown): ListAgentsInput {
+    return new ListAgentsInput((raw as Record<string, unknown> | null)?.deleted === '1');
+  }
+}
+
+/** POST /api/agents/:id/delete { version, team? }: team이면 아래 팀 전체를 함께, 아니면 팀원을 위로 올린다 */
+export class DeleteAgentInput extends BaseRequest {
+  private constructor(
+    readonly id: string,
+    readonly version: number,
+    readonly team: boolean,
+  ) {
+    super();
+  }
+
+  static from(id: string, raw: unknown): DeleteAgentInput {
+    const body = { ...(raw as object), id } as Record<string, unknown>;
+    return BaseRequest.read(
+      body,
+      (f) =>
+        new DeleteAgentInput(
+          f.uuid('id'),
+          f.version(),
+          body.team === undefined ? false : f.boolean('team'),
+        ),
+    );
+  }
+}
+
 /** PATCH /api/agents/:id. reportsTo에 null이면 주인에게 보고 */
 export class UpdateAgentInput extends BaseRequest {
   private constructor(

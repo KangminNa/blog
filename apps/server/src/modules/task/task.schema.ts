@@ -32,6 +32,7 @@ export const agents = taskSchema.table('agents', {
   plan_stop_percent: integer('plan_stop_percent'),
   reports_to: uuid('reports_to'),
   settings_revision: integer('settings_revision').notNull(),
+  deleted_at: timestamp('deleted_at', { withTimezone: true }),
 });
 
 /** task.ai_logins */

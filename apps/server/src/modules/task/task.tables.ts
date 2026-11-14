@@ -29,6 +29,7 @@ export interface AgentRow {
   plan_stop_percent: number | null;
   reports_to: string | null;
   settings_revision: number;
+  deleted_at: Date | null;
 }
 export type AgentNew = Partial<AgentRow> & Pick<AgentRow, 'id' | 'space_id' | 'name' | 'tool'>;
 

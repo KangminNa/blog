@@ -12,6 +12,7 @@ import { AgentUsage } from '../../_task/parts';
 import type { Agent } from '../../_task/types';
 import { type AgentBody, AgentForm } from './AgentForm';
 import { AgentTeamsPanel } from './AgentTeamsPanel';
+import { DeletedAgents } from './DeletedAgents';
 
 const NEW = 'new';
 const CONFLICT = '이미 바뀐 에이전트예요. 최신 내용을 다시 읽었어요';
@@ -28,6 +29,8 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
   const [open, setOpen] = useState<string | null>(adding ? NEW : null);
   // 팀 템플릿 칸 (에이전트가 없을 때는 늘 보인다)
   const [teams, setTeams] = useState(false);
+  // 삭제한 에이전트(휴지통) 칸
+  const [trash, setTrash] = useState(false);
   const action = useAction();
   const save = useAction();
   const list = agents.data?.agents;
@@ -53,6 +56,23 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
         reload: agents.reload,
         conflict: CONFLICT,
       },
+    );
+  }
+
+  /** 휴지통으로. team이면 아래 팀 전체를, 아니면 팀원은 이 에이전트의 보고 대상에게 올린다 (서버가 같은 규칙으로) */
+  function remove(agent: Agent, team: boolean) {
+    const members = (list ?? []).filter((a) => a.reportsTo === agent.id).length;
+    const boss = (list ?? []).find((a) => a.id === agent.reportsTo)?.name ?? ownerName;
+    const what = team
+      ? `${agent.name} 팀 전체(아래 팀원 모두)를 삭제할까요?`
+      : members > 0
+        ? `${agent.name}을(를) 삭제할까요? 아래 팀원 ${members}명은 ${boss}에게 보고하게 바뀌어요.`
+        : `${agent.name}을(를) 삭제할까요?`;
+    if (!window.confirm(`${what} 작업 기록은 남고 "삭제한 에이전트"에서 복원할 수 있어요`)) return;
+    void action.run(
+      agent.id,
+      () => api('POST', `/api/agents/${agent.id}/delete`, { version: agent.version, team }),
+      { done: `${agent.name} 삭제됨`, reload: agents.reload, conflict: CONFLICT },
     );
   }
 
@@ -88,6 +108,9 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
         <h1>에이전트</h1>
         {list && list.length > 0 && open !== NEW && (
           <div className="row">
+            <button type="button" className="ghost" onClick={() => setTrash(!trash)}>
+              삭제한 에이전트
+            </button>
             <button type="button" className="ghost" onClick={() => setTeams(!teams)}>
               팀 템플릿
             </button>
@@ -98,6 +121,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
         )}
       </header>
       {problem && <p className="error">{problem}</p>}
+      {trash && <DeletedAgents onRestored={agents.reload} onClose={() => setTrash(false)} />}
       {teams && list && list.length > 0 && (
         <AgentTeamsPanel onMade={agents.reload} onClose={() => setTeams(false)} />
       )}
@@ -155,8 +179,10 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
                 hold={holdLabel(usage.data?.agents.find((u) => u.id === a.id))}
                 boss={list.find((b) => b.id === a.reportsTo)?.name ?? ownerName}
                 busy={action.busy === a.id}
+                members={list.filter((m) => m.reportsTo === a.id).length}
                 onFlip={() => flip(a)}
                 onEdit={() => show(a.id)}
+                onRemove={(team) => remove(a, team)}
               />
             ),
           )}
@@ -194,8 +220,10 @@ function AgentCard({
   hold,
   boss,
   busy,
+  members,
   onFlip,
   onEdit,
+  onRemove,
 }: {
   agent: Agent;
   work: string | null;
@@ -203,8 +231,11 @@ function AgentCard({
   /** 보고 대상의 이름 (없으면 관리자의 이름) */
   boss: string;
   busy: boolean;
+  /** 바로 아래 팀원 수 (있으면 "팀째 삭제"도) */
+  members: number;
   onFlip: () => void;
   onEdit: () => void;
+  onRemove: (team: boolean) => void;
 }) {
   const paused = agent.status === 'paused';
   return (
@@ -248,6 +279,14 @@ function AgentCard({
         <button type="button" className="ghost" onClick={onEdit}>
           편집
         </button>
+        <button type="button" className="ghost" disabled={busy} onClick={() => onRemove(false)}>
+          삭제
+        </button>
+        {members > 0 && (
+          <button type="button" className="ghost" disabled={busy} onClick={() => onRemove(true)}>
+            팀째 삭제
+          </button>
+        )}
       </div>
     </article>
   );

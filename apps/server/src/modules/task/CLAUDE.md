@@ -5,6 +5,7 @@
 설계는 docs/객체설계.md 13장, API는 docs/API설계.md, 표는 docs/테이블설계.md 6장.
 
 - `agent/`: 에이전트 (`Agent`). 권한, 결재로 맡길 동작, 토큰 한도(한 달 · 5시간), 구독 사용률 멈춤값, 보고 대상(조직도). `api/agents`.
+  삭제는 휴지통 (`deleted_at`, 2026-11-14): `Agent.delete`가 팀원을 지운 에이전트의 보고 대상으로 올리고, 팀째 삭제는 `Agent.teamUnder`(아래부터). 진행 중인 작업 · 스케줄 · 도는 목표 실행이 있으면 지우지 않는다 (`AgentQuery.blockers`). 지운 에이전트는 `AgentRepository.load` · `lock`에서 NotFound, `usage`(일 빌리기) · `manages`(위임) · `reportTo`에서 빠진다. 줄은 지우지 않는다 (실행 기록이 가리킨다)
   팀 템플릿 (`AgentTeams`, 데이터는 `research-teams.ts` · `work-teams.ts`): `api/agent-teams`로 팀 하나를 한 트랜잭션에서 만든다 (`AgentService.createTeam`, 조직도 전체를 잠그고 보고 대상이 앞인 순서로, requestId 하나). 구성원도 `Agent`의 규칙(권한 조합 · 조직도 깊이)을 그대로 지난다
 - `goal/`: 목표 (`Goal`). 회사 목표부터 이어지는 나무. 작업이 목표 하나에 이어진다. `api/goals`
 - `schedule/`: 스케줄 (`Schedule`, `SchedulePolicy`, 7단계에서 하트비트를 넓혀 합침). 정해진 시각에 지시대로 작업을 만든다. `api/schedules`, 일꾼의 `ScheduleJob`(1분마다)

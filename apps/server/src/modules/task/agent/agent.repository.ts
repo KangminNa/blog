@@ -1,4 +1,4 @@
-import { TableRepository } from '../../platform';
+import { NotFound, TableRepository } from '../../platform';
 import { agentRevisions, agents } from '../task.schema';
 import type { AgentRow } from '../task.tables';
 import { PlanUsage } from '../usage/plan-usage';
@@ -12,6 +12,20 @@ export class AgentRepository extends TableRepository<AgentRow, Agent> {
 
   protected toEntity(row: AgentRow): Agent {
     return Agent.restore(row);
+  }
+
+  /** 하나 (새 일 · 스케줄 · 결재 · 고치기의 대상). 삭제한 에이전트는 없는 것과 같다 (404). 복원은 lockAll로 찾는다 */
+  override async load(spaceId: string, id: string): Promise<Agent> {
+    return AgentRepository.alive(await super.load(spaceId, id));
+  }
+
+  override async lock(spaceId: string, id: string): Promise<Agent> {
+    return AgentRepository.alive(await super.lock(spaceId, id));
+  }
+
+  private static alive(agent: Agent): Agent {
+    if (agent.deleted) throw new NotFound('에이전트를 찾을 수 없어요');
+    return agent;
   }
 
   /** 바뀐 설정의 판을 남긴다 (추가만) */
@@ -55,7 +69,7 @@ export class AgentRepository extends TableRepository<AgentRow, Agent> {
             date_trunc('month', ${now}::timestamptz)
           )
       ) u ON true
-      WHERE a.space_id = ${spaceId}
+      WHERE a.space_id = ${spaceId} AND a.deleted_at IS NULL
       ORDER BY a.id`;
     return rows.map((row) => {
       const agent = this.toEntity(row);
