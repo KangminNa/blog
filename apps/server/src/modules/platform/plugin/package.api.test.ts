@@ -196,6 +196,29 @@ describe('기능 패키지: 브라우저 에이전트 (browser-tabs)', () => {
     }
   });
 
+  test('화면(그림 · 동작)은 주인만. 서버 브라우저가 없으면 502로 이유를, 틀린 동작은 400', async () => {
+    const tab = 'A'.repeat(32);
+    const calls = [
+      ['GET', '/api/p/browser-tabs/screen', undefined],
+      ['POST', '/api/p/browser-tabs/screen/control', { tab, type: 'back' }],
+    ] as const;
+    for (const [method, path, body] of calls)
+      for (const headers of [{}, writer]) {
+        const res = await api.request(method, path, TestUser.visitor, body, headers);
+        assert.equal(res.status, 403, `${method} ${path}: ${res.text}`);
+      }
+    // 시험에는 브라우저(compose 서비스 browser)가 없다
+    const none = await api.request('GET', '/api/p/browser-tabs/screen', owner);
+    assert.equal(none.status, 502, none.text);
+    assert.match(none.text, /서버 브라우저가 꺼져 있거나/);
+    const bad = await api.request('POST', '/api/p/browser-tabs/screen/control', owner, {
+      tab,
+      type: 'navigate',
+      url: 'file:///etc/passwd',
+    });
+    assert.equal(bad.status, 400, bad.text);
+  });
+
   test('일을 맡기면 browse 작업이 생기고, 결재를 승인하면(주인이 직접 발행) 작업이 끝난다', async () => {
     const agent = await api.request('POST', '/api/agents', owner, {
       requestId: randomUUID(),

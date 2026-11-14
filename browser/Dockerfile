@@ -7,3 +7,7 @@ COPY browser/chromium.conf /etc/neko/supervisord/chromium.conf
 # 정책: CDP 허락(RemoteDebuggingAllowed · DeveloperToolsAvailability 1), 쿠키를 끈 뒤에도 유지(DefaultCookiesSetting 1:
 # 이미지의 기본 프로필은 "세션에만 쿠키"라 끄면 로그인이 지워졌다), 내려받기 · 파일 열기 · 확장 프로그램 막기
 COPY browser/policies.json /etc/chromium/policies/managed/policies.json
+# 조종 중계(2026-11-14): 서버가 콘솔 화면(그림 · 클릭 · 입력)을 위해 Chrome에 붙는 길. 127.0.0.1:9222 → 9223
+# 이미지에 있는 python3만 쓴다 (빌드할 때 내려받을 것이 없다). supervisord가 띄운다 (cdp-relay.conf)
+COPY browser/cdp-relay.py /usr/local/lib/cairn/cdp-relay.py
+COPY browser/cdp-relay.conf /etc/neko/supervisord/cdp-relay.conf

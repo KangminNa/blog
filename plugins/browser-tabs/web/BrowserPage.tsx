@@ -1,7 +1,8 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { Screen } from './Screen';
 
 // browser-tabs의 콘솔 화면 (운영 › 브라우저). 서버 브라우저(로그인된 프로필)로 하는 일을 한곳에서 본다.
-//   화면: 배포 서버의 브라우저를 실시간으로 본다 (/browser/, Caddy가 주인만 넘긴다). 로그인 · 마지막 발행은 여기서 직접
+//   화면: 서버 브라우저를 그림으로 보고 클릭 · 입력을 보낸다 (Screen.tsx, HTTPS만). 로그인 · 마지막 발행은 여기서 직접
 //   사이트: 에이전트가 일할 곳 (이름 · 시작 주소 · 허용 출처). 일을 맡기면 서버 러너의 AI가 그 사이트에서 일한다
 //   탭 읽기: 주소를 넣으면 러너가 탭으로 열어 글자만 읽는다 (AI 없음)
 // 화면은 react와 이 폴더만 가져온다: 서버 호출(call)과 알림(notify)은 콘솔이 넘겨 준다.
@@ -31,8 +32,6 @@ type TabRead = {
 };
 
 const STATUS: Record<string, string> = { requested: '기다림', done: '읽음', failed: '못 읽음' };
-/** 배포 서버에서 Caddy가 브라우저 화면을 넘기는 경로 */
-const VIEWER = '/browser/';
 
 const originsOf = (text: string): string[] =>
   text
@@ -43,55 +42,10 @@ const originsOf = (text: string): string[] =>
 export default function BrowserPage({ call, notify }: Props) {
   return (
     <div className="stack">
-      <Viewer />
+      <Screen call={call} />
       <Sites call={call} notify={notify} />
       <Reads call={call} notify={notify} />
     </div>
-  );
-}
-
-/** 내 컴퓨터(개발)에서 연 콘솔인가. 앞단 프록시가 없어 /browser/가 열리지 않는다 */
-const isLocal = () => ['localhost', '127.0.0.1'].includes(window.location.hostname);
-/** 내 컴퓨터에서 화면 페이지가 열리는 곳 (BROWSER_VIEW_PORT 기본값) */
-const LOCAL_VIEWER = 'http://localhost:4100';
-
-/** 실시간 화면. 볼 때만 연다 (화면 전송은 CPU를 쓴다) */
-function Viewer() {
-  const [open, setOpen] = useState(false);
-  // 서버에서 그린 첫 화면과 맞추려고 주소는 화면이 뜬 뒤에 본다
-  const [local, setLocal] = useState(false);
-  useEffect(() => setLocal(isLocal()), []);
-  if (local)
-    return (
-      <section className="panel" aria-label="브라우저 화면">
-        <b>화면</b>
-        <p className="note">
-          내 컴퓨터에서는 화면 칸 대신 새 탭으로 열어요 (.env의 CAIRN_BROWSER_PASSWORD로 들어가요)
-        </p>
-        <a className="cta small fit" href={LOCAL_VIEWER} target="_blank" rel="noopener">
-          새 탭에서 화면 열기
-        </a>
-      </section>
-    );
-  return (
-    <section className="panel" aria-label="브라우저 화면">
-      <b>화면</b>
-      <p className="note">
-        서버 브라우저를 실시간으로 봐요. 사이트에 로그인하고, 에이전트가 결재를 올리면 여기서 직접
-        발행해요. 배포 서버에서만 열려요
-      </p>
-      {open ? (
-        <iframe
-          title="서버 브라우저"
-          src={VIEWER}
-          allow="autoplay; clipboard-read; clipboard-write"
-          style={{ width: '100%', height: 600, border: 0 }}
-        />
-      ) : null}
-      <button type="button" className="cta small fit" onClick={() => setOpen(!open)}>
-        {open ? '화면 닫기' : '화면 열기'}
-      </button>
-    </section>
   );
 }
 

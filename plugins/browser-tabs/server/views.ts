@@ -1,3 +1,4 @@
+import type { ScreenShot } from './screen.gateway';
 import type { ReadRow, SiteRow } from './tables';
 
 // 이 패키지가 내보내는 모양. 보는 사람마다 나눈다: 콘솔(주인)은 camelCase, 러너(MCP)는 snake_case.
@@ -90,6 +91,23 @@ export class AskedView {
 
 /** 주인 확인 통과 (Caddy forward_auth) */
 export class ViewerView {
+  toJSON() {
+    return { ok: true };
+  }
+}
+
+/** 서버 브라우저의 화면 (관리자): 탭 목록, 그린 탭, JPEG(base64), 클릭 좌표의 기준 크기 */
+export class ScreenView {
+  constructor(private readonly shot: ScreenShot) {}
+
+  toJSON() {
+    const s = this.shot;
+    return { tabs: s.tabs, tab: s.tab, image: s.image, width: s.width, height: s.height };
+  }
+}
+
+/** 화면에 동작을 보냈다 */
+export class ControlledView {
   toJSON() {
     return { ok: true };
   }

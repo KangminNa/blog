@@ -1,8 +1,8 @@
 {
   "name": "browser-tabs",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "cairn": ">=0.2",
-  "description": "서버 브라우저(로그인된 프로필)로 하는 일: 주소를 탭으로 읽고, 사이트에서 AI 에이전트가 일한다 (발행은 주인이 직접)",
+  "description": "서버 브라우저(로그인된 프로필)로 하는 일: 주소를 탭으로 읽고, 사이트에서 AI 에이전트가 일하고, 콘솔에서 화면을 보고 누른다 (발행은 주인이 직접)",
   "schema": "browser_tabs",
   "server": "server/plugin.ts",
   "api": {
@@ -13,7 +13,9 @@
     "PATCH /sites/:id": "updateSite",
     "DELETE /sites/:id": "deleteSite",
     "POST /sites/:id/tasks": "requestBrowse",
-    "GET /viewer": "viewer"
+    "GET /viewer": "viewer",
+    "GET /screen": "screen",
+    "POST /screen/control": "screenControl"
   },
   "tools": {
     "browser_tab_pending": {
