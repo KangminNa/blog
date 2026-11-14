@@ -1,3 +1,4 @@
+import type { BrowsePlan } from './browser-mcp';
 import { ChatTurn } from './chat-turn';
 import type { Json } from './json';
 import type { PromptPack } from './prompt-pack';
@@ -49,43 +50,6 @@ export class SubtaskResult {
       agent: this.agent,
       body: this.error ?? this.summary,
       outputs: this.outputs.join(', '),
-    });
-  }
-}
-
-/** 브라우저 작업(browse)의 사이트. 맡길 때의 값이 작업의 payload에 실려 온다 (browser-tabs 패키지) */
-export class BrowseSite {
-  constructor(
-    /** 결재(request_approval)의 target_id · target_version으로 쓴다 */
-    readonly id: string,
-    readonly version: number,
-    readonly name: string,
-    readonly startUrl: string,
-    /** 브라우저가 요청할 수 있는 출처 (Playwright MCP의 --allowed-origins) */
-    readonly origins: readonly string[],
-  ) {}
-
-  /** 서버가 이미 걸렀지만 러너도 출처 모양만 본다: http(s)://호스트[:포트], 경로 없음 */
-  static from(raw: Json): BrowseSite | null {
-    const origins = raw.texts('origins').filter((o) => /^https?:\/\/[^/\s;]+$/i.test(o));
-    if (origins.length === 0) return null;
-    return new BrowseSite(
-      raw.text('id'),
-      raw.number('version'),
-      raw.text('name'),
-      raw.text('startUrl'),
-      origins,
-    );
-  }
-
-  /** 지시문의 한 단락 (틀 site) */
-  part(prompts: PromptPack): string {
-    return prompts.fill('site', {
-      name: this.name,
-      id: this.id,
-      version: this.version,
-      start: this.startUrl,
-      origins: this.origins.join(', '),
     });
   }
 }
@@ -145,7 +109,7 @@ export class Job {
   private static readonly AI_TEST = 'ai_test';
   /** 웹 AI 로그인: 러너가 로그인 명령을 대신 돌린다 (SigninRun) */
   static readonly AI_SIGNIN = 'ai_signin';
-  /** 서버 브라우저로 하는 일: 사이트(payload.site)가 실려 오고 Playwright MCP를 붙인다 */
+  /** 서버 브라우저로 하는 일: 어디서 돌지는 러너가 browser_job으로 받고(BrowseStage) Playwright MCP를 붙인다 */
   static readonly BROWSE = 'browse';
   /** 코드 작업: 코드 러너 칸에서 셸로 저장소를 고친다 (docs/코드작업.md) */
   static readonly CODE = 'code';
@@ -174,8 +138,8 @@ export class Job {
     readonly subtaskResults: readonly SubtaskResult[] = [],
     /** 앞으로 위임할 수 있는 횟수 */
     readonly roundsLeft = 0,
-    /** 브라우저 작업의 사이트 (그 밖의 일은 null) */
-    readonly site: BrowseSite | null = null,
+    /** 브라우저 작업이 도는 곳 (BrowseStage가 붙인다. 그 밖의 일은 null) */
+    readonly browse: BrowsePlan | null = null,
     /** 코드 작업의 payload.code 그대로. 모양은 CodeSpec이 본다 (그 밖의 일은 null) */
     readonly codePayload: unknown = null,
     /** 코드 작업에서 AI에게 더 주는 단락 (저장소 · 고칠 곳 · 검사). CodeStage가 붙인다 */
@@ -221,9 +185,7 @@ export class Job {
       raw.list('team').map((m) => TeamMember.from(m)),
       raw.list('subtask_results').map((r) => SubtaskResult.from(r)),
       raw.number('rounds_left'),
-      task.text('kind') === Job.BROWSE
-        ? BrowseSite.from(task.child('payload').child('site'))
-        : null,
+      null,
       task.text('kind') === Job.CODE ? task.child('payload').field('code') : null,
       null,
       raw.field('skill_package') ? SkillPackage.from(raw.child('skill_package')) : null,
@@ -240,6 +202,11 @@ export class Job {
 
   /** 지시에 단락 하나를 더한 같은 일 (코드 작업의 저장소 단락, 만들기 작업의 재료 단락) */
   withBrief(brief: string): Job {
+    return this.withBrowse(this.browse, brief);
+  }
+
+  /** 브라우저 작업이 도는 곳과 그 단락(사이트 · 둘러보기)을 더한 같은 일 (BrowseStage) */
+  withBrowse(browse: BrowsePlan | null, brief: string): Job {
     return new Job(
       this.taskId,
       this.kind,
@@ -257,7 +224,7 @@ export class Job {
       this.team,
       this.subtaskResults,
       this.roundsLeft,
-      this.site,
+      browse,
       this.codePayload,
       brief,
       this.skillPackage,
@@ -337,7 +304,6 @@ export class Job {
           results: this.subtaskResults.map((r) => r.line(prompts)).join('\n'),
         }),
       );
-    if (this.site) parts.push(this.site.part(prompts));
     if (this.brief) parts.push(this.brief);
     if (this.team.length > 0)
       parts.push(

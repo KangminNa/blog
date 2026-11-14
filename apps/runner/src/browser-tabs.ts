@@ -29,7 +29,7 @@ export class TabUnreadable extends Error {}
 export class BrowserUnavailable extends Error {}
 
 /** 탭 하나와 이야기하는 CDP(Chrome DevTools Protocol) 연결. 보내고 받기와 이벤트 기다리기만 한다 */
-class DevToolsSession {
+export class DevToolsSession {
   /** 명령 하나의 답을 기다리는 시간 (브라우저가 죽었거나 페이지의 스크립트가 멈춘 경우) */
   static readonly REPLY_MS = 30_000;
   private nextId = 1;

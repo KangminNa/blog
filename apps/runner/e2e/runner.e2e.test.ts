@@ -1540,14 +1540,20 @@ describe('브라우저 탭을 읽는다', { skip: TestChromium.skip }, () => {
   });
 });
 
-// 브라우저 작업(browse): 서버 러너가 브라우저(CAIRN_BROWSER_URL)에 붙어 있을 때만 받고, AI CLI에 Playwright MCP를 붙인다.
-// 브라우저에 닿지 못하면 실패로 끝내지 않고 돌려준다. 가짜 CLI라 브라우저를 움직이지는 않는다 (그건 러너 단위 테스트가 본다).
+// 브라우저 작업(browse, 2차 3단계): 서버 러너가 브라우저(CAIRN_BROWSER_URL)에 붙어 있을 때만 받고, browser_job으로 어디서 돌지 받아
+// AI CLI에 Playwright MCP를 붙인다. 가짜 CLI([fake:browse])는 Playwright MCP 대신 CDP로 직접 시작 주소를 열어 채우고 멈춘다.
+// 그 뒤는 진짜다: 러너가 버튼을 다시 찾아 붙잡고 결재를 올리고, 승인되면 같은 버튼인지 보고 누른다 (진짜 Chromium + 시험 사이트).
+// 브라우저에 닿지 못하면 실패로 끝내지 않고 돌려준다.
 describe('브라우저 작업', { skip: TestChromium.skip }, () => {
+  const BASE = '/api/p/browser-tabs';
   let chromium: TestChromium;
-  const SITE = {
-    name: '시험 블로그',
-    startUrl: 'https://blog.example/write',
-    origins: ['https://blog.example'],
+  let site: Server;
+  let port: number;
+  /** 시험 사이트에 간 게시(POST)의 본문 */
+  const posts: string[] = [];
+  const worker = () => api.service(OutboxWorker);
+  const drain = async () => {
+    for (let i = 0; i < 200 && (await worker().tick()) > 0; i++);
   };
 
   const browseAgent = async (): Promise<Json> =>
@@ -1558,15 +1564,35 @@ describe('브라우저 작업', { skip: TestChromium.skip }, () => {
         role: '사이트의 편집기에 글을 채운다',
         tool: 'claude',
         scopes: ['read_public', 'browse'],
+        approvalActions: ['browser.site.publish', 'browser.site.login'],
       }),
       201,
     );
-  const browseTask = async (agent: Json, marks: string): Promise<Json> => {
-    const task = await newTask(agent, marks);
-    await db.sql`
-      UPDATE task.tasks SET kind = 'browse', payload = ${db.sql.json({ site: SITE })}
-      WHERE id = ${String(task.id)}`;
-    return task;
+  /** 사이트를 등록한다. host: 127.0.0.1 · localhost (쿠키가 호스트마다 따로라 로그인을 나눠 본다) */
+  const newSite = async (host = '127.0.0.1'): Promise<Json> => {
+    const origin = `http://${host}:${port}`;
+    return ok(
+      await api.request('POST', `${BASE}/sites`, owner, {
+        name: '시험 블로그',
+        startUrl: `${origin}/form`,
+        origins: [origin],
+      }),
+    );
+  };
+  /** 사이트에 일을 맡기고 코어가 작업을 만들 때까지 */
+  const ask = async (siteRow: Json, agent: Json, marks: string): Promise<Json> => {
+    const requestId = randomUUID();
+    ok(
+      await api.request('POST', `${BASE}/sites/${siteRow.id}/tasks`, owner, {
+        requestId,
+        instruction: `제목 칸에 시험 글을 채워 주세요 ${marks}`,
+        agentId: agent.id,
+      }),
+    );
+    await drain();
+    const [row] = await db.sql`
+      SELECT id FROM task.tasks WHERE request_id = ${`browser-tabs:${requestId}`}`;
+    return getTask(row?.id);
   };
   const serverRunner = (browserUrl: string): RunnerProcess => {
     const file = join(spyDir, `pairing-${randomUUID()}`);
@@ -1582,17 +1608,86 @@ describe('브라우저 작업', { skip: TestChromium.skip }, () => {
     await newTask(await newAgent(), ''); // 긴 폴링을 깨워 바로 끝나게 한다
     assert.equal(await runner.exited(), 0);
   };
+  /** 작업의 기다리는 결재 (없으면 null) */
+  const pendingNow = async (taskId: unknown): Promise<Json | null> => {
+    const { approvals } = ok(await api.get('/api/approvals?status=pending', owner)) as {
+      approvals: Json[];
+    };
+    return approvals.find((a) => a.taskId === taskId) ?? null;
+  };
+  /** 작업이 결재를 기다리게 될 때까지, 그 결재 */
+  const pendingOf = (taskId: unknown): Promise<Json> =>
+    until('결재가 올라옴', () => pendingNow(taskId), 30_000);
+  const decide = async (approval: Json, decision: string, note?: string) => {
+    ok(
+      await api.request('POST', `/api/approvals/${approval.id}/decide`, owner, {
+        version: approval.version,
+        decision,
+        ...(note ? { note } : {}),
+      }),
+    );
+    await drain();
+  };
+  /** 결재 뒤의 일(클릭 고리 · 결과)은 일꾼을 돌리며 기다린다 */
+  const settled = (taskId: unknown, status: string): Promise<Json> =>
+    until(
+      `작업이 ${status}`,
+      async () => {
+        await drain();
+        const task = await getTask(taskId);
+        return task.status === status ? task : null;
+      },
+      30_000,
+    );
+  /** 관리자가 콘솔 화면에서 로그인한 것처럼: 그 호스트에 로그인 쿠키를 받는다 */
+  const signIn = async (host: string) => {
+    await fetch(`${chromium.endpoint}/json/new?http://${host}:${port}/signin`, { method: 'PUT' });
+    await until('로그인됨', async () => {
+      const tabs = (await (await fetch(`${chromium.endpoint}/json/list`)).json()) as Json[];
+      return tabs.some((t) => String(t.title) === '로그인됨') ? true : null;
+    });
+  };
 
   before(async () => {
+    ok(await api.request('POST', `/api/plugins/browser-tabs/enable`, owner));
+    // 시험 사이트: /signin에 들어오면 로그인 쿠키, /form은 로그인했으면 글쓰기 · 아니면 로그인 화면, 게시(POST)는 기록
+    site = createServer((req, res) => {
+      const html = (body: string, headers: Json = {}) =>
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...headers }).end(body);
+      if (req.method === 'POST') {
+        let body = '';
+        req.on('data', (c) => {
+          body += c;
+        });
+        req.on('end', () => {
+          posts.push(body);
+          html('<title>완료</title><p>게시했어요</p>');
+        });
+        return;
+      }
+      if (req.url?.startsWith('/signin'))
+        return html('<title>로그인됨</title>', { 'set-cookie': 'sid=ok; Path=/' });
+      if (!String(req.headers.cookie).includes('sid=ok'))
+        return html('<title>로그인</title><input type="password">');
+      html(
+        '<title>글쓰기</title><form action="/done" method="post"><input id="title" name="title"><button type="submit">게시</button></form>',
+      );
+    });
+    await new Promise<void>((done) => site.listen(0, '127.0.0.1', done));
+    port = (site.address() as AddressInfo).port;
     chromium = await TestChromium.start();
+    await signIn('127.0.0.1');
   });
   after(async () => {
     await chromium.stop();
+    site.closeAllConnections();
+    site.close();
+    ok(await api.request('POST', `/api/plugins/browser-tabs/disable`, owner));
   });
 
   test('브라우저에 닿지 못하면 AI를 띄우지 않고 돌려준다 (실패가 아니다)', async () => {
     const spy = new Spy();
-    const task = await browseTask(await browseAgent(), spy.mark);
+    const task = await ask(await newSite(), await browseAgent(), spy.mark);
     const runner = serverRunner('http://127.0.0.1:1');
     try {
       await runner.logged('브라우저 작업: 받음');
@@ -1609,29 +1704,174 @@ describe('브라우저 작업', { skip: TestChromium.skip }, () => {
     }
   });
 
-  test('서버 러너가 브라우저에 붙어 있으면 받아서, AI CLI에 사이트의 Playwright MCP를 붙인다', async () => {
+  test('사이트 일 끝까지: 채우고 멈춤 → 러너가 붙잡아 결재 → 승인 → 같은 버튼이라 누르고 결과 화면 → done', async () => {
     const spy = new Spy();
-    const task = await browseTask(await browseAgent(), spy.mark);
+    const siteRow = await newSite();
+    const task = await ask(siteRow, await browseAgent(), `[fake:browse] ${spy.mark}`);
     const runner = serverRunner(chromium.endpoint);
     try {
-      await runner.logged('브라우저 작업: 받음');
       const seen = await spy.seen();
-      await taskIn(task.id, 'done');
       const playwright = (seen.mcpServers as Json).playwright as Json;
-      assert.equal(playwright.type, 'stdio');
-      assert.deepEqual((playwright.args as string[]).slice(1), [
+      const args = (playwright.args as string[]).slice(1);
+      assert.deepEqual(args.slice(0, 4), [
         '--cdp-endpoint',
         chromium.endpoint,
         '--allowed-origins',
-        'https://blog.example',
+        `http://127.0.0.1:${port}`,
       ]);
+      assert.equal(args[4], '--output-dir');
       assert.ok((seen.argv as string[]).includes('mcp__playwright__*'), '그 도구를 묻지 않고 허락');
-      assert.match(String(seen.prompt), /# 사이트: 시험 블로그/);
+      assert.match(String(seen.prompt), /# 사이트: 시험 블로그[\s\S]*browser-stop\.json/);
       assert.equal(
         JSON.stringify(playwright).includes(String(seen.runToken)),
         false,
         '작업 토큰은 cairn에만',
       );
+
+      const approval = await pendingOf(task.id);
+      assert.deepEqual(
+        [approval.action, (approval.target as Json).kind, approval.note],
+        ['browser.site.publish', 'browser_click', '제목을 채웠어요'],
+      );
+      const click = ok(await api.get(`${BASE}/clicks/${(approval.target as Json).id}`, owner));
+      assert.deepEqual(
+        [click.status, click.role, click.name, click.pageUrl],
+        ['held', 'button', '게시', `http://127.0.0.1:${port}/form`],
+      );
+      assert.ok(click.beforeImage, '멈춘 화면');
+      assert.deepEqual(
+        (click.shots as Json[]).map((s) => s.kind),
+        ['step', 'before'],
+        'AI의 단계 화면 + 멈춘 화면',
+      );
+      assert.equal(posts.length, 0, '결재 전에는 누르지 않는다');
+
+      await decide(approval, 'approve');
+      const done = await settled(task.id, 'done');
+      assert.ok(done);
+      assert.deepEqual(posts, ['title=%EC%8B%9C%ED%97%98+%EA%B8%80'], '채운 값으로 한 번 게시했다');
+      const after = ok(await api.get(`${BASE}/clicks/${click.id}`, owner));
+      assert.deepEqual(
+        [after.status, after.afterUrl, after.afterKind],
+        ['clicked', `http://127.0.0.1:${port}/done`, 'after'],
+      );
+      await runner.logged(`결재된 클릭을 눌렀어요: ${click.id} (127.0.0.1:${port})`);
+    } finally {
+      await stopRunner(runner);
+    }
+  });
+
+  test('승인 전에 페이지가 바뀌면 누르지 않고(changed) 작업은 실패, 사이트에는 요청이 가지 않는다', async () => {
+    const task = await ask(await newSite(), await browseAgent(), '[fake:browse]');
+    const runner = serverRunner(chromium.endpoint);
+    try {
+      const approval = await pendingOf(task.id);
+      const clickId = (approval.target as Json).id;
+      const click = ok(await api.get(`${BASE}/clicks/${clickId}`, owner));
+      // 관리자가 콘솔 화면에서 그 페이지를 바꿨다 (버튼이 보내는 곳이 달라짐)
+      const tab = ((await (await fetch(`${chromium.endpoint}/json/list`)).json()) as Json[]).find(
+        (t) => t.id === click.tabId || t.url === click.pageUrl,
+      );
+      const ws = new WebSocket(String(tab?.webSocketDebuggerUrl));
+      await new Promise((done) => ws.addEventListener('open', done, { once: true }));
+      ws.send(
+        JSON.stringify({
+          id: 1,
+          method: 'Runtime.evaluate',
+          params: { expression: "document.querySelector('form').action = '/elsewhere'" },
+        }),
+      );
+      await new Promise((done) => ws.addEventListener('message', done, { once: true }));
+      ws.close();
+      const before = posts.length;
+
+      await decide(approval, 'approve');
+      const failed = await settled(task.id, 'failed');
+      assert.match(
+        String((failed.result as Json).error),
+        /페이지가 바뀌어 누르지 않았어요 \(버튼이 달라요\)/,
+      );
+      assert.equal(posts.length, before, '누르지 않았다');
+      const after = ok(await api.get(`${BASE}/clicks/${clickId}`, owner));
+      assert.deepEqual([after.status, after.afterKind], ['changed', 'changed']);
+    } finally {
+      await stopRunner(runner);
+    }
+  });
+
+  test('로그인이 풀려 있으면 로그인 필요 결재 → 콘솔에서 로그인하고 "로그인했어요" → 같은 작업이 이어서 끝까지', async () => {
+    // localhost는 아직 로그인하지 않은 사이트다
+    const siteRow = await newSite('localhost');
+    const task = await ask(siteRow, await browseAgent(), '[fake:browse]');
+    const runner = serverRunner(chromium.endpoint);
+    try {
+      const login = await pendingOf(task.id);
+      assert.deepEqual(
+        [login.action, (login.target as Json).kind, (login.target as Json).id],
+        ['browser.site.login', 'browser_site', siteRow.id],
+      );
+      assert.match(String(login.note), /로그인 필요: 시험 블로그/);
+      const flagged = (ok(await api.get(`${BASE}/sites`, owner)).sites as Json[]).find(
+        (s) => s.id === siteRow.id,
+      );
+      assert.notEqual(flagged?.loginNeededAt, null);
+
+      await signIn('localhost');
+      await decide(login, 'revise', '로그인했어요');
+      const publish = await until(
+        '이어서 클릭 결재가 올라옴',
+        async () => {
+          await drain();
+          const next = await pendingNow(task.id);
+          return next?.action === 'browser.site.publish' ? next : null;
+        },
+        30_000,
+      );
+      const cleared = (ok(await api.get(`${BASE}/sites`, owner)).sites as Json[]).find(
+        (s) => s.id === siteRow.id,
+      );
+      assert.equal(cleared?.loginNeededAt, null, '로그인했어요로 표시를 비웠다');
+      await decide(publish, 'approve');
+      await settled(task.id, 'done');
+      const { shots } = ok(await api.get(`${BASE}/shots?taskId=${task.id}`, owner)) as {
+        shots: Json[];
+      };
+      assert.deepEqual(
+        shots.map((s) => s.kind),
+        ['login', 'step', 'before', 'after'],
+      );
+    } finally {
+      await stopRunner(runner);
+    }
+  });
+
+  test('둘러보기: 새 빈 창(--isolated)과 내부 주소를 막는 프록시로 돌고, 사이트 자리를 쓰지 않는다', async () => {
+    const spy = new Spy();
+    const agent = await browseAgent();
+    const requestId = randomUUID();
+    ok(
+      await api.request('POST', `${BASE}/explore`, owner, {
+        requestId,
+        instruction: `가격을 비교해 주세요 ${spy.mark}`,
+        agentId: agent.id,
+      }),
+    );
+    await drain();
+    const runner = serverRunner(chromium.endpoint);
+    try {
+      const seen = await spy.seen();
+      const args = (((seen.mcpServers as Json).playwright as Json).args as string[]).slice(1);
+      assert.deepEqual(args.slice(0, 4), [
+        '--cdp-endpoint',
+        chromium.endpoint,
+        '--isolated',
+        '--proxy-server',
+      ]);
+      assert.match(String(args[4]), /^http:\/\/127\.0\.0\.1:\d+$/);
+      assert.match(String(seen.prompt), /# 둘러보기/);
+      const [row] =
+        await db.sql`SELECT id FROM task.tasks WHERE request_id = ${`browser-tabs:${requestId}`}`;
+      await taskIn(row?.id, 'done');
     } finally {
       await stopRunner(runner);
     }

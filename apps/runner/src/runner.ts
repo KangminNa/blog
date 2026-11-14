@@ -1,8 +1,12 @@
 import { AiLogins } from './ai-login';
 import { Backoff } from './backoff';
+import { BrowseStage } from './browse-stage';
 import { BrowserMcp } from './browser-mcp';
+import { BrowserPages } from './browser-page';
+import { BrowserSlot } from './browser-slot';
 import { BrowserTabs } from './browser-tabs';
 import { CairnServer } from './cairn-server';
+import { ClickRunner } from './click-runner';
 import { CodeStage } from './code-stage';
 import type { Job } from './job';
 import { JobPool } from './job-pool';
@@ -68,6 +72,9 @@ export class Runner {
   private readonly server: CairnServer;
   private readonly logins: AiLogins;
   private readonly ability: RunnerAbility;
+  /** 서버 브라우저의 로그인된 프로필을 쓰는 자리: 사이트 일과 결재된 클릭이 하나씩 (BrowseStage · ClickRunner) */
+  private readonly slot = new BrowserSlot();
+  private readonly pages: BrowserPages | null;
 
   constructor(private readonly config: RunnerConfig) {
     const token = config.deviceToken;
@@ -77,6 +84,7 @@ export class Runner {
     this.server = new CairnServer(new McpClient(config.mcpUrl, token));
     this.logins = new AiLogins(this.server, config.claudeToken);
     this.ability = RunnerAbility.detect(config);
+    this.pages = config.browserUrl ? new BrowserPages(config.browserUrl) : null;
   }
 
   /**
@@ -115,23 +123,27 @@ export class Runner {
       this.log.info(
         'AI 로그인은 콘솔의 AI 메뉴에서 해요. 로그인이 없는 도구의 일은 서버가 주지 않아요',
       );
-    // 브라우저가 있으면 탭 읽기(browser-tabs 패키지)를 일과 따로 돌린다.
-    // 탭 읽기에서 토큰이 거절되면 일의 고리도 멈추고, 일의 고리가 끝나면(멈춤 · 오류) 탭 읽기도 끝낸다
+    // 브라우저가 있으면 탭 읽기와, 서버 러너면 결재된 클릭(browser-tabs 패키지)을 일과 따로 돌린다.
+    // 거기서 토큰이 거절되면 일의 고리도 멈추고, 일의 고리가 끝나면(멈춤 · 오류) 그것들도 끝낸다
     let tabFailure: unknown = null;
-    const tabs = this.config.browserUrl
-      ? new TabReader(this.server, new BrowserTabs(this.config.browserUrl), this.log)
-          .run(stop)
-          .catch((error: unknown) => {
-            tabFailure = error;
-            this.stopper.abort();
-            this.pollCutter.abort();
-          })
+    const aside = (error: unknown) => {
+      tabFailure = error;
+      this.stopper.abort();
+      this.pollCutter.abort();
+    };
+    const { browserUrl } = this.config;
+    const tabs = browserUrl
+      ? new TabReader(this.server, new BrowserTabs(browserUrl), this.log).run(stop).catch(aside)
       : null;
+    const clicks =
+      this.pages && this.ability.browser
+        ? new ClickRunner(this.server, this.pages, this.slot, this.log).run(stop).catch(aside)
+        : null;
     try {
       await this.loop(stop);
     } finally {
       this.stopper.abort();
-      await tabs;
+      await Promise.all([tabs, clicks]);
     }
     if (tabFailure instanceof AccessDenied) throw new TokenRejected(tabFailure.message);
     if (tabFailure) throw new RunnerHalted((tabFailure as Error).message);
@@ -154,7 +166,7 @@ export class Runner {
     }
   }
 
-  /** 빈 자리만큼 빌린다. 브라우저 작업이 도는 동안은 브라우저를 알리지 않는다 (JobPool) */
+  /** 빈 자리만큼 빌린다. 사이트 일(대상이 있는 브라우저 작업)이 도는 동안은 브라우저를 알리지 않는다 (JobPool) */
   private async lease(pool: JobPool): Promise<void> {
     try {
       this.polling = true;
@@ -168,7 +180,7 @@ export class Runner {
       for (const job of jobs)
         pool.add(
           this.perform(job).catch((error: unknown) => this.failed(error)),
-          job.isBrowse,
+          job.isBrowse && job.target !== null,
         );
     } catch (error) {
       this.failed(error);
@@ -238,6 +250,8 @@ export class Runner {
         return this.pauseLeasing(this.browserWait);
       }
       this.browserWait.reset();
+      // 어디서 일할지 받고 마지막 버튼 · 로그인을 러너가 맡는다 (BrowseStage)
+      stage = new BrowseStage(job, this.config, this.server, this.slot, this.pages as BrowserPages);
     }
     const login = await this.logins.forJob(job);
     await new JobRun(

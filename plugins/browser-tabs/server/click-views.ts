@@ -170,6 +170,8 @@ export class ClickView {
       taskId: r.task_id,
       siteId: r.site_id,
       siteName: this.siteName,
+      /** 콘솔 화면에서 그 탭을 고를 때 */
+      tabId: r.tab_id,
       pageUrl: r.page_url,
       pageTitle: r.page_title,
       role: r.role,

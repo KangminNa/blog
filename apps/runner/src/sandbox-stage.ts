@@ -6,8 +6,8 @@ import type { Redactor } from './redactor';
 import type { SandboxRoom } from './sandbox-room';
 
 /**
- * 코드 러너 칸에서 하는 일의 앞뒤 (JobRun이 AI 앞뒤에서 부르고, 그동안에도 보고 고리를 돌려 임대를 늘리고 취소를 듣는다).
- * 저장소를 고치는 일은 CodeStage, 파일을 만드는 일은 MakeStage
+ * AI 앞뒤에 하네스가 하는 일 (JobRun이 AI 앞뒤에서 부르고, 그동안에도 보고 고리를 돌려 임대를 늘리고 취소를 듣는다).
+ * 코드 러너 칸에서 저장소를 고치는 일은 CodeStage, 파일을 만드는 일은 MakeStage, 서버 브라우저로 하는 일은 BrowseStage
  */
 export interface SandboxStage {
   /** AI CLI의 자리를 만들 곳 (prepare 뒤) */
@@ -26,12 +26,13 @@ export interface SandboxStage {
     note: (event: RunEvent) => void,
     redactor: Redactor,
   ): Promise<RunEnding | null>;
-  /** AI가 잘 끝난 뒤. AI의 마지막 답(요약)과 함께 결과를 만든다 */
+  /** AI가 잘 끝난 뒤. AI의 마지막 답(요약)과 함께 결과를 만든다. workDir: AI가 돈 작업 폴더 (브라우저 작업의 browser-stop.json) */
   finish(
     summary: string,
     signal: AbortSignal,
     note: (event: RunEvent) => void,
     redactor: Redactor,
+    workDir: string,
   ): Promise<RunEnding>;
   /** 결과물 뒤에 올릴 결재. 올리면 null, 못 올리면 실패로 끝낼 그 끝 */
   requestApproval(signal: AbortSignal, redactor: Redactor): Promise<RunEnding | null>;

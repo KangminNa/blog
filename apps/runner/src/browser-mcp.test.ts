@@ -1,17 +1,22 @@
 import assert from 'node:assert/strict';
 import { type ChildProcess, spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { after, before, describe, test } from 'node:test';
-import { BrowserMcp } from './browser-mcp';
+import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
+import { pause } from './backoff';
+import { BrowseJob } from './browse-job';
+import { BrowsePlan, BrowserMcp } from './browser-mcp';
+import { BrowserPages } from './browser-page';
+import { DevToolsSession } from './browser-tabs';
 import { ClaudeCli } from './claude-cli';
 import { ClaudeStream } from './claude-stream';
 import { CodexCli } from './codex-cli';
 import { CodexStream } from './codex-stream';
+import { ExploreProxy } from './explore-proxy';
 import { Job } from './job';
 import { Json } from './json';
 import { RunnerAbility } from './runner-ability';
@@ -19,48 +24,86 @@ import { RunnerConfig } from './runner-config';
 import { REPO_PROMPTS } from './testing/repo-prompts';
 import { TestChromium } from './testing/test-chromium';
 
-// 브라우저 작업(browse): 사이트를 읽고, 그 일에만 Playwright MCP를 붙이고, 격리 검사가 그 일에만 playwright를 허락한다.
-// 실제 시험은 진짜 Chromium + 진짜 Playwright MCP로 허용 출처는 열리고 다른 출처는 막히는지 본다.
+// 브라우저 작업(browse): browser_job의 답으로 사이트 · 둘러보기를 정하고, 그 일에만 Playwright MCP를 붙이고,
+// 격리 검사가 그 일에만 playwright를 허락한다. 실제 시험은 진짜 Chromium + 진짜 Playwright MCP로 본다:
+// 사이트 일은 허용 출처만 열리고 MCP가 끝나도 채운 탭이 남는다(결재된 클릭의 전제), 둘러보기는 로그인 쿠키가 없고 내부 주소가 막히며 끝나면 사라진다.
 
-const browseJob = (site: object, kind = 'browse') =>
+const browseJob = (kind = 'browse') =>
   Job.from(
     Json.of({
-      task: { id: 't1', kind, title: '블로그 글 준비', payload: { site } },
+      task: { id: 't1', kind, title: '블로그 글 준비', payload: {} },
       instruction: '이 소재로 글을 채워 주세요',
       agent: { name: '브라우저 담당', role: '', tool: 'claude' },
       run_token: 'run-token',
     }),
   );
 const SITE = {
+  id: 's1',
+  version: 2,
   name: '블로그',
-  startUrl: 'https://blog.example/write',
-  origins: ['https://blog.example'],
+  start_url: 'https://blog.example/write',
+  origins: ['https://blog.example', 'javascript:alert(1)', 'https://a.example/path'],
 };
+/** 러너가 사이트 일로 받은 작업 (BrowseStage.aiJob이 하는 일) */
+const siteJob = (origins: readonly string[], outputDir = '/tmp/steps', job = browseJob()) =>
+  job.withBrowse(new BrowsePlan(origins, outputDir, null), '# 사이트');
 
 describe('브라우저 작업의 설정 (러너)', () => {
-  test('사이트를 읽어 지시문에 넣고, 모양이 틀린 출처는 버린다', () => {
-    const job = browseJob({
-      ...SITE,
-      origins: ['https://blog.example', 'javascript:alert(1)', 'https://a.example/path'],
-    });
-    assert.equal(job.isBrowse, true);
-    assert.deepEqual(job.site?.origins, ['https://blog.example']);
-    assert.match(
-      job.prompt(REPO_PROMPTS, false),
-      /# 사이트: 블로그[\s\S]*갈 수 있는 출처: https:\/\/blog\.example/,
+  test('browser_job의 답: 사이트 일은 사이트 값(모양이 틀린 출처는 버림) · 로그인 필요 · 붙잡은 페이지, 대상이 없으면 둘러보기', () => {
+    const site = BrowseJob.from(
+      Json.of({
+        mode: 'site',
+        site: SITE,
+        login_needed: true,
+        held: { click_id: 'c1', page_url: 'https://blog.example/write?d=1', tab_id: 'T1' },
+      }),
     );
-    assert.equal(
-      browseJob(SITE, 'general').site,
-      null,
-      '브라우저 작업이 아니면 사이트를 읽지 않는다',
-    );
-    assert.equal(browseJob({ ...SITE, origins: [] }).site, null);
+    assert.equal(site.explore, false);
+    assert.deepEqual(site.site?.origins, ['https://blog.example']);
+    assert.equal(site.loginNeeded, true);
+    assert.equal(site.held?.pageUrl, 'https://blog.example/write?d=1');
+    const explore = BrowseJob.from(Json.of({ mode: 'explore', site: null, held: null }));
+    assert.deepEqual([explore.explore, explore.site, explore.held], [true, null, null]);
   });
 
-  test('브라우저 작업이고, 브라우저가 있고, 허용 출처가 있을 때만 Playwright MCP를 붙인다', () => {
-    assert.equal(BrowserMcp.for(browseJob(SITE), null), null, '이 러너에 브라우저가 없음');
-    assert.equal(BrowserMcp.for(browseJob(SITE, 'general'), 'http://127.0.0.1:9222'), null);
-    const browser = BrowserMcp.for(browseJob(SITE), 'http://127.0.0.1:9222');
+  test('지시문 틀 site: 사이트 일 · 붙잡은 페이지 · 둘러보기', () => {
+    const site = REPO_PROMPTS.fill('site', {
+      explore: false,
+      name: '블로그',
+      start: 'https://blog.example/write',
+      origins: 'https://blog.example',
+      held: 'https://blog.example/write?d=1',
+    });
+    assert.match(site, /# 사이트: 블로그[\s\S]*갈 수 있는 출처: https:\/\/blog\.example/);
+    assert.match(site, /browser-stop\.json/);
+    assert.match(site, /붙잡아 두었던 페이지: https:\/\/blog\.example\/write\?d=1/);
+    const explore = REPO_PROMPTS.fill('site', { explore: true });
+    assert.match(explore, /# 둘러보기/);
+    assert.doesNotMatch(explore, /# 사이트/);
+    const job = siteJob(['https://blog.example']);
+    assert.match(job.prompt(REPO_PROMPTS, false), /# 할 일[\s\S]*# 사이트/);
+  });
+
+  test('브라우저 작업이고, 브라우저가 있고, 자리가 정해졌을 때만 Playwright MCP를 붙인다', () => {
+    assert.equal(
+      BrowserMcp.for(siteJob(['https://blog.example']), null),
+      null,
+      '이 러너에 브라우저가 없음',
+    );
+    assert.equal(
+      BrowserMcp.for(browseJob(), 'http://127.0.0.1:9222'),
+      null,
+      '아직 자리를 받지 않음',
+    );
+    assert.equal(
+      BrowserMcp.for(
+        siteJob(['https://blog.example'], '/tmp/s', browseJob('general')),
+        'http://127.0.0.1:9222',
+      ),
+      null,
+    );
+    assert.equal(BrowserMcp.for(siteJob([]), 'http://127.0.0.1:9222'), null, '출처 없는 사이트 일');
+    const browser = BrowserMcp.for(siteJob(['https://blog.example']), 'http://127.0.0.1:9222');
     assert.ok(browser);
     assert.equal(browser.command, process.execPath);
     assert.match(String(browser.args[0]), /@playwright[/\\]mcp[/\\]cli\.js$/);
@@ -69,11 +112,26 @@ describe('브라우저 작업의 설정 (러너)', () => {
       'http://127.0.0.1:9222',
       '--allowed-origins',
       'https://blog.example',
+      '--output-dir',
+      '/tmp/steps',
+    ]);
+    const explore = BrowserMcp.for(
+      browseJob().withBrowse(new BrowsePlan([], '/tmp/e', 'http://127.0.0.1:4567'), '# 둘러보기'),
+      'http://127.0.0.1:9222',
+    );
+    assert.deepEqual(explore?.args.slice(1), [
+      '--cdp-endpoint',
+      'http://127.0.0.1:9222',
+      '--isolated',
+      '--proxy-server',
+      'http://127.0.0.1:4567',
+      '--output-dir',
+      '/tmp/e',
     ]);
   });
 
   test('Claude · Codex 설정: 브라우저 작업에만 playwright를 더한다 (작업 토큰은 cairn에만)', () => {
-    const browser = BrowserMcp.for(browseJob(SITE), 'http://127.0.0.1:9222');
+    const browser = BrowserMcp.for(siteJob(['https://blog.example']), 'http://127.0.0.1:9222');
     const plain = JSON.parse(ClaudeCli.mcpConfig('https://c.example/mcp', 'tok'));
     assert.deepEqual(Object.keys(plain.mcpServers), ['cairn']);
     const withBrowser = JSON.parse(ClaudeCli.mcpConfig('https://c.example/mcp', 'tok', browser));
@@ -165,17 +223,36 @@ describe('브라우저 작업 (실제 Chromium + Playwright MCP)', { skip: TestC
   let allowedUrl: string;
   let otherUrl: string;
   let otherHits = 0;
+  let work: string;
 
   const listen = async (server: Server): Promise<string> => {
     await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
     return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   };
 
+  /** AI CLI처럼 작업 폴더에서 MCP를 띄우고 처음 인사까지 */
+  const start = async (browser: BrowserMcp): Promise<StdioMcp> => {
+    const mcp = new StdioMcp(
+      spawn(browser.command, [...browser.args], { cwd: work, stdio: ['pipe', 'pipe', 'ignore'] }),
+    );
+    await mcp.call('initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'test', version: '0' },
+    });
+    mcp.notify('notifications/initialized');
+    return mcp;
+  };
+
   before(async () => {
-    allowed = createServer((_, res) =>
+    // 허용된 사이트: /login에 들어오면 로그인한 것처럼 쿠키를 받고, 페이지는 받은 쿠키를 그대로 보여 준다
+    allowed = createServer((req, res) =>
       res
-        .writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
-        .end('<title>허용</title><p>허용된 출처의 편집기</p>'),
+        .writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          ...(req.url?.startsWith('/login') ? { 'set-cookie': 'sid=logged-in; Path=/' } : {}),
+        })
+        .end(`<title>허용</title><p id="c">쿠키:${req.headers.cookie ?? ''}</p><input id="t">`),
     );
     other = createServer((_, res) => {
       otherHits++;
@@ -184,6 +261,14 @@ describe('브라우저 작업 (실제 Chromium + Playwright MCP)', { skip: TestC
     allowedUrl = await listen(allowed);
     otherUrl = await listen(other);
     chromium = await TestChromium.start();
+  });
+
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), 'cairn-browse-'));
+  });
+
+  afterEach(() => {
+    rmSync(work, { recursive: true, force: true });
   });
 
   after(async () => {
@@ -200,33 +285,93 @@ describe('브라우저 작업 (실제 Chromium + Playwright MCP)', { skip: TestC
     assert.equal(await BrowserMcp.reachable(null), false);
   });
 
-  test('허용 출처는 열리고, 다른 출처로 바로 가면 막힌다 (요청이 도착하지 않는다)', async () => {
-    const browser = BrowserMcp.for(
-      browseJob({ name: '시험', startUrl: `${allowedUrl}/`, origins: [allowedUrl] }),
-      chromium.endpoint,
-    );
+  test('사이트 일: 허용 출처만 열리고, 단계 화면이 쌓이고, MCP가 끝나도 채운 탭이 남는다 (결재된 클릭의 전제)', async () => {
+    const steps = join(work, 'steps');
+    const browser = BrowserMcp.for(siteJob([allowedUrl], steps), chromium.endpoint);
     assert.ok(browser);
-    // AI CLI처럼 작업 폴더에서 띄운다: Playwright MCP가 거기에 페이지 스냅샷을 남긴다
-    const work = mkdtempSync(join(tmpdir(), 'cairn-browse-'));
-    const mcp = new StdioMcp(
-      spawn(browser.command, [...browser.args], { cwd: work, stdio: ['pipe', 'pipe', 'ignore'] }),
-    );
+    const mcp = await start(browser);
+    let closed = false;
     try {
-      await mcp.call('initialize', {
-        protocolVersion: '2025-06-18',
-        capabilities: {},
-        clientInfo: { name: 'test', version: '0' },
-      });
-      mcp.notify('notifications/initialized');
-      const opened = await mcp.tool('browser_navigate', { url: `${allowedUrl}/` });
+      await mcp.tool('browser_tabs', { action: 'new' });
+      const opened = await mcp.tool('browser_navigate', { url: `${allowedUrl}/write` });
       assert.match(opened, /Page Title: 허용/);
+      await mcp.tool('browser_evaluate', {
+        function: "() => { document.querySelector('#t').value = '채운 값'; }",
+      });
+      await mcp.tool('browser_take_screenshot', { type: 'jpeg' });
+      assert.ok(
+        readdirSync(steps).some((f) => f.endsWith('.jpeg')),
+        '단계 화면은 --output-dir에 쌓인다',
+      );
+      // 다른 출처는 다른 탭에서 (채운 탭은 그대로 둔다)
+      await mcp.tool('browser_tabs', { action: 'new' });
       const blocked = await mcp.tool('browser_navigate', { url: `${otherUrl}/` });
       assert.match(blocked, /ERR_BLOCKED_BY_CLIENT/);
       assert.equal(otherHits, 0, '다른 출처 서버에 요청이 가지 않았다');
-      await mcp.tool('browser_close', {});
+      // AI CLI가 끝나면 MCP 서버도 끝난다 (신호로 꺼도 같다)
+      mcp.close();
+      closed = true;
+      await pause(1_000);
+      const pages = new BrowserPages(chromium.endpoint);
+      const tab = (await pages.tabs(AbortSignal.timeout(5_000))).find(
+        (t) => t.url === `${allowedUrl}/write`,
+      );
+      assert.ok(tab, '채운 탭이 남는다');
+      const session = await DevToolsSession.open(tab.socket, AbortSignal.timeout(5_000));
+      const read = await session.send('Runtime.evaluate', {
+        expression: "document.querySelector('#t').value",
+        returnByValue: true,
+      });
+      session.close();
+      assert.equal((read.result as { value?: string }).value, '채운 값', '채운 값도 그대로');
+    } finally {
+      if (!closed) mcp.close();
+    }
+  });
+
+  test('둘러보기: 새 빈 창이라 로그인 쿠키가 없고, 내부 주소는 프록시가 막고, 끝나면 창이 사라진다', async () => {
+    // 로그인된 프로필(기본 컨텍스트)에 허용 사이트의 쿠키를 심는다
+    await fetch(`${chromium.endpoint}/json/new?${allowedUrl}/login`, { method: 'PUT' });
+    await pause(500);
+    // 시험의 사이트도 127.0.0.1이라, 다른 출처(otherUrl)만 내부 주소처럼 막는 규칙으로 본다
+    const otherPort = Number(new URL(otherUrl).port);
+    const proxy = await ExploreProxy.start((_, port) => port === otherPort);
+    const hitsBefore = otherHits;
+    const browser = BrowserMcp.for(
+      browseJob().withBrowse(new BrowsePlan([], join(work, 'steps'), proxy.url), '# 둘러보기'),
+      chromium.endpoint,
+    );
+    assert.ok(browser);
+    const mcp = await start(browser);
+    try {
+      const opened = await mcp.tool('browser_navigate', { url: `${allowedUrl}/explore` });
+      assert.match(opened, /Page Title: 허용/);
+      const sent = await mcp.tool('browser_evaluate', {
+        function: "() => document.querySelector('#c').textContent",
+      });
+      assert.match(sent, /"쿠키:"/, '로그인된 프로필의 쿠키가 가지 않는다');
+      assert.ok(
+        (await chromium.openUrls()).includes(`${allowedUrl}/explore`),
+        '둘러보기 창이 열려 있다',
+      );
+      const blocked = await mcp.tool('browser_navigate', { url: `${otherUrl}/` });
+      assert.doesNotMatch(blocked, /다른 출처/);
+      assert.equal(otherHits, hitsBefore, '막힌 주소에 요청이 가지 않았다');
+      mcp.close();
+      await pause(1_000);
+      const left = await chromium.openUrls();
+      assert.equal(
+        left.some((u) => u.endsWith('/explore') || u.startsWith('chrome-error:')),
+        false,
+        'MCP가 끝나면 그 창도 사라진다',
+      );
+      assert.ok(
+        (await chromium.openUrls()).includes(`${allowedUrl}/login`),
+        '로그인된 프로필의 탭은 그대로',
+      );
     } finally {
       mcp.close();
-      rmSync(work, { recursive: true, force: true });
+      await proxy.close();
     }
   });
 });
