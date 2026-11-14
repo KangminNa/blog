@@ -72,10 +72,23 @@ export class BrowserScreenGateway extends BaseGateway {
       if (!tab) throw new Error('열린 탭이 없어요');
       return this.session(base, tab.id, signal, async (send) => {
         const metrics = await send('Page.getLayoutMetrics');
-        const view = metrics.cssVisualViewport as { clientWidth: number; clientHeight: number };
+        const view = metrics.cssVisualViewport as {
+          pageX?: number;
+          pageY?: number;
+          clientWidth: number;
+          clientHeight: number;
+        };
+        // 보이는 자리만, CSS 픽셀 그대로 (스크롤 막대 · 화면 배율을 빼고): 그림 위 누른 자리가 그대로 클릭 좌표가 된다
         const picture = await send('Page.captureScreenshot', {
           format: 'jpeg',
           quality: BrowserScreenGateway.JPEG_QUALITY,
+          clip: {
+            x: view.pageX ?? 0,
+            y: view.pageY ?? 0,
+            width: view.clientWidth,
+            height: view.clientHeight,
+            scale: 1,
+          },
         });
         return {
           tabs,

@@ -33,6 +33,11 @@ describe('서버 브라우저 화면', () => {
     assert.deepEqual([shot.width, shot.height], [1280, 720], '클릭 좌표의 기준 (CSS 픽셀, 반올림)');
     const capture = cdp.calls.find((c) => c.method === 'Page.captureScreenshot');
     assert.equal(capture?.params.format, 'jpeg');
+    assert.deepEqual(
+      capture?.params.clip,
+      { x: 0, y: 0, width: 1280.4, height: 720, scale: 1 },
+      '보이는 자리만 CSS 픽셀로 (누른 자리 = 클릭 좌표)',
+    );
   });
 
   test('고른 탭을 그리고, 닫힌 탭을 고르면 맨 앞 탭으로', async () => {
