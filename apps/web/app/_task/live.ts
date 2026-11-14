@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useDevices } from '../_account/live';
+import type { Device } from '../_account/types';
 import { type ApiReply, api } from '../_lib/client-api';
 import { useLiveValue } from '../_lib/use-live';
 import type {
@@ -10,6 +12,8 @@ import type {
   GoalList,
   GoalRunDetail,
   GoalRunList,
+  Runner,
+  RunnerList,
   ScheduleList,
   TaskPage,
   Usage,
@@ -139,4 +143,20 @@ export async function readPages<Page extends { next: string | null }>(
 export function countOf(rows: readonly unknown[] | undefined, next: string | null | undefined) {
   if (rows === undefined) return '–';
   return `${rows.length}${next ? '+' : ''}`;
+}
+
+/** 러너와 그 기기 (이름은 기기의 것) */
+export type RunnerChoice = { runner: Runner; device: Device };
+
+/** 에이전트를 묶을 수 있는 러너: 끊기지 않은 기기의 일반 러너 (코드 러너 칸은 묶을 수 없다) */
+export function useRunnerChoices(): readonly RunnerChoice[] {
+  const runners = useLiveValue('runners', () => api<RunnerList>('GET', '/api/runners'), []);
+  const devices = useDevices();
+  const live = new Map(
+    (devices.data?.devices ?? []).filter((d) => d.revokedAt === null).map((d) => [d.id, d]),
+  );
+  return (runners.data?.runners ?? []).flatMap((runner) => {
+    const device = live.get(runner.deviceId);
+    return device && !runner.sandbox ? [{ runner, device }] : [];
+  });
 }

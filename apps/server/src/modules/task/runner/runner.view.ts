@@ -20,6 +20,8 @@ export class RunnerView {
       deviceId: r.device_id,
       /** 일 받기 */
       accepting: r.accepting,
+      /** 코드 러너 칸 (에이전트를 묶을 수 없다) */
+      sandbox: r.sandbox,
       online: this.online,
       lastSeenAt: r.last_seen_at.toISOString(),
       task: r.task_id ? { id: r.task_id, title: r.task_title ?? '' } : null,

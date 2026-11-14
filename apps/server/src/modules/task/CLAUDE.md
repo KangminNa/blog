@@ -17,7 +17,8 @@
 - `usage/`: 구독 사용률 (`PlanUsage`)과 사용량 읽기 (`UsageQuery`). `api/usage`. 쓰기는 `report_progress`의 `plan_usage`로만 들어온다
 - `ai/`: AI 도구의 로그인 (`AiLogin`, 도구는 claude · codex). 콘솔에 넣거나 웹 로그인으로 받은 자격을 서버 키로 잠가 두고 서버 러너에게 건넨다.
   `api/ai`, MCP `ai_login` · `ai_login_refresh`(CLI가 갱신한 자격 되돌려 쓰기) · `ai_signin`(러너가 로그인 명령을 대신 돌린다), 받는 값의 모양은 `AiSigninPolicy`
-- `runner/`: 러너의 상태 (`Runner`). 마지막으로 닿은 때, 일 받기 켜기·끄기. `api/runners`. 기기 이름·종류는 account의 것이라 화면이 합친다
+- `runner/`: 러너의 상태 (`Runner`). 마지막으로 닿은 때, 일 받기 켜기·끄기, 코드 러너 칸인지(`sandbox`, 기기 권한으로 닿을 때마다 적는다). `api/runners`. 기기 이름·종류는 account의 것이라 화면이 합친다.
+  에이전트를 러너에 묶는다 (`agents.runner_id`, 2026-11-14): `Agent.edit(changes, runner)`가 칸 · code/make를 막고, 일을 빌릴 때 `Agent.runsOn(러너 id)`가 아닌 에이전트는 `ready`에서 뺀다 (자동 배정도). 일의 `agent.bound` · 팀원의 `bound`로 러너 · 팀장에게 알린다 (내 컴퓨터 러너는 묶인 일에만 나눈 폴더를 준다)
 - `output/`: 결과물 (`Output`, 이름 · 종류 · 형식 · 한도 `OutputPolicy`, 올리기 표 `UploadTicket`, 재료 내려받기 표 `DownloadTicket`). 러너가 MCP `begin_upload`로 표를 받아 `PUT api/outputs/upload`(머리글 `x-cairn-upload`)로 파일을 흘려 보낸다. 만들기 작업의 재료는 거꾸로 `begin_download` → `GET api/outputs/download`(머리글 `x-cairn-download`). `api/outputs`(주인만: 목록 · 내려받기 · 휴지통 · 올리기 `POST api/outputs/files`), 일꾼 `OutputPurgeJob`. 주인이 올린 파일은 작업 · 실행 없이(`task_id` · `run_id` 둘 다 null, DB CHECK) 결과물이 되어 만들기 일의 재료로 쓴다 (2026-11-13)
 - `goal-run/`: 목표 실행 (`GoalRun`, 회차 보고 `GoalRound`, 기획서 결정 2026-11-13). 주인이 목표 하나를 팀장 에이전트에게 맡기면 회차(작업 하나)가 저절로 이어 돌고, 주인은 중간 · 최종 결재문만 받는다. `api/goal-runs`(주인만: 목록 · 상세 · 시작 · 멈추기), MCP `report_round`(작업 토큰, 회차마다 한 번). 회차 작업이 끝나거나(`task.task.changed`) 결재가 정해지면(`task.approval.*`, 대상 `goal_run`) `GoalRunHandler`가 다음을 정한다
 - `web/`: 주소 읽기 (MCP `read_url`, 작업 토큰). 서버가 AI 대신 페이지를 열어 글자만 준다 (`WebQuery`). 목줄은 `WebReach`: 비공개를 볼 수 있는 일(전체 읽기 · 쓰기 · 코드 권한, 재료 읽기 허락)은 주인의 지시(위임된 일이면 맨 위 일, 맨 위가 목표 실행의 회차 작업이면 실행의 지시)에 적힌 사이트와 그 하위만, 아니면 공개 주소 어디든. 내부망 · 이 서버 · 메타데이터 주소는 이름을 풀어 본 뒤 그 주소로만 붙어 막는다 (`WebPageGateway`, 리다이렉트 3번까지 매번 다시). 2MB · 15초, 글이 아닌 형식은 거절. 받은 글은 자료라는 표시(`note`)와 함께
@@ -82,6 +83,7 @@ platform
 - 작업 토큰은 저장하지 않는다 (`AgentActor.seal`). `RUN_TOKEN_SECONDS`는 상한이고 실제 끝은 임대다: AI CLI는 받은 토큰을 바꿔 끼울 수 없어 임대가 늘어도 끊기면 안 되고, 끝은 호출마다 `TaskQuery.isLive`가 본다
 - 작업 토큰은 `/mcp`에서만 Actor가 된다 (`ActorGuard`, 기기 토큰도 같다). REST에서 쓰면 호출마다 하는 작업 확인을 건너뛴다
 - 에이전트에게 `run`을 줄 수 없다. 러너만 일을 빌린다
+- 묶인 에이전트(`runner_id`)의 일은 그 러너만 빌린다. 다른 러너가 대신하지 않는다 (꺼져 있으면 기다린다). 칸에는 묶지 않고, code · make 권한과 함께 두지 않는다 (규칙 + DB CHECK `agents_pinned_not_sandboxed`)
 - 보고 대상은 `Agent.reportTo`로만 바꾼다 (순환 · 깊이 4). 바꿀 때는 공간의 에이전트를 모두 잠근다(`lockAll`): 하나만 잠그면 동시에 서로에게 보고하게 바꾸는 둘이 모두 통과한다. 결재는 조직도와 상관없이 늘 주인에게
 - 목표는 지우지 않고 상태로 닫는다. 부모는 만들 때 정하고 바꾸지 않는다 (그래서 목표 사슬은 잠그지 않고 읽는다). 진행 중인 목표에만 작업과 하위 목표를 더한다. 목표를 정하는 건 주인만이고 AI는 읽기만 한다
 - 진행 보고는 version을 올리지 않는다 (`saveLease`). 보고가 잦아도 주인의 취소가 막히면 안 된다. 같은 request_id로 다시 보낸 보고도 그 일을 맡았던 러너만 (`assertWorkedBy`)

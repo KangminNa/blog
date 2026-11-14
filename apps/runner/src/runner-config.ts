@@ -1,5 +1,7 @@
-import { isAbsolute, resolve } from 'node:path';
+import { statSync } from 'node:fs';
+import { basename, isAbsolute, resolve, sep } from 'node:path';
 import { AgentUser } from './agent-user';
+import { SharedFolders } from './shared-folders';
 
 /** 설정이 빠졌거나 틀림. 시작하지 않고 이 문구만 보여 준다 */
 export class ConfigProblem extends Error {}
@@ -40,6 +42,8 @@ export class RunnerConfig {
     readonly agentUser: AgentUser | null = null,
     /** 칸의 작업 자리들을 둘 폴더 (CAIRN_WORK_DIR, 기본 /work) */
     readonly workDir: string = RunnerConfig.DEFAULT_WORK_DIR,
+    /** 이 러너에 묶인 에이전트에게 나눠 줄 폴더 (CAIRN_RUNNER_FOLDERS, 내 컴퓨터 러너만). 없으면 null */
+    readonly folders: SharedFolders | null = null,
   ) {}
 
   /** uid: 이 프로세스의 사용자 (시험이 바꿔 끼운다) */
@@ -68,6 +72,7 @@ export class RunnerConfig {
       slot,
       slot === null ? null : RunnerConfig.agentOf(env, uid),
       RunnerConfig.workDirOf(env),
+      RunnerConfig.foldersOf(env),
     );
   }
 
@@ -85,11 +90,51 @@ export class RunnerConfig {
       this.slot,
       this.agentUser,
       this.workDir,
+      this.folders,
     );
   }
 
   get mcpUrl(): string {
     return `${this.serverUrl}/mcp`;
+  }
+
+  /**
+   * 나눠 줄 폴더 (CAIRN_RUNNER_FOLDERS, 쉼표로 여럿). 내 컴퓨터 러너만 (칸은 셸이 있어 받지 않는다).
+   * 절대 경로의 있는 폴더만, 숨김 폴더 · 홈 전체(와 그 위)는 받지 않는다: 홈을 통째로 열면 홈 막기가 뜻이 없다.
+   * 이름(마지막 칸)이 겹치면 작업 폴더에서 구별되지 않아 받지 않는다
+   */
+  private static foldersOf(
+    env: Readonly<Record<string, string | undefined>>,
+  ): SharedFolders | null {
+    const raw = env.CAIRN_RUNNER_FOLDERS?.trim() ?? '';
+    if (!raw) return null;
+    if (env.CAIRN_SANDBOX === '1')
+      throw new ConfigProblem(
+        'CAIRN_RUNNER_FOLDERS는 내 컴퓨터 러너에서만 써요 (코드 러너 칸은 안 돼요)',
+      );
+    const home = env.HOME?.replace(/\/+$/, '') ?? '';
+    const paths = raw
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((path) => {
+        if (!isAbsolute(path)) throw new ConfigProblem(`나눌 폴더는 절대 경로예요: ${path}`);
+        const full = resolve(path);
+        if (
+          full === sep ||
+          (home && (full === home || `${home}${sep}`.startsWith(`${full}${sep}`)))
+        )
+          throw new ConfigProblem(`홈 폴더 전체나 그 위는 나눌 수 없어요: ${full}`);
+        if (basename(full).startsWith('.'))
+          throw new ConfigProblem(`숨김 폴더는 나눌 수 없어요: ${full}`);
+        if (!statSync(full, { throwIfNoEntry: false })?.isDirectory())
+          throw new ConfigProblem(`나눌 폴더가 없어요: ${full}`);
+        return full;
+      });
+    const names = paths.map((p) => basename(p));
+    const twice = names.find((n, i) => names.indexOf(n) !== i);
+    if (twice) throw new ConfigProblem(`나눌 폴더의 이름이 겹쳐요: ${twice}`);
+    return new SharedFolders(paths);
   }
 
   /**

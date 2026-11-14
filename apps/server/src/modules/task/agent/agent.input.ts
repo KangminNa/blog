@@ -24,6 +24,13 @@ function reportsToOf(f: RequestFields, raw: unknown): string | null | undefined 
   return body.reportsTo === null ? null : f.uuid('reportsTo');
 }
 
+/** 일을 맡을 러너 칸 (만들기 · 고치기가 함께 쓴다): 보내지 않으면 undefined, null이면 아무 러너 */
+function runnerOf(f: RequestFields, raw: unknown): string | null | undefined {
+  const body = (raw ?? {}) as Record<string, unknown>;
+  if (!('runnerId' in body)) return undefined;
+  return body.runnerId === null ? null : f.uuid('runnerId');
+}
+
 /** POST /api/agents. 같은 requestId는 처음 만든 에이전트를 돌려준다 */
 export class CreateAgentInput extends BaseRequest {
   private constructor(
@@ -31,6 +38,8 @@ export class CreateAgentInput extends BaseRequest {
     readonly fields: Partial<AgentRow>,
     /** 보고 대상. 없으면 주인에게 보고한다 */
     readonly reportsTo: string | null,
+    /** 일을 맡을 러너 (task.runners의 id). 없으면 아무 러너 */
+    readonly runnerId: string | null,
   ) {
     super();
   }
@@ -43,7 +52,12 @@ export class CreateAgentInput extends BaseRequest {
       const role = f.optionalText('role', 4000) ?? '';
       const tool = f.text('tool', 40);
       const fields = { ...f.columns(COLUMNS), name, role, tool };
-      return new CreateAgentInput(requestId, fields, reportsToOf(f, raw) ?? null);
+      return new CreateAgentInput(
+        requestId,
+        fields,
+        reportsToOf(f, raw) ?? null,
+        runnerOf(f, raw) ?? null,
+      );
     });
   }
 }
@@ -106,13 +120,14 @@ export class DeleteAgentInput extends BaseRequest {
   }
 }
 
-/** PATCH /api/agents/:id. reportsTo에 null이면 주인에게 보고 */
+/** PATCH /api/agents/:id. reportsTo에 null이면 주인에게 보고, runnerId에 null이면 아무 러너 */
 export class UpdateAgentInput extends BaseRequest {
   private constructor(
     readonly id: string,
     readonly version: number,
     readonly changes: Partial<AgentRow>,
     readonly reportsTo: string | null | undefined,
+    readonly runnerId: string | null | undefined,
   ) {
     super();
   }
@@ -122,7 +137,13 @@ export class UpdateAgentInput extends BaseRequest {
     return BaseRequest.read(
       body,
       (f) =>
-        new UpdateAgentInput(f.uuid('id'), f.version(), f.columns(COLUMNS), reportsToOf(f, body)),
+        new UpdateAgentInput(
+          f.uuid('id'),
+          f.version(),
+          f.columns(COLUMNS),
+          reportsToOf(f, body),
+          runnerOf(f, body),
+        ),
     );
   }
 }

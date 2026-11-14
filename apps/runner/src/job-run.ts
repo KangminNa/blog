@@ -106,7 +106,7 @@ export class JobRun {
         if (ending) return await this.conclude(ending);
       }
       workspace = await this.tool.open(this.job, stage?.workspaceRoom ?? null);
-      await workspace.handOver();
+      await workspace.handOver(this.job.sharedFolders(this.config.folders));
       const { skill } = this.job;
       const shipped = this.job.skillPackage;
       if (shipped)
@@ -163,7 +163,7 @@ export class JobRun {
   private async supervise(workspace: JobWorkspace, tool: AiTool): Promise<void> {
     const stream = tool.stream();
     const wake = new AbortController();
-    const job = this.stage?.aiJob() ?? this.job;
+    const job = this.stage?.aiJob() ?? workspace.withShared(this.job);
     const child = tool.start(job, workspace, (line) => {
       this.reporter.add(stream.read(line));
       this.reporter.notePlan(stream.takePlanUsage());

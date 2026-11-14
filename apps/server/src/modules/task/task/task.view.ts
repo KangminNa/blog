@@ -194,7 +194,16 @@ export class JobTeamMemberView {
 
   toJSON() {
     const r = this.row;
-    return { agent_id: r.id, name: r.name, role: r.role, status: r.status, kinds: this.kinds };
+    // bound: 정해진 러너에서만 일한다 (관리자의 컴퓨터일 수 있어 그 컴퓨터의 폴더를 읽는 일은 이 팀원에게)
+    const bound = Boolean(r.runner_id);
+    return {
+      agent_id: r.id,
+      name: r.name,
+      role: r.role,
+      status: r.status,
+      kinds: this.kinds,
+      bound,
+    };
   }
 }
 
@@ -262,7 +271,10 @@ export class JobView {
     private readonly row: Readonly<TaskRow>,
     private readonly skill: string | null,
     private readonly revisionNote: string | null,
-    private readonly agent: Readonly<Pick<AgentRow, 'id' | 'name' | 'role' | 'tool'>> | null,
+    /** bound: 정해진 러너에 묶였다 (Agent.bound) */
+    private readonly agent: Readonly<
+      Pick<AgentRow, 'id' | 'name' | 'role' | 'tool'> & { bound: boolean }
+    > | null,
     private readonly runToken: string | null,
     /** 회사 목표부터 이 작업의 목표까지 (제목) */
     private readonly goalChain: readonly string[],
@@ -300,7 +312,9 @@ export class JobView {
       skill: this.skill,
       skill_package: this.skillPackage?.toJSON() ?? null,
       revision_note: this.revisionNote,
-      agent: a === null ? null : { id: a.id, name: a.name, role: a.role, tool: a.tool },
+      // bound: 이 러너에 묶인 에이전트 (묶인 일은 그 러너만 빌린다). 러너는 이때만 나눈 폴더를 연다
+      agent:
+        a === null ? null : { id: a.id, name: a.name, role: a.role, tool: a.tool, bound: a.bound },
       run_token: this.runToken,
       goal_chain: this.goalChain.map((title) => ({ title })),
       team: this.team.map((m) => m.toJSON()),

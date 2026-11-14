@@ -24,6 +24,7 @@ import { RunnerRepository } from '../runner/runner.repository';
 import { RepoSkillGateway } from '../skill/repo-skill.gateway';
 import { SkillRepository } from '../skill/skill.repository';
 import { SkillPackage } from '../skill/skill-package';
+import type { RunnerRow } from '../task.tables';
 import { PlanUsage } from '../usage/plan-usage';
 import { PlanUsageRepository } from '../usage/plan-usage.repository';
 import { CodeScope } from './code-scope';
@@ -88,12 +89,10 @@ export class TaskService extends BaseService {
     const runnerId = TaskService.runnerOf(actor);
     const deadline = Date.now() + req.waitSeconds * 1000;
     for (;;) {
-      const accepting = await this.transaction((tx) =>
-        new RunnerRepository(tx).seen(spaceId, runnerId, new Date()),
+      const runner = await this.transaction((tx) =>
+        new RunnerRepository(tx).seen(spaceId, runnerId, new Date(), actor.inSandbox()),
       );
-      const jobs = accepting
-        ? await this.lease(actor, spaceId, runnerId, actor.inSandbox(), req)
-        : [];
+      const jobs = runner.accepting ? await this.lease(actor, runner, req) : [];
       const left = deadline - Date.now();
       if (jobs.length > 0 || left <= 0 || this.changes.closed) return jobs;
       await this.changes.wait(
@@ -130,7 +129,7 @@ export class TaskService extends BaseService {
         await once?.remember({ reported: true });
       }
       // 일하는 동안에는 next_jobs를 부르지 않으므로 진행 보고로 닿은 때를 남긴다 (잠그는 순서의 맨 뒤)
-      await new RunnerRepository(tx).seen(spaceId, runnerId, now);
+      await new RunnerRepository(tx).seen(spaceId, runnerId, now, actor.inSandbox());
       return task.progressView(await this.agentPaused(tx, task));
     });
   }
@@ -283,13 +282,9 @@ export class TaskService extends BaseService {
     });
   }
 
-  private lease(
-    actor: Actor,
-    spaceId: string,
-    runnerId: string,
-    sandbox: boolean,
-    req: NextJobsInput,
-  ): Promise<readonly JobView[]> {
+  /** runner: 빌리는 러너의 줄 (기기 id · 칸인지 · 묶인 에이전트를 가를 id) */
+  private lease(actor: Actor, runner: RunnerRow, req: NextJobsInput): Promise<readonly JobView[]> {
+    const { space_id: spaceId, device_id: runnerId, sandbox } = runner;
     const now = new Date();
     return this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
@@ -307,8 +302,10 @@ export class TaskService extends BaseService {
       );
       // 쉬는지는 작업을 잠그기 전에 따진다: 쉬는 에이전트의 일은 빌렸다가 돌려주지 않고 처음부터 건너뛴다
       const usage = await agents.usage(spaceId, now);
+      // 다른 러너에 묶인 에이전트의 일은 이 러너가 빌리지 않는다 (자동 배정도 그 에이전트를 고르지 않는다)
       const ready = usage
-        .filter((u) => u.ready && (workTools === null || workTools.includes(u.agent.tool)))
+        .filter((u) => u.ready && u.agent.runsOn(runner.id))
+        .filter((u) => workTools === null || workTools.includes(u.agent.tool))
         .map((u) => u.agent);
       const org = usage.map((u) => u.agent);
       const jobs: JobView[] = [];

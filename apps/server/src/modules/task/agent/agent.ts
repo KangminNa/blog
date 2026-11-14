@@ -1,5 +1,4 @@
 import {
-  Actor,
   BaseEntity,
   type ColumnRules,
   DomainEvent,
@@ -7,10 +6,12 @@ import {
   RuleViolation,
   TableEntity,
 } from '../../platform';
+import type { Runner } from '../runner/runner';
 import { JobTeamMemberView } from '../task/task.view';
 import type { AgentNew, AgentRevisionNew, AgentRow } from '../task.tables';
 import { AgentUsageView } from '../usage/usage.view';
 import { AgentSavedView } from './agent.view';
+import { AgentScopes } from './agent-scopes.policy';
 
 // 일을 맡는 에이전트. 할 수 있는 일(scopes)과 결재를 올려 할 수 있는 동작(approval_actions), 토큰 한도를 가진다.
 // 주인이 정하는 칸은 RULES를 지나서만 바뀌고, 멈춤·다시 시작은 메서드로만 바뀐다.
@@ -22,24 +23,8 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
   static readonly ACTIVE = 'active';
   static readonly PAUSED = 'paused';
   static readonly TOOLS: readonly string[] = ['claude', 'codex'];
-  /** 에이전트에게 줄 수 있는 권한. run은 러너의 것이라 없다: 에이전트가 스스로 일을 빌릴 수 없게 */
-  static readonly SCOPES: readonly string[] = [
-    Actor.UPLOAD,
-    Actor.READ_PUBLIC,
-    Actor.READ_ALL,
-    Actor.TIDY,
-    Actor.WRITE,
-    Actor.BROWSE,
-    Actor.CODE,
-    Actor.MAKE,
-  ];
-  /** browse와 함께 줄 수 없는 권한: 비공개(세션 · wiki)와 임시 글 · 소재를 여는 것. DB CHECK agents_browse_not_private와 같다 */
-  private static readonly NOT_WITH_BROWSE: readonly string[] = [Actor.READ_ALL, Actor.WRITE];
-  /**
-   * 셸이 있는 칸에서 도는 일(code · make)과 함께 줄 수 없는 권한: 비공개 지식과 셸을 한 에이전트에 모으지 않는다.
-   * DB CHECK agents_code_not_private · agents_make_not_private와 같다
-   */
-  private static readonly NOT_WITH_SHELL: readonly string[] = [Actor.READ_ALL, Actor.WRITE];
+  /** 에이전트에게 줄 수 있는 권한 (AgentScopes) */
+  static readonly SCOPES: readonly string[] = AgentScopes.ALL;
   /** 설정 판에 남기는 칸: 주인이 정하는 것 전부 (상태 · 사용량은 빼고) */
   private static readonly SETTINGS: readonly (keyof AgentRow)[] = [
     'name',
@@ -51,6 +36,7 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     'five_hour_limit',
     'plan_stop_percent',
     'reports_to',
+    'runner_id',
   ];
   private static readonly NAME_MAX = 60;
   private static readonly ROLE_MAX = 2000;
@@ -79,28 +65,7 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
         throw new RuleViolation(`AI 도구는 ${Agent.TOOLS.join(' · ')} 중 하나예요`);
       return value;
     },
-    scopes: (value) => {
-      const unknown = value.filter((s) => !Agent.SCOPES.includes(s));
-      if (unknown.length > 0)
-        throw new RuleViolation(`에이전트에게 줄 수 없는 권한이에요: ${unknown.join(', ')}`);
-      // 로그인된 브라우저 + 비공개 + 밖으로 보내기가 한 에이전트에 모이지 않게 (브라우저 작업은 비공개를 못 읽는다).
-      // write도 임시 글 본문과 소재 메모를 연다 (blog_get_post · basket_get). 재료는 지시문으로 받는다
-      if (value.includes(Actor.BROWSE) && Agent.NOT_WITH_BROWSE.some((s) => value.includes(s)))
-        throw new RuleViolation(
-          '브라우저 사용은 전체 읽기 · 초안 작성과 함께 줄 수 없어요 (browse · read_all · write)',
-        );
-      // 셸이 있는 칸 + 비공개가 한 에이전트에 모이지 않게: 저장소 파일에 심은 지시문에 속아도 비공개를 내보내지 못한다
-      if (value.includes(Actor.CODE) && Agent.NOT_WITH_SHELL.some((s) => value.includes(s)))
-        throw new RuleViolation(
-          '코드 작업은 전체 읽기 · 초안 작성과 함께 줄 수 없어요 (code · read_all · write)',
-        );
-      // 만들기도 칸의 셸로 한다. 비공개는 주인이 작업마다 고른 재료만 읽는다 (MakeMaterials)
-      if (value.includes(Actor.MAKE) && Agent.NOT_WITH_SHELL.some((s) => value.includes(s)))
-        throw new RuleViolation(
-          '파일 만들기는 전체 읽기 · 초안 작성과 함께 줄 수 없어요 (make · read_all · write)',
-        );
-      return Agent.SCOPES.filter((s) => value.includes(s));
-    },
+    scopes: (value) => AgentScopes.check(value),
     approval_actions: (value) => {
       const wrong = value.filter((a) => !Agent.ACTION.test(a) || a === Agent.SERVER_ACTION);
       if (wrong.length > 0)
@@ -191,8 +156,7 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     return this.row.status === Agent.PAUSED;
   }
 
-  /** 휴지통에 있다: 목록 · 조직도에서 빠지고 새 일을 받지 않는다 (기록은 남는다) */
-  /** 휴지통에 있는지. 새로 연 줄(저장 전)과 시험의 줄에는 칸이 없을 수 있어 값이 있을 때만 */
+  /** 휴지통에 있는지: 목록 · 조직도에서 빠지고 새 일을 받지 않는다 (기록은 남는다). 새로 연 줄(저장 전)과 시험의 줄에는 칸이 없을 수 있어 값이 있을 때만 */
   get deleted(): boolean {
     return this.row.deleted_at instanceof Date;
   }
@@ -225,11 +189,31 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
     return [...org.filter((a) => head.manages(a)).flatMap((a) => Agent.teamUnder(a, org)), head];
   }
 
-  /** 주인이 고친 칸을 적는다. 설정이 바뀌면 설정 판을 하나 올린다 */
-  edit(changes: Partial<AgentRow>): void {
+  /**
+   * 주인이 고친 칸을 적는다. runner를 주면 일을 맡을 러너도 정한다 (null이면 아무 러너). 설정이 바뀌면 설정 판을 하나 올린다.
+   * 묶이면 그 러너만 이 에이전트의 일을 빌리고, 꺼져 있으면 일이 기다린다. 코드 러너 칸에는 묶지 않고,
+   * 칸에서만 도는 권한(code · make)이 있으면 묶지 않는다: 묶인 러너가 그 일을 영영 받지 못한다. 다 바꾼 뒤에 한 번 본다
+   */
+  edit(changes: Partial<AgentRow>, runner?: Runner | null): void {
     const before = this.settingsSnapshot();
+    if (runner?.sandbox) throw new RuleViolation('코드 러너 칸에는 묶을 수 없어요');
+    if (runner !== undefined) this.put('runner_id', runner?.id ?? null);
     this.accept(changes, Agent.RULES);
+    if (this.row.runner_id && AgentScopes.sandboxed(this.row.scopes ?? []))
+      throw new RuleViolation(
+        '코드 · 만들기 권한이 있는 에이전트는 코드 러너 칸에서만 돌아 러너에 묶을 수 없어요',
+      );
     this.noteSettings(before);
+  }
+
+  /** 정해진 러너에 묶였는가 (그 러너만 일을 빌린다) */
+  get bound(): boolean {
+    return Boolean(this.row.runner_id);
+  }
+
+  /** 이 러너(task.runners의 id)가 이 에이전트의 일을 빌릴 수 있는가: 묶이지 않았거나 이 러너에 묶였다 */
+  runsOn(runnerId: string): boolean {
+    return !this.row.runner_id || this.row.runner_id === runnerId;
   }
 
   /** 지금 설정 판 (실행 기록에 남긴다) */

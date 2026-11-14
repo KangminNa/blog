@@ -8,7 +8,7 @@ import { api } from '../../_lib/client-api';
 import { useAction } from '../../_lib/use-action';
 import { useLiveValue } from '../../_lib/use-live';
 import { when } from '../../_task/labels';
-import { useAiTools } from '../../_task/live';
+import { useAgents, useAiTools } from '../../_task/live';
 import type { Runner, RunnerList } from '../../_task/types';
 
 /** 서버 러너의 기기 이름 (서버의 Device.SERVER_RUNNER) */
@@ -24,6 +24,7 @@ export function RunnerPanel() {
   const runners = useLiveValue('runners', () => api<RunnerList>('GET', '/api/runners'), []);
   const devices = useDevices();
   const ai = useAiTools();
+  const agents = useAgents();
   const action = useAction();
   const error = action.problem ?? runners.error ?? devices.error;
   /** AI 로그인이 하나라도 있는가. 없으면 러너는 연결돼 있어도 웹 로그인 말고는 일을 빌리지 않는다 (서버가 주지 않는다) */
@@ -90,7 +91,14 @@ export function RunnerPanel() {
         <ul className="list" aria-label="러너 목록">
           {rows.map((row) => (
             <li key={row.runner.id}>
-              <RunnerRow row={row} busy={action.busy === row.runner.id} onFlip={() => flip(row)} />
+              <RunnerRow
+                row={row}
+                pinned={(agents.data?.agents ?? [])
+                  .filter((a) => a.runnerId === row.runner.id)
+                  .map((a) => a.name)}
+                busy={action.busy === row.runner.id}
+                onFlip={() => flip(row)}
+              />
             </li>
           ))}
         </ul>
@@ -105,10 +113,13 @@ export function RunnerPanel() {
 
 function RunnerRow({
   row: { runner, device },
+  pinned,
   busy,
   onFlip,
 }: {
   row: Row;
+  /** 이 러너에 묶인 에이전트 (그 일은 이 러너만 한다) */
+  pinned: readonly string[];
   busy: boolean;
   onFlip: () => void;
 }) {
@@ -119,7 +130,9 @@ function RunnerRow({
         <div className="item-main">
           <b>{device.name}</b>
           <small>
-            {server ? '배포 서버 안' : '내 컴퓨터 등'} · 마지막 연결 {when(runner.lastSeenAt)}
+            {runner.sandbox ? '코드 러너 칸' : server ? '배포 서버 안' : '내 컴퓨터 등'} · 마지막
+            연결 {when(runner.lastSeenAt)}
+            {pinned.length > 0 ? ` · 묶인 에이전트: ${pinned.join(', ')}` : ''}
           </small>
         </div>
         <span className={runner.online ? 'pill on' : 'pill off'}>

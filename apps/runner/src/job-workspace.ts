@@ -3,8 +3,9 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:f
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { AgentUser } from './agent-user';
-import type { SkillPackage } from './job';
+import type { Job, SkillPackage } from './job';
 import type { SandboxRoom } from './sandbox-room';
+import type { SharedCopy, SharedFolders } from './shared-folders';
 
 // 일 하나의 자리. 사용자의 연결(connector), MCP 서버, 설정, 스킬을 물려받지 않게 작업마다 새로 만들고 지운다.
 //   work/      AI CLI가 도는 빈 폴더
@@ -29,6 +30,9 @@ export class JobWorkspace {
     /** 코드 러너 칸의 자리. 있으면 AI는 그 자리의 agent로 돈다 */
     private readonly room: SandboxRoom | null = null,
   ) {}
+
+  /** 내 컴퓨터 러너가 나눈 폴더를 복사한 결과 (handOver). 없으면 null */
+  private shared: SharedCopy | null = null;
 
   /**
    * mcpConfig: mcp.json에 쓸 글, 없으면 MCP 없이. settings: config/settings.json에 쓸 글, 없으면 쓰지 않는다 (Claude만 쓴다).
@@ -60,9 +64,18 @@ export class JobWorkspace {
     return new JobWorkspace(root, mcpConfig !== null, skillReady, room);
   }
 
-  /** 도구가 설정을 다 쓴 뒤: 코드 러너 칸이면 설정 폴더를 agent에게 넘긴다 (AI CLI가 agent로 읽고 쓴다) */
-  async handOver(): Promise<void> {
+  /**
+   * 도구가 설정을 다 쓴 뒤: 코드 러너 칸이면 설정 폴더를 agent에게 넘긴다 (AI CLI가 agent로 읽고 쓴다).
+   * 내 컴퓨터 러너가 나눈 폴더(folders)가 있으면 작업 폴더의 folders/로 복사해 둔다 (이 러너에 묶인 일에만 준다)
+   */
+  async handOver(folders: SharedFolders | null = null): Promise<void> {
     if (this.room) await this.room.agent.handTo(this.root);
+    else if (folders) this.shared = await folders.copyInto(join(this.workDir, 'folders'));
+  }
+
+  /** 나눈 폴더를 복사해 두었으면 그 단락을 지시에 더한 일 */
+  withShared(job: Job): Job {
+    return this.shared ? job.withBrief(this.shared.part) : job;
   }
 
   /** AI CLI를 돌릴 사용자. 코드 러너 칸이 아니면 러너와 같은 사용자 (null) */

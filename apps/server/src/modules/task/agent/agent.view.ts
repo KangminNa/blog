@@ -39,6 +39,8 @@ export class AgentSavedView {
       planStopPercent: r.plan_stop_percent,
       /** 보고 대상 에이전트. null이면 주인에게 보고한다 */
       reportsTo: r.reports_to,
+      /** 일을 맡을 러너 (task.runners의 id). null이면 아무 러너 */
+      runnerId: r.runner_id ?? null,
       status: r.status,
       /** 휴지통에 넣은 때. null이면 쓰는 에이전트 */
       deletedAt: r.deleted_at?.toISOString() ?? null,

@@ -33,6 +33,7 @@ export const agents = taskSchema.table('agents', {
   reports_to: uuid('reports_to'),
   settings_revision: integer('settings_revision').notNull(),
   deleted_at: timestamp('deleted_at', { withTimezone: true }),
+  runner_id: uuid('runner_id'),
 });
 
 /** task.ai_logins */
@@ -167,6 +168,7 @@ export const runners = taskSchema.table('runners', {
   last_seen_at: timestamp('last_seen_at', { withTimezone: true }).notNull(),
   version: integer('version').notNull(),
   created_at: timestamp('created_at', { withTimezone: true }).notNull(),
+  sandbox: boolean('sandbox').notNull(),
 });
 
 /** task.schedules */

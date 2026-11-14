@@ -57,7 +57,9 @@ export class AiLoginService extends BaseService {
     actor.assertCan(Actor.RUN);
     const { spaceId, id } = actor;
     if (actor.kind !== 'device' || !spaceId || !id) throw new Forbidden(Actor.RUN);
-    await this.transaction((tx) => new RunnerRepository(tx).seen(spaceId, id, new Date()));
+    await this.transaction((tx) =>
+      new RunnerRepository(tx).seen(spaceId, id, new Date(), actor.inSandbox()),
+    );
     return this.logins.token(actor, req);
   }
 
@@ -146,7 +148,9 @@ export class AiLoginService extends BaseService {
     if (actor.kind !== 'device' || !spaceId || !runnerId) throw new Forbidden(Actor.RUN);
     const now = new Date();
     // 로그인하는 동안 러너는 이것만 부른다. 러너 메뉴에 연결 안 됨으로 보이지 않게 닿은 때를 남긴다
-    await this.transaction((tx) => new RunnerRepository(tx).seen(spaceId, runnerId, now));
+    await this.transaction((tx) =>
+      new RunnerRepository(tx).seen(spaceId, runnerId, now, actor.inSandbox()),
+    );
     const { task, code } = await this.transaction(async (tx) => {
       const tasks = new TaskRepository(tx);
       const task = await tasks.lock(spaceId, req.taskId);

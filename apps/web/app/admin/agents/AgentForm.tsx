@@ -9,7 +9,9 @@ import {
   PUBLISH_SITE,
   TOOL_LABELS,
 } from '../../_task/labels';
+import type { RunnerChoice } from '../../_task/live';
 import type { Agent } from '../../_task/types';
+import { RunnerField } from './RunnerField';
 
 /** 에이전트에게 줄 수 있는 권한. run은 러너의 것이라 없다 (서버의 Agent.SCOPES와 맞춘다) */
 const SCOPES = ['upload', 'read_public', 'read_all', 'tidy', 'write', 'browse', 'code', 'make'];
@@ -62,6 +64,7 @@ export type AgentBody = {
   fiveHourLimit: number | null;
   planStopPercent: number | null;
   reportsTo: string | null;
+  runnerId: string | null;
 };
 
 // 에이전트 추가·편집 폼: 칸의 상태와 보낼 본문만 가진다. 저장은 패널이 돌린다 (onSubmit). agent가 있으면 편집이다.
@@ -69,6 +72,7 @@ export function AgentForm({
   agent,
   agents,
   ownerName,
+  runners,
   busy,
   problem,
   onSubmit,
@@ -80,6 +84,8 @@ export function AgentForm({
   agents: readonly Agent[];
   /** 관리자의 이름 (보고 대상이 없으면 이 사람에게) */
   ownerName: string;
+  /** 묶을 수 있는 러너 (실행 러너 고르기) */
+  runners: readonly RunnerChoice[];
   busy: boolean;
   problem: string | null;
   onSubmit: (body: AgentBody, requestId: string) => void;
@@ -92,7 +98,9 @@ export function AgentForm({
   const [role, setRole] = useState(agent?.role ?? '');
   const [tool, setTool] = useState(agent?.tool ?? 'claude');
   const [reportsTo, setReportsTo] = useState(agent?.reportsTo ?? '');
+  const [runnerId, setRunnerId] = useState(agent?.runnerId ?? '');
   const [scopes, setScopes] = useState<readonly string[]>(agent?.scopes ?? []);
+  const sandboxed = scopes.includes('code') || scopes.includes('make');
   const [actions, setActions] = useState<readonly string[]>(agent?.approvalActions ?? []);
   const [limit, setLimit] = useState(agent?.monthlyLimit?.toString() ?? '');
   const [fiveHour, setFiveHour] = useState(agent?.fiveHourLimit?.toString() ?? '');
@@ -136,6 +144,8 @@ export function AgentForm({
         fiveHourLimit,
         planStopPercent,
         reportsTo: reportsTo || null,
+        // 코드 · 만들기는 코드 러너 칸에서만 돌아 묶지 않는다 (서버도 막는다)
+        runnerId: sandboxed ? null : runnerId || null,
       },
       requestId.current,
     );
@@ -205,6 +215,13 @@ export function AgentForm({
           {ownerName}
         </small>
       </div>
+      <RunnerField
+        id={`${id}-runner`}
+        value={runnerId}
+        sandboxed={sandboxed}
+        runners={runners}
+        onChange={(value) => change(() => setRunnerId(value))}
+      />
       <fieldset className="checks">
         <legend>권한</legend>
         <small>

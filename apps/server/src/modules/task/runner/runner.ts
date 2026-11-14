@@ -21,6 +21,11 @@ export class Runner extends TableEntity<RunnerRow, RunnerNew> {
     return now.getTime() - lastSeenAt.getTime() < Runner.ONLINE_MS;
   }
 
+  /** 코드 러너 칸인가 (기기의 권한 sandbox, 닿을 때마다 서버가 적는다). 칸에는 에이전트를 묶지 않는다 */
+  get sandbox(): boolean {
+    return this.row.sandbox;
+  }
+
   /** 일 받기를 켜거나 끈다. 끄면 next_jobs가 빈 목록을 돌려주고, 달리던 일은 끝까지 간다. 같으면 그대로 */
   setAccepting(on: boolean): void {
     if (on === this.row.accepting) return;

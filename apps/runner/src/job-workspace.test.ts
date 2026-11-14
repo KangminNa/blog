@@ -17,6 +17,7 @@ import { Job } from './job';
 import { JobWorkspace } from './job-workspace';
 import { Json } from './json';
 import { SandboxRoom } from './sandbox-room';
+import { SharedFolders } from './shared-folders';
 
 let skillsDir: string;
 
@@ -119,6 +120,36 @@ describe('AI CLI 부르기', () => {
     assert.equal(args[args.indexOf('--tools') + 1], '');
     assert.equal(args.at(-2), '--tools', '값을 여럿 받는 옵션이라 맨 뒤에 둔다');
     await workspace.remove();
+  });
+
+  test('나눈 폴더는 작업 폴더의 folders/로 복사하고, 그 단락을 지시에 더한다 (주지 않으면 그대로)', async () => {
+    const source = join(skillsDir, '..', 'shared', 'notes');
+    mkdirSync(source, { recursive: true });
+    writeFileSync(join(source, 'todo.md'), '할 일');
+    const plain = Job.from(Json.of({ task: { id: 't', title: '정리' }, instruction: '읽어 줘' }));
+    const shared = await JobWorkspace.open(null, null, null, '/nowhere');
+    await shared.handOver(new SharedFolders([source]));
+    assert.equal(
+      readFileSync(join(shared.workDir, 'folders', 'notes', 'todo.md'), 'utf8'),
+      '할 일',
+    );
+    assert.match(shared.withShared(plain).prompt(false), /folders\/notes \(파일 1개\)/);
+    await shared.remove();
+    const folders = new SharedFolders([source]);
+    const bound = Job.from(
+      Json.of({ task: { id: 't', title: '정리' }, agent: { name: '내 폴더', bound: true } }),
+    );
+    assert.equal(bound.sharedFolders(folders), folders, '이 러너에 묶인 에이전트의 일');
+    assert.equal(
+      plain.sharedFolders(folders),
+      null,
+      '묶이지 않은 에이전트의 일은 폴더를 받지 않는다',
+    );
+    const none = await JobWorkspace.open(null, null, null, '/nowhere');
+    await none.handOver(null);
+    assert.equal(existsSync(join(none.workDir, 'folders')), false);
+    assert.equal(none.withShared(plain), plain);
+    await none.remove();
   });
 
   test('스킬이 있을 때만 Skill 도구를 준다', async () => {
@@ -239,6 +270,25 @@ describe('지시문', () => {
       prompt.includes('## [완료] 초안 (글쓰기 팀원)\n썼어요\n결과물: 발표.pptx (output_id: o1)'),
     );
     assert.ok(prompt.includes('## [실패] 정리 (정리 팀원)\n세션이 없어요'));
+  });
+
+  test('묶인 팀원은 정해진 컴퓨터에서 일한다고 팀장에게 알린다', () => {
+    const prompt = job({
+      team: [
+        {
+          agent_id: 'm1',
+          name: '내 폴더',
+          role: '',
+          status: 'active',
+          kinds: ['general'],
+          bound: true,
+        },
+        { agent_id: 'm2', name: '조사', role: '', status: 'active', kinds: ['general'] },
+      ],
+      rounds_left: 1,
+    }).prompt(false);
+    assert.match(prompt, /내 폴더 \(agent_id: m1\).*정해진 컴퓨터에서 일함/);
+    assert.doesNotMatch(prompt, /조사 \(agent_id: m2\).*정해진 컴퓨터/);
   });
 
   test('대화의 회차면 이전 대화를 자료로, 답하는 법과 함께 담는다', () => {

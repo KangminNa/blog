@@ -30,6 +30,7 @@ export interface AgentRow {
   reports_to: string | null;
   settings_revision: number;
   deleted_at: Date | null;
+  runner_id: string | null;
 }
 export type AgentNew = Partial<AgentRow> & Pick<AgentRow, 'id' | 'space_id' | 'name' | 'tool'>;
 
@@ -173,6 +174,7 @@ export interface RunnerRow {
   last_seen_at: Date;
   version: number;
   created_at: Date;
+  sandbox: boolean;
 }
 export type RunnerNew = Partial<RunnerRow> & Pick<RunnerRow, 'id' | 'space_id' | 'device_id'>;
 

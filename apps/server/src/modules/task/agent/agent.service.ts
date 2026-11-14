@@ -9,6 +9,7 @@ import {
   type Sql,
   type VersionInput,
 } from '../../platform';
+import { RunnerRepository } from '../runner/runner.repository';
 import { Agent } from './agent';
 import type {
   CreateAgentInput,
@@ -91,6 +92,8 @@ export class AgentService extends EntityService<Agent> {
       if (before) return agents.load(spaceId, String(before.agentId));
       const agent = Agent.open(spaceId, req.fields, new Date());
       if (req.reportsTo !== null) agent.reportTo(req.reportsTo, await agents.lockAll(spaceId));
+      if (req.runnerId !== null)
+        agent.edit({}, await new RunnerRepository(tx).load(spaceId, req.runnerId));
       await agents.save(agent);
       await once.remember({ agentId: agent.id });
       return agent;
@@ -141,20 +144,24 @@ export class AgentService extends EntityService<Agent> {
     });
   }
 
-  /** 보고 대상을 바꾸지 않으면 그 에이전트만 잠근다 */
+  /** 보고 대상을 바꾸지 않으면 그 에이전트만 잠근다. 러너는 같은 공간의 것만 (없으면 404) */
   async update(actor: Actor, req: UpdateAgentInput): Promise<Agent> {
-    const { reportsTo } = req;
-    if (reportsTo === undefined)
+    const { reportsTo, runnerId } = req;
+    if (reportsTo === undefined && runnerId === undefined)
       return this.changeAsOwner(actor, req, (agent) => agent.edit(req.changes));
     actor.assertOwner();
     const spaceId = actor.requireSpace();
     return this.transaction(async (tx) => {
       const agents = new AgentRepository(tx);
-      const org = await agents.lockAll(spaceId);
+      const org = reportsTo === undefined ? [] : await agents.lockAll(spaceId);
       const agent = org.find((a) => a.id === req.id) ?? (await agents.lock(spaceId, req.id));
       agent.assertVersion(req.version);
-      agent.reportTo(reportsTo, org);
-      agent.edit(req.changes);
+      if (reportsTo !== undefined) agent.reportTo(reportsTo, org);
+      const runner =
+        typeof runnerId === 'string'
+          ? await new RunnerRepository(tx).load(spaceId, runnerId)
+          : runnerId;
+      agent.edit(req.changes, runner);
       await agents.save(agent);
       return agent;
     });

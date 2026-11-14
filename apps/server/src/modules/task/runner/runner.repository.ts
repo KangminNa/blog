@@ -13,15 +13,18 @@ export class RunnerRepository extends TableRepository<RunnerRow, Runner> {
   }
 
   /**
-   * 러너가 서버에 닿았다 (next_jobs · report_progress). 처음이면 일을 받는 상태로 줄을 만든다.
-   * 일을 받는지를 돌려준다. version은 올리지 않는다
+   * 러너가 서버에 닿았다 (next_jobs · report_progress · ai_login · ai_signin). 처음이면 일을 받는 상태로 줄을 만든다.
+   * 칸인지(sandbox)는 러너가 알리는 값이 아니라 기기의 권한이라 늘 덮어쓴다. 줄을 돌려준다 (일 받기 · 묶기에 쓴다).
+   * version은 올리지 않는다
    */
-  async seen(spaceId: string, deviceId: string, now: Date): Promise<boolean> {
-    const [row] = await this.sql<Pick<RunnerRow, 'accepting'>[]>`
-      INSERT INTO task.runners (space_id, device_id, last_seen_at)
-      VALUES (${spaceId}, ${deviceId}, ${now})
-      ON CONFLICT (device_id) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at
-      RETURNING accepting`;
-    return row?.accepting ?? false;
+  async seen(spaceId: string, deviceId: string, now: Date, sandbox: boolean): Promise<RunnerRow> {
+    const [row] = await this.sql<RunnerRow[]>`
+      INSERT INTO task.runners (space_id, device_id, last_seen_at, sandbox)
+      VALUES (${spaceId}, ${deviceId}, ${now}, ${sandbox})
+      ON CONFLICT (device_id) DO UPDATE
+        SET last_seen_at = EXCLUDED.last_seen_at, sandbox = EXCLUDED.sandbox
+      RETURNING *`;
+    if (!row) throw new Error('러너 줄을 남기지 못했어요');
+    return row;
   }
 }

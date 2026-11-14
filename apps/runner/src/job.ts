@@ -1,5 +1,6 @@
 import { ChatTurn } from './chat-turn';
 import type { Json } from './json';
+import { TeamMember } from './team-member';
 
 /** 일의 대상 (글 등) */
 export class JobTarget {
@@ -8,34 +9,6 @@ export class JobTarget {
     readonly id: string,
     readonly version: number | null,
   ) {}
-}
-
-/** 일을 맡길 수 있는 바로 아래 팀원 한 명 (위임) */
-export class TeamMember {
-  constructor(
-    readonly agentId: string,
-    readonly name: string,
-    readonly role: string,
-    readonly status: string,
-    readonly kinds: readonly string[],
-  ) {}
-
-  static from(raw: Json): TeamMember {
-    return new TeamMember(
-      raw.text('agent_id'),
-      raw.text('name'),
-      raw.text('role'),
-      raw.text('status'),
-      raw.texts('kinds'),
-    );
-  }
-
-  /** 지시문의 한 줄. 역할은 첫 줄만 */
-  get line(): string {
-    const role = this.role.split('\n')[0]?.trim();
-    const paused = this.status === 'paused' ? ' (중지됨: 맡겨도 재개될 때까지 기다림)' : '';
-    return `- ${this.name} (agent_id: ${this.agentId})${role ? `: ${role}` : ''} · 맡길 수 있는 일: ${this.kinds.join(', ')}${paused}`;
-  }
 }
 
 /** 맡긴 하위 작업 하나의 결과. 하위 작업이 모두 끝나 깨어난 일에만 온다 */
@@ -204,6 +177,8 @@ export class Job {
     readonly page = false,
     /** 대화의 회차 (payload.chat): 앞 대화와 답하는 법. 그 밖의 일은 null */
     readonly chat: ChatTurn | null = null,
+    /** 이 러너에 묶인 에이전트의 일 (서버가 알린다). 이때만 이 러너가 나눈 폴더를 연다 (SharedFolders) */
+    readonly bound = false,
   ) {}
 
   static from(raw: Json): Job {
@@ -242,6 +217,7 @@ export class Job {
       task.text('kind') === Job.MAKE ? (task.child('payload').field('make') ?? null) : null,
       task.text('kind') === Job.MAKE && Boolean(task.child('payload').field('page')),
       ChatTurn.from(task.child('payload')),
+      agent.flag('bound'),
     );
   }
 
@@ -271,7 +247,13 @@ export class Job {
       this.makePayload,
       this.page,
       this.chat,
+      this.bound,
     );
+  }
+
+  /** 이 일에 나눠 줄 폴더: 이 러너에 묶인 에이전트의 일에만 (아무 에이전트나 내 파일을 보지 않게). 칸의 일은 늘 없음 */
+  sharedFolders<T>(folders: T | null): T | null {
+    return this.bound && !this.sandboxed ? folders : null;
   }
 
   /** 콘솔에 넣은 AI 토큰이 도는지 보는 일 */

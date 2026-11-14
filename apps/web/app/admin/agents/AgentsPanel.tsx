@@ -7,7 +7,13 @@ import { api } from '../../_lib/client-api';
 import { SCOPE_LABELS } from '../../_lib/types';
 import { useAction } from '../../_lib/use-action';
 import { actionLabel, flatTree, holdLabel, TOOL_LABELS, taskStatusLabel } from '../../_task/labels';
-import { useAgents, useTasksIn, useUsage } from '../../_task/live';
+import {
+  type RunnerChoice,
+  useAgents,
+  useRunnerChoices,
+  useTasksIn,
+  useUsage,
+} from '../../_task/live';
 import { AgentUsage } from '../../_task/parts';
 import type { Agent } from '../../_task/types';
 import { type AgentBody, AgentForm } from './AgentForm';
@@ -25,6 +31,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
   const running = useTasksIn('running');
   const waiting = useTasksIn('waiting');
   const usage = useUsage();
+  const runners = useRunnerChoices();
   // 열린 입력 칸: 추가, 또는 편집 중인 에이전트의 id
   const [open, setOpen] = useState<string | null>(adding ? NEW : null);
   // 팀 템플릿 칸 (에이전트가 없을 때는 늘 보인다)
@@ -131,6 +138,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
           agent={null}
           agents={list ?? []}
           ownerName={ownerName}
+          runners={runners}
           busy={save.busy !== null}
           problem={save.problem}
           onSubmit={(body, requestId) => submit(null, body, requestId)}
@@ -165,6 +173,7 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
                 agent={a}
                 agents={list}
                 ownerName={ownerName}
+                runners={runners}
                 busy={save.busy !== null}
                 problem={save.problem}
                 onSubmit={(body, requestId) => submit(a, body, requestId)}
@@ -178,6 +187,9 @@ export function AgentsPanel({ adding }: { adding: boolean }) {
                 work={workOf(a)}
                 hold={holdLabel(usage.data?.agents.find((u) => u.id === a.id))}
                 boss={list.find((b) => b.id === a.reportsTo)?.name ?? ownerName}
+                runner={
+                  a.runnerId ? (runners.find((r) => r.runner.id === a.runnerId) ?? null) : undefined
+                }
                 busy={action.busy === a.id}
                 members={list.filter((m) => m.reportsTo === a.id).length}
                 onFlip={() => flip(a)}
@@ -219,6 +231,7 @@ function AgentCard({
   work,
   hold,
   boss,
+  runner,
   busy,
   members,
   onFlip,
@@ -230,6 +243,8 @@ function AgentCard({
   hold: string | null;
   /** 보고 대상의 이름 (없으면 관리자의 이름) */
   boss: string;
+  /** 묶인 러너 (undefined: 아무 러너, null: 묶였지만 그 러너의 기기가 끊김) */
+  runner?: RunnerChoice | null;
   busy: boolean;
   /** 바로 아래 팀원 수 (있으면 "팀째 삭제"도) */
   members: number;
@@ -246,6 +261,7 @@ function AgentCard({
           <small>
             {agent.role ? `${agent.role} · ` : ''}
             {TOOL_LABELS[agent.tool] ?? agent.tool} · 보고: {boss}
+            {runner === undefined ? '' : ` · 실행: ${runnerLabel(runner)}`}
           </small>
         </div>
         {!paused && hold && <span className="pill strong">{hold}</span>}
@@ -290,4 +306,10 @@ function AgentCard({
       </div>
     </article>
   );
+}
+
+/** 묶인 러너의 이름과 연결 상태. 기기를 끊었으면 그 러너는 일을 빌리지 못해 일이 기다린다 */
+function runnerLabel(runner: RunnerChoice | null): string {
+  if (!runner) return '연결 끊긴 러너 (일이 기다려요)';
+  return runner.runner.online ? runner.device.name : `${runner.device.name} (연결 안 됨)`;
 }
