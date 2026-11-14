@@ -97,6 +97,8 @@ pnpm cairn connect https://내블로그주소 --tool codex  # Codex
 
 스킬(`cairn-save`, `cairn-recall`)과 검토자를 AI 도구에 넣고, MCP 서버를 등록하고, 브라우저에서 로그인해 이 기기를 연결합니다. 그 도구의 명령줄(`claude` 또는 `codex`)이 필요하고, 한 컴퓨터는 블로그 하나에 연결합니다. `--review-with codex`처럼 다른 회사 모델을 교차 검토자로 고를 수 있습니다.
 
+Claude Code는 팀 소식도 받습니다: 브라우저에서 "소식 읽기"만 가진 소식 기기(`<컴퓨터 이름> · 소식`)를 한 번 더 승인하면, 말을 걸 때마다 서버 팀의 새 소식이 대화에 덧붙고(훅) 아래 상태 줄에 `Cairn · 진행 2 · 소식 3`이 보입니다. 열쇠는 `~/.cairn/credentials.json`(나만 읽기), 스크립트는 `~/.cairn/bin`에 둡니다. 쓰고 있던 훅은 그대로 두고, 상태 줄이 이미 있으면 덮지 않고 붙이는 법을 알려 줍니다. 상태는 `pnpm cairn status`로 봅니다.
+
 **Claude 앱 · ChatGPT**는 콘솔 → 기기에서 "ChatGPT·Claude 앱 연결 허용"을 켜고, 앱의 커넥터 설정에 `https://내블로그주소/mcp`를 넣은 뒤 블로그에서 승인하고, 같은 화면의 `cairn-save.zip`을 앱의 스킬에 올립니다. 앱은 그 회사 서버에서 들어오므로 **인터넷에서 열리는 https 주소**가 필요합니다. 집 안 서버라면 Cloudflare Tunnel이나 `tailscale funnel`처럼 밖으로 여는 터널을 씁니다. 앱에서는 대화 원문 대조와 다른 맥락의 검토를 할 수 없어 미리보기에 "독립 검토 아님"이 붙습니다.
 
 **5. 러너 켜기**

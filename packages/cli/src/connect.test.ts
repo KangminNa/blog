@@ -6,10 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
 import { McpServerState } from './ai-tool';
-import { CairnSite } from './cairn-site';
+import { CairnSite, type SiteAddress } from './cairn-site';
 import { ClaudeCode } from './claude-code';
 import { Codex } from './codex';
 import { ConnectCommand } from './connect.command';
+import { NewsLogin } from './news-login';
+import { NewsSetup } from './news-setup';
 import { Shell, ShellResult } from './shell';
 import { SkillMarker, SkillPackage } from './skill';
 import { StatusCommand } from './status.command';
@@ -285,6 +287,37 @@ describe('cairn connect', () => {
     );
     const err = await connect().catch((e: unknown) => e);
     assert.ok(err instanceof CliError);
+  });
+});
+
+describe('cairn connect · 소식 단계 (Claude Code)', () => {
+  /** 소식 단계를 부른 값만 남긴다 (단계 자체는 news-setup.test.ts) */
+  class FakeNews extends NewsSetup {
+    readonly runs: [string, boolean][] = [];
+    override async run(at: SiteAddress, withDevice: boolean): Promise<void> {
+      this.runs.push([at.site, withDevice]);
+    }
+  }
+  const fakeNews = (terminal: FakeTerminal) =>
+    new FakeNews(terminal, join(home, 'settings.json'), new NewsLogin(terminal, shell));
+
+  test('연결을 확인한 뒤 소식 기기 · 훅 · 상태 줄을 건다. 사람이 없으면 기기 없이', async () => {
+    const terminal = new FakeTerminal();
+    const news = fakeNews(terminal);
+    await new ConnectCommand(terminal, claude(), [skill], null, news).run(origin);
+    assert.deepEqual(news.runs, [['https://blog.example.com', true]]);
+
+    shell = new FakeClaude();
+    const pipe = new FakeTerminal();
+    pipe.tty = false;
+    const quiet = fakeNews(pipe);
+    await new ConnectCommand(pipe, claude(), [skill], null, quiet).run(origin);
+    assert.deepEqual(quiet.runs, [['https://blog.example.com', false]]);
+  });
+
+  test('Codex에는 훅을 걸 설정 파일이 없다', () => {
+    assert.equal(new Codex(shell, {}, home).settingsFile, null);
+    assert.equal(claude().settingsFile, join(home, '.claude', 'settings.json'));
   });
 });
 
