@@ -8,10 +8,12 @@ import { useAction } from '../_lib/use-action';
 import { useLiveValue } from '../_lib/use-live';
 import { Stamps } from './ApprovalStamps';
 import { GoalRunTarget, LimitTarget, OtherTarget, PostTarget, PullTarget } from './ApprovalTargets';
+import { ClickTarget, LoginDecide, LoginTarget } from './BrowserApproval';
 import {
   APPROVE_LABELS,
   actionLabel,
   GOAL_RUN,
+  LOGIN_SITE,
   MERGE_PULL,
   PUBLISH_POST,
   PUBLISH_SITE,
@@ -130,6 +132,10 @@ function Loaded({
         <LimitTarget approval={a} agent={limitAgent ?? null} />
       ) : a.action === MERGE_PULL ? (
         <PullTarget approval={a} />
+      ) : a.action === PUBLISH_SITE ? (
+        <ClickTarget approval={a} />
+      ) : a.action === LOGIN_SITE ? (
+        <LoginTarget approval={a} />
       ) : a.target.kind === GOAL_RUN ? (
         <GoalRunTarget approval={a} />
       ) : (
@@ -164,7 +170,10 @@ function Loaded({
         )}
       </dl>
       {problem && <p className="error">{problem}</p>}
-      {a.status === 'pending' && (
+      {a.status === 'pending' && a.action === LOGIN_SITE && (
+        <LoginDecide approval={a} reload={reload} />
+      )}
+      {a.status === 'pending' && a.action !== LOGIN_SITE && (
         <Decide
           approval={a}
           canApprove={!isPost || (post.data !== null && post.error === null)}
@@ -240,12 +249,6 @@ function Decide({
         {noteProblem && <p className="error">{noteProblem}</p>}
       </div>
       {action.problem && <p className="error">{action.problem}</p>}
-      {approval.action === PUBLISH_SITE && (
-        <p className="note">
-          서버는 실행하지 않아요. <Link href="/admin/p/browser-tabs">브라우저 화면</Link>에서 직접
-          발행한 뒤 눌러 주세요
-        </p>
-      )}
       {approval.action === MERGE_PULL && (
         <p className="note">서버는 머지하지 않아요. GitHub에서 PR을 리뷰 · 머지한 뒤 눌러 주세요</p>
       )}

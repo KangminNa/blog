@@ -36,8 +36,12 @@ export const APPROVAL_STATUS: Record<string, string> = {
 
 export const PUBLISH_POST = 'blog.post.publish';
 export const RAISE_LIMIT = 'task.agent.raise_limit';
-/** browser-tabs 패키지: 에이전트가 발행 직전에 멈추고 올리는 결재. 서버는 실행하지 않고 주인이 직접 발행한다 */
+/** browser-tabs 패키지의 결재된 클릭: AI가 멈춘 마지막 버튼을 러너가 붙잡아 올린다. 승인하면 러너가 같은 버튼인지 보고 누른다 */
 export const PUBLISH_SITE = 'browser.site.publish';
+/** browser-tabs 패키지의 로그인 필요: 콘솔 화면에서 로그인한 뒤 "로그인했어요"(수정 요청)로 같은 작업을 잇는다 */
+export const LOGIN_SITE = 'browser.site.login';
+/** "로그인했어요"가 보내는 수정 요청의 말 */
+export const LOGGED_IN_NOTE = '로그인했어요';
 /** code-github 패키지의 PR 머지 결재 (주인이 GitHub에서 머지한 뒤 승인) */
 export const MERGE_PULL = 'code.pr.merge';
 
@@ -47,9 +51,9 @@ export const GOAL_COMPLETE = 'task.goal.complete';
 /** 목표 실행 결재의 대상 종류 (서버의 Approval.GOAL_RUN) */
 export const GOAL_RUN = 'goal_run';
 
-/** 승인 버튼의 말이 다른 동작. 서버가 실행하지 않고 주인이 직접 하는 것과, 목표 실행의 다음 걸음 */
+/** 승인 버튼의 말이 다른 동작. 승인이 곧 실행인 것(누르기), 관리자가 직접 하는 것, 목표 실행의 다음 걸음 */
 export const APPROVE_LABELS: Record<string, string> = {
-  [PUBLISH_SITE]: '직접 발행했어요',
+  [PUBLISH_SITE]: '누르기',
   [MERGE_PULL]: '머지했어요',
   [GOAL_CONTINUE]: '다음 회차로',
   [GOAL_COMPLETE]: '완료로 닫기',
@@ -57,7 +61,8 @@ export const APPROVE_LABELS: Record<string, string> = {
 
 export const ACTION_LABELS: Record<string, string> = {
   [PUBLISH_POST]: '글 공개',
-  [PUBLISH_SITE]: '브라우저에서 발행',
+  [PUBLISH_SITE]: '브라우저 버튼 누르기',
+  [LOGIN_SITE]: '로그인 필요',
   [MERGE_PULL]: 'PR 머지',
   [RAISE_LIMIT]: '한도 변경',
   [GOAL_CONTINUE]: '목표 실행 중간 결재',
@@ -72,6 +77,7 @@ export const TARGET_LABELS: Record<string, string> = {
   post: '글',
   agent: '에이전트',
   browser_site: '사이트',
+  browser_click: '브라우저 버튼',
   pull_request: 'PR',
   [GOAL_RUN]: '목표 실행',
 };
@@ -103,6 +109,7 @@ export const TOOL_LABELS: Record<string, string> = { claude: 'Claude Code', code
 export const NEEDS_LABELS: Record<string, string> = {
   'code-runner': '샌드박스 필요 (만들기 · 코드)',
   'code-github': 'code-github 플러그인 필요',
+  browser: '서버 브라우저 · browser-tabs 플러그인 필요',
 };
 
 /** ISO 요일 (월 1 ~ 일 7)의 이름 */
