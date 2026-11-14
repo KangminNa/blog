@@ -68,8 +68,8 @@ plugins/<이름>/
 - 표는 자기 스키마(`schema`)에만. 코어 표를 읽거나 쓰지 않고 외래키도 걸지 않는다 (`space_id`는 값으로). `Work`가 다른 스키마의 표를 막고, `pnpm check`가 `work.sql`의 스키마를 본다
 - 동작의 `allow`: `Operation.OWNER`(주인만), `Operation.ANYONE`(방문자도), 또는 `Actor.RUN` 같은 권한. 관리 일은 늘 `Operation.OWNER`
 - 입력은 `this.fields(raw, (f) => …)`로 읽는다 (틀린 칸을 모아 400). 뜻의 검사는 `run`에서 `RuleViolation`
-- 목록 파일의 `api` · `tools`가 가리키지 않는 동작은 등록되지 않는다. 도구 입력 모양(`tools.<이름>.input`)을 바꾸면 쓰는 스킬 · 러너도 함께 고친다 (`browser-tabs`의 러너 쪽은 `apps/runner/src/tab-reader.ts` · `cairn-server.ts`)
-- 러너가 부르는 도구를 그 러너가 쥔 일에 묶으려면 `work.leased(id)` (플러그인 API 0.3): 코어가 임대를 확인하고 일의 id · 종류 · 입력(`LeasedWork`)을 준다. 쥐고 있지 않으면 거절한다 (`code-github`의 `code_credential` · `code_pull_opened`)
+- 목록 파일의 `api` · `tools`가 가리키지 않는 동작은 등록되지 않는다. 도구 입력 모양(`tools.<이름>.input`)을 바꾸면 쓰는 스킬 · 러너도 함께 고친다 (`browser-tabs`의 러너 쪽은 `apps/runner/src/tab-reader.ts` · `browse-stage.ts` · `click-runner.ts` · `cairn-server.ts`, 스킬 `cairn-browse`)
+- 러너가 부르는 도구를 그 러너가 쥔 일에 묶으려면 `work.leased(id)` (플러그인 API 0.3): 코어가 임대를 확인하고 일의 id · 종류 · 입력(`LeasedWork`)을 준다. 0.4부터 일의 대상(`targetKind` · `targetId` · `targetVersion`)도 준다. 쥐고 있지 않으면 거절한다 (`code-github`의 `code_credential` · `code_pull_opened`, `browser-tabs`의 `browser_job` · `browser_click_hold` …)
 - 이벤트를 받아 표에 쓰거나 이벤트를 남기려면 `cairn.onEvent(무늬, new XxxCommand())`: `allow = Operation.SYSTEM`, 코어가 트랜잭션 하나에서 돌린다 (처리기 `BaseHandler`는 DB에 쓸 길이 없다)
 - 이벤트는 `plugin.<스키마>.<무엇>` 이름으로만 남긴다. 에이전트에게 일을 맡기려면 `uses`에 `task:request`를 적고 `task.task.requested`를 남긴다 (그 밖의 코어 이벤트는 `work.record`가 막는다)
 - 마이그레이션은 배포 때 코어와 함께 적용된다 (`docker compose`의 migrate가 `plugins/*/migrations`도 읽는다. 테스트 DB와 `pnpm db:rollback`도 같다). 마이그레이션 뒤 `pnpm db:rows`
