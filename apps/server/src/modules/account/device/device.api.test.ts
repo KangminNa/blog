@@ -427,6 +427,153 @@ describe('MCP', () => {
   });
 });
 
+// cairn connect가 만드는 소식 기기 (2차 1-3): 승인 요청에 scope=news를 실으면 소식만 읽는 기기가 따로 생긴다.
+describe('소식 기기 (scope=news)', () => {
+  /** 이 파일의 다른 등록과 세지 않게 등록만 새 서버(같은 DB)에서 한다 */
+  let fresh: ApiClient;
+  before(async () => {
+    fresh = await ApiClient.start();
+  });
+  after(() => fresh.close());
+
+  const register = async (redirect = REDIRECT): Promise<string> => {
+    const res = await fresh.request('POST', '/oauth/register', TestUser.visitor, {
+      client_name: 'macbook · 소식',
+      redirect_uris: [redirect],
+    });
+    assert.equal(res.status, 201, res.text);
+    return String(res.json().client_id);
+  };
+  const ask = (clientId: string, challenge: string, scope: string, redirect = REDIRECT) =>
+    api.get(
+      `${authorizePath(clientId, challenge, 'news-state').replace(encodeURIComponent(REDIRECT), encodeURIComponent(redirect))}&scope=${encodeURIComponent(scope)}`,
+    );
+  const requestOf = (res: { location: string | null }) =>
+    new URL(res.location ?? '').searchParams.get('request') ?? '';
+
+  test('승인 화면은 요청한 권한(news)만 보이고, 승인하면 news 하나만 가진 기기와 토큰이 생긴다', async () => {
+    const clientId = await register();
+    const { verifier, challenge } = pkce();
+    const request = requestOf(await ask(clientId, challenge, 'news'));
+    const shown = await api.get(`/api/connect?request=${encodeURIComponent(request)}`, owner);
+    assert.deepEqual(shown.json(), {
+      clientName: 'macbook · 소식',
+      redirectHost: 'localhost:33418',
+      name: 'macbook · 소식',
+      scopes: ['news'],
+      app: null,
+    });
+    const approved = await api.request('POST', '/api/connect/approve', owner, {
+      request,
+      name: 'macbook · 소식',
+    });
+    assert.equal(approved.status, 200, approved.text);
+    const code = new URL(String(approved.json().redirect)).searchParams.get('code') ?? '';
+    const token = await api.form('/oauth/token', {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT,
+      client_id: clientId,
+      code_verifier: verifier,
+    });
+    assert.equal(token.status, 200, token.text);
+    assert.equal(token.json().scope, 'news');
+    const access = String(token.json().access_token);
+    assert.equal(
+      (await api.mcp(access, 'tools/list')).status,
+      200,
+      '소식 기기의 토큰으로 들어온다',
+    );
+    const saved = await api.mcp(access, 'tools/call', { name: 'search_wikis', arguments: {} });
+    assert.equal(
+      (saved.json().result as { isError?: boolean }).isError,
+      true,
+      '소식 말고는 읽지 못한다',
+    );
+
+    const renewed = await api.form('/oauth/token', {
+      grant_type: 'refresh_token',
+      refresh_token: String(token.json().refresh_token),
+    });
+    assert.equal(renewed.json().scope, 'news', '갱신해도 소식 권한만');
+    const list = (await api.get('/api/devices', owner)).json().devices as Record<string, unknown>[];
+    const device = list.find((d) => d.name === 'macbook · 소식') as Record<string, unknown>;
+    assert.deepEqual(device.scopes, ['news']);
+
+    // 관리자도 소식 기기의 권한은 바꾸지 못한다 (이름은 된다). news를 다른 기기에 줄 수도 없다
+    const widened = await api.request('PATCH', `/api/devices/${device.id}`, owner, {
+      scopes: ['news', 'read_all'],
+      version: device.version,
+    });
+    assert.equal(widened.status, 422, widened.text);
+    const renamed = await api.request('PATCH', `/api/devices/${device.id}`, owner, {
+      name: 'macbook 소식',
+      version: device.version,
+    });
+    assert.equal(renamed.status, 200, renamed.text);
+    assert.deepEqual(renamed.json().scopes, ['news']);
+    const other = (
+      await api.request('POST', '/api/devices/runner', owner, {
+        requestId: randomUUID(),
+        name: 'laptop-news',
+      })
+    ).json() as Record<string, unknown>;
+    const granted = await api.request('PATCH', `/api/devices/${other.id}`, owner, {
+      scopes: ['run', 'news'],
+      version: other.version,
+    });
+    assert.equal(granted.status, 400, granted.text);
+  });
+
+  test('news를 다른 권한과 함께 요청하거나 앱의 주소로 요청하면 invalid_scope로 돌려보낸다', async () => {
+    const clientId = await register();
+    for (const scope of ['news upload', 'read_all news']) {
+      const res = await ask(clientId, pkce().challenge, scope);
+      const back = new URL(res.location ?? '');
+      assert.equal(`${back.origin}${back.pathname}`, REDIRECT);
+      assert.equal(back.searchParams.get('error'), 'invalid_scope');
+      assert.equal(back.searchParams.get('state'), 'news-state');
+    }
+    const offline = requestOf(await ask(clientId, pkce().challenge, 'news offline_access'));
+    const shown = await api.get(`/api/connect?request=${encodeURIComponent(offline)}`, owner);
+    assert.deepEqual(shown.json().scopes, ['news'], 'offline_access는 권한이 아니다');
+
+    const { version } = (await api.get('/api/space')).json() as { version: number };
+    const on = await api.request('PUT', '/api/space/hosted-apps', owner, { on: true, version });
+    assert.equal(on.status, 200, on.text);
+    try {
+      const app = 'https://claude.ai/api/mcp/auth_callback';
+      const res = await ask(await register(app), pkce().challenge, 'news', app);
+      assert.equal(new URL(res.location ?? '').searchParams.get('error'), 'invalid_scope');
+    } finally {
+      const now = (await api.get('/api/space')).json() as { version: number };
+      await api.request('PUT', '/api/space/hosted-apps', owner, {
+        on: false,
+        version: now.version,
+      });
+    }
+  });
+
+  test('news가 없는 요청은 지금처럼: 다른 권한 이름은 보지 않고 기본 권한으로 승인 화면에 간다', async () => {
+    const clientId = await register();
+    const request = requestOf(
+      await ask(clientId, pkce().challenge, 'upload read_public read_all delegate offline_access'),
+    );
+    const shown = await api.get(`/api/connect?request=${encodeURIComponent(request)}`, owner);
+    assert.deepEqual(shown.json().scopes, ['upload', 'read_public']);
+  });
+
+  test('DB도 news를 다른 권한과 함께 두지 못하게 막는다', async () => {
+    const db = api.service(Database);
+    const [device] = await db.sql<{ id: string }[]>`
+      SELECT id FROM account.devices WHERE scopes = ARRAY['news']::text[] LIMIT 1`;
+    await assert.rejects(
+      db.sql`UPDATE account.devices SET scopes = ARRAY['news', 'upload'] WHERE id = ${device?.id ?? ''}`,
+      /devices_news_only/,
+    );
+  });
+});
+
 describe('러너 추가', () => {
   const add = (user: typeof owner, body: object) =>
     api.request('POST', '/api/devices/runner', user, body);

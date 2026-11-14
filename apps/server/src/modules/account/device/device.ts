@@ -66,6 +66,11 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
   static readonly REFRESH_MS = 30 * 86_400_000;
   /** 새 기기의 기본 권한: 올리기 + 공개 읽기. 나머지는 관리 화면에서 켠다 */
   static readonly DEFAULT_SCOPES: readonly string[] = [Actor.UPLOAD, Actor.READ_PUBLIC];
+  /**
+   * 소식 기기의 권한 (2차 1-3): 앱이 승인 요청에 scope=news를 실어 만든다 (cairn connect의 훅 · 상태 줄).
+   * 다른 권한과 함께 두지 않아 관리자가 주거나 바꾸지 못한다 (ALL_SCOPES에 없음, DB CHECK devices_news_only)
+   */
+  static readonly NEWS_SCOPES: readonly string[] = [Actor.NEWS];
   static readonly ALL_SCOPES: readonly string[] = [
     Actor.UPLOAD,
     Actor.READ_PUBLIC,
@@ -111,7 +116,10 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
     super(row, fresh);
   }
 
-  /** OAuth로 연결한 기기: 주인이 승인 화면에서 정한 이름과 기본 권한 */
+  /**
+   * OAuth로 연결한 기기: 주인이 승인 화면에서 정한 이름과 기본 권한.
+   * 앱이 소식 권한을 요청해 승인됐으면(requested: [news]) 그 권한만 갖는 소식 기기
+   */
   static connect(
     spaceId: string,
     userId: string,
@@ -119,8 +127,11 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
     clientId: string,
     clientName: string,
     now: Date,
+    requested: readonly string[] | null = null,
   ): Device {
-    return Device.open(spaceId, userId, name, Device.DEFAULT_SCOPES, clientId, clientName, now);
+    const news = requested?.length === 1 && requested[0] === Actor.NEWS;
+    const scopes = news ? Device.NEWS_SCOPES : Device.DEFAULT_SCOPES;
+    return Device.open(spaceId, userId, name, scopes, clientId, clientName, now);
   }
 
   /** 러너: OAuth 없이 콘솔에서 만든다. 일을 빌리는 권한만 갖고, 토큰은 만들 때 한 번만 보인다 */
@@ -217,6 +228,11 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
     return this.meta.clientName === Device.CODE_RUNNER;
   }
 
+  /** 소식 기기인가 (권한이 news 하나) */
+  get isNews(): boolean {
+    return this.row.scopes.includes(Actor.NEWS);
+  }
+
   /** 칸이 그대로여도 저장하면 version이 오른다: 토큰만 바뀌어도 화면이 든 기기는 옛것이 된다 */
   override get unsaved(): Partial<DeviceRow> {
     const changed = super.unsaved;
@@ -264,6 +280,9 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
     // 칸은 이름으로 다시 찾고(연결할 때), 권한은 칸에 맞춰 정해져 있다. 바꾸면 칸이 새 기기를 만들어 쌓인다
     if (this.isCodeRunner && (changes.name !== undefined || changes.scopes !== undefined))
       throw new RuleViolation('코드 러너 칸의 이름 · 권한은 바꿀 수 없어요');
+    // 소식 기기는 소식만 읽는다: 다른 권한을 더하면 훅 · 상태 줄의 토큰이 그만큼 넓어진다
+    if (this.isNews && changes.scopes !== undefined)
+      throw new RuleViolation('소식 기기의 권한은 바꿀 수 없어요');
     this.accept(changes, Device.RULES);
   }
 
