@@ -77,13 +77,7 @@ import { OutboxWorker } from './worker/outbox-worker';
         box: SecretBox,
         restore: ArchiveRestoreService,
       ) =>
-        PluginRegistry.boot(
-          process.env.CAIRN_PLUGINS_DIR ?? resolve(process.cwd(), '../../plugins'),
-          db.sql,
-          archive,
-          box,
-          restore,
-        ),
+        PluginRegistry.boot(resolve(process.cwd(), '../../plugins'), db.sql, archive, box, restore),
       inject: [Database, ArchiveQuery, SecretBox, ArchiveRestoreService],
     },
     { provide: APP_FILTER, useClass: DomainErrorFilter },

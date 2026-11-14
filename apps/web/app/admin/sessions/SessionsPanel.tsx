@@ -211,12 +211,12 @@ function SessionView({
             )}
             {!allRevisions && detail.history.length > RECENT_REVISIONS && (
               <button type="button" className="chip" onClick={() => setAllRevisions(true)}>
-                지난 판 {detail.history.length - RECENT_REVISIONS}개 더
+                지난 버전 {detail.history.length - RECENT_REVISIONS}개 더
               </button>
             )}
           </fieldset>
           <p className="label-mono" style={{ margin: 0 }}>
-            {shown.seq}판 · {KIND_LABELS[shown.kind] ?? shown.kind} · {when(shown.createdAt)}
+            버전 {shown.seq} · {KIND_LABELS[shown.kind] ?? shown.kind} · {when(shown.createdAt)}
           </p>
           {shown.warnings.length > 0 && (
             <div className="result">

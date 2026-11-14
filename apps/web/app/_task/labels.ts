@@ -59,7 +59,6 @@ export const ACTION_LABELS: Record<string, string> = {
   [PUBLISH_POST]: '글 공개',
   [PUBLISH_SITE]: '브라우저에서 발행',
   [MERGE_PULL]: 'PR 머지',
-  'sns.post.send': 'SNS 전송',
   [RAISE_LIMIT]: '한도 변경',
   [GOAL_CONTINUE]: '목표 실행 중간 결재',
   [GOAL_COMPLETE]: '목표 실행 최종 결재',
@@ -102,7 +101,7 @@ export const TOOL_LABELS: Record<string, string> = { claude: 'Claude Code', code
 
 /** 팀 템플릿이 다 돌려면 필요한 것 (서버의 AgentTeamRow.needs) */
 export const NEEDS_LABELS: Record<string, string> = {
-  'code-runner': '코드 러너 칸 필요 (만들기 · 코드)',
+  'code-runner': '샌드박스 필요 (만들기 · 코드)',
   'code-github': 'code-github 플러그인 필요',
 };
 

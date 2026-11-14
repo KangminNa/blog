@@ -2,7 +2,7 @@
   "name": "code-github",
   "version": "0.1.0",
   "cairn": ">=0.3",
-  "description": "코드 작업을 GitHub와 잇는다: 저장소를 등록하고 일을 맡기면 코드 러너 칸이 고쳐 draft PR을 열고, 주인이 머지한 뒤 승인하면 끝난다",
+  "description": "코드 작업을 GitHub와 잇는다: 저장소를 등록하고 일을 맡기면 샌드박스의 AI가 고쳐 draft PR을 열고, 관리자가 머지한 뒤 승인하면 끝난다",
   "schema": "code_github",
   "server": "server/plugin.ts",
   "settings": {

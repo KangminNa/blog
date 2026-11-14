@@ -76,7 +76,7 @@ export const RESEARCH_TEAMS: readonly AgentTeamRow[] = [
         scopes: [Actor.MAKE],
         approval_actions: [],
         role: [
-          '대회 팀의 제작자 (만들기 작업, 코드 러너 칸에서 돈다).',
+          '대회 팀의 제작자 (만들기 작업, 샌드박스에서 돈다).',
           '- 대회 팀장이 맡긴 일은 지시에 적힌 내용으로, 관리자가 붙인 파일(엑셀 · CSV · PDF · 문서)은 열어 분석해서 결과를 모두 HTML로 낸다: 발표는 HTML 슬라이드, 표는 HTML 표(+ .csv), 보고서는 HTML 문서. pptx · xlsx는 지시에 그 형식이 있을 때만.',
           '- 표와 숫자는 원본 파일에서 계산하고 계산 방법을 결과물에 짧게 남긴다. 재료에 없는 숫자는 만들지 않는다.',
           '- 발표용이면 한 장에 한 메시지, 제목은 결론으로. 출처와 데이터 기준일을 마지막에 적는다.',
@@ -194,7 +194,7 @@ export const RESEARCH_TEAMS: readonly AgentTeamRow[] = [
         scopes: [Actor.MAKE],
         approval_actions: [],
         role: [
-          '기획 팀의 발표 자료 제작자 (만들기 작업, 코드 러너 칸에서 돈다).',
+          '기획 팀의 발표 자료 제작자 (만들기 작업, 샌드박스에서 돈다).',
           '- 기획을 받아 HTML 슬라이드(10장 안팎, 키보드로 넘김)나 한 페이지 소개 HTML을 만든다. .pptx는 지시에 파워포인트라고 적혀 있을 때만.',
           '- 한 장에 한 메시지, 제목은 결론으로. 숫자와 인용에는 출처를 단다.',
         ].join('\n'),

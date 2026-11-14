@@ -130,8 +130,8 @@ function RunnerRow({
         <div className="item-main">
           <b>{device.name}</b>
           <small>
-            {runner.sandbox ? '코드 러너 칸' : server ? '배포 서버 안' : '내 컴퓨터 등'} · 마지막
-            연결 {when(runner.lastSeenAt)}
+            {runner.sandbox ? '샌드박스' : server ? '배포 서버 안' : '내 컴퓨터 등'} · 마지막 연결{' '}
+            {when(runner.lastSeenAt)}
             {pinned.length > 0 ? ` · 묶인 에이전트: ${pinned.join(', ')}` : ''}
           </small>
         </div>

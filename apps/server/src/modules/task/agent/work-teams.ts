@@ -44,7 +44,7 @@ export const WORK_TEAMS: readonly AgentTeamRow[] = [
         scopes: [Actor.MAKE],
         approval_actions: [],
         role: [
-          '결과물 팀의 문서 제작자 (만들기 작업, 코드 러너 칸).',
+          '결과물 팀의 문서 제작자 (만들기 작업, 샌드박스).',
           '- 보고서 · 기획서를 HTML 문서 하나로 만든다 (인쇄하면 A4 PDF). 제목 → 요약 → 본문 → 출처 순서. .docx는 지시에 워드라고 적혀 있을 때만.',
         ].join('\n'),
       },
@@ -55,7 +55,7 @@ export const WORK_TEAMS: readonly AgentTeamRow[] = [
         scopes: [Actor.MAKE],
         approval_actions: [],
         role: [
-          '결과물 팀의 슬라이드 제작자 (만들기 작업, 코드 러너 칸).',
+          '결과물 팀의 슬라이드 제작자 (만들기 작업, 샌드박스).',
           '- 발표 자료를 HTML 슬라이드 하나로 만든다 (키보드로 넘기고, 인쇄하면 16:9 PDF). 한 장에 한 메시지, 제목은 결론으로. .pptx는 지시에 파워포인트라고 적혀 있을 때만.',
         ].join('\n'),
       },
@@ -66,7 +66,7 @@ export const WORK_TEAMS: readonly AgentTeamRow[] = [
         scopes: [Actor.MAKE],
         approval_actions: [],
         role: [
-          '결과물 팀의 표 · 차트 제작자 (만들기 작업, 코드 러너 칸).',
+          '결과물 팀의 표 · 차트 제작자 (만들기 작업, 샌드박스).',
           '- 지시의 데이터로 HTML 표(정렬 · 합계 · 막대 차트)를 만들고 같은 데이터를 .csv로도 둔다. 단위 · 기준일 · 출처를 표 위에 적는다. .xlsx는 지시에 엑셀 파일이라고 적혀 있을 때만.',
         ].join('\n'),
       },
@@ -77,7 +77,7 @@ export const WORK_TEAMS: readonly AgentTeamRow[] = [
         scopes: [Actor.MAKE],
         approval_actions: [],
         role: [
-          '결과물 팀의 웹 페이지 제작자 (만들기 작업, 코드 러너 칸).',
+          '결과물 팀의 웹 페이지 제작자 (만들기 작업, 샌드박스).',
           '- 한 페이지 소개 · 결과 페이지를 HTML 파일 하나로 만든다 (그림은 SVG나 안에 넣어서). 바깥 스크립트 없이, 휴대폰에서도 보이게.',
         ].join('\n'),
       },
@@ -109,7 +109,7 @@ export const WORK_TEAMS: readonly AgentTeamRow[] = [
         scopes: [Actor.MAKE],
         approval_actions: [],
         role: [
-          '데이터 분석 팀의 데이터 분석가 (만들기 작업, 코드 러너 칸에서 돈다).',
+          '데이터 분석 팀의 데이터 분석가 (만들기 작업, 샌드박스에서 돈다).',
           '- 붙인 파일(엑셀 · CSV)을 읽어 정리 → 계산 → 요약 보고서를 HTML로 만든다: 표는 HTML 표(정렬 · 차트, .csv도 함께), 해석은 HTML 문서.',
           '- 빈 값 · 이상한 값을 어떻게 다뤘는지 적고, 결론은 숫자와 함께 쓴다. 파일에 없는 숫자는 만들지 않는다.',
         ].join('\n'),

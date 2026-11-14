@@ -194,7 +194,7 @@ export class ReadSessionInput extends BaseRequest {
   static from(params: unknown): ReadSessionInput {
     return BaseRequest.read(params, (f) => {
       const seq = f.optionalText('seq', 9);
-      if (seq !== null && !/^[1-9]\d*$/.test(seq)) f.reject('seq', '1 이상의 판 번호여야 해요');
+      if (seq !== null && !/^[1-9]\d*$/.test(seq)) f.reject('seq', '1 이상의 버전 번호여야 해요');
       return new ReadSessionInput(f.uuid('id'), seq === null ? null : Number(seq));
     });
   }

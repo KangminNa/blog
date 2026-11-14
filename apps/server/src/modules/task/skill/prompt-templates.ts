@@ -69,7 +69,7 @@ export class PromptTemplates {
       if (!mine.bodies.has(name)) throw new RuleViolation(`틀이 빠졌어요: ${name}`);
     for (const [name, body] of mine.bodies) {
       const known = base.bodies.get(name);
-      if (known === undefined) throw new RuleViolation(`저장소 판에 없는 틀이에요: ${name}`);
+      if (known === undefined) throw new RuleViolation(`저장소 버전에 없는 틀이에요: ${name}`);
       const allowed = PromptTemplates.keysOf(name, known);
       for (const key of PromptTemplates.keysOf(name, body))
         if (!allowed.has(key)) throw new RuleViolation(`${name} 틀에 없는 자리예요: {{${key}}}`);

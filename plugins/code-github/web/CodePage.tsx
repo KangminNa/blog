@@ -71,7 +71,7 @@ export default function CodePage({ call, notify }: Props) {
   return (
     <div className="stack">
       <p className="note">
-        저장소를 등록하고 일을 맡기면 코드 러너 칸이 고쳐 draft PR을 열고 결재를 올려요. GitHub에서
+        저장소를 등록하고 일을 맡기면 샌드박스의 AI가 고쳐 draft PR을 열고 결재를 올려요. GitHub에서
         머지한 뒤 승인하면 작업이 끝나요. 토큰은 설정 › 플러그인 › code-github에 넣어요
       </p>
       <AddRepo call={call} notify={notify} onAdded={load} />
@@ -160,7 +160,7 @@ function AddRepo({ call, notify, onAdded }: Props & { onAdded: () => void }) {
         />
       </label>
       <p className="note">
-        명령은 칸 안에서 AI와 같은 사용자로 돌아요. 비밀값이 필요한 검사는 넣지 않아요
+        명령은 샌드박스 안에서 AI와 같은 사용자로 돌아요. 비밀값이 필요한 검사는 넣지 않아요
       </p>
       <button type="submit" className="cta small fit" disabled={busy}>
         등록
@@ -276,7 +276,7 @@ function Pulls({ pulls }: { pulls: Pull[] | null }) {
                   {p.repoName} #{p.number}
                 </a>
                 <span className="label-mono">
-                  {STATUS[p.status] ?? p.status} · 판 {p.version}
+                  {STATUS[p.status] ?? p.status} · 버전 {p.version}
                 </span>
                 <a className="ghost" href={`/admin/tasks/${p.taskId}`}>
                   작업 열기

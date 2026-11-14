@@ -56,8 +56,8 @@ export class SkillQuery extends BaseQuery {
     return new SkillPackageView(name, files);
   }
 
-  /** 저장소의 skills 폴더 (CAIRN_SKILLS_DIR로 바꿀 수 있다). 서버는 apps/server에서 돈다 */
+  /** 저장소의 skills 폴더. 서버는 apps/server에서 돈다 */
   private static root(): string {
-    return process.env.CAIRN_SKILLS_DIR ?? resolve(process.cwd(), '../../skills');
+    return resolve(process.cwd(), '../../skills');
   }
 }

@@ -313,7 +313,7 @@ describe('러너에게 실어 보내기 · 실행 기록', () => {
         prompts.replace('{{/role}}', ''),
         /intro 틀의 \{\{#role\}\}가 닫히지 않았어요/,
       ],
-      ['없는 틀', `${prompts}\n<!-- extra -->\n더`, /저장소 판에 없는 틀이에요: extra/],
+      ['없는 틀', `${prompts}\n<!-- extra -->\n더`, /저장소 버전에 없는 틀이에요: extra/],
     ] as const) {
       const res = await save('cairn-runner', withPrompts(text), 0);
       assert.equal(res.status, 422, `${label}: ${res.text}`);

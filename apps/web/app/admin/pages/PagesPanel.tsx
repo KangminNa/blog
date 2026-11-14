@@ -93,7 +93,7 @@ export function PagesPanel({ watch }: { watch: string | null }) {
                 <div className="item-main">
                   <b>{p.title}</b>
                   <small>
-                    /pages/{p.name} · 판 {p.currentSeq}/{p.revisions} · {when(p.updatedAt)}
+                    /pages/{p.name} · 버전 {p.currentSeq}/{p.revisions} · {when(p.updatedAt)}
                   </small>
                 </div>
                 <span className={p.visibility === 'public' ? 'pill on' : 'pill'}>

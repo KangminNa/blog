@@ -209,12 +209,12 @@ export class Agent extends TableEntity<AgentRow, AgentNew> {
    */
   edit(changes: Partial<AgentRow>, runner?: Runner | null): void {
     const before = this.settingsSnapshot();
-    if (runner?.sandbox) throw new RuleViolation('코드 러너 칸에는 묶을 수 없어요');
+    if (runner?.sandbox) throw new RuleViolation('샌드박스에는 묶을 수 없어요');
     if (runner !== undefined) this.put('runner_id', runner?.id ?? null);
     this.accept(changes, Agent.RULES);
     if (this.row.runner_id && AgentScopes.sandboxed(this.row.scopes ?? []))
       throw new RuleViolation(
-        '코드 · 만들기 권한이 있는 에이전트는 코드 러너 칸에서만 돌아 러너에 묶을 수 없어요',
+        '코드 · 만들기 권한이 있는 에이전트는 샌드박스에서만 돌아 러너에 묶을 수 없어요',
       );
     this.noteSettings(before);
   }

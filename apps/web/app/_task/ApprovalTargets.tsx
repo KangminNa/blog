@@ -83,7 +83,7 @@ export function PullTarget({ approval }: { approval: Approval }) {
       </b>
       {pull.version !== version && (
         <p className="warn">
-          결재 뒤 PR이 바뀌었어요 (판 {version} → {pull.version}). 승인해도 머지로 남지 않아요
+          결재 뒤 PR이 바뀌었어요 (버전 {version} → {pull.version}). 승인해도 머지로 남지 않아요
         </p>
       )}
       <dl className="kv">

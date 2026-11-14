@@ -50,7 +50,7 @@ export class ActivateToolTextInput extends BaseRequest {
     const told = typeof raw === 'object' && raw !== null && 'revision' in raw;
     return BaseRequest.read(raw, (f) => {
       if (!TOOL.test(tool)) f.reject('tool', '도구 이름이 틀려요');
-      if (!told) f.reject('revision', '쓸 판(revision)을 보내 주세요. 기본 글이면 null');
+      if (!told) f.reject('revision', '쓸 버전(revision)을 보내 주세요. 기본 글이면 null');
       return new ActivateToolTextInput(
         tool,
         f.optionalInteger('revision', 1, VERSION_MAX),

@@ -18,7 +18,7 @@ export type MakeBody = {
   materials: { outputIds: readonly string[]; wikiIds: readonly string[] };
 };
 
-// 만들기 작업 (결과물 2차): 코드 러너 칸에서 AI가 셸로 PPT · 문서 · 영상을 만든다.
+// 만들기 작업 (결과물 2차): 샌드박스에서 AI가 셸로 PPT · 문서 · 영상을 만든다.
 // 재료는 주인이 고른 결과물 파일과 위키뿐이다. 고른 비공개 위키도 칸 안의 AI가 읽는다 (작업 토큰에 그 위키만 읽기 허락).
 // "고쳐 달라"는 앞 결과물을 재료로 넣은 새 작업이다.
 // 폼은 칸의 상태와 보낼 본문을 가진다. 맡기기는 패널이 돌리고 (onSubmit), 위키 찾기만 누를 때 여기서 읽는다.
@@ -115,7 +115,7 @@ export function MakeForm({
       </div>
       <p className="note">
         코드 러너 칸에서 AI가 발표 · 표 · 문서를 HTML로 만들어 결과물로 올려요 (바로 열기).
-        파워포인트 · 엑셀 파일이 필요하면 지시에 적어요. 고른 재료는 칸 안의 AI가 읽어요
+        파워포인트 · 엑셀 파일이 필요하면 지시에 적어요. 고른 재료는 샌드박스 안의 AI가 읽어요
       </p>
       <div className="field">
         <label htmlFor={`${id}-text`}>{revising ? '고칠 점' : '만들 것'}</label>

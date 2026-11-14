@@ -17,10 +17,9 @@ import type {
 import { SessionNote } from './session-note';
 
 // 세션의 MCP 도구 네 개. 답은 session.view.ts의 AI용 모양(snake_case)이다.
-// 설명과 입력 모양은 AI가 읽고 인자를 만드는 글이다. 칸을 바꾸면 cairn-save · cairn-recall 스킬도 함께 고친다.
+// 도구의 설명 · 칸 설명은 vault.tools.ko.json에. 칸을 바꾸면 cairn-save · cairn-recall 스킬도 함께 고친다.
 
 // MCP 도구 save_session: AI 도구가 작업한 세션의 노트를 저장한다. mcp 모듈이 모아서 연다.
-// 설명과 입력 모양은 AI가 읽고 인자를 만드는 글이다. 칸을 바꾸면 cairn-save 스킬도 함께 고친다.
 @Injectable()
 export class SaveSessionTool extends BaseTool {
   readonly name = 'save_session';
@@ -107,7 +106,6 @@ export class CheckSessionTool extends BaseTool {
 }
 
 // MCP 도구 search_sessions: 저장된 세션 노트를 키워드로 찾는다. 요청자가 볼 수 있는 세션만 나온다.
-// 설명과 입력 모양은 AI가 읽고 인자를 만드는 글이다. 칸을 바꾸면 이 도구를 쓰는 스킬도 함께 고친다.
 @Injectable()
 export class SearchSessionsTool extends BaseTool {
   readonly name = 'search_sessions';

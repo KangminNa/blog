@@ -177,7 +177,7 @@ function SkillEditor({ name, onChanged }: { name: string; onChanged: () => Promi
       {showRepo && (
         <>
           <p className="label-mono">
-            저장소 판 · {short(detail.repo.hash)} · {file}
+            저장소 버전 · {short(detail.repo.hash)} · {file}
           </p>
           <textarea
             className="input"

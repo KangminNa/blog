@@ -16,6 +16,6 @@ export const SCOPE_LABELS: Record<string, string> = {
   make: '파일 만들기',
   run: '작업 실행',
   delegate: '에이전트에게 맡기기',
-  sandbox: '코드 러너 칸',
+  sandbox: '샌드박스',
   news: '소식 읽기',
 };

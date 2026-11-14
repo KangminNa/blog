@@ -279,7 +279,7 @@ export class Device extends TableEntity<DeviceRow, DeviceNew> {
   edit(changes: Partial<DeviceRow>): void {
     // 칸은 이름으로 다시 찾고(연결할 때), 권한은 칸에 맞춰 정해져 있다. 바꾸면 칸이 새 기기를 만들어 쌓인다
     if (this.isCodeRunner && (changes.name !== undefined || changes.scopes !== undefined))
-      throw new RuleViolation('코드 러너 칸의 이름 · 권한은 바꿀 수 없어요');
+      throw new RuleViolation('샌드박스 기기의 이름 · 권한은 바꿀 수 없어요');
     // 소식 기기는 소식만 읽는다: 다른 권한을 더하면 훅 · 상태 줄의 토큰이 그만큼 넓어진다
     if (this.isNews && changes.scopes !== undefined)
       throw new RuleViolation('소식 기기의 권한은 바꿀 수 없어요');

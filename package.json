@@ -10,7 +10,6 @@
   "scripts": {
     "dev": "docker compose up --build",
     "dev:down": "docker compose down",
-    "db:up": "docker compose up -d --build db migrate",
     "db:migrate": "docker compose run --rm migrate",
     "db:rollback": "docker compose run --rm migrate rollback",
     "db:new": "docker compose run --rm --entrypoint dbmate migrate --migrations-dir /db/migrations new",

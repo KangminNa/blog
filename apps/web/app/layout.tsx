@@ -14,7 +14,7 @@ export async function generateMetadata() {
 }
 
 // AGPL-3.0: 서비스를 쓰는 사람도 소스를 받을 수 있게 모든 화면에 링크를 둔다
-const SOURCE_URL = process.env.CAIRN_SOURCE_URL ?? 'https://github.com/KangminNa/blog';
+const SOURCE_URL = 'https://github.com/KangminNa/blog';
 
 // 고른 테마를 첫 그림 전에 적용한다 (고르지 않았으면 기기 설정을 따른다)
 const THEME_SCRIPT =

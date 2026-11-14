@@ -49,7 +49,7 @@ export class ActivateSkillInput extends BaseRequest {
     const told = typeof raw === 'object' && raw !== null && 'revision' in raw;
     return BaseRequest.read(raw, (f) => {
       if (!NAME.test(name)) f.reject('name', '스킬 이름이 틀려요');
-      if (!told) f.reject('revision', '쓸 판(revision)을 보내 주세요. 저장소 판이면 null');
+      if (!told) f.reject('revision', '쓸 버전(revision)을 보내 주세요. 저장소 버전이면 null');
       return new ActivateSkillInput(
         name,
         f.optionalInteger('revision', 1, ActivateSkillInput.VERSION_MAX),
