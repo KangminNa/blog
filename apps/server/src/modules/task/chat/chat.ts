@@ -100,6 +100,16 @@ export class Chat extends TableEntity<ChatRow, ChatNew> {
     return `${Chat.turnRequestPrefix()}${chatId}:${turn}`;
   }
 
+  /** 회차 하나의 맨 위 작업들의 request_id: 회차 작업과 그 덧붙인 말에 답하는 작업들 (팀의 일은 그 아래) */
+  static turnRoots(chatId: string, turn: number): string[] {
+    const id = Chat.turnRequestId(chatId, turn);
+    const replies = Array.from(
+      { length: ChatUpdates.APPEND_MAX },
+      (_, k) => `${id}:reply:${k + 1}`,
+    );
+    return [id, ...replies];
+  }
+
   /** from회차부터 to회차까지의 request_id (작업을 찾는 데 쓴다) */
   static turnRequestIds(chatId: string, from: number, to: number): string[] {
     const ids: string[] = [];

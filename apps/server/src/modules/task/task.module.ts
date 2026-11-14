@@ -29,6 +29,8 @@ import { GoalRunHandler } from './goal-run/goal-run.handler';
 import { GoalRunQuery } from './goal-run/goal-run.query';
 import { GoalRunService } from './goal-run/goal-run.service';
 import { ReportRoundTool } from './goal-run/goal-run.tool';
+import { HomeController } from './home/home.api';
+import { HomeQuery } from './home/home.query';
 import { OutputController } from './output/output.api';
 import { OutputPolicy } from './output/output.policy';
 import { OutputQuery } from './output/output.query';
@@ -80,6 +82,7 @@ import { WebPageGateway } from './web/web-page.gateway';
     ApprovalQuery,
     ApprovalService,
     UsageQuery,
+    HomeQuery,
     GoalQuery,
     GoalService,
     ScheduleQuery,
@@ -139,6 +142,7 @@ import { WebPageGateway } from './web/web-page.gateway';
     TaskController,
     ApprovalController,
     UsageController,
+    HomeController,
     AiLoginController,
     GoalController,
     ScheduleController,

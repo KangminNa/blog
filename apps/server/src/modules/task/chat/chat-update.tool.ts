@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Actor, BaseTool } from '../../platform';
+import { type AgentUpdatesView, PostedUpdateView } from './chat.view';
 import { AgentUpdatesInput, PostUpdateInput } from './chat-update.input';
 import { ChatUpdates } from './chat-update.policy';
 import { ChatUpdateQuery } from './chat-update.query';
 import { ChatUpdateService } from './chat-update.service';
-import { type AgentUpdatesView, PostedUpdateView } from './chat-update.view';
 
 // 대화의 소식 MCP 도구 (2차 1-1, docs/API설계.md 4장). 글은 task.tools.ko.json에.
 

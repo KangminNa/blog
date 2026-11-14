@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { type Actor, BaseQuery, NotFound } from '../../platform';
+import { type Actor, BaseQuery, Database, NotFound } from '../../platform';
 import { Approval } from '../approval/approval';
 import { Task } from '../task/task';
 import type { ChatRow } from '../task.tables';
@@ -12,17 +12,32 @@ import {
   ChatListView,
   type ChatOutputRow,
   type ChatPartnerRow,
+  type ChatTeamRow,
   type ChatTurnTaskRow,
   ChatTurnView,
+  type ChatUpdateLine,
 } from './chat.view';
+import { ChatUpdateQuery } from './chat-update.query';
 
 // 대화 읽기 (관리자만). 회차는 작업이라 그 대화의 회차 request_id로 작업을 찾는다.
 // 결과물 · 기다리는 결재는 회차 작업과 그 아래 하위 작업(위임) 모두에서 모은다: 팀장에게 말하면 팀이 일한다.
+// 상세에는 상태판(ChatUpdateQuery와 같은 규칙) · 최근 소식 · 팀(상대와 그 아래 에이전트)을 함께 싣는다 (2차 1-1)
 @Injectable()
 export class ChatQuery extends BaseQuery {
   private static readonly PAGE = 100;
   /** 상세에 싣는 최근 회차 수 */
   private static readonly TURNS = 100;
+  /** 상세에 싣는 최근 소식 수 */
+  private static readonly NEWS = 50;
+  /** 팀으로 보이는 조직도 깊이 (상대 아래로) */
+  private static readonly TEAM_DEPTH = 4;
+
+  constructor(
+    db: Database,
+    private readonly updates: ChatUpdateQuery,
+  ) {
+    super(db);
+  }
 
   async list(actor: Actor): Promise<ChatListView> {
     actor.assertOwner();
@@ -60,7 +75,51 @@ export class ChatQuery extends BaseQuery {
       SELECT name, status, reports_to, deleted_at FROM task.agents WHERE id = ${chat.agent_id}`;
     const ids = Chat.turnRequestIds(chat.id, chat.turns - ChatQuery.TURNS + 1, chat.turns);
     const turns = await this.turns(spaceId, ids);
-    return new ChatDetailView(chat, partner as ChatPartnerRow, await this.views(turns));
+    const [board] = await this.updates.ownerBoard(actor, chat.id);
+    return new ChatDetailView(
+      chat,
+      partner as ChatPartnerRow,
+      await this.views(turns),
+      board ?? null,
+      await this.news(chat.id),
+      await this.team(chat),
+    );
+  }
+
+  /** 이 대화의 최근 소식 (오래된 것부터) */
+  private news(chatId: string): Promise<ChatUpdateLine[]> {
+    return this.sql<ChatUpdateLine[]>`
+      SELECT * FROM (
+        SELECT u.*, a.name AS agent FROM task.chat_updates u
+        LEFT JOIN task.agents a ON a.id = u.agent_id
+        WHERE u.chat_id = ${chatId} ORDER BY u.n DESC LIMIT ${ChatQuery.NEWS}
+      ) recent ORDER BY n`;
+  }
+
+  /** 상대와 그 아래 에이전트(지운 것 빼고), 사람마다 이 대화의 지금 회차(덧붙인 말의 답 포함) 아래에서 도는 작업 */
+  private team(chat: ChatRow): Promise<ChatTeamRow[]> {
+    const roots = chat.turns > 0 ? Chat.turnRoots(chat.id, chat.turns) : [];
+    const open = ChatQuery.OPEN as string[];
+    return this.sql<ChatTeamRow[]>`
+      WITH RECURSIVE team AS (
+        SELECT id, 0 AS depth FROM task.agents WHERE id = ${chat.agent_id}
+        UNION ALL
+        SELECT a.id, team.depth + 1 FROM task.agents a JOIN team ON a.reports_to = team.id
+        WHERE a.deleted_at IS NULL AND team.depth < ${ChatQuery.TEAM_DEPTH}
+      ), work AS (
+        SELECT t.id, t.agent_id, t.status, t.title, t.created_at FROM task.tasks t
+        WHERE t.space_id = ${chat.space_id} AND t.request_id = ANY(${roots}::text[])
+        UNION ALL
+        SELECT t.id, t.agent_id, t.status, t.title, t.created_at FROM task.tasks t
+        JOIN work ON t.parent_id = work.id
+      )
+      SELECT a.id, a.name, a.role, a.status, a.lead, team.depth,
+        (SELECT count(*)::int FROM work w
+          WHERE w.agent_id = a.id AND w.status = ANY(${open}::text[])) AS open,
+        (SELECT w.title FROM work w WHERE w.agent_id = a.id AND w.status = ANY(${open}::text[])
+          ORDER BY w.created_at DESC LIMIT 1) AS doing
+      FROM team JOIN task.agents a ON a.id = team.id
+      ORDER BY team.depth, a.name`;
   }
 
   /** 회차마다 그 아래의 결과물 · 기다리는 결재를 붙인다 */

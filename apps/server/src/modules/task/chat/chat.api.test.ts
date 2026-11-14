@@ -410,6 +410,15 @@ describe('내 컴퓨터의 AI 도구가 서버 팀에 맡기기 (MCP ask_agent �
       kind: 'assumption',
       text: '본선은 오프라인이라고 가정',
     });
+    // 대화 상세(관리자)의 팀: 상대와 그 아래, 사람마다 이 회차에서 도는 작업
+    const busy = await detail(chatId);
+    assert.deepEqual(
+      busy.team.map((m: Json) => [m.name, m.depth, m.open, m.doing]),
+      [
+        [boss.name, 0, 1, turn.task.title],
+        [member.name, 1, 1, '요강 읽기'],
+      ],
+    );
     await tool(runner, 'submit_result', {
       task_id: sub.task.id,
       request_id: randomUUID(),
@@ -424,6 +433,20 @@ describe('내 컴퓨터의 AI 도구가 서버 팀에 맡기기 (MCP ask_agent �
         ['decision', boss.name, '본선 규정을 먼저 본다'],
         ['assumption', member.name, '본선은 오프라인이라고 가정'],
         ['member_done', member.name, '요강 읽기 — 평가 기준 3가지'],
+      ],
+    );
+    const room = await detail(chatId);
+    assert.deepEqual([room.state, room.active], ['working', 1], '팀원은 끝났고 회차가 다시 돈다');
+    assert.deepEqual(
+      room.news.slice(-3).map((n: Json) => [n.kind, n.agent]),
+      news.map((n: Json) => [n.kind, n.agent]),
+      '상세의 소식은 agent_updates와 같다',
+    );
+    assert.deepEqual(
+      room.team.map((m: Json) => [m.name, m.open, m.doing]),
+      [
+        [boss.name, 1, turn.task.title],
+        [member.name, 0, null],
       ],
     );
     const woken = (await jobs()).find((j) => j.task.id === turn.task.id) as Json;
@@ -445,6 +468,38 @@ describe('내 컴퓨터의 AI 도구가 서버 팀에 맡기기 (MCP ask_agent �
     const loose = (await jobs()).find((j) => j.task.id === outside.id) as Json;
     const refused = await call(loose.run_token, 'post_update', { kind: 'progress', text: '중간' });
     assert.deepEqual([refused.ok, refused.body.code], [false, 'rule_violation']);
+  });
+
+  test('소식 기기(news, cairn connect의 훅 · 상태 줄)는 모든 대화의 소식을 읽기만 한다', async () => {
+    const partner = await agent('소식 팀장');
+    const mac = await device(`n-mac-${randomUUID().slice(0, 6)}`, ['delegate']);
+    const hook = await api.connectDevice(owner, `n-hook-${randomUUID().slice(0, 6)}`, 'news');
+    const list = await api.mcp(hook, 'tools/list');
+    const names = (list.json().result as Json).tools.map((t: Json) => t.name);
+    assert.deepEqual(names, ['agent_updates'], '소식 기기에는 agent_updates 하나만');
+    const refused = await call(hook, 'ask_agent', { request_id: randomUUID(), message: '몰래' });
+    assert.deepEqual([refused.ok, refused.body.scope], [false, 'delegate']);
+
+    const start = (await call(hook, 'agent_updates', {})).body.cursor;
+    const fromMac = await call(mac, 'ask_agent', {
+      request_id: randomUUID(),
+      message: '기기에서 맡김',
+      agent: partner.id,
+      project: 'git@github.com:Me/Repo.git',
+    });
+    const fromOwner = ok(await open(partner.id, '관리자가 맡김'), 201);
+    const seen = (await call(hook, 'agent_updates', { after: start })).body;
+    const boards = seen.board.map((b: Json) => b.chat_id);
+    assert.ok(
+      boards.includes(fromMac.body.id) && boards.includes(fromOwner.id),
+      '모든 대화가 보인다',
+    );
+    const only = (await call(hook, 'agent_updates', { project: 'github.com/me/repo' })).body;
+    assert.deepEqual(
+      only.board.map((b: Json) => b.chat_id),
+      [fromMac.body.id],
+      '프로젝트로 거른다',
+    );
   });
 
   test('다른 기기 · 관리자의 대화는 없는 것처럼 (404). 기기의 메시지는 read_url의 기준이 아니다', async () => {

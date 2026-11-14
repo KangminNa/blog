@@ -3,10 +3,10 @@ import { Actor, BaseQuery, ChangeStream, Database, Forbidden, RuleViolation } fr
 import { JobChatView } from '../task/job.view';
 import { Task } from '../task/task';
 import { Chat } from './chat';
+import { AgentUpdatesView, type ChatBoardRow, type ChatUpdateLine } from './chat.view';
 import { ChatProject } from './chat-project.policy';
 import type { AgentUpdatesInput } from './chat-update.input';
 import { ChatUpdates } from './chat-update.policy';
-import { AgentUpdatesView, type ChatBoardRow, type ChatUpdateLine } from './chat-update.view';
 
 // 대화의 소식 읽기 (MCP agent_updates, 2차 1-1). 기기의 권한으로 범위를 정한다:
 //   delegate → 그 기기가 연 대화만, news(소식 기기, 훅 · 상태 줄) → 공간의 모든 대화 (읽기만)
@@ -82,6 +82,12 @@ export class ChatUpdateQuery extends BaseQuery {
     return view.empty ? null : view;
   }
 
+  /** 관리자의 상태판 (홈 · 대화 상세): 공간의 모든 대화, chatId를 주면 그 대화 하나 */
+  ownerBoard(actor: Actor, chatId: string | null): Promise<ChatBoardRow[]> {
+    actor.assertOwner();
+    return this.board(actor.requireSpace(), null, chatId, null);
+  }
+
   private async lastNumber(spaceId: string): Promise<number> {
     const [row] = await this.sql<{ n: string | null }[]>`
       SELECT max(n) AS n FROM task.chat_updates WHERE space_id = ${spaceId}`;
@@ -112,7 +118,10 @@ export class ChatUpdateQuery extends BaseQuery {
     return after === null ? rows.reverse() : rows;
   }
 
-  /** 대화마다 마지막 회차의 상태와 지금 도는 작업 수 (마지막 회차 · 그 덧붙인 말의 답 아래 전부) */
+  /**
+   * 대화마다 마지막 회차로 정한 상태와 지금 도는 작업 수 (마지막 회차 · 그 덧붙인 말의 답 아래 전부).
+   * 상태: 결재를 기다리면 waiting_approval, 끝나지 않았으면 working, 실패 · 취소면 failed, 아니면 done
+   */
   private async board(
     spaceId: string,
     device: string | null,
@@ -123,7 +132,12 @@ export class ChatUpdateQuery extends BaseQuery {
     const prefix = Chat.turnRequestPrefix();
     const replies = Array.from({ length: ChatUpdates.APPEND_MAX }, (_, i) => `:reply:${i + 1}`);
     return await sql<ChatBoardRow[]>`
-      SELECT c.*, a.name AS partner, last.status AS last_status, last.wait_reason AS last_wait_reason,
+      SELECT c.*, a.name AS partner,
+        CASE
+          WHEN last.status = ${Task.WAITING} AND last.wait_reason = ${Task.WAIT_APPROVAL} THEN 'waiting_approval'
+          WHEN last.status = ANY(${ChatUpdateQuery.OPEN as string[]}::text[]) THEN 'working'
+          WHEN last.status = ANY(${[Task.FAILED, Task.CANCELLED]}::text[]) THEN 'failed'
+          ELSE 'done' END AS state,
         (WITH RECURSIVE tree AS (
            SELECT t.id, t.status FROM task.tasks t
            WHERE t.space_id = c.space_id AND t.request_id = ANY(
